@@ -34,7 +34,11 @@ OIDC discovery/JWKS   AI provider adapter
 - `api/openapi.yaml` is the stable public REST contract. MCP is described in
   `docs/mcp.md`.
 - `docker-compose.yml` is a local reference deployment, not a requirement. A
-  compiled API process can start with only `DATABASE_URL`.
+  compiled process can start with only `DATABASE_URL`.
+- The release image is one static binary that also serves the compiled
+  workspace, so a pod is a single container on a single port. No reverse proxy
+  and no database are bundled; `deploy/kubernetes.yaml` is the reference
+  manifest.
 
 ## Request lifecycle
 

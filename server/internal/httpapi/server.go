@@ -43,6 +43,8 @@ type Options struct {
 	CORSAllowedOrigins     []string
 	Logger                 *slog.Logger
 	MCPHandler             http.Handler
+	// WebHandler serves the compiled workspace when the process also hosts it.
+	WebHandler http.Handler
 }
 
 type Server struct {
@@ -58,6 +60,7 @@ type Server struct {
 	corsOrigins            []string
 	logger                 *slog.Logger
 	mcpHandler             http.Handler
+	webHandler             http.Handler
 	captureIncident        func(context.Context, model.Incident) error
 }
 
@@ -83,6 +86,7 @@ func New(options Options) (*Server, error) {
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,
+		webHandler:      options.WebHandler,
 		captureIncident: options.Store.CaptureIncident,
 	}, nil
 }
@@ -154,6 +158,11 @@ func (s *Server) Handler() http.Handler {
 			},
 		})(s.identityMiddleware(requireScope("mcp:use", s.mcpHandler)))
 		root.Handle("/mcp", mcpProtected)
+	}
+	if s.webHandler != nil {
+		// Registered last and least specific, so every API, health and MCP
+		// route above still wins; anything else is the single-page workspace.
+		root.Handle("/", s.webHandler)
 	}
 	return s.requestMiddleware(s.corsMiddleware(root))
 }

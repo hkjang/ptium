@@ -53,9 +53,12 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- 웹 UI: <http://localhost:3000>
+- 웹 UI: <http://localhost:8080>
 - API: <http://localhost:8080/api/v1>
 - MCP: <http://localhost:8080/mcp>
+
+컨테이너 하나가 워크스페이스, REST API, MCP를 같은 포트에서 제공합니다. 리버스
+프록시나 별도 웹 컨테이너는 없습니다.
 
 `docker-compose.yml`의 개발 인증 기본값은 로컬 평가를 위한 것입니다. 외부에
 노출하기 전 반드시 `.env`에서 비활성화하고 OIDC를 구성하십시오.
@@ -155,14 +158,22 @@ docker build -t ptium:dev .
 
 ## 오프라인 릴리스
 
-릴리스 자산 `ptium-<version>.tar.gz`에는 배포에 사용하는 literal 이미지명
-`ptium-<version>:latest`, 호환 태그 `ptium:<version>`, 그리고 서비스에 필요한
-`postgres:16-alpine` 이미지가 모두 들어 있습니다. 인터넷 연결이 있는 빌드
-호스트에서 다음 명령으로 동일한 형식을 재현할 수 있습니다.
+릴리스 자산 `ptium-<version>.tar.gz`에는 배포용 literal 이미지명
+`ptium-<version>:latest`와 호환 태그 `ptium:<version>`만 들어 있습니다.
+데이터베이스는 번들에 포함하지 않고, 배포 시 `DATABASE_URL`로 이미 운영 중인
+PostgreSQL을 지정합니다. 인터넷 연결이 있는 빌드 호스트에서 다음 명령으로
+동일한 번들을 재현할 수 있습니다.
+
+```bash
+./scripts/build-offline.sh
+```
 
 ```powershell
 .\scripts\build-offline.ps1
 ```
+
+쿠버네티스 배포 예시는 [`deploy/kubernetes.yaml`](deploy/kubernetes.yaml)에
+있습니다. 시크릿에 `DATABASE_URL`과 `KEY_ENCRYPTION_SECRET`만 넣으면 됩니다.
 
 체크섬 확인, 이미지 로드, 폐쇄망 compose 실행 및 업그레이드는
 [offline deployment runbook](docs/offline-deployment.md)을 참고하십시오.

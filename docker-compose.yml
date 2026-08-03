@@ -1,5 +1,8 @@
 name: ptium
 
+# Local reference deployment. One Ptium container serves the API, the MCP
+# endpoint and the workspace on port 8080; PostgreSQL here is a convenience for
+# evaluation, not part of the release image.
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,19 +19,21 @@ services:
     volumes:
       - ptium-postgres:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
 
-  api:
+  ptium:
     build:
-      context: ./server
+      context: .
+      args:
+        VERSION: ${PTIUM_VERSION:-dev}
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-ptium}:${POSTGRES_PASSWORD:-ptium}@postgres:5432/${POSTGRES_DB:-ptium}?sslmode=disable
       HTTP_ADDR: :8080
       APP_ENV: ${APP_ENV:-development}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
       BOOTSTRAP_ADMIN_EMAILS: ${BOOTSTRAP_ADMIN_EMAILS:-admin@example.com}
       BOOTSTRAP_ADMIN_SUBJECTS: ${BOOTSTRAP_ADMIN_SUBJECTS:-}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
@@ -47,20 +52,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8080:8080"
-
-  web:
-    build:
-      context: ./web
-      args:
-        VITE_API_BASE_URL: /api/v1
-    restart: unless-stopped
-    environment:
-      BACKEND_UPSTREAM: http://api:8080
-    depends_on:
-      - api
-    ports:
-      - "3000:80"
+      - "${PTIUM_PORT:-8080}:8080"
 
 volumes:
   ptium-postgres:

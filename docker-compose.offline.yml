@@ -1,30 +1,18 @@
 name: ptium
 
+# Air-gapped deployment. The release bundle carries only the Ptium image, so
+# PostgreSQL is supplied by the environment: set DATABASE_URL to a reachable
+# cluster before starting.
 services:
-  postgres:
-    image: postgres:16-alpine
-    pull_policy: never
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ptium}
-      POSTGRES_USER: ${POSTGRES_USER:-ptium}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    volumes:
-      - ptium-postgres:/var/lib/postgresql/data
-
   ptium:
     image: ptium-${PTIUM_VERSION:-0.1.0}:latest
     pull_policy: never
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-ptium}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ptium}?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL to your PostgreSQL DSN in .env}
       HTTP_ADDR: :8080
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
       BOOTSTRAP_ADMIN_EMAILS: ${BOOTSTRAP_ADMIN_EMAILS:-}
       BOOTSTRAP_ADMIN_SUBJECTS: ${BOOTSTRAP_ADMIN_SUBJECTS:-}
       OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
@@ -39,11 +27,5 @@ services:
       DEV_AUTH_ROLES: ${DEV_AUTH_ROLES:-user}
       DEV_AUTH_ALLOW_REMOTE: ${DEV_AUTH_ALLOW_REMOTE:-false}
       KEY_ENCRYPTION_SECRET: ${KEY_ENCRYPTION_SECRET:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "${PTIUM_PORT:-8080}:8080"
-
-volumes:
-  ptium-postgres:

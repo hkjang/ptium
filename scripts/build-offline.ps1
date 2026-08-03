@@ -18,13 +18,13 @@ $DistDirectory = Join-Path $RepositoryRoot "dist"
 New-Item -ItemType Directory -Force -Path $DistDirectory | Out-Null
 $Image = "ptium:$Version"
 $VersionedAlias = "ptium-${Version}:latest"
-$PostgresImage = "postgres:16-alpine"
 $TarPath = Join-Path $DistDirectory "ptium-$Version.tar"
 $ArchivePath = "$TarPath.gz"
 $ChecksumPath = "$ArchivePath.sha256"
 $OfflineComposePath = Join-Path $DistDirectory "docker-compose.ptium-$Version.yml"
 $OfflineEnvPath = Join-Path $DistDirectory "ptium-$Version.env.example"
 $OfflineLoaderPath = Join-Path $DistDirectory "load-ptium-$Version.ps1"
+$OfflineKubernetesPath = Join-Path $DistDirectory "ptium-$Version.kubernetes.yaml"
 $Revision = (git -C $RepositoryRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $Revision -notmatch '^[0-9a-f]{40}$') {
     throw "A committed Git revision is required before building the offline release."
@@ -35,10 +35,8 @@ try {
     docker buildx build --platform $Platform --load --build-arg "VERSION=$Version" --build-arg "REVISION=$Revision" --tag $Image --tag $VersionedAlias .
     if ($LASTEXITCODE -ne 0) { throw "Ptium image build failed." }
 
-    docker pull --platform $Platform $PostgresImage
-    if ($LASTEXITCODE -ne 0) { throw "PostgreSQL image pull failed." }
-
-    docker save --output $TarPath $Image $VersionedAlias $PostgresImage
+    # PostgreSQL is intentionally not bundled: a deployment supplies its own DSN.
+    docker save --output $TarPath $Image $VersionedAlias
     if ($LASTEXITCODE -ne 0) { throw "Docker image export failed." }
 
     $InputStream = [System.IO.File]::OpenRead($TarPath)
@@ -59,6 +57,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "docker-compose.offline.yml") -Destination $OfflineComposePath -Force
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot ".env.offline.example") -Destination $OfflineEnvPath -Force
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "scripts/load-offline.ps1") -Destination $OfflineLoaderPath -Force
+    Copy-Item -LiteralPath (Join-Path $RepositoryRoot "deploy/kubernetes.yaml") -Destination $OfflineKubernetesPath -Force
 
     docker image inspect $Image $VersionedAlias | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Built image inspection failed." }

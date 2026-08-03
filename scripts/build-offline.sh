@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Builds the air-gapped release bundle: the Ptium image alone, plus the compose
+# file, environment sample and Kubernetes manifest a target site needs.
+# PostgreSQL is deliberately not bundled — the deployment supplies its own DSN.
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+platform="${PLATFORM:-linux/amd64}"
+version="${1:-$(tr -d '[:space:]' < "$repository_root/VERSION")}"
+
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+    echo "Version '$version' is not a valid release version." >&2
+    exit 1
+fi
+
+revision="$(git -C "$repository_root" rev-parse HEAD)"
+if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+    echo "A committed Git revision is required before building the offline release." >&2
+    exit 1
+fi
+
+image="ptium:$version"
+alias_image="ptium-$version:latest"
+dist="$repository_root/dist"
+archive="$dist/ptium-$version.tar.gz"
+
+mkdir -p "$dist"
+cd "$repository_root"
+
+docker buildx build --platform "$platform" --load \
+    --build-arg "VERSION=$version" --build-arg "REVISION=$revision" \
+    --tag "$image" --tag "$alias_image" .
+
+# Stream straight into gzip so the uncompressed tar never touches the disk.
+docker save "$image" "$alias_image" | gzip -9 > "$archive"
+
+digest="$(sha256sum "$archive" | cut -d' ' -f1)"
+printf '%s  %s' "$digest" "$(basename "$archive")" > "$archive.sha256"
+
+cp "$repository_root/docker-compose.offline.yml" "$dist/docker-compose.ptium-$version.yml"
+cp "$repository_root/.env.offline.example" "$dist/ptium-$version.env.example"
+cp "$repository_root/deploy/kubernetes.yaml" "$dist/ptium-$version.kubernetes.yaml"
+cp "$repository_root/scripts/load-offline.ps1" "$dist/load-ptium-$version.ps1"
+cp "$repository_root/scripts/load-offline.sh" "$dist/load-ptium-$version.sh"
+
+docker image inspect "$image" "$alias_image" > /dev/null
+printf 'Created %s\nSHA256  %s\n' "$archive" "$digest"

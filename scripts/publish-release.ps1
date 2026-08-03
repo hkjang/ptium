@@ -16,7 +16,8 @@ $Assets = @(
     (Join-Path $RepositoryRoot "dist/ptium-$Version.tar.gz.sha256"),
     (Join-Path $RepositoryRoot "dist/docker-compose.ptium-$Version.yml"),
     (Join-Path $RepositoryRoot "dist/ptium-$Version.env.example"),
-    (Join-Path $RepositoryRoot "dist/load-ptium-$Version.ps1")
+    (Join-Path $RepositoryRoot "dist/load-ptium-$Version.ps1"),
+    (Join-Path $RepositoryRoot "dist/ptium-$Version.kubernetes.yaml")
 )
 
 foreach ($Path in @($Notes) + $Assets) {

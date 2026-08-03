@@ -1,0 +1,147 @@
+# Reference Kubernetes deployment.
+#
+# Ptium runs as a single stateless container: it serves the workspace, the REST
+# API and the MCP endpoint on one port and keeps everything else in PostgreSQL.
+# Supply the DSN of a cluster you already operate — the image carries no
+# database and no reverse proxy.
+#
+#   kubectl create secret generic ptium \
+#     --from-literal=DATABASE_URL='postgres://user:pass@postgres:5432/ptium?sslmode=require' \
+#     --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
+#   kubectl apply -f deploy/kubernetes.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ptium
+  labels:
+    app.kubernetes.io/name: ptium
+data:
+  PUBLIC_BASE_URL: "https://ptium.example.com"
+  LOG_LEVEL: "info"
+  OIDC_ISSUER_URL: "https://sso.example.com/realms/company"
+  OIDC_CLIENT_ID: "ptium-web"
+  OIDC_AUDIENCE: "ptium-web"
+  AUTH_ADMIN_ROLES: "ptium-admin,admin"
+  BOOTSTRAP_ADMIN_EMAILS: "admin@example.com"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ptium
+  labels:
+    app.kubernetes.io/name: ptium
+spec:
+  # Every replica applies the same idempotent migrations and runs a generation
+  # worker; work is claimed with SELECT ... FOR UPDATE SKIP LOCKED, so scaling
+  # out never produces a deck twice.
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ptium
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ptium
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ptium
+          image: ptium:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: ptium
+            - secretRef:
+                name: ptium
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              # Analyzing and rendering a template holds the package in memory,
+              # so leave headroom above the configured upload limit.
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Multipart uploads larger than the in-memory threshold spill to a
+            # temporary file, which a read-only root filesystem would refuse.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ptium
+  labels:
+    app.kubernetes.io/name: ptium
+spec:
+  selector:
+    app.kubernetes.io/name: ptium
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ptium
+  labels:
+    app.kubernetes.io/name: ptium
+  annotations:
+    # Template uploads carry a whole PowerPoint package. Raise the ingress body
+    # limit to match generation.max_template_mb in the admin console.
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+spec:
+  rules:
+    - host: ptium.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ptium
+                port:
+                  name: http

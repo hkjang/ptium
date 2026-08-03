@@ -50,9 +50,10 @@ try {
 
     docker load --input $TarPath
     if ($LASTEXITCODE -ne 0) { throw "Docker image import failed." }
-    docker image inspect "ptium:$Version" "ptium-${Version}:latest" "postgres:16-alpine" | Out-Null
+    docker image inspect "ptium:$Version" "ptium-${Version}:latest" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Expected offline images are missing after import." }
-    Write-Host "Verified ptium:$Version, ptium-${Version}:latest and postgres:16-alpine."
+    Write-Host "Verified ptium:$Version and ptium-${Version}:latest."
+    Write-Host "Set DATABASE_URL to your PostgreSQL cluster before starting; the bundle ships no database."
 } finally {
     if (Test-Path -LiteralPath $TemporaryDirectory) {
         Remove-Item -LiteralPath $TemporaryDirectory -Recurse -Force

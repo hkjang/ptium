@@ -22,6 +22,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
 	"github.com/hkjang/ptium/server/internal/store"
+	"github.com/hkjang/ptium/server/internal/webui"
 )
 
 var version = "dev"
@@ -105,11 +106,23 @@ func main() {
 		fatal("initialize MCP endpoint", err)
 	}
 
+	// The compiled workspace is served by this process, so a deployment is one
+	// container on one port with no reverse proxy in front of it.
+	var webHandler http.Handler
+	if applicationConfig.WebDir != "" {
+		webHandler, err = webui.Handler(applicationConfig.WebDir)
+		if err != nil {
+			fatal("serve web workspace", err)
+		}
+		logger.Info("serving web workspace", "directory", applicationConfig.WebDir)
+	}
+
 	api, err := httpapi.New(httpapi.Options{
 		Store: dataStore, Settings: settingService, Keys: keyManager, Worker: worker,
 		Authenticator: authenticator, AuthPublic: publicAuth, AdminRoles: authConfig.AdminRoles,
 		BootstrapAdminEmails: applicationConfig.BootstrapAdminEmails, BootstrapAdminSubjects: applicationConfig.BootstrapAdminSubjects,
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
+		WebHandler: webHandler,
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)

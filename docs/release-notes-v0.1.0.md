@@ -33,7 +33,9 @@ Ptium의 첫 자체 호스팅 릴리스입니다. 보유한 PowerPoint 템플릿
 - 범위/만료/마지막 사용 기록이 있는 API 키 및 유예 기간 회전
 - REST API, OpenAPI 문서, 인증된 MCP Streamable HTTP 도구/리소스
   (`ptium.list_templates` 포함, `templates:read`/`templates:write` 범위 추가)
-- Linux/AMD64 단일 `ptium-0.1.0:latest` 런타임 이미지(호환 태그 `ptium:0.1.0` 포함)
+- Linux/AMD64 단일 컨테이너: 정적 바이너리 하나가 워크스페이스·REST·MCP를
+  8080 포트에서 제공(리버스 프록시 없음). `ptium-0.1.0:latest`와 `ptium:0.1.0`
+- 쿠버네티스 배포 예시 매니페스트(비루트, 읽기 전용 루트 파일시스템, 2 레플리카)
 
 ## 오프라인 자산
 
@@ -42,8 +44,9 @@ Ptium의 첫 자체 호스팅 릴리스입니다. 보유한 PowerPoint 템플릿
 
 - `ptium:0.1.0`
 - `ptium-0.1.0:latest`
-- `postgres:16-alpine`
 
-체크섬 파일로 무결성을 확인한 뒤 함께 제공되는 compose/env 예시를 사용하면
-외부 registry 접근 없이 배포할 수 있습니다. 자세한 절차는 저장소의
+데이터베이스는 번들에 포함하지 않습니다. 배포 시 `DATABASE_URL`로 이미 운영 중인
+PostgreSQL을 지정하면 되고, 스키마는 기동 시 자동 적용됩니다. 체크섬 파일로
+무결성을 확인한 뒤 함께 제공되는 compose·env·쿠버네티스 예시를 사용하면 외부
+registry 접근 없이 배포할 수 있습니다. 자세한 절차는 저장소의
 `docs/offline-deployment.md`를 참고하십시오.

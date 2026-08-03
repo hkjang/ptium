@@ -11,9 +11,13 @@ import (
 // Config contains the small bootstrap configuration surface. Runtime product
 // settings live in PostgreSQL and are managed through the admin API.
 type Config struct {
-	DatabaseURL            string
-	HTTPAddr               string
-	PublicBaseURL          string
+	DatabaseURL   string
+	HTTPAddr      string
+	PublicBaseURL string
+	// WebDir holds the compiled single-page workspace. When empty the process
+	// serves only the API, which is what a development setup wants while Vite
+	// serves the UI.
+	WebDir                 string
 	CORSAllowedOrigins     []string
 	OIDCIssuerURL          string
 	OIDCClientID           string
@@ -40,6 +44,7 @@ func Load() (Config, error) {
 		DatabaseURL:            dsn,
 		HTTPAddr:               envDefault("HTTP_ADDR", ":8080"),
 		PublicBaseURL:          strings.TrimRight(os.Getenv("PUBLIC_BASE_URL"), "/"),
+		WebDir:                 strings.TrimSpace(os.Getenv("WEB_DIR")),
 		CORSAllowedOrigins:     splitCSV(envDefault("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173")),
 		OIDCIssuerURL:          strings.TrimRight(os.Getenv("OIDC_ISSUER_URL"), "/"),
 		OIDCClientID:           os.Getenv("OIDC_CLIENT_ID"),

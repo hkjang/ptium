@@ -9,7 +9,6 @@ RUN npm run build
 
 FROM golang:1.24-alpine AS api-build
 WORKDIR /src/server
-RUN apk add --no-cache ca-certificates git
 COPY server/go.mod server/go.sum ./
 RUN go mod download
 COPY server/ ./
@@ -19,27 +18,28 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/ptium ./cmd/ptium
 
+# The runtime is one static binary plus the workspace it serves itself: no
+# reverse proxy, no shell entrypoint and no bundled database. Point
+# DATABASE_URL at PostgreSQL and publish port 8080.
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates nginx tini tzdata \
-    && addgroup -S ptium \
-    && adduser -S -D -H -G ptium ptium \
-    && mkdir -p /app/web /tmp/nginx/client_body /tmp/nginx/proxy /tmp/nginx/fastcgi /tmp/nginx/uwsgi /tmp/nginx/scgi \
-    && chown -R ptium:ptium /app /tmp/nginx
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -g 65532 -S ptium \
+    && adduser -u 65532 -S -D -H -G ptium ptium \
+    && mkdir -p /app/web \
+    && chown -R ptium:ptium /app
 COPY --from=api-build /out/ptium /app/ptium
 COPY --from=web-build /src/web/dist/ /app/web/
-COPY deploy/nginx.conf /etc/nginx/nginx.conf
-COPY deploy/container-entrypoint.sh /app/container-entrypoint.sh
-RUN chmod 0755 /app/container-entrypoint.sh
 ARG VERSION=dev
 ARG REVISION=unknown
 LABEL org.opencontainers.image.title="Ptium" \
-      org.opencontainers.image.description="Self-hosted AI presentation workspace" \
+      org.opencontainers.image.description="Self-hosted AI presentation workspace that generates into your own PowerPoint templates" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${REVISION}" \
       org.opencontainers.image.source="https://github.com/hkjang/ptium"
-ENV PTIUM_INTERNAL_HTTP_ADDR=127.0.0.1:8081
+ENV HTTP_ADDR=:8080 \
+    WEB_DIR=/app/web
 USER ptium
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:8080/readyz >/dev/null || exit 1
-ENTRYPOINT ["/sbin/tini", "--", "/app/container-entrypoint.sh"]
+ENTRYPOINT ["/app/ptium"]
