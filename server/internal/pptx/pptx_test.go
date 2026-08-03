@@ -311,3 +311,26 @@ func TestRelativePath(t *testing.T) {
 		}
 	}
 }
+
+func TestLayoutSelectionAvoidsVerticalAndTitleOnlyLayouts(t *testing.T) {
+	horizontal := Layout{ID: "content", Role: RoleContent, Type: "obj", Placeholders: []Placeholder{
+		{Slot: SlotTitle, Kind: "text"}, {Slot: SlotBody, Kind: "text"},
+	}}
+	vertical := Layout{ID: "vertical", Role: RoleContent, Type: "vertTx", Placeholders: []Placeholder{
+		{Slot: SlotTitle, Kind: "text"}, {Slot: SlotBody, Kind: "text", Vertical: true},
+	}}
+	titleOnly := Layout{ID: "title-only", Role: RoleContent, Type: "titleOnly", Placeholders: []Placeholder{
+		{Slot: SlotTitle, Kind: "text"},
+	}}
+	// Declaration order puts the awkward layouts first on purpose.
+	manifest := Manifest{Version: ManifestVersion, SlideWidth: 12192000, SlideHeight: 6858000,
+		Layouts: []Layout{vertical, titleOnly, horizontal}}
+	manifest.finalize()
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok || layout.ID != "content" {
+		t.Fatalf("content role resolved to %q, want the horizontal layout", layout.ID)
+	}
+	if manifest.DefaultLayout != "content" {
+		t.Fatalf("default layout = %q, want content", manifest.DefaultLayout)
+	}
+}

@@ -263,7 +263,12 @@ func (m *Manifest) finalize() {
 			m.Layouts[layoutIndex].Placeholders[index].Region = region(m.Layouts[layoutIndex].Placeholders[index], m.SlideWidth, m.SlideHeight)
 		}
 	}
-	sort.SliceStable(m.Layouts, func(i, j int) bool { return roleRank(m.Layouts[i].Role) < roleRank(m.Layouts[j].Role) })
+	sort.SliceStable(m.Layouts, func(i, j int) bool {
+		if roleRank(m.Layouts[i].Role) != roleRank(m.Layouts[j].Role) {
+			return roleRank(m.Layouts[i].Role) < roleRank(m.Layouts[j].Role)
+		}
+		return preferenceRank(m.Layouts[i]) < preferenceRank(m.Layouts[j])
+	})
 	for _, layout := range m.Layouts {
 		switch layout.Role {
 		case RoleTitle:
@@ -299,6 +304,36 @@ func (m *Manifest) finalize() {
 		m.ClosingLayout = m.SectionLayout
 	}
 	m.AspectRatio = aspectRatio(m.SlideWidth, m.SlideHeight)
+}
+
+// preferenceRank orders layouts that share a role, so automatic selection
+// reaches for the conventional one first. Vertical-text layouts exist for
+// traditional CJK typesetting and read as a mistake when a deck's ordinary
+// bullet slides land in one; title-only layouts have nowhere to put content.
+func preferenceRank(layout Layout) int {
+	rank := 0
+	switch layout.Type {
+	case "vertTx", "vertTitleAndTx", "vertTitleAndTxOverChart", "clipArtAndVertTx":
+		rank += 8
+	case "titleOnly":
+		rank += 4
+	}
+	writable := 0
+	for _, placeholder := range layout.Placeholders {
+		if !placeholder.AcceptsText() {
+			continue
+		}
+		if placeholder.Vertical {
+			rank += 6
+		}
+		if placeholder.Slot != SlotTitle {
+			writable++
+		}
+	}
+	if writable == 0 {
+		rank += 3
+	}
+	return rank
 }
 
 // region labels where a placeholder sits on the canvas so a writer can tell a
