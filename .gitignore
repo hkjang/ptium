@@ -1,0 +1,36 @@
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!.env.offline.example
+*.pem
+*.key
+*.crt
+secrets/
+
+# Go
+server/bin/
+server/ptium
+server/ptium.exe
+server/coverage.out
+server/*.test
+
+# Node / Vite
+web/node_modules/
+web/dist/
+web/coverage/
+web/.vite/
+*.tsbuildinfo
+
+# Runtime artifacts
+tmp/
+data/
+dist/
+*.log

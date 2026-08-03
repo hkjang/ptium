@@ -1,0 +1,3612 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: Ptium API
+  version: 0.1.0
+  summary: AI presentation generation, administration, and MCP API
+  description: |
+    Ptium exposes owner-scoped presentation generation, profile and API-key
+    management, administrator operations, and a stateless MCP endpoint.
+
+    JSON REST responses use an envelope containing either `data` or `error`
+    plus `requestId`. List responses additionally contain `meta`. The `/mcp`
+    endpoint uses raw JSON-RPC 2.0 messages and does not use the REST envelope.
+
+    JSON request bodies are limited to 2 MiB, reject unknown top-level fields,
+    and must contain exactly one complete JSON value. UUID path parameters are
+    validated before their operation handler runs.
+
+    OIDC access tokens and Ptium API keys are both accepted as Bearer
+    credentials. Ptium API keys may alternatively be sent in `X-API-Key`.
+    Development authentication is disabled by default and uses
+    `X-Ptium-Dev-Secret` unless the server is configured with another header.
+
+    The `x-ptium-api-key-scopes` extension on an operation names the scope a
+    Ptium API key must grant. Interactive OIDC and development sessions are
+    not restricted by API-key scopes. MCP API-key calls always require
+    `mcp:use`; each presentation tool additionally requires its documented
+    `presentations:read` or `presentations:write` scope.
+servers:
+  - url: /
+    description: Same origin as the Ptium web application
+tags:
+  - name: System
+    description: Process health and database readiness.
+  - name: Authentication
+    description: Public OIDC discovery values and current-user identity.
+  - name: Profile
+    description: Current-user personalization data.
+  - name: Settings
+    description: Public runtime values and administrator configuration.
+  - name: Presentations
+    description: Owner-scoped deck creation, editing, generation, and export.
+  - name: Templates
+    description: PowerPoint designs decks are generated into, with their layout catalogues.
+  - name: API keys
+    description: Scoped credentials, revocation, and rotation with overlap.
+  - name: Administration
+    description: Administrator settings, users, overview, and incident handling.
+  - name: MCP
+    description: Stateless Model Context Protocol transport, tools, and resources.
+security:
+  - BearerAuth: []
+  - APIKeyHeader: []
+  - DevSecret: []
+paths:
+  /healthz:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      tags: [System]
+      security: []
+      responses:
+        '200':
+          description: The process is alive.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthEnvelope'
+
+  /readyz:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getReadiness
+      summary: Readiness probe
+      tags: [System]
+      security: []
+      responses:
+        '200':
+          description: Ptium and its PostgreSQL database are ready.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadinessEnvelope'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/auth/config:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getAuthenticationConfig
+      summary: Get public authentication configuration
+      description: |
+        Returns browser-safe OIDC discovery values and the development-auth
+        status. Secrets are never returned. OIDC login uses Authorization Code
+        with PKCE when `oidcEnabled` is true.
+      tags: [Authentication]
+      security: []
+      responses:
+        '200':
+          description: Public authentication configuration.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthConfigEnvelope'
+
+  /api/v1/me:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getCurrentUser
+      summary: Get the current user and authentication context
+      tags: [Authentication]
+      responses:
+        '200':
+          description: Current Ptium identity.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/profile:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getProfile
+      summary: Get the current user's personalization profile
+      tags: [Profile]
+      x-ptium-api-key-scopes: [profile:read]
+      responses:
+        '200':
+          description: Personalization profile.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceProfile
+      summary: Replace the current user's personalization profile
+      description: Omitted fields are stored as empty strings and preferences default to an empty object.
+      tags: [Profile]
+      x-ptium-api-key-scopes: [profile:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileWrite'
+      responses:
+        '200':
+          description: Updated personalization profile.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateProfile
+      summary: Update the current user's personalization profile
+      description: |
+        This endpoint currently has the same replacement behavior as PUT;
+        omitted scalar fields are cleared and omitted preferences become `{}`.
+      tags: [Profile]
+      x-ptium-api-key-scopes: [profile:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileWrite'
+      responses:
+        '200':
+          description: Updated personalization profile.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/settings:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getPublicSettings
+      summary: Get public branding and generation settings
+      description: Returns only non-sensitive `branding.*` and `generation.*` settings. Authentication is not required.
+      tags: [Settings]
+      security: []
+      responses:
+        '200':
+          description: Public runtime settings keyed by dotted setting name.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicSettingsEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listPresentations
+      summary: List presentations owned by the current user
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Owner-scoped presentations ordered by most recently updated.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createPresentation
+      summary: Create a draft presentation
+      description: Missing fields use the documented defaults. Slides are added with an update request.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresentationCreate'
+      responses:
+        '201':
+          description: Draft presentation created.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/generate:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: createAndGeneratePresentation
+      summary: Create a presentation and queue generation
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresentationCreate'
+      responses:
+        '202':
+          description: Presentation created with generation queued.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: getPresentation
+      summary: Get a presentation and its slides
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: Presentation owned by the current user.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replacePresentation
+      summary: Update presentation metadata and optionally replace slides
+      description: |
+        Metadata fields are merged with the current presentation. When `slides`
+        is present, the entire slide sequence is atomically replaced; array
+        order determines the saved `position`.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresentationUpdate'
+      responses:
+        '200':
+          description: Updated presentation including its current slides.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updatePresentation
+      summary: Partially update presentation metadata or replace slides
+      description: When `slides` is present, the entire sequence is replaced; array order is authoritative.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PresentationUpdate'
+      responses:
+        '200':
+          description: Updated presentation including its current slides.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deletePresentation
+      summary: Delete a presentation
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '204':
+          description: Presentation deleted. The response has no body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/generate:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    post:
+      operationId: generatePresentation
+      summary: Queue generation or regeneration
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '202':
+          description: Generation is queued and the presentation status is `queued`.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/export:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: exportPresentation
+      summary: Export a presentation as PowerPoint
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      parameters:
+        - name: format
+          in: query
+          required: false
+          description: Export format. PPTX is the only supported value and is the default.
+          schema:
+            type: string
+            enum: [pptx]
+            default: pptx
+      responses:
+        '200':
+          description: PowerPoint presentation file.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+            Content-Disposition:
+              description: Attachment filename derived from the presentation title.
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: previewPresentationSlide
+      summary: Render one slide as SVG
+      description: |
+        Draws a slide using the template's real geometry, palette and
+        typography so a client can show what the exported file will look like
+        without a PowerPoint engine. The rendering reflects the persisted
+        slide, not unsaved edits.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      parameters:
+        - name: slide
+          in: query
+          required: false
+          description: 1-based slide position. Defaults to the first slide.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - $ref: '#/components/parameters/PreviewWidth'
+      responses:
+        '200':
+          description: Scalable vector rendering of the requested slide.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/templates:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listTemplates
+      summary: List usable PowerPoint templates
+      description: |
+        Returns the caller's own uploads together with every template shared
+        with the organisation and every built-in design. List records omit the
+        full manifest; read a single template to obtain its layouts.
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Templates ordered with uploads first, then built-in designs.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createTemplate
+      summary: Upload a PowerPoint template
+      description: |
+        Accepts a `.pptx` or `.potx` package as either a multipart form or a raw
+        request body with metadata in the query string. The package is analyzed
+        on upload: its masters, layouts, theme and placeholder geometry are
+        catalogued, and the original file is stored unchanged for export.
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:write]
+      parameters:
+        - name: name
+          in: query
+          required: false
+          schema: { type: string, maxLength: 120 }
+        - name: description
+          in: query
+          required: false
+          schema: { type: string, maxLength: 1000 }
+        - name: filename
+          in: query
+          required: false
+          description: Required when the body is raw so the extension can be validated.
+          schema: { type: string, maxLength: 200 }
+        - name: scope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [private, shared]
+            default: private
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                  maxLength: 120
+                description:
+                  type: string
+                  maxLength: 1000
+                scope:
+                  type: string
+                  enum: [private, shared]
+          application/vnd.openxmlformats-officedocument.presentationml.presentation:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '201':
+          description: Template stored and analyzed.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Template uploads are disabled by the administrator.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '413':
+          description: The upload exceeds the configured template size limit.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/templates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/TemplateID'
+    get:
+      operationId: getTemplate
+      summary: Read a template and its layout catalogue
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      responses:
+        '200':
+          description: Template including the full manifest.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateTemplate
+      summary: Rename a template or change its sharing scope
+      description: Built-in designs cannot be modified.
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateUpdate'
+      responses:
+        '200':
+          description: Template updated.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      operationId: deleteTemplate
+      summary: Delete an uploaded template
+      description: |
+        Presentations that referenced the template keep their slides and fall
+        back to a built-in design on export. Built-in designs cannot be deleted.
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:write]
+      responses:
+        '204':
+          description: Template deleted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/templates/{id}/download:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/TemplateID'
+    get:
+      operationId: downloadTemplate
+      summary: Download the stored template package
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      responses:
+        '200':
+          description: The original PowerPoint package, byte for byte.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+            Content-Disposition:
+              description: Attachment filename derived from the stored template.
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/templates/{id}/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/TemplateID'
+    get:
+      operationId: previewTemplate
+      summary: Render the template's cover layout as SVG
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      parameters:
+        - $ref: '#/components/parameters/PreviewWidth'
+      responses:
+        '200':
+          description: Scalable vector rendering of the template's title layout.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/templates/{id}/layouts/{layoutId}/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/TemplateID'
+      - name: layoutId
+        in: path
+        required: true
+        description: Layout identifier from the template manifest.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 80
+    get:
+      operationId: previewTemplateLayout
+      summary: Render one template layout as SVG
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      parameters:
+        - $ref: '#/components/parameters/PreviewWidth'
+      responses:
+        '200':
+          description: Scalable vector rendering of the requested layout.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/api-keys:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAPIKeys
+      summary: List API keys owned by the current user
+      description: Key secrets are never included in list responses.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      responses:
+        '200':
+          description: API-key metadata ordered newest first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createAPIKey
+      summary: Create an API key
+      description: |
+        The returned `secret` is displayed once and cannot be recovered. If
+        scopes are omitted, Ptium grants `presentations:read`,
+        `presentations:write`, and `mcp:use`. Administrator scopes can only be
+        assigned when the owning user is an administrator.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKeyCreate'
+      responses:
+        '201':
+          description: API key created; save the one-time secret now.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyCreatedEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/api-keys/{id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/APIKeyID'
+    post:
+      operationId: revokeAPIKey
+      summary: Revoke an API key immediately
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      responses:
+        '204':
+          description: API key revoked. The response has no body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/api-keys/{id}/rotate:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/APIKeyID'
+    post:
+      operationId: rotateAPIKey
+      summary: Rotate an API key
+      description: |
+        Creates a replacement key with the same owner, scopes, and expiry. The
+        old key remains valid during the grace period, then becomes unusable.
+        A zero grace period revokes it immediately. `graceSeconds` takes
+        precedence when both grace fields are supplied.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/APIKeyRotate'
+      responses:
+        '201':
+          description: Replacement API key created; save the one-time secret now.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKeyCreatedEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/overview:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getAdminOverview
+      summary: Get administrator dashboard counts
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:users]
+      responses:
+        '200':
+          description: Current aggregate counts.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverviewEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/settings:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAdminSettings
+      summary: List all administrator-managed settings
+      description: Sensitive values are omitted; `configured` indicates whether a value is present.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: All settings, including sensitive-value metadata.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: replaceAdminSettingsBatch
+      summary: Update one or more settings
+      description: |
+        Accepts either an array of setting records or an object whose property
+        names are setting keys. When `section` is set, bare object keys are
+        prefixed with `section.`. Existing settings not present in the request
+        are not removed. All records and known-key relationships are validated
+        before an atomic database transaction; validation failure writes none
+        of the batch.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsBatchWrite'
+      responses:
+        '200':
+          description: Updated setting records.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingBatchEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: updateAdminSettingsBatch
+      summary: Update one or more settings
+      description: Applies the same strict, atomic validation and write behavior as PUT.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingsBatchWrite'
+      responses:
+        '200':
+          description: Updated setting records.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingBatchEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/settings/{key}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/SettingKey'
+    put:
+      operationId: putAdminSetting
+      summary: Create or replace one setting
+      description: Known keys receive type, URL, duration, range, and cross-setting validation before storage.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SettingValueWrite'
+      responses:
+        '200':
+          description: Stored setting metadata. Sensitive values are omitted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/users:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAdminUsers
+      summary: Search and list users
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:users]
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: Case-insensitive substring match against email or name.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Matching users ordered newest first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/UserID'
+    patch:
+      operationId: updateAdminUser
+      summary: Change administrator or disabled status for a user
+      description: Administrators cannot disable or demote their own active account.
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:users]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserUpdate'
+      responses:
+        '200':
+          description: Updated user.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/errors:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAdminErrors
+      summary: List captured server incidents
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:errors]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/IncidentStatus'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Incidents ordered by most recent occurrence.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/admin/errors/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IncidentID'
+    patch:
+      operationId: updateAdminError
+      summary: Acknowledge, resolve, or ignore a server incident
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:errors]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentUpdate'
+      responses:
+        '200':
+          description: Updated incident.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IncidentEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /mcp:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/MCPProtocolVersion'
+    get:
+      operationId: getMCPMetadata
+      summary: Get stateless MCP endpoint metadata
+      description: |
+        Returns diagnostic metadata for normal HTTP clients. A request whose
+        `Accept` header specifically asks for `text/event-stream` receives 405
+        because this stateless server does not expose an SSE stream.
+      tags: [MCP]
+      x-ptium-api-key-scopes: [mcp:use]
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: MCP transport metadata. This is not a REST envelope.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MCPMetadata'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '405':
+          description: SSE streams are not supported.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCErrorResponse'
+    post:
+      operationId: sendMCPMessage
+      summary: Send a JSON-RPC 2.0 MCP message
+      description: |
+        Implements stateless MCP Streamable HTTP. Supported methods are
+        `initialize`, `notifications/initialized`, `notifications/cancelled`,
+        `ping`, `tools/list`, `tools/call`, `resources/list`, and
+        `resources/read`. JSON-RPC batches are accepted only with protocol
+        revision `2025-03-26`, with at most 50 entries. Notifications receive a
+        204 response. The endpoint has a 1 MiB default request limit.
+      tags: [MCP]
+      x-ptium-api-key-scopes: [mcp:use]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/JSONRPCRequest'
+                - type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    $ref: '#/components/schemas/JSONRPCRequest'
+      responses:
+        '200':
+          description: JSON-RPC result or error; batches return an array.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JSONRPCResponse'
+                  - type: array
+                    minItems: 1
+                    items:
+                      $ref: '#/components/schemas/JSONRPCResponse'
+        '204':
+          description: Notification accepted; no JSON-RPC response body.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+        '400':
+          description: Unsupported protocol version, disallowed batch, or invalid transport request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Origin rejected by the MCP transport or authenticated account forbidden.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/JSONRPCErrorResponse'
+                  - $ref: '#/components/schemas/ErrorEnvelope'
+        '413':
+          description: MCP message exceeds the configured body limit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCErrorResponse'
+        '415':
+          description: Content-Type is not JSON or a JSON-derived media type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCErrorResponse'
+        '500':
+          description: Transport-level internal failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JSONRPCErrorResponse'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: OIDC JWT or ptium_* API key
+      description: |
+        Send `Authorization: Bearer <credential>`. The credential may be an
+        OIDC access-token JWT validated through issuer discovery and rotating
+        JWKS, or an opaque Ptium API key beginning with `ptium_`.
+    APIKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Alternative header for a Ptium `ptium_*` API key. Do not send it
+        together with Authorization. The key must grant the scope named by the
+        operation's `x-ptium-api-key-scopes` extension.
+    DevSecret:
+      type: apiKey
+      in: header
+      name: X-Ptium-Dev-Secret
+      description: |
+        Development-only shared secret. It is disabled by default, normally
+        restricted to loopback clients, and may be renamed by server
+        configuration. A Bearer value beginning `dev:` may accompany it to
+        select an allowed development identity.
+
+  parameters:
+    XRequestID:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Caller-generated correlation ID. Values longer than 128 characters are replaced.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of records. Values above 100 are clamped to 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Zero-based record offset.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    PresentationID:
+      name: id
+      in: path
+      required: true
+      description: Presentation UUID.
+      schema:
+        type: string
+        format: uuid
+    TemplateID:
+      name: id
+      in: path
+      required: true
+      description: Template UUID.
+      schema:
+        type: string
+        format: uuid
+    PreviewWidth:
+      name: width
+      in: query
+      required: false
+      description: Rendered pixel width. The height follows the slide aspect ratio.
+      schema:
+        type: integer
+        minimum: 160
+        maximum: 1920
+        default: 960
+    APIKeyID:
+      name: id
+      in: path
+      required: true
+      description: API-key record UUID, not the secret or prefix.
+      schema:
+        type: string
+        format: uuid
+    UserID:
+      name: id
+      in: path
+      required: true
+      description: Ptium user UUID.
+      schema:
+        type: string
+        format: uuid
+    IncidentID:
+      name: id
+      in: path
+      required: true
+      description: Captured incident UUID.
+      schema:
+        type: string
+        format: uuid
+    SettingKey:
+      name: key
+      in: path
+      required: true
+      description: Dotted lowercase setting key.
+      schema:
+        type: string
+        maxLength: 100
+        pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+        example: generation.default_theme
+    MCPProtocolVersion:
+      name: MCP-Protocol-Version
+      in: header
+      required: false
+      description: Defaults to `2025-03-26` when omitted on POST.
+      schema:
+        type: string
+        enum: ['2025-03-26', '2025-06-18', '2025-11-25']
+
+  headers:
+    XRequestID:
+      description: Correlation ID used by logs, errors, and administrator incidents.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+
+  responses:
+    BadRequest:
+      description: Malformed, oversized, trailing, or multi-value JSON; unknown fields; an invalid UUID path ID; or invalid transport input.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            invalidJSON:
+              value:
+                error:
+                  code: invalid_json
+                  message: Request body is not valid for this operation
+                  details:
+                    reason: 'json: unknown field "unexpected"'
+                requestId: 8dcb8033f7d1f8027f2df88d
+            invalidUUID:
+              value:
+                error:
+                  code: invalid_id
+                  message: Path id must be a UUID
+                requestId: 8dcb8033f7d1f8027f2df88d
+    Unauthorized:
+      description: A credential is absent, invalid, expired, or revoked.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+        WWW-Authenticate:
+          description: Bearer authentication challenge.
+          schema:
+            type: string
+            example: Bearer realm="ptium"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: authentication_required
+              message: Unauthorized
+            requestId: 8dcb8033f7d1f8027f2df88d
+    Forbidden:
+      description: The account is disabled or the API key lacks the operation's required scope.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            insufficientScope:
+              value:
+                error:
+                  code: insufficient_scope
+                  message: The API key does not grant this operation
+                  details:
+                    required: presentations:write
+                requestId: 8dcb8033f7d1f8027f2df88d
+            disabled:
+              value:
+                error:
+                  code: account_disabled
+                  message: This account has been disabled
+                requestId: 8dcb8033f7d1f8027f2df88d
+    AdminForbidden:
+      description: Administrator access or the required administrator API-key scope is absent.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: admin_required
+              message: Administrator access is required
+            requestId: 8dcb8033f7d1f8027f2df88d
+    NotFound:
+      description: The record does not exist or is not owned by the current user.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: not_found
+              message: The requested resource was not found
+            requestId: 8dcb8033f7d1f8027f2df88d
+    Conflict:
+      description: Current resource state conflicts with the requested operation.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            emptyPresentation:
+              value:
+                error:
+                  code: presentation_has_no_slides
+                  message: Generate or add slides before exporting
+                requestId: 8dcb8033f7d1f8027f2df88d
+            selfAdministration:
+              value:
+                error:
+                  code: cannot_disable_self
+                  message: Administrators cannot disable or demote their own active account
+                requestId: 8dcb8033f7d1f8027f2df88d
+    UnprocessableEntity:
+      description: Syntactically valid input failed operation validation.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            fieldValidation:
+              value:
+                error:
+                  code: validation_error
+                  message: requestedSlideCount must be between 1 and 50
+                requestId: 8dcb8033f7d1f8027f2df88d
+            settingValidation:
+              value:
+                error:
+                  code: validation_error
+                  message: API key grace must be a duration between zero and 30 days
+                  details:
+                    key: security.api_key_grace
+                requestId: 8dcb8033f7d1f8027f2df88d
+            settingRelationship:
+              value:
+                error:
+                  code: validation_error
+                  message: generation default slide count cannot exceed the maximum
+                requestId: 8dcb8033f7d1f8027f2df88d
+    InternalError:
+      description: An unexpected server or database error. The error is captured for administrators.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: internal_error
+              message: The server could not complete the request
+            requestId: 8dcb8033f7d1f8027f2df88d
+    ServiceUnavailable:
+      description: PostgreSQL readiness or the configured authentication backend is unavailable.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: database_unavailable
+              message: Database is not ready
+            requestId: 8dcb8033f7d1f8027f2df88d
+
+  schemas:
+    JSONValue:
+      description: Any valid JSON value.
+
+    RequestID:
+      type: string
+      minLength: 1
+      maxLength: 128
+      example: 8dcb8033f7d1f8027f2df88d
+
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, requestId]
+      properties:
+        error:
+          $ref: '#/components/schemas/APIError'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    APIError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: Stable machine-readable code. Internal operation failures may use operation-specific codes.
+        message:
+          type: string
+          minLength: 1
+        details:
+          $ref: '#/components/schemas/JSONValue'
+
+    PaginationMeta:
+      type: object
+      additionalProperties: false
+      required: [total, limit, offset]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+
+    HealthEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status, service, time]
+          properties:
+            status:
+              type: string
+              const: ok
+            service:
+              type: string
+              const: ptium
+            time:
+              type: string
+              format: date-time
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    ReadinessEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status:
+              type: string
+              const: ready
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    AuthConfigEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/AuthConfig'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    AuthConfig:
+      type: object
+      additionalProperties: false
+      required: [oidcEnabled, scopes, pkceRequired, devAuthEnabled]
+      properties:
+        oidcEnabled:
+          type: boolean
+        issuer:
+          type: string
+          format: uri
+        clientId:
+          type: string
+        authorizationEndpoint:
+          type: string
+          format: uri
+        tokenEndpoint:
+          type: string
+          format: uri
+        endSessionEndpoint:
+          type: string
+          format: uri
+          description: Optional provider logout endpoint discovered from OIDC metadata.
+        scopes:
+          type: string
+          example: openid profile email
+        pkceRequired:
+          type: boolean
+        devAuthEnabled:
+          type: boolean
+        devAuthHeader:
+          type: string
+          example: X-Ptium-Dev-Secret
+
+    MeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [user, authMethod, scopes]
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            authMethod:
+              type: string
+              enum: [oidc, api_key, dev]
+            scopes:
+              type: array
+              items:
+                type: string
+              uniqueItems: true
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    User:
+      type: object
+      additionalProperties: false
+      required: [id, email, name, roles, isAdmin, disabled, lastLogin, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+          description: OIDC subject or development subject. May be omitted when empty.
+        email:
+          type: string
+        name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+          uniqueItems: true
+        isAdmin:
+          type: boolean
+        disabled:
+          type: boolean
+        presentationsCount:
+          type: integer
+          minimum: 0
+          description: |
+            Exact number of presentations currently owned by this user. This
+            field is populated by the administrator user-list operation and
+            may be omitted from other user responses or when the count is zero.
+        lastLogin:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    UserEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/User'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    UserListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    AdminUserUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        isAdmin:
+          type: boolean
+        disabled:
+          type: boolean
+
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName, company, jobTitle, bio, preferences, updatedAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+          maxLength: 120
+        company:
+          type: string
+          maxLength: 200
+        jobTitle:
+          type: string
+          maxLength: 200
+        bio:
+          type: string
+          maxLength: 4000
+          description: Free-form personalization context used by presentation workflows.
+        preferences:
+          $ref: '#/components/schemas/JSONValue'
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProfileWrite:
+      type: object
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          maxLength: 120
+          default: ''
+        company:
+          type: string
+          maxLength: 200
+          default: ''
+        jobTitle:
+          type: string
+          maxLength: 200
+          default: ''
+        bio:
+          type: string
+          maxLength: 4000
+          default: ''
+        preferences:
+          $ref: '#/components/schemas/JSONValue'
+      example:
+        displayName: Mina Kim
+        company: Ptium Labs
+        jobTitle: Product strategist
+        bio: Builds concise executive narratives.
+        preferences:
+          preferredLanguage: ko
+          preferredTheme: aurora
+
+    ProfileEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/Profile'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    PublicSettingsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: object
+          propertyNames:
+            pattern: '^(branding|generation)\.'
+          additionalProperties:
+            $ref: '#/components/schemas/JSONValue'
+          example:
+            branding.product_name: Ptium
+            branding.brand_color: '#7C3AED'
+            generation.default_slide_count: 10
+            generation.max_slides: 50
+            generation.default_theme: aurora
+            generation.default_lang: ko
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    PresentationStatus:
+      type: string
+      enum: [draft, queued, generating, completed, failed]
+
+    Presentation:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ownerId
+        - title
+        - prompt
+        - status
+        - theme
+        - language
+        - audience
+        - tone
+        - requestedSlideCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        prompt:
+          type: string
+          maxLength: 20000
+          description: REST writes allow 12000 characters; MCP creation allows 20000.
+        status:
+          $ref: '#/components/schemas/PresentationStatus'
+        templateId:
+          type: string
+          format: uuid
+          description: |
+            PowerPoint template the deck is generated into and exported from.
+            Populated automatically from the requested theme when the caller
+            does not choose one.
+        templateName:
+          type: string
+          description: Read-only display name of the selected template.
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+        language:
+          type: string
+          minLength: 1
+          maxLength: 32
+        audience:
+          type: string
+          minLength: 1
+          maxLength: 300
+        tone:
+          type: string
+          minLength: 1
+          maxLength: 80
+        requestedSlideCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+        slideCount:
+          type: integer
+          minimum: 0
+          description: |
+            Exact number of persisted slides at response time. List responses
+            populate this count even though they omit the `slides` array. The
+            field may be omitted when the count is zero.
+        outline:
+          $ref: '#/components/schemas/JSONValue'
+        errorMessage:
+          type: string
+        slides:
+          type: array
+          items:
+            $ref: '#/components/schemas/Slide'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        generationStartedAt:
+          type: string
+          format: date-time
+        generationEndedAt:
+          type: string
+          format: date-time
+
+    PresentationCreate:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          default: Untitled presentation
+        prompt:
+          type: string
+          maxLength: 12000
+          default: ''
+        templateId:
+          type: string
+          format: uuid
+          description: |
+            Template to generate into. Omission selects the built-in design that
+            matches `theme`. The template must be owned by the caller, shared
+            with the organisation, or built in.
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Omission uses the administrator-configured generation default (initially `aurora`).
+        language:
+          type: string
+          minLength: 1
+          maxLength: 32
+          description: Omission uses the administrator-configured generation default (initially `ko`).
+        audience:
+          type: string
+          minLength: 1
+          maxLength: 300
+          description: Omission uses the administrator-configured generation default (initially `general`).
+        tone:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Omission uses the administrator-configured generation default (initially `professional`).
+        requestedSlideCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: Omission uses the administrator-configured default (initially 10); the configured maximum may be lower than 50.
+      example:
+        title: 2027 Product Strategy
+        prompt: Create an executive decision deck for regional leaders.
+        theme: aurora
+        language: en
+        audience: Regional leadership
+        tone: concise
+        requestedSlideCount: 10
+
+    PresentationUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        prompt:
+          type: string
+          maxLength: 12000
+        templateId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Switch the deck to another template. Slides keep their content; each
+            one rebinds to the layout of the same role in the new design.
+        theme:
+          type: string
+          minLength: 1
+          maxLength: 80
+        language:
+          type: string
+          minLength: 1
+          maxLength: 32
+        audience:
+          type: string
+          minLength: 1
+          maxLength: 300
+        tone:
+          type: string
+          minLength: 1
+          maxLength: 80
+        requestedSlideCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: The administrator-configured generation maximum may be lower than 50.
+        slides:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/SlideWrite'
+
+    SlideWrite:
+      type: object
+      additionalProperties: false
+      required: [content]
+      description: |
+        The title must be provided either in `title` or as `content.title`.
+        Array order, not `position`, determines the persisted order.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Existing slide UUID. Omit for a newly inserted slide.
+        position:
+          type: integer
+          minimum: 1
+          deprecated: true
+          description: Accepted but ignored; array order is authoritative.
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Falls back to `content.title` when absent or empty.
+        subtitle:
+          type: string
+          maxLength: 300
+          description: Falls back to `content.subtitle` when absent or empty.
+        content:
+          $ref: '#/components/schemas/JSONValue'
+        speakerNotes:
+          type: string
+          maxLength: 4000
+          description: Falls back to `content.speaker_notes` when absent or empty.
+        layout:
+          type: string
+          maxLength: 80
+        layoutId:
+          type: string
+          maxLength: 80
+          description: |
+            Template layout to bind the slide to. Unknown identifiers fall back
+            to the layout matching the slide's narrative role.
+          default: content
+      example:
+        layout: content
+        content:
+          title: Why change now
+          subtitle: Three market signals
+          body: Customer expectations are moving faster than our release cycle.
+          bullets: [Faster adoption, New entrants, Lower switching costs]
+          speaker_notes: Pause after the customer example.
+
+    Slide:
+      type: object
+      additionalProperties: false
+      required: [id, presentationId, position, title, content, layout, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        presentationId:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        subtitle:
+          type: string
+        content:
+          $ref: '#/components/schemas/JSONValue'
+        speakerNotes:
+          type: string
+        layout:
+          type: string
+          description: Narrative role of the slide, for example `title`, `content` or `closing`.
+        layoutId:
+          type: string
+          maxLength: 80
+          description: Identifier of the template layout this slide is bound to.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Template:
+      type: object
+      additionalProperties: false
+      required: [id, name, kind, scope, sizeBytes, layoutCount, createdAt, updatedAt]
+      description: |
+        A PowerPoint design decks are generated into. Export reuses the stored
+        package itself — master, layouts, theme, fonts and imagery are carried
+        over unchanged and only the slides are rewritten.
+      properties:
+        id:
+          type: string
+          format: uuid
+        ownerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Absent for built-in designs.
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        filename:
+          type: string
+        kind:
+          type: string
+          enum: [builtin, uploaded]
+        scope:
+          type: string
+          enum: [private, shared]
+        paletteKey:
+          type: string
+          description: Palette identifier of a built-in design; matches the deck `theme` value.
+        sizeBytes:
+          type: integer
+          minimum: 0
+        checksum:
+          type: string
+          description: SHA-256 of the stored package.
+        layoutCount:
+          type: integer
+          minimum: 0
+        aspectRatio:
+          type: string
+          example: '16:9'
+        usageCount:
+          type: integer
+          minimum: 0
+          description: Number of presentations currently bound to the template. List responses only.
+        manifest:
+          $ref: '#/components/schemas/TemplateManifest'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TemplateManifest:
+      type: object
+      description: |
+        Machine-readable analysis of the package, produced on upload. Slide
+        dimensions are in English Metric Units. Omitted from list responses.
+      properties:
+        version:
+          type: integer
+        slideWidth:
+          type: integer
+        slideHeight:
+          type: integer
+        aspectRatio:
+          type: string
+        masterCount:
+          type: integer
+        hasNotesMaster:
+          type: boolean
+        sourceSlides:
+          type: integer
+          description: Slides in the uploaded file. They are discarded when generating.
+        defaultLayout:
+          type: string
+        titleLayout:
+          type: string
+        sectionLayout:
+          type: string
+        closingLayout:
+          type: string
+        theme:
+          type: object
+          properties:
+            name: { type: string }
+            colors:
+              type: object
+              additionalProperties: { type: string }
+            majorLatin: { type: string }
+            minorLatin: { type: string }
+            majorEa: { type: string }
+            minorEa: { type: string }
+        layouts:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateLayout'
+        warnings:
+          type: array
+          items: { type: string }
+
+    TemplateLayout:
+      type: object
+      required: [id, name, role, placeholders]
+      properties:
+        id:
+          type: string
+          description: Stable identifier used by `Slide.layoutId`.
+        name:
+          type: string
+          description: Layout name as authored in PowerPoint.
+        role:
+          type: string
+          enum: [title, section, content, twoContent, comparison, quote, picture, table, chart, closing, blank]
+          description: Narrative role inferred from the layout's name, type and placeholder composition.
+        type:
+          type: string
+          description: Raw OOXML layout type.
+        background:
+          type: string
+          description: Resolved background colour as RRGGBB.
+        placeholders:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplatePlaceholder'
+
+    TemplatePlaceholder:
+      type: object
+      required: [slot, kind, maxChars, maxLines]
+      properties:
+        slot:
+          type: string
+          description: Canonical slot name — `title`, `subtitle`, `body`, `body2`, `picture`, `chart`, `table`.
+          example: body
+        kind:
+          type: string
+          enum: [text, picture, chart, table, graphic]
+        type:
+          type: string
+          description: Raw OOXML placeholder type.
+        index:
+          type: integer
+        region:
+          type: string
+          description: Position on the canvas, for example `left-middle`.
+        fontSize:
+          type: integer
+          description: Effective first-level font size in hundredths of a point.
+        maxChars:
+          type: integer
+          description: Mixed-script character budget for the slot.
+        maxLines:
+          type: integer
+        x: { type: integer }
+        y: { type: integer }
+        width: { type: integer }
+        height: { type: integer }
+        color:
+          type: string
+        bold:
+          type: boolean
+        font:
+          type: string
+
+    TemplateUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 1000
+        scope:
+          type: string
+          enum: [private, shared]
+
+    TemplateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/Template'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    TemplateListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          description: List records omit `manifest`; read a single template for its layouts.
+          items:
+            $ref: '#/components/schemas/Template'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    PresentationEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/Presentation'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    PresentationListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          description: List records omit `slides`; use each record's `slideCount` for the exact persisted count.
+          items:
+            $ref: '#/components/schemas/Presentation'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    APIKeyScope:
+      type: string
+      description: |
+        API-key authorization capability. `presentations:read` permits listing,
+        fetching, and exporting the owner's decks; `presentations:write`
+        permits creating, updating, deleting, and generating them. `mcp:use`
+        permits access to `/mcp` but does not replace the presentation scope
+        required by each MCP tool. `profile:read` and `profile:write` cover the
+        owner's profile, and `api_keys:manage` covers the owner's API keys.
+        `templates:read` permits listing, reading, downloading and previewing
+        templates; `templates:write` permits uploading, editing and deleting the
+        owner's own templates.
+        Each `admin:*` scope additionally requires that the owning account is
+        still an administrator when the operation runs.
+      enum:
+        - presentations:read
+        - presentations:write
+        - templates:read
+        - templates:write
+        - profile:read
+        - profile:write
+        - mcp:use
+        - api_keys:manage
+        - admin:settings
+        - admin:users
+        - admin:errors
+
+    APIKey:
+      type: object
+      additionalProperties: false
+      required: [id, userId, name, prefix, scopes, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        prefix:
+          type: string
+          pattern: '^[0-9a-f]{12}$'
+          description: Non-secret lookup prefix suitable for identifying a key.
+        scopes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/APIKeyScope'
+        expiresAt:
+          type: string
+          format: date-time
+          description: Creation accepts a future expiry no more than two years from the current time.
+        revokedAt:
+          type: string
+          format: date-time
+        rotatedToId:
+          type: string
+          format: uuid
+          description: Replacement key record created by rotation. Present on the superseded key.
+        graceUntil:
+          type: string
+          format: date-time
+          description: End of the overlap period when this old key stops authenticating.
+        lastUsedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    APIKeyCreate:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        scopes:
+          type: array
+          maxItems: 20
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/APIKeyScope'
+        expiresAt:
+          type: string
+          format: date-time
+          description: Must be in the future and no more than two years from creation.
+      example:
+        name: CI presentation generator
+        scopes: [presentations:read, presentations:write, mcp:use]
+        expiresAt: '2027-01-31T00:00:00Z'
+
+    APIKeyRotate:
+      type: object
+      additionalProperties: false
+      properties:
+        gracePeriod:
+          type: string
+          description: Go duration from zero through 30 days, such as `24h` or `30m`. Omission uses the administrator-configured grace period (initially 24h).
+          pattern: '^(?:0|[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h)(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h))*)$'
+        graceSeconds:
+          type: integer
+          minimum: 0
+          maximum: 2592000
+          description: Grace period in seconds; overrides `gracePeriod` when present.
+
+    APIKeyCreated:
+      type: object
+      additionalProperties: false
+      required: [apiKey, secret]
+      properties:
+        apiKey:
+          $ref: '#/components/schemas/APIKey'
+        secret:
+          type: string
+          readOnly: true
+          pattern: '^ptium_[0-9a-f]{12}_[A-Za-z0-9_-]{43}$'
+          description: One-time secret. It is never stored in recoverable form or returned again.
+
+    APIKeyListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/APIKey'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    APIKeyCreatedEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/APIKeyCreated'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    Setting:
+      type: object
+      additionalProperties: false
+      required: [key, sensitive, configured, updatedAt]
+      properties:
+        key:
+          type: string
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+        value:
+          $ref: '#/components/schemas/JSONValue'
+        sensitive:
+          type: boolean
+        configured:
+          type: boolean
+        description:
+          type: string
+        updatedBy:
+          type: string
+          format: uuid
+        updatedAt:
+          type: string
+          format: date-time
+      description: The `value` property is omitted for sensitive settings.
+
+    SettingText1To200:
+      type: string
+      minLength: 1
+      maxLength: 200
+
+    SettingHTTPURL:
+      type: string
+      format: uri
+      pattern: '^https?://'
+      description: HTTP(S) URL with a host and without credentials, query, or fragment.
+
+    SettingHTTPURLOrEmpty:
+      description: Empty string or an HTTP(S) URL with a host and without credentials, query, or fragment.
+      oneOf:
+        - type: string
+          const: ''
+        - $ref: '#/components/schemas/SettingHTTPURL'
+
+    SettingHTTPSURLOrEmpty:
+      description: Empty string or an HTTPS URL with a host and without credentials, query, or fragment.
+      oneOf:
+        - type: string
+          const: ''
+        - type: string
+          format: uri
+          pattern: '^https://'
+
+    SettingSlideCount:
+      type: integer
+      minimum: 1
+      maximum: 50
+
+    SettingAdminRoles:
+      type: array
+      minItems: 1
+      items:
+        type: string
+        minLength: 1
+        maxLength: 100
+
+    SettingGraceDuration:
+      type: string
+      pattern: '^(?:0|[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h)(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h))*)$'
+      description: Go duration between zero and 30 days.
+
+    SettingCORSOrigins:
+      type: array
+      items:
+        type: string
+        format: uri
+        pattern: '^https?://'
+      description: Exact HTTP(S) origins with no credentials, query, fragment, or non-root path.
+
+    SettingUpdateRecord:
+      type: object
+      additionalProperties: false
+      required: [key, value]
+      description: |
+        Known built-in keys are validated by type and domain. In addition,
+        `generation.default_slide_count` cannot exceed
+        `generation.max_slides`, and a non-empty `auth.oidc.issuer_url`
+        requires a non-empty `auth.oidc.client_id` in the resulting settings.
+      properties:
+        key:
+          type: string
+          maxLength: 100
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+        value:
+          $ref: '#/components/schemas/JSONValue'
+        sensitive:
+          type: boolean
+          default: false
+        description:
+          type: string
+      allOf:
+        - if:
+            properties:
+              key:
+                const: ai.provider
+          then:
+            properties:
+              value:
+                type: string
+                enum: [fallback, openai, openai-compatible]
+        - if:
+            properties:
+              key:
+                const: ai.base_url
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingHTTPURL'
+        - if:
+            properties:
+              key:
+                enum: [ai.model, branding.product_name, generation.default_theme, generation.default_lang, generation.default_tone, generation.default_audience]
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingText1To200'
+        - if:
+            properties:
+              key:
+                const: branding.brand_color
+          then:
+            properties:
+              value:
+                type: string
+                pattern: '^#[0-9A-Fa-f]{6}$'
+        - if:
+            properties:
+              key:
+                const: branding.logo_url
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingHTTPURLOrEmpty'
+        - if:
+            properties:
+              key:
+                const: auth.oidc.issuer_url
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingHTTPSURLOrEmpty'
+        - if:
+            properties:
+              key:
+                const: auth.oidc.client_id
+          then:
+            properties:
+              value:
+                type: string
+        - if:
+            properties:
+              key:
+                const: auth.oidc.admin_roles
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingAdminRoles'
+        - if:
+            properties:
+              key:
+                enum: [generation.default_slide_count, generation.max_slides]
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingSlideCount'
+        - if:
+            properties:
+              key:
+                const: security.api_key_grace
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingGraceDuration'
+        - if:
+            properties:
+              key:
+                const: security.cors_origins
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingCORSOrigins'
+
+    SettingValueWrite:
+      type: object
+      additionalProperties: false
+      required: [value]
+      description: The server applies the same built-in-key and cross-setting validation documented by `SettingUpdateRecord`, using the path key.
+      properties:
+        value:
+          $ref: '#/components/schemas/JSONValue'
+        sensitive:
+          type: boolean
+          default: false
+          description: Secret-like key names are always treated as sensitive regardless of this value.
+        description:
+          type: string
+      example:
+        value: gpt-4.1-mini
+        sensitive: false
+        description: Generation model
+
+    SettingValueMap:
+      type: object
+      minProperties: 1
+      properties:
+        ai.provider:
+          type: string
+          enum: [fallback, openai, openai-compatible]
+        ai.base_url:
+          $ref: '#/components/schemas/SettingHTTPURL'
+        ai.model:
+          $ref: '#/components/schemas/SettingText1To200'
+        branding.product_name:
+          $ref: '#/components/schemas/SettingText1To200'
+        branding.logo_url:
+          $ref: '#/components/schemas/SettingHTTPURLOrEmpty'
+        branding.brand_color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        generation.default_slide_count:
+          $ref: '#/components/schemas/SettingSlideCount'
+        generation.max_slides:
+          $ref: '#/components/schemas/SettingSlideCount'
+        generation.default_theme:
+          $ref: '#/components/schemas/SettingText1To200'
+        generation.default_lang:
+          $ref: '#/components/schemas/SettingText1To200'
+        generation.default_tone:
+          $ref: '#/components/schemas/SettingText1To200'
+        generation.default_audience:
+          $ref: '#/components/schemas/SettingText1To200'
+        auth.oidc.issuer_url:
+          $ref: '#/components/schemas/SettingHTTPSURLOrEmpty'
+        auth.oidc.client_id:
+          type: string
+        auth.oidc.admin_roles:
+          $ref: '#/components/schemas/SettingAdminRoles'
+        security.api_key_grace:
+          $ref: '#/components/schemas/SettingGraceDuration'
+        security.cors_origins:
+          $ref: '#/components/schemas/SettingCORSOrigins'
+      additionalProperties:
+        $ref: '#/components/schemas/JSONValue'
+
+    SettingUpdateList:
+      type: array
+      minItems: 1
+      items:
+        $ref: '#/components/schemas/SettingUpdateRecord'
+
+    SettingsBatchWrite:
+      type: object
+      additionalProperties: false
+      required: [settings]
+      properties:
+        section:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$'
+          description: Optional prefix for bare keys in an object-form update.
+        settings:
+          oneOf:
+            - $ref: '#/components/schemas/SettingUpdateList'
+            - $ref: '#/components/schemas/SettingValueMap'
+      examples:
+        - section: generation
+          settings:
+            default_theme: aurora
+            default_lang: ko
+        - settings:
+            - key: ai.api_key
+              value: replace-me
+              sensitive: true
+
+    SettingEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/Setting'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    SettingListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Setting'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    SettingBatchEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Setting'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    AdminOverview:
+      type: object
+      additionalProperties: false
+      required: [users, presentations, completedDecks, queuedGenerations, openIncidents, activeApiKeys]
+      properties:
+        users:
+          type: integer
+          minimum: 0
+        presentations:
+          type: integer
+          minimum: 0
+        completedDecks:
+          type: integer
+          minimum: 0
+        queuedGenerations:
+          type: integer
+          minimum: 0
+        openIncidents:
+          type: integer
+          minimum: 0
+        activeApiKeys:
+          type: integer
+          minimum: 0
+
+    AdminOverviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/AdminOverview'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    IncidentStatus:
+      type: string
+      enum: [open, acknowledged, resolved, ignored]
+
+    Incident:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - kind
+        - severity
+        - message
+        - status
+        - occurredAt
+        - updatedAt
+        - fingerprint
+        - occurrenceCount
+        - firstOccurredAt
+        - lastOccurredAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        requestId:
+          type: string
+        userId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          example: request
+        severity:
+          type: string
+          example: error
+        message:
+          type: string
+          description: Redacted server-side diagnostic message.
+        details:
+          $ref: '#/components/schemas/JSONValue'
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        notes:
+          type: string
+          maxLength: 4000
+        occurredAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        resolvedBy:
+          type: string
+          format: uuid
+        fingerprint:
+          type: string
+          description: Stable grouping fingerprint for repeated open incidents.
+        occurrenceCount:
+          type: integer
+          minimum: 1
+        firstOccurredAt:
+          type: string
+          format: date-time
+        lastOccurredAt:
+          type: string
+          format: date-time
+
+    IncidentUpdate:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        notes:
+          type: [string, 'null']
+          maxLength: 4000
+          description: Omit this field (or send `null`) to preserve the current notes; send an empty string to clear them.
+
+    IncidentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          $ref: '#/components/schemas/Incident'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    IncidentListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Incident'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    MCPMetadata:
+      type: object
+      additionalProperties: false
+      required: [name, version, transport, protocolVersion, authentication, sessionsSupported]
+      properties:
+        name:
+          type: string
+          example: ptium
+        version:
+          type: string
+          example: 0.1.0
+        transport:
+          type: string
+          const: streamable-http
+        protocolVersion:
+          type: string
+          const: '2025-11-25'
+        authentication:
+          type: string
+          const: required
+        sessionsSupported:
+          type: boolean
+          const: false
+
+    JSONRPCID:
+      oneOf:
+        - type: string
+        - type: number
+        - type: 'null'
+
+    JSONRPCRequest:
+      type: object
+      additionalProperties: false
+      required: [jsonrpc, method]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          $ref: '#/components/schemas/JSONRPCID'
+        method:
+          type: string
+          enum:
+            - initialize
+            - notifications/initialized
+            - notifications/cancelled
+            - ping
+            - tools/list
+            - tools/call
+            - resources/list
+            - resources/read
+        params:
+          anyOf:
+            - $ref: '#/components/schemas/MCPInitializeParams'
+            - $ref: '#/components/schemas/MCPToolsCallParams'
+            - $ref: '#/components/schemas/MCPResourceListParams'
+            - $ref: '#/components/schemas/MCPResourceReadParams'
+            - type: object
+              additionalProperties: true
+            - type: array
+              items:
+                $ref: '#/components/schemas/JSONValue'
+          description: Method-specific MCP parameters. Canonical method schemas are defined below.
+      example:
+        jsonrpc: '2.0'
+        id: 1
+        method: initialize
+        params:
+          protocolVersion: '2025-11-25'
+          capabilities: {}
+          clientInfo:
+            name: example
+            version: '1.0'
+
+    JSONRPCResultResponse:
+      type: object
+      additionalProperties: false
+      required: [jsonrpc, id, result]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          $ref: '#/components/schemas/JSONRPCID'
+        result:
+          anyOf:
+            - $ref: '#/components/schemas/MCPInitializeResult'
+            - $ref: '#/components/schemas/MCPToolResult'
+            - $ref: '#/components/schemas/MCPResourceListResult'
+            - $ref: '#/components/schemas/MCPResourceReadResult'
+            - $ref: '#/components/schemas/JSONValue'
+
+    JSONRPCError:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: JSON-RPC or Ptium server error code.
+          examples: [-32700, -32600, -32601, -32602, -32603, -32000, -32001, -32002, -32003, -32009]
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/JSONValue'
+
+    JSONRPCErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [jsonrpc, id, error]
+      properties:
+        jsonrpc:
+          type: string
+          const: '2.0'
+        id:
+          $ref: '#/components/schemas/JSONRPCID'
+        error:
+          $ref: '#/components/schemas/JSONRPCError'
+      example:
+        jsonrpc: '2.0'
+        id: null
+        error:
+          code: -32600
+          message: Invalid Request
+
+    JSONRPCResponse:
+      oneOf:
+        - $ref: '#/components/schemas/JSONRPCResultResponse'
+        - $ref: '#/components/schemas/JSONRPCErrorResponse'
+
+    MCPInitializeParams:
+      type: object
+      required: [protocolVersion]
+      properties:
+        protocolVersion:
+          type: string
+        capabilities:
+          type: object
+          additionalProperties: true
+        clientInfo:
+          type: object
+          additionalProperties: true
+        _meta:
+          type: object
+          additionalProperties: true
+
+    MCPInitializeResult:
+      type: object
+      additionalProperties: false
+      required: [protocolVersion, capabilities, serverInfo, instructions]
+      properties:
+        protocolVersion:
+          type: string
+          enum: ['2025-03-26', '2025-06-18', '2025-11-25']
+        capabilities:
+          type: object
+          additionalProperties: false
+          required: [tools, resources]
+          properties:
+            tools:
+              type: object
+              additionalProperties: false
+              required: [listChanged]
+              properties:
+                listChanged:
+                  type: boolean
+                  const: false
+            resources:
+              type: object
+              additionalProperties: false
+              required: [subscribe, listChanged]
+              properties:
+                subscribe:
+                  type: boolean
+                  const: false
+                listChanged:
+                  type: boolean
+                  const: false
+        serverInfo:
+          type: object
+          additionalProperties: false
+          required: [name, title, version]
+          properties:
+            name:
+              type: string
+            title:
+              type: string
+              const: Ptium AI Presentations
+            version:
+              type: string
+        instructions:
+          type: string
+
+    MCPToolName:
+      type: string
+      enum:
+        - ptium.list_presentations
+        - ptium.get_presentation
+        - ptium.create_presentation
+        - ptium.generate_presentation
+
+    MCPListPresentationsArguments:
+      type: object
+      additionalProperties: false
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        offset:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          default: 0
+
+    MCPPresentationIDArguments:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    MCPCreatePresentationArguments:
+      type: object
+      additionalProperties: false
+      required: [title, prompt]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        prompt:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        theme:
+          type: string
+          maxLength: 64
+          description: Omission uses the administrator-configured generation theme (initially `aurora`).
+        language:
+          type: string
+          maxLength: 32
+          description: Omission uses the administrator-configured generation language (initially `ko`).
+        audience:
+          type: string
+          maxLength: 200
+          description: Omission uses the administrator-configured generation audience (initially `general`).
+        tone:
+          type: string
+          maxLength: 64
+          description: Omission uses the administrator-configured generation tone (initially `professional`).
+        slideCount:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: Omission uses the current `generation.default_slide_count` setting; the configured maximum may be lower than 50.
+
+    MCPToolsCallParams:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name:
+          $ref: '#/components/schemas/MCPToolName'
+        arguments:
+          oneOf:
+            - $ref: '#/components/schemas/MCPListPresentationsArguments'
+            - $ref: '#/components/schemas/MCPPresentationIDArguments'
+            - $ref: '#/components/schemas/MCPCreatePresentationArguments'
+        _meta:
+          type: object
+          additionalProperties: true
+
+    MCPToolContent:
+      type: object
+      additionalProperties: false
+      required: [type, text]
+      properties:
+        type:
+          type: string
+          const: text
+        text:
+          type: string
+          description: JSON serialization of `structuredContent`.
+
+    MCPToolResult:
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        content:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/MCPToolContent'
+        structuredContent:
+          $ref: '#/components/schemas/JSONValue'
+        isError:
+          type: boolean
+          description: Present and true for validation, authorization, ownership, timeout, and redacted service failures.
+
+    MCPResourceListParams:
+      type: object
+      additionalProperties: false
+      properties:
+        cursor:
+          type: string
+          description: Opaque base64url cursor returned by the previous page.
+        _meta:
+          type: object
+          additionalProperties: true
+
+    MCPResourceReadParams:
+      type: object
+      additionalProperties: false
+      required: [uri]
+      properties:
+        uri:
+          type: string
+          pattern: '^ptium://presentations/[^/]+$'
+        _meta:
+          type: object
+          additionalProperties: true
+
+    MCPResource:
+      type: object
+      additionalProperties: false
+      required: [uri, name, title, description, mimeType]
+      properties:
+        uri:
+          type: string
+          pattern: '^ptium://presentations/[^/]+$'
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        mimeType:
+          type: string
+          const: application/json
+        annotations:
+          type: object
+          additionalProperties: false
+          properties:
+            audience:
+              type: array
+              items:
+                type: string
+                enum: [user, assistant]
+            lastModified:
+              type: string
+              format: date-time
+
+    MCPResourceListResult:
+      type: object
+      additionalProperties: false
+      required: [resources]
+      properties:
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPResource'
+        nextCursor:
+          type: string
+
+    MCPResourceReadResult:
+      type: object
+      additionalProperties: false
+      required: [contents]
+      properties:
+        contents:
+          type: array
+          minItems: 1
+          maxItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [uri, mimeType, text]
+            properties:
+              uri:
+                type: string
+                pattern: '^ptium://presentations/[^/]+$'
+              mimeType:
+                type: string
+                const: application/json
+              text:
+                type: string
+                description: JSON-encoded Presentation object including slides.

@@ -1,0 +1,606 @@
+import type {
+  AdminUser,
+  ApiKey,
+  AuthConfig,
+  Incident,
+  Presentation,
+  ProfilePreferences,
+  ServerError,
+  Slide,
+  SlideParagraph,
+  Template,
+  TemplateLayout,
+  User,
+} from '../types'
+
+const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
+export const API_BASE = configuredBase.replace(/\/$/, '')
+
+const TOKEN_KEY = 'ptium.access_token'
+const DEV_SECRET_KEY = 'ptium.dev_secret'
+const DEV_MODE_KEY = 'ptium.dev_mode'
+
+export class ApiError extends Error {
+  status: number
+  requestId?: string
+  details?: unknown
+
+  constructor(message: string, status: number, requestId?: string, details?: unknown) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.requestId = requestId
+    this.details = details
+  }
+}
+
+export const session = {
+  token: () => sessionStorage.getItem(TOKEN_KEY),
+  secret: () => sessionStorage.getItem(DEV_SECRET_KEY),
+  devMode: () => sessionStorage.getItem(DEV_MODE_KEY) === 'true',
+  set(token: string, devSecret?: string) {
+    localStorage.removeItem(TOKEN_KEY)
+    sessionStorage.setItem(TOKEN_KEY, token)
+    sessionStorage.removeItem(DEV_SECRET_KEY)
+    sessionStorage.removeItem(DEV_MODE_KEY)
+    sessionStorage.removeItem('ptium.refresh_token')
+    if (devSecret) sessionStorage.setItem(DEV_SECRET_KEY, devSecret)
+  },
+  setDev(secret: string) {
+    localStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem('ptium.refresh_token')
+    sessionStorage.removeItem('ptium.oidc_transaction')
+    sessionStorage.setItem(DEV_MODE_KEY, 'true')
+    sessionStorage.setItem(DEV_SECRET_KEY, secret)
+  },
+  clear() {
+    localStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(DEV_SECRET_KEY)
+    sessionStorage.removeItem(DEV_MODE_KEY)
+    sessionStorage.removeItem('ptium.refresh_token')
+    sessionStorage.removeItem('ptium.oidc_transaction')
+  },
+}
+
+function errorMessage(body: unknown, fallback: string) {
+  if (!body || typeof body !== 'object') return fallback
+  const value = body as Record<string, unknown>
+  const nested = value.error && typeof value.error === 'object' ? value.error as Record<string, unknown> : null
+  return String(value.message || nested?.message || nested?.code || (typeof value.error === 'string' ? value.error : '') || value.detail || fallback)
+}
+
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const headers = new Headers(options.headers)
+  if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
+  headers.set('Accept', 'application/json')
+  const token = session.token()
+  const secret = session.secret()
+  if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+  if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+
+  let response: Response
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' })
+  } catch {
+    throw new ApiError('서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.', 0)
+  }
+
+  if (response.status === 204) return undefined as T
+  const contentType = response.headers.get('content-type') || ''
+  const body = contentType.includes('json') ? await response.json().catch(() => null) : await response.text().catch(() => '')
+  if (!response.ok) {
+    throw new ApiError(
+      errorMessage(body, `요청을 처리하지 못했습니다 (${response.status})`),
+      response.status,
+      response.headers.get('x-request-id') || (body && typeof body === 'object' ? String((body as Record<string, unknown>).requestId || '') || undefined : undefined),
+      body,
+    )
+  }
+  return body as T
+}
+
+function unwrapList<T>(value: unknown, keys: string[]): T[] {
+  if (Array.isArray(value)) return value as T[]
+  if (!value || typeof value !== 'object') return []
+  const record = value as Record<string, unknown>
+  for (const key of keys) if (Array.isArray(record[key])) return record[key] as T[]
+  return []
+}
+
+function unwrapOne<T>(value: unknown, keys: string[]): T {
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    for (const key of keys) if (record[key] && typeof record[key] === 'object') return record[key] as T
+  }
+  return value as T
+}
+
+async function requestAllPages<T>(path: string, keys: string[]): Promise<T[]> {
+  const items: T[] = []
+  const limit = 100
+  let offset = 0
+  for (;;) {
+    const separator = path.includes('?') ? '&' : '?'
+    const raw = await request<unknown>(`${path}${separator}limit=${limit}&offset=${offset}`)
+    const page = unwrapList<T>(raw, keys)
+    items.push(...page)
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+    const meta = record.meta && typeof record.meta === 'object' ? record.meta as Record<string, unknown> : {}
+    const total = Number(meta.total)
+    if (page.length === 0 || !Number.isFinite(total) || items.length >= total || page.length < limit) break
+    offset += page.length
+  }
+  return items
+}
+
+function normalizeUser(value: User & Record<string, unknown>): User {
+  const isAdmin = value.isAdmin ?? value.is_admin
+  const disabled = Boolean(value.disabled)
+  return {
+    ...value,
+    id: String(value.id),
+    email: String(value.email || ''),
+    name: String(value.name || value.displayName || value.display_name || String(value.email || '').split('@')[0]),
+    role: isAdmin === true ? 'admin' : value.role === 'admin' ? 'admin' : 'user',
+    status: disabled ? 'suspended' : value.status === 'invited' || value.status === 'suspended' ? value.status : 'active',
+    avatarUrl: String(value.avatarUrl || value.avatar_url || '') || undefined,
+    createdAt: String(value.createdAt || value.created_at || '') || undefined,
+    lastSeenAt: String(value.lastSeenAt || value.last_seen_at || value.lastLogin || value.last_login || '') || undefined,
+    presentationsCount: Number(value.presentationsCount ?? value.presentations_count ?? 0),
+  }
+}
+
+function normalizeApiKey(value: ApiKey & Record<string, unknown>): ApiKey {
+  const expiresAt = String(value.expiresAt || value.expires_at || '') || undefined
+  const graceUntil = String(value.graceUntil || value.grace_until || '') || undefined
+  const rotated = Boolean(value.rotatedToId || value.rotated_to_id)
+  const expired = Boolean(expiresAt && Date.parse(expiresAt) <= Date.now())
+  const graceActive = Boolean(graceUntil && Date.parse(graceUntil) > Date.now())
+  return {
+    ...value,
+    id: String(value.id),
+    name: String(value.name || 'API key'),
+    prefix: String(value.prefix || value.keyPrefix || value.key_prefix || ''),
+    scopes: Array.isArray(value.scopes) ? value.scopes.map(String) : [],
+    status: value.revokedAt || value.revoked_at || (rotated && !graceActive) ? 'revoked' : expired ? 'expired' : rotated ? 'rotating' : 'active',
+    createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
+    lastUsedAt: String(value.lastUsedAt || value.last_used_at || '') || undefined,
+    expiresAt,
+  }
+}
+
+function normalizeServerError(value: ServerError & Record<string, unknown>): ServerError {
+  const details = value.details && typeof value.details === 'object' ? value.details as Record<string, unknown> : {}
+  const rawStatus = String(value.status || 'open')
+  return {
+    ...value,
+    id: String(value.id),
+    fingerprint: String(value.fingerprint || '') || undefined,
+    code: String(value.code || details.code || value.kind || 'SERVER_ERROR'),
+    message: String(value.message || '알 수 없는 서버 오류'),
+    service: String(value.service || details.service || 'api'),
+    severity: value.severity === 'critical' || value.severity === 'high' || value.severity === 'medium' || value.severity === 'low'
+      ? value.severity
+      : value.severity === 'error' ? 'high' : value.severity === 'warning' ? 'medium' : 'low',
+    status: rawStatus === 'acknowledged' ? 'investigating' : rawStatus === 'resolved' || rawStatus === 'ignored' ? rawStatus : 'open',
+    occurrences: Number(value.occurrences ?? value.occurrenceCount ?? value.occurrence_count ?? 1),
+    firstSeenAt: String(value.firstSeenAt || value.firstOccurredAt || value.first_occurred_at || value.occurredAt || new Date().toISOString()),
+    lastSeenAt: String(value.lastSeenAt || value.lastOccurredAt || value.last_occurred_at || value.updatedAt || new Date().toISOString()),
+    requestId: String(value.requestId || value.request_id || '') || undefined,
+    stack: String(value.stack || details.stack || '') || undefined,
+    notes: String(value.notes || '') || undefined,
+  }
+}
+
+function normalizeProfile(value: Record<string, unknown>): ProfilePreferences {
+  const preferences = value.preferences && typeof value.preferences === 'object' ? value.preferences as Record<string, unknown> : {}
+  return {
+    name: String(value.name || value.displayName || value.display_name || ''),
+    jobTitle: String(value.jobTitle || value.job_title || ''),
+    company: String(value.company || ''),
+    bio: String(value.bio || ''),
+    language: String(preferences.language || value.language || ''),
+    defaultAudience: String(preferences.defaultAudience || preferences.default_audience || value.defaultAudience || value.default_audience || ''),
+    defaultTone: String(preferences.defaultTone || preferences.default_tone || value.defaultTone || value.default_tone || ''),
+    defaultTheme: String(preferences.defaultTheme || preferences.default_theme || value.defaultTheme || value.default_theme || ''),
+    brandColor: String(preferences.brandColor || preferences.brand_color || value.brandColor || value.brand_color || ''),
+  }
+}
+
+function normalizeTemplate(value: Template & Record<string, unknown>): Template {
+  const manifest = value.manifest && typeof value.manifest === 'object' ? value.manifest as Record<string, unknown> : {}
+  const rawLayouts = Array.isArray(manifest.layouts) ? manifest.layouts as Array<Record<string, unknown>> : []
+  const layouts: TemplateLayout[] = rawLayouts.map((layout) => ({
+    id: String(layout.id || ''),
+    name: String(layout.name || layout.id || ''),
+    role: String(layout.role || 'content'),
+    placeholders: (Array.isArray(layout.placeholders) ? layout.placeholders as Array<Record<string, unknown>> : []).map((placeholder) => ({
+      slot: String(placeholder.slot || ''),
+      kind: String(placeholder.kind || 'text'),
+      region: String(placeholder.region || '') || undefined,
+      maxChars: Number(placeholder.maxChars || 0),
+      maxLines: Number(placeholder.maxLines || 0),
+    })),
+  })).filter((layout) => layout.id !== '')
+  return {
+    ...value,
+    id: String(value.id),
+    name: String(value.name || '이름 없는 템플릿'),
+    description: String(value.description || '') || undefined,
+    filename: String(value.filename || '') || undefined,
+    kind: value.kind === 'builtin' ? 'builtin' : 'uploaded',
+    scope: value.scope === 'shared' ? 'shared' : 'private',
+    paletteKey: String(value.paletteKey || value.palette_key || '') || undefined,
+    sizeBytes: Number(value.sizeBytes ?? value.size_bytes ?? 0),
+    layoutCount: Number(value.layoutCount ?? value.layout_count ?? layouts.length),
+    aspectRatio: String(value.aspectRatio || value.aspect_ratio || '') || undefined,
+    usageCount: Number(value.usageCount ?? value.usage_count ?? 0),
+    ownerId: String(value.ownerId || value.owner_id || '') || undefined,
+    layouts: layouts.length > 0 ? layouts : undefined,
+    createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
+    updatedAt: String(value.updatedAt || value.updated_at || value.createdAt || value.created_at || new Date().toISOString()),
+  }
+}
+
+/**
+ * Fetches an authenticated image and returns an object URL. Rendering the
+ * response through <img> rather than inlining the markup keeps server-side SVG
+ * inert in the browser.
+ */
+async function fetchImage(path: string) {
+  const headers = new Headers({ Accept: 'image/svg+xml' })
+  const token = session.token(); const secret = session.secret()
+  if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+  if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+  const response = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(errorMessage(body, `미리보기를 불러오지 못했습니다 (${response.status})`), response.status)
+  }
+  return URL.createObjectURL(await response.blob())
+}
+
+export function authLoginUrl(config?: AuthConfig, returnTo = '/dashboard') {
+  if (config?.loginUrl) return config.loginUrl
+  return `${API_BASE}/auth/login?return_to=${encodeURIComponent(returnTo)}`
+}
+
+function normalizeStatus(status: unknown): Presentation['status'] {
+  if (status === 'completed') return 'ready'
+  if (status === 'queued' || status === 'processing' || status === 'running') return 'generating'
+  if (status === 'draft' || status === 'generating' || status === 'ready' || status === 'failed') return status
+  return 'draft'
+}
+
+/** Slots that hold body copy, in the order the template exposes them. */
+export function bodySlots(fields: Record<string, SlideParagraph[]> | undefined) {
+  if (!fields) return []
+  return Object.keys(fields).filter((slot) => slot !== 'title' && slot !== 'subtitle').sort()
+}
+
+/** The slot the editor's body textarea is bound to. */
+export function primaryBodySlot(slide: Slide, layout?: TemplateLayout) {
+  const existing = bodySlots(slide.fields)
+  if (existing.length > 0) return existing[0]
+  const fromLayout = layout?.placeholders.find((placeholder) => placeholder.kind === 'text' && placeholder.slot !== 'title' && placeholder.slot !== 'subtitle')
+  return fromLayout?.slot || 'body'
+}
+
+export function paragraphsToText(paragraphs: SlideParagraph[] | undefined) {
+  return (paragraphs || []).map((paragraph) => `${'  '.repeat(Math.max(0, paragraph.level || 0))}${paragraph.text}`).join('\n')
+}
+
+export function textToParagraphs(value: string): SlideParagraph[] {
+  return value.split(/\r?\n/).flatMap((line) => {
+    let level = 0
+    let rest = line
+    while (rest.startsWith('  ') || rest.startsWith('\t')) {
+      rest = rest.startsWith('\t') ? rest.slice(1) : rest.slice(2)
+      level += 1
+    }
+    const text = rest.trim()
+    return text ? [{ text, level: Math.min(level, 4) }] : []
+  })
+}
+
+function normalizeFields(raw: unknown): Record<string, SlideParagraph[]> {
+  if (!raw || typeof raw !== 'object') return {}
+  const result: Record<string, SlideParagraph[]> = {}
+  for (const [slot, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(value)) continue
+    const paragraphs = value.map((entry) => {
+      if (entry && typeof entry === 'object') {
+        const record = entry as Record<string, unknown>
+        return { text: String(record.text ?? ''), level: Number(record.level ?? 0) || 0 }
+      }
+      return { text: String(entry), level: 0 }
+    }).filter((paragraph) => paragraph.text.trim().length > 0)
+    if (paragraphs.length > 0) result[slot] = paragraphs
+  }
+  return result
+}
+
+function normalizePresentation(value: Presentation & Record<string, unknown>): Presentation {
+  const rawSlides = Array.isArray(value.slides) ? value.slides as unknown as Array<Record<string, unknown>> : []
+  const slides = rawSlides.map((slide, index) => {
+    const content = slide.content && typeof slide.content === 'object' ? slide.content as Record<string, unknown> : {}
+    const fields = normalizeFields(content.fields)
+    const bodySlot = bodySlots(fields)[0]
+    const bulletsFromFields = bodySlot ? fields[bodySlot] : undefined
+    const bullets = bulletsFromFields
+      ? bulletsFromFields.map((paragraph) => `${'  '.repeat(paragraph.level || 0)}${paragraph.text}`)
+      : (Array.isArray(slide.bullets) ? slide.bullets : Array.isArray(content.bullets) ? content.bullets : []).map(String)
+    return {
+      id: String(slide.id || `slide-${index + 1}`),
+      order: Number(slide.order ?? slide.position ?? index + 1),
+      layout: String(slide.layout || content.layout || 'content'),
+      layoutId: String(slide.layoutId || slide.layout_id || content.layoutId || '') || undefined,
+      title: String(slide.title || content.title || (fields.title?.[0]?.text ?? '')),
+      subtitle: String(slide.subtitle || content.subtitle || (fields.subtitle?.[0]?.text ?? '')) || undefined,
+      body: bullets.join('\n') || String(slide.body || content.body || content.text || '') || undefined,
+      bullets,
+      fields,
+      speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
+      imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
+      accent: String(slide.accent || content.accent || '') || undefined,
+    }
+  }).sort((a, b) => a.order - b.order)
+  const reportedSlideCount = Number(value.slideCount ?? value.slide_count ?? 0)
+  return {
+    ...value,
+    id: String(value.id),
+    title: String(value.title || '제목 없는 프레젠테이션'),
+    templateId: String(value.templateId || value.template_id || '') || undefined,
+    templateName: String(value.templateName || value.template_name || '') || undefined,
+    status: normalizeStatus(value.status),
+    createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
+    updatedAt: String(value.updatedAt || value.updated_at || value.createdAt || value.created_at || new Date().toISOString()),
+    thumbnailUrl: String(value.thumbnailUrl || value.thumbnail_url || '') || undefined,
+    errorMessage: String(value.errorMessage || value.error_message || '') || undefined,
+    slideCount: slides.length > 0 ? slides.length : Number.isFinite(reportedSlideCount) ? reportedSlideCount : 0,
+    slides,
+  }
+}
+
+function normalizeAdminSettingsPayload(raw: unknown) {
+  const entries = unwrapList<Record<string, unknown>>(raw, ['settings', 'items', 'data'])
+  if (!entries.length) {
+    return {
+      values: unwrapOne<Record<string, Record<string, unknown>>>(raw, ['data']),
+      configured: {} as Record<string, boolean>,
+    }
+  }
+  const values: Record<string, Record<string, unknown>> = {}
+  const configured: Record<string, boolean> = {}
+  for (const entry of entries) {
+    const fullKey = String(entry.key || '')
+    const separator = fullKey.indexOf('.')
+    let section = separator > 0 ? fullKey.slice(0, separator) : 'operations'
+    let key = separator > 0 ? fullKey.slice(separator + 1) : fullKey
+    if (section === 'auth' && key.startsWith('oidc.')) {
+      section = 'oidc'
+      key = key.slice('oidc.'.length)
+    }
+    if (!values[section]) values[section] = {}
+    let value = entry.value
+    if (typeof value === 'string') {
+      try { value = JSON.parse(value) } catch { /* keep a plain string */ }
+    }
+    // Sensitive values are intentionally null in admin responses. Keep their
+    // configured state separately instead of treating a redacted value as empty.
+    if (value !== null && value !== undefined) values[section][key] = value
+    if ('configured' in entry) configured[fullKey] = Boolean(entry.configured)
+  }
+  return { values, configured }
+}
+
+export const api = {
+  async readiness() {
+    const root = API_BASE.endsWith('/api/v1') ? API_BASE.slice(0, -'/api/v1'.length) : ''
+    try {
+      const response = await fetch(`${root}/readyz`, { headers: { Accept: 'application/json' }, credentials: 'include' })
+      if (!response.ok) return false
+      const payload = await response.json() as { data?: { status?: string } }
+      return payload.data?.status === 'ready'
+    } catch {
+      return false
+    }
+  },
+  async authConfig(): Promise<AuthConfig> {
+    const response = await request<Record<string, unknown>>('/auth/config')
+    const raw = unwrapOne<Record<string, unknown>>(response, ['data'])
+    const oidc = (raw.oidc && typeof raw.oidc === 'object' ? raw.oidc : {}) as Record<string, unknown>
+    const dev = (raw.dev_auth && typeof raw.dev_auth === 'object' ? raw.dev_auth : {}) as Record<string, unknown>
+    const rawScopes = raw.scopes ?? oidc.scopes
+    return {
+      enabled: Boolean(raw.enabled ?? raw.auth_enabled ?? true),
+      oidcEnabled: Boolean(raw.oidcEnabled ?? raw.oidc_enabled ?? oidc.enabled ?? false),
+      devAuthEnabled: Boolean(raw.devAuthEnabled ?? raw.dev_auth_enabled ?? dev.enabled ?? false),
+      issuer: String(raw.issuer ?? oidc.issuer ?? '') || undefined,
+      clientId: String(raw.clientId ?? raw.client_id ?? oidc.client_id ?? '') || undefined,
+      loginUrl: String(raw.login_url ?? raw.authorization_url ?? oidc.login_url ?? '') || undefined,
+      providerName: String(raw.provider_name ?? oidc.provider_name ?? 'SSO'),
+      devAuthRequiresSecret: Boolean(raw.dev_auth_requires_secret ?? dev.requires_secret ?? false),
+      authorizationEndpoint: String(raw.authorizationEndpoint ?? raw.authorization_endpoint ?? oidc.authorization_endpoint ?? '') || undefined,
+      tokenEndpoint: String(raw.tokenEndpoint ?? raw.token_endpoint ?? oidc.token_endpoint ?? '') || undefined,
+      endSessionEndpoint: String(raw.endSessionEndpoint ?? raw.end_session_endpoint ?? oidc.end_session_endpoint ?? '') || undefined,
+      tokenExchangeUrl: String(raw.tokenExchangeUrl ?? raw.token_exchange_url ?? oidc.token_exchange_url ?? '') || undefined,
+      redirectUri: String(raw.redirectUri ?? raw.redirect_uri ?? oidc.redirect_uri ?? '') || undefined,
+      scopes: Array.isArray(rawScopes)
+        ? rawScopes.map(String)
+        : typeof rawScopes === 'string'
+          ? rawScopes.split(/\s+/).filter(Boolean)
+          : ['openid', 'profile', 'email'],
+    }
+  },
+  async me() {
+    try {
+      const raw = await request<unknown>('/me')
+      const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+      return normalizeUser(unwrapOne<User & Record<string, unknown>>(data, ['user']))
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        const raw = await request<unknown>('/auth/me')
+        const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+        return normalizeUser(unwrapOne<User & Record<string, unknown>>(data, ['user']))
+      }
+      throw error
+    }
+  },
+  async presentations() {
+    return (await requestAllPages<Presentation & Record<string, unknown>>('/presentations', ['presentations', 'items', 'data'])).map(normalizePresentation)
+  },
+  async presentation(id: string) {
+    return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}`), ['presentation', 'data']))
+  },
+  async generatePresentation(input: Record<string, unknown>) {
+    const payload = {
+      title: input.title,
+      prompt: input.prompt,
+      requestedSlideCount: input.requestedSlideCount ?? input.slide_count,
+      theme: input.theme,
+      templateId: input.templateId,
+      language: input.language,
+      audience: input.audience,
+      tone: input.tone,
+    }
+    const generated = unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>('/presentations/generate', {
+      method: 'POST', body: JSON.stringify(payload),
+    }), ['presentation', 'data'])
+    return normalizePresentation(generated)
+  },
+  async updatePresentation(id: string, input: Record<string, unknown>) {
+    return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(input),
+    }), ['presentation', 'data']))
+  },
+  async retryPresentation(id: string) {
+    return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}/generate`, {
+      method: 'POST', body: JSON.stringify({}),
+    }), ['presentation', 'data']))
+  },
+  deletePresentation: (id: string) => request<void>(`/presentations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  async exportPresentation(id: string, format: 'pptx' | 'pdf' = 'pptx') {
+    const headers = new Headers({ Accept: format === 'pptx' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/pdf' })
+    const token = session.token(); const secret = session.secret()
+    if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+    if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+    const response = await fetch(`${API_BASE}/presentations/${encodeURIComponent(id)}/export?format=${format}`, { headers, credentials: 'include' })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new ApiError(errorMessage(body, `내보내기에 실패했습니다 (${response.status})`), response.status, response.headers.get('x-request-id') || undefined, body)
+    }
+    return response.blob()
+  },
+
+  async templates() {
+    return (await requestAllPages<Template & Record<string, unknown>>('/templates', ['templates', 'items', 'data'])).map(normalizeTemplate)
+  },
+  async template(id: string) {
+    return normalizeTemplate(unwrapOne<Template & Record<string, unknown>>(await request<unknown>(`/templates/${encodeURIComponent(id)}`), ['template', 'data']))
+  },
+  async uploadTemplate(file: File, meta: { name?: string; description?: string; scope?: 'private' | 'shared' } = {}) {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (meta.name) form.append('name', meta.name)
+    if (meta.description) form.append('description', meta.description)
+    form.append('scope', meta.scope || 'private')
+    // The browser must set the multipart boundary, so no Content-Type here.
+    const raw = await request<unknown>('/templates', { method: 'POST', body: form })
+    return normalizeTemplate(unwrapOne<Template & Record<string, unknown>>(raw, ['template', 'data']))
+  },
+  async updateTemplate(id: string, input: { name?: string; description?: string; scope?: 'private' | 'shared' }) {
+    const raw = await request<unknown>(`/templates/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
+    return normalizeTemplate(unwrapOne<Template & Record<string, unknown>>(raw, ['template', 'data']))
+  },
+  deleteTemplate: (id: string) => request<void>(`/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  templateLayoutPreview(id: string, layoutId: string, width = 640) {
+    const path = layoutId
+      ? `/templates/${encodeURIComponent(id)}/layouts/${encodeURIComponent(layoutId)}/preview.svg`
+      : `/templates/${encodeURIComponent(id)}/preview.svg`
+    return fetchImage(`${path}?width=${width}`)
+  },
+  slidePreview(presentationId: string, slide: number, width = 960) {
+    return fetchImage(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?slide=${slide}&width=${width}`)
+  },
+
+  async profile() {
+    return normalizeProfile(unwrapOne<Record<string, unknown>>(await request<unknown>('/profile'), ['profile', 'data']))
+  },
+  async updateProfile(input: Partial<ProfilePreferences>) {
+    const raw = await request<unknown>('/profile', {
+      method: 'PUT', body: JSON.stringify({
+        displayName: input.name,
+        jobTitle: input.jobTitle,
+        company: input.company,
+        bio: input.bio,
+        preferences: {
+          language: input.language, defaultAudience: input.defaultAudience, defaultTone: input.defaultTone,
+          defaultTheme: input.defaultTheme, brandColor: input.brandColor,
+        },
+      }),
+    })
+    return normalizeProfile(unwrapOne<Record<string, unknown>>(raw, ['profile', 'data']))
+  },
+
+  async apiKeys() {
+    return unwrapList<ApiKey & Record<string, unknown>>(await request<unknown>('/api-keys'), ['api_keys', 'keys', 'items', 'data']).map(normalizeApiKey)
+  },
+  async createApiKey(input: { name: string; scopes: string[]; expiresInDays?: number }) {
+    const expiresAt = input.expiresInDays ? new Date(Date.now() + input.expiresInDays * 86400000).toISOString() : undefined
+    const raw = await request<Record<string, unknown>>('/api-keys', { method: 'POST', body: JSON.stringify({ name: input.name, scopes: input.scopes, expiresAt }) })
+    const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const keyValue = unwrapOne<ApiKey & Record<string, unknown>>(payload, ['apiKey', 'api_key', 'key'])
+    return { ...normalizeApiKey(keyValue), key: typeof payload.key === 'string' ? payload.key : undefined, secret: typeof payload.secret === 'string' ? payload.secret : undefined }
+  },
+  async rotateApiKey(id: string) {
+    const raw = await request<Record<string, unknown>>(`/api-keys/${encodeURIComponent(id)}/rotate`, { method: 'POST' })
+    const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const keyValue = unwrapOne<ApiKey & Record<string, unknown>>(payload, ['apiKey', 'api_key'])
+    return { ...normalizeApiKey(keyValue), key: typeof payload.key === 'string' ? payload.key : undefined, secret: typeof payload.secret === 'string' ? payload.secret : undefined }
+  },
+  async publicSettings() {
+    const raw = await request<unknown>('/settings')
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
+  revokeApiKey: (id: string) => request<void>(`/api-keys/${encodeURIComponent(id)}/revoke`, { method: 'POST' }),
+
+  async adminOverview() {
+    const raw = await request<Record<string, unknown>>('/admin/overview')
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
+  async adminSettings() {
+    return normalizeAdminSettingsPayload(await request<unknown>('/admin/settings'))
+  },
+  async updateAdminSettings(section: string, values: Record<string, unknown>) {
+    const raw = await request<unknown>('/admin/settings', {
+      method: 'PUT', body: JSON.stringify({ settings: Object.entries(values)
+        .filter(([key, value]) => value !== undefined && value !== null && !(value === '' && (key.includes('api_key') || key.includes('client_secret') || key.endsWith('secret'))))
+        .map(([key, value]) => ({ key: `${section === 'oidc' ? 'auth.oidc' : section}.${key}`, value })) }),
+    })
+    return normalizeAdminSettingsPayload(raw)
+  },
+  async adminUsers() {
+    return (await requestAllPages<AdminUser & Record<string, unknown>>('/admin/users', ['users', 'items', 'data'])).map((user) => normalizeUser(user) as AdminUser)
+  },
+  async updateAdminUser(id: string, input: Record<string, unknown>) {
+    const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
+    return normalizeUser(unwrapOne<AdminUser & Record<string, unknown>>(raw, ['data', 'user'])) as AdminUser
+  },
+  async serverErrors() {
+    return (await requestAllPages<ServerError & Record<string, unknown>>('/admin/errors', ['errors', 'items', 'data'])).map(normalizeServerError)
+  },
+  async updateServerError(id: string, input: Record<string, unknown>) {
+    const status = input.status === 'investigating' ? 'acknowledged' : input.status
+    const raw = await request<unknown>(`/admin/errors/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status, notes: input.notes }) })
+    return normalizeServerError(unwrapOne<ServerError & Record<string, unknown>>(raw, ['data', 'error']))
+  },
+  async incidents() {
+    return unwrapList<Incident>(await request<unknown>('/admin/incidents'), ['incidents', 'items', 'data'])
+  },
+  createIncident: (input: Record<string, unknown>) => request<Incident>('/admin/incidents', {
+    method: 'POST', body: JSON.stringify(input),
+  }),
+}

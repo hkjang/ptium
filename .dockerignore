@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+dist
+**/node_modules
+**/dist
+**/coverage
+**/*.log
+server/ptium
+server/ptium.exe
+server/*.test
+**/*.tsbuildinfo
+docs
+scripts
