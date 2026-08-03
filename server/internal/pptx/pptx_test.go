@@ -20,9 +20,9 @@ func buildTemplate(t *testing.T, palette string) ([]byte, *Package, Manifest) {
 }
 
 func TestBuiltinTemplateAnalysis(t *testing.T) {
-	for _, key := range BuiltinPaletteKeys() {
+	for _, key := range BuiltinDesignKeys() {
 		_, _, manifest := buildTemplate(t, key)
-		if manifest.SlideWidth != builtinWidth || manifest.SlideHeight != builtinHeight {
+		if manifest.SlideWidth != slideWidth || manifest.SlideHeight != slideHeight {
 			t.Fatalf("%s: unexpected slide size %dx%d", key, manifest.SlideWidth, manifest.SlideHeight)
 		}
 		if manifest.AspectRatio != "16:9" {
@@ -50,7 +50,7 @@ func TestBuiltinTemplateAnalysis(t *testing.T) {
 }
 
 func TestBuiltinTemplateLayoutSlots(t *testing.T) {
-	_, _, manifest := buildTemplate(t, "modern")
+	_, _, manifest := buildTemplate(t, "slate-classic")
 	content, ok := manifest.LayoutForRole(RoleContent)
 	if !ok {
 		t.Fatal("no content layout")
@@ -98,7 +98,7 @@ func TestBuiltinTemplateLayoutSlots(t *testing.T) {
 }
 
 func TestRenderProducesValidPackage(t *testing.T) {
-	_, pkg, manifest := buildTemplate(t, "aurora")
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
 	titleLayout, _ := manifest.Layout(manifest.TitleLayout)
 	contentLayout, _ := manifest.Layout(manifest.DefaultLayout)
 	deck := Deck{
@@ -200,7 +200,7 @@ func TestRenderProducesValidPackage(t *testing.T) {
 }
 
 func TestRenderIsRepeatableFromOneTemplate(t *testing.T) {
-	_, pkg, manifest := buildTemplate(t, "paper")
+	_, pkg, manifest := buildTemplate(t, "ivory-editorial")
 	deck := Deck{Title: "A", Slides: []Slide{{LayoutID: manifest.DefaultLayout, Fields: map[string][]Paragraph{SlotTitle: {{Text: "첫 번째"}}}}}}
 	first, err := Render(pkg, manifest, deck)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestRenderIsRepeatableFromOneTemplate(t *testing.T) {
 }
 
 func TestRenderEscapesHostileText(t *testing.T) {
-	_, pkg, manifest := buildTemplate(t, "modern")
+	_, pkg, manifest := buildTemplate(t, "slate-classic")
 	deck := Deck{Title: "x", Slides: []Slide{{LayoutID: manifest.DefaultLayout, Fields: map[string][]Paragraph{
 		SlotTitle: {{Text: `</a:t></a:r></p:txBody><evil attr="1">`}},
 		SlotBody:  {{Text: "A & B < C\u0000"}},
@@ -273,7 +273,7 @@ func TestOpenRejectsNonPackages(t *testing.T) {
 }
 
 func TestPreviewSVGUsesTemplateGeometry(t *testing.T) {
-	_, _, manifest := buildTemplate(t, "aurora")
+	_, _, manifest := buildTemplate(t, "plum-rail")
 	layout, _ := manifest.Layout(manifest.DefaultLayout)
 	svg := PreviewSVG(manifest, layout, Slide{Fields: map[string][]Paragraph{
 		SlotTitle: {{Text: "제목 & 요약"}},

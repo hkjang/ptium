@@ -2318,7 +2318,7 @@ components:
           maxLength: 300
           description: Falls back to `content.subtitle` when absent or empty.
         content:
-          $ref: '#/components/schemas/JSONValue'
+          $ref: '#/components/schemas/SlideContent'
         speakerNotes:
           type: string
           maxLength: 4000
@@ -2361,7 +2361,7 @@ components:
         subtitle:
           type: string
         content:
-          $ref: '#/components/schemas/JSONValue'
+          $ref: '#/components/schemas/SlideContent'
         speakerNotes:
           type: string
         layout:
@@ -2588,6 +2588,159 @@ components:
           $ref: '#/components/schemas/PaginationMeta'
         requestId:
           $ref: '#/components/schemas/RequestID'
+
+    SlideContent:
+      type: object
+      description: |
+        A slide's payload. `fields` maps a template slot to its paragraphs;
+        `blocks` maps a slot to a visual component drawn in it. A slot holds
+        either paragraphs or a component, never both. Unknown keys are ignored,
+        so clients may round-trip content they do not understand.
+      properties:
+        type:
+          type: string
+          enum: [template]
+        layoutId:
+          type: string
+          description: Template layout the slide is bound to.
+        fields:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/SlideParagraph'
+          description: Slot name to paragraphs, for example `title`, `subtitle`, `body`, `body2`.
+        blocks:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SlideBlock'
+          description: Slot name to the component drawn in that slot.
+        bullets:
+          type: array
+          items:
+            type: string
+          description: Read-only mirror of the primary body slot, kept for simple clients.
+        accent:
+          type: string
+          description: Brand colour applied to the slide, as `#RRGGBB`.
+
+    SlideParagraph:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+        level:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: Outline depth; 1 and deeper are sub-bullets.
+
+    SlideBlock:
+      type: object
+      required: [kind]
+      description: |
+        A visual component drawn from the template's own palette and
+        typography. Only the keys a kind needs are used; the renderer drops a
+        component that carries too little to draw and falls back to prose.
+
+        Data-bearing kinds (`kpi`, `hero`, `meter`, `columnChart`, `barChart`,
+        `lineChart`, `shareBar`) must be given real figures. Structural kinds
+        (`steps`, `timeline`, `comparison`, `table`, `quote`, `callout`) carry
+        meaning without them.
+      properties:
+        kind:
+          type: string
+          enum: [bullets, kpi, hero, steps, timeline, comparison, columnChart,
+                 barChart, lineChart, shareBar, meter, table, quote, callout]
+        heading:
+          type: string
+          maxLength: 80
+        text:
+          type: string
+          maxLength: 300
+          description: The single statement a `quote` or `callout` is built around.
+        attribute:
+          type: string
+          maxLength: 80
+          description: Source of a `quote`.
+        caption:
+          type: string
+          maxLength: 160
+          description: Footnote under the component.
+        unit:
+          type: string
+          maxLength: 8
+          description: Suffix appended to numeric values, for example `%`.
+        emphasis:
+          type: integer
+          minimum: 0
+          description: 1-based item to highlight; every other mark recedes to grey.
+        items:
+          type: array
+          maxItems: 8
+          items:
+            $ref: '#/components/schemas/SlideBlockItem'
+        series:
+          type: array
+          maxItems: 3
+          description: Line-chart series.
+          items:
+            type: object
+            required: [points]
+            properties:
+              name:
+                type: string
+              points:
+                type: array
+                items:
+                  type: number
+        labels:
+          type: array
+          items:
+            type: string
+          description: Axis labels for a line chart.
+        columns:
+          type: array
+          items:
+            type: string
+          description: Table header cells.
+        rows:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+          description: Table body rows.
+
+    SlideBlockItem:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 60
+        value:
+          type: string
+          maxLength: 24
+          description: Display text for the value; overrides `number` when set.
+        number:
+          type: number
+          description: Numeric weight used for bars, shares and meters.
+        delta:
+          type: string
+          maxLength: 24
+        trend:
+          type: string
+          enum: [up, down, flat]
+          description: Direction of the delta, which decides its colour.
+        detail:
+          type: string
+          maxLength: 120
+        bullets:
+          type: array
+          maxItems: 4
+          items:
+            type: string
 
     PresentationEnvelope:
       type: object

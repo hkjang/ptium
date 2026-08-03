@@ -167,8 +167,8 @@ func (s *Store) DeleteTemplate(ctx context.Context, id, ownerID string, admin bo
 // with, so a fresh install can generate a polished deck immediately and an
 // offline deployment never needs to download anything.
 func (s *Store) EnsureBuiltinTemplates(ctx context.Context) error {
-	for _, key := range pptx.BuiltinPaletteKeys() {
-		palette := pptx.LookupBuiltinPalette(key)
+	for _, design := range pptx.BuiltinDesigns() {
+		key := design.Key
 		data, err := pptx.BuiltinTemplate(key)
 		if err != nil {
 			return fmt.Errorf("build %s template: %w", key, err)
@@ -190,7 +190,7 @@ func (s *Store) EnsureBuiltinTemplates(ctx context.Context) error {
 				checksum=EXCLUDED.checksum,manifest=EXCLUDED.manifest,data=EXCLUDED.data,updated_at=now()
 			WHERE templates.checksum <> EXCLUDED.checksum
 			   OR COALESCE((templates.manifest->>'version')::int, 0) < $9`,
-			"Ptium "+palette.Name, builtinDescription(palette), key+".pptx", key, len(data), digest, encoded, data,
+			design.Name, design.Description(), key+".pptx", key, len(data), digest, encoded, data,
 			pptx.ManifestVersion); err != nil {
 			return fmt.Errorf("seed %s template: %w", key, err)
 		}
@@ -202,17 +202,16 @@ func (s *Store) EnsureBuiltinTemplates(ctx context.Context) error {
 // caller did not choose one: the user's most recent upload if they have any,
 // otherwise the built-in design matching the requested theme.
 func (s *Store) DefaultTemplateID(ctx context.Context, ownerID, theme string) (string, error) {
+	// The theme may be a design key, a legacy theme name or a bare palette; the
+	// design library resolves all three to one shipped design.
+	resolved := pptx.LookupBuiltinDesign(theme).Key
 	var id string
-	err := s.Pool.QueryRow(ctx, `SELECT id::text FROM templates WHERE palette_key=$1 AND kind='builtin'`, strings.ToLower(strings.TrimSpace(theme))).Scan(&id)
+	err := s.Pool.QueryRow(ctx, `SELECT id::text FROM templates WHERE palette_key=$1 AND kind='builtin'`, resolved).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
 	err = s.Pool.QueryRow(ctx, `SELECT id::text FROM templates WHERE kind='builtin' ORDER BY palette_key LIMIT 1`).Scan(&id)
 	return id, mapNotFound(err)
-}
-
-func builtinDescription(palette pptx.BuiltinPalette) string {
-	return fmt.Sprintf("Ptium 기본 디자인 · 16:9 · 표지, 구역, 본문, 2단, 비교, 인용, 이미지, 마무리 레이아웃 (%s)", palette.Name)
 }
 
 func analyzeTemplate(data []byte) (pptx.Manifest, error) {

@@ -28,7 +28,7 @@ func (settings testSettings) Get(_ context.Context, key string, target any) erro
 
 func testTemplate(t *testing.T) Template {
 	t.Helper()
-	data, err := pptx.BuiltinTemplate("aurora")
+	data, err := pptx.BuiltinTemplate("plum-rail")
 	if err != nil {
 		t.Fatalf("BuiltinTemplate: %v", err)
 	}

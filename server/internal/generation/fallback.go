@@ -49,6 +49,7 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 
 		var title, subtitle, notes string
 		var bullets []pptx.Paragraph
+		var block *pptx.Block
 		switch role {
 		case pptx.RoleTitle:
 			title = strings.TrimSpace(presentation.Title)
@@ -63,24 +64,35 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 			bullets = paragraphs(phrases.ClosingPoints(topic, perspective))
 			notes = fmt.Sprintf(phrases.ClosingNotes, audience)
 		case pptx.RoleSection:
+			// A divider announces the section that follows, so it reads the
+			// upcoming entry without consuming it.
 			section := phrases.Sections[sectionIndex%len(phrases.Sections)]
-			sectionIndex++
 			title = section.Title
 			bullets = paragraphs([]string{fmt.Sprintf(section.Lead, topic)})
 			notes = fmt.Sprintf(phrases.SectionNotes, section.Title)
 		case pptx.RoleQuote:
-			title = fmt.Sprintf(phrases.QuoteText, topic)
+			statement := fmt.Sprintf(phrases.QuoteText, topic)
+			title = statement
 			bullets = paragraphs([]string{perspective})
 			notes = phrases.QuoteNotes
 		default:
 			section := phrases.Sections[sectionIndex%len(phrases.Sections)]
 			sectionIndex++
 			title = section.Title
-			bullets = paragraphs(section.Points(topic, audience, tone, perspective))
+			points := section.Points(topic, audience, tone, perspective)
+			bullets = paragraphs(points)
+			// Points written as "<stage>: <what happens>" are a process, so they
+			// are drawn as one. No figures are invented to do it.
+			if items, ok := stageItems(points); ok {
+				block = &pptx.Block{Kind: pptx.BlockSteps, Items: items}
+			}
 			notes = fmt.Sprintf(phrases.SlideNotes, section.Title, audience)
 		}
 
 		fillSlots(&content, layout, title, subtitle, bullets)
+		if block != nil {
+			applyBlock(&content, layout, *block)
+		}
 		result.Slides = append(result.Slides, model.Slide{
 			Position:     index + 1,
 			Title:        truncate(title, 200),
@@ -134,6 +146,39 @@ func fillSlots(content *deck.Content, layout pptx.Layout, title, subtitle string
 		}
 		content.SetField(placeholder.Slot, fitParagraphs(bullets[start:end], placeholder))
 	}
+}
+
+// stageItems recognises points of the form "<stage>: <what happens>" and turns
+// them into process steps. The split has to hold for every point, otherwise the
+// slide stays prose.
+func stageItems(points []string) ([]pptx.Item, bool) {
+	if len(points) < 3 {
+		return nil, false
+	}
+	items := make([]pptx.Item, 0, len(points))
+	for _, point := range points {
+		separator := strings.Index(point, ": ")
+		if separator < 1 {
+			return nil, false
+		}
+		stage := strings.TrimSpace(point[:separator])
+		detail := strings.TrimSpace(point[separator+2:])
+		if utf8.RuneCountInString(stage) > 14 || detail == "" {
+			return nil, false
+		}
+		items = append(items, pptx.Item{Label: stage, Detail: detail})
+	}
+	return items, true
+}
+
+// applyBlock places a component in the layout's first body slot when that slot
+// has room for one; otherwise the prose already written stays.
+func applyBlock(content *deck.Content, layout pptx.Layout, block pptx.Block) {
+	bodies := layout.BodySlots()
+	if len(bodies) == 0 || bodies[0].MaxLines < pptx.BlockMinimumLines(block.Kind) {
+		return
+	}
+	content.SetBlock(bodies[0].Slot, block)
 }
 
 // fallbackRoles lays out the narrative arc: cover, alternating content with

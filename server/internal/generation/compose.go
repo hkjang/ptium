@@ -40,10 +40,26 @@ func compose(request writingRequest, written writtenDeck) (Deck, error) {
 			title = fmt.Sprintf("%s %d", request.Presentation.Title, index+1)
 		}
 
+		// A component claims its slot before prose, because the model is told to
+		// use one or the other and a slot cannot hold both.
+		claimed := map[string]bool{}
+		for slot, block := range slide.Blocks {
+			placeholder, ok := layout.Slot(canonicalSlot(slot))
+			if !ok || !placeholder.AcceptsText() || placeholder.Slot == pptx.SlotTitle {
+				continue
+			}
+			sanitized, usable := sanitizeBlock(block, placeholder)
+			if !usable {
+				continue
+			}
+			content.SetBlock(placeholder.Slot, sanitized)
+			claimed[placeholder.Slot] = true
+		}
+
 		assigned := map[string]bool{}
 		for slot, raw := range slide.Fields {
 			placeholder, ok := layout.Slot(canonicalSlot(slot))
-			if !ok || !placeholder.AcceptsText() {
+			if !ok || !placeholder.AcceptsText() || claimed[placeholder.Slot] {
 				continue
 			}
 			paragraphs := fitParagraphs(parseParagraphs(raw), placeholder)
@@ -59,7 +75,7 @@ func compose(request writingRequest, written writtenDeck) (Deck, error) {
 		}
 		// A slide with a body slot and nothing in it is worse than no slide, so
 		// fall back to the planned key points before giving up on the slot.
-		if !hasAnyBody(content) && request.Plan != nil && index < len(request.Plan.Slides) {
+		if !hasAnyBody(content) && len(content.Blocks) == 0 && request.Plan != nil && index < len(request.Plan.Slides) {
 			if placeholder, ok := firstBodyPlaceholder(layout); ok {
 				paragraphs := make([]pptx.Paragraph, 0, len(request.Plan.Slides[index].KeyPoints))
 				for _, point := range request.Plan.Slides[index].KeyPoints {
@@ -298,4 +314,116 @@ func firstBodyPlaceholder(layout pptx.Layout) (pptx.Placeholder, bool) {
 		return placeholder, true
 	}
 	return pptx.Placeholder{}, false
+}
+
+// sanitizeBlock validates a component a model produced. Everything a slide
+// renderer would trip over is corrected here rather than at draw time: an
+// unknown kind, a component with too few entries to mean anything, labels long
+// enough to collide, or a chart with more series than the template's palette
+// can tell apart.
+func sanitizeBlock(block pptx.Block, placeholder pptx.Placeholder) (pptx.Block, bool) {
+	kind := strings.TrimSpace(block.Kind)
+	if !knownBlockKind(kind) {
+		return pptx.Block{}, false
+	}
+	block.Kind = kind
+	block.Heading = truncate(strings.TrimSpace(block.Heading), 80)
+	block.Caption = truncate(strings.TrimSpace(block.Caption), 160)
+	block.Text = truncate(strings.TrimSpace(block.Text), 300)
+	block.Attribute = truncate(strings.TrimSpace(block.Attribute), 80)
+	block.Unit = truncate(strings.TrimSpace(block.Unit), 8)
+
+	items := make([]pptx.Item, 0, len(block.Items))
+	for _, item := range block.Items {
+		item.Label = truncate(strings.TrimSpace(item.Label), 60)
+		item.Value = truncate(strings.TrimSpace(item.Value), 24)
+		item.Delta = truncate(strings.TrimSpace(item.Delta), 24)
+		item.Detail = truncate(strings.TrimSpace(item.Detail), 120)
+		item.Trend = strings.ToLower(strings.TrimSpace(item.Trend))
+		bullets := make([]string, 0, len(item.Bullets))
+		for _, bullet := range item.Bullets {
+			if trimmed := strings.TrimSpace(bullet); trimmed != "" {
+				bullets = append(bullets, truncate(trimmed, 120))
+			}
+			if len(bullets) == 4 {
+				break
+			}
+		}
+		item.Bullets = bullets
+		if item.Label == "" && item.Value == "" && item.Number == nil && len(item.Bullets) == 0 {
+			continue
+		}
+		items = append(items, item)
+	}
+	block.Items = items
+
+	series := make([]pptx.Series, 0, len(block.Series))
+	for _, candidate := range block.Series {
+		if len(candidate.Points) < 2 {
+			continue
+		}
+		if len(candidate.Points) > 12 {
+			candidate.Points = candidate.Points[:12]
+		}
+		candidate.Name = truncate(strings.TrimSpace(candidate.Name), 40)
+		series = append(series, candidate)
+		if len(series) == 3 {
+			break
+		}
+	}
+	block.Series = series
+
+	labels := make([]string, 0, len(block.Labels))
+	for _, label := range block.Labels {
+		labels = append(labels, truncate(strings.TrimSpace(label), 24))
+	}
+	block.Labels = labels
+	if block.Emphasis < 0 || block.Emphasis > len(block.Items) {
+		block.Emphasis = 0
+	}
+
+	// A component that would draw nothing is worse than prose, so the caller is
+	// told to fall back rather than emitting an empty frame.
+	switch kind {
+	case pptx.BlockBullets:
+		return pptx.Block{}, false
+	case pptx.BlockKPI, pptx.BlockMeter, pptx.BlockColumns, pptx.BlockBars:
+		if len(block.Items) == 0 {
+			return pptx.Block{}, false
+		}
+	case pptx.BlockHero:
+		if len(block.Items) == 0 || block.Items[0].Display(block.Unit) == "" {
+			return pptx.Block{}, false
+		}
+	case pptx.BlockSteps, pptx.BlockTimeline, pptx.BlockComparison, pptx.BlockShare:
+		if len(block.Items) < 2 {
+			return pptx.Block{}, false
+		}
+	case pptx.BlockLine:
+		if len(block.Series) == 0 {
+			return pptx.Block{}, false
+		}
+	case pptx.BlockTable:
+		if len(block.Columns) == 0 || len(block.Rows) == 0 {
+			return pptx.Block{}, false
+		}
+	case pptx.BlockQuote, pptx.BlockCallout:
+		if block.Text == "" && block.Caption == "" && len(block.Items) == 0 {
+			return pptx.Block{}, false
+		}
+	}
+	// A component needs room; a slot too short for this kind stays prose.
+	if placeholder.MaxLines < pptx.BlockMinimumLines(kind) {
+		return pptx.Block{}, false
+	}
+	return block, true
+}
+
+func knownBlockKind(kind string) bool {
+	for _, candidate := range pptx.BlockKinds() {
+		if candidate == kind {
+			return true
+		}
+	}
+	return false
 }

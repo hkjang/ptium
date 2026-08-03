@@ -12,7 +12,7 @@ import (
 
 func template(t *testing.T) ([]byte, pptx.Manifest) {
 	t.Helper()
-	data, err := pptx.BuiltinTemplate("modern")
+	data, err := pptx.BuiltinTemplate("slate-classic")
 	if err != nil {
 		t.Fatalf("BuiltinTemplate: %v", err)
 	}

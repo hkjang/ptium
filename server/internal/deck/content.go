@@ -21,10 +21,13 @@ type Content struct {
 	Type     string                      `json:"type"`
 	LayoutID string                      `json:"layoutId,omitempty"`
 	Fields   map[string][]pptx.Paragraph `json:"fields,omitempty"`
-	Bullets  []string                    `json:"bullets,omitempty"`
-	Body     string                      `json:"body,omitempty"`
-	Accent   string                      `json:"accent,omitempty"`
-	Notes    string                      `json:"notes,omitempty"`
+	// Blocks maps a slot to the visual component drawn in it. A slot holds
+	// either paragraphs or a component, never both.
+	Blocks  map[string]pptx.Block `json:"blocks,omitempty"`
+	Bullets []string              `json:"bullets,omitempty"`
+	Body    string                `json:"body,omitempty"`
+	Accent  string                `json:"accent,omitempty"`
+	Notes   string                `json:"notes,omitempty"`
 }
 
 // Decode parses stored slide content, tolerating payloads written before
@@ -106,6 +109,15 @@ func (c *Content) SetText(slot, value string) {
 	c.SetField(slot, []pptx.Paragraph{{Text: value}})
 }
 
+// SetBlock places a visual component in a slot, replacing any prose there.
+func (c *Content) SetBlock(slot string, block pptx.Block) {
+	if c.Blocks == nil {
+		c.Blocks = map[string]pptx.Block{}
+	}
+	c.Blocks[slot] = block
+	delete(c.Fields, slot)
+}
+
 // RenderSlide converts a stored slide into renderer input for a layout. Slides
 // written before templates existed are mapped onto the layout's title,
 // subtitle and first body slot so old decks still export correctly.
@@ -118,6 +130,15 @@ func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 		}
 		rendered.Fields[slot] = paragraphs
 	}
+	for slot, block := range content.Blocks {
+		if _, ok := layout.Slot(slot); !ok {
+			continue
+		}
+		if rendered.Blocks == nil {
+			rendered.Blocks = map[string]pptx.Block{}
+		}
+		rendered.Blocks[slot] = block
+	}
 	if _, ok := rendered.Fields[pptx.SlotTitle]; !ok && strings.TrimSpace(slide.Title) != "" {
 		if _, exists := layout.Slot(pptx.SlotTitle); exists {
 			rendered.Fields[pptx.SlotTitle] = []pptx.Paragraph{{Text: slide.Title}}
@@ -128,7 +149,7 @@ func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 			rendered.Fields[pptx.SlotSubtitle] = []pptx.Paragraph{{Text: slide.Subtitle}}
 		}
 	}
-	if len(rendered.Fields) == 0 || !hasBody(rendered.Fields) {
+	if (len(rendered.Fields) == 0 || !hasBody(rendered.Fields)) && len(rendered.Blocks) == 0 {
 		if bullets := content.PrimaryBullets(); len(bullets) > 0 {
 			if target, ok := firstBodySlot(layout); ok {
 				paragraphs := make([]pptx.Paragraph, 0, len(bullets))

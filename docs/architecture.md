@@ -82,6 +82,26 @@ against it. Otherwise Ptium uses its deterministic local generator, which builds
 the same narrative arc and layout variety without a network call, so onboarding
 and air-gapped deployments remain fully usable.
 
+## The design system
+
+A slide is not filled in, it is composed. `internal/pptx` resolves a design
+system from the template itself — surface and ink tokens, a validated
+categorical order, a type scale and an 8pt spacing rhythm — and lays each slide
+component out against it.
+
+A component is laid out once into primitives and emitted twice: as DrawingML for
+the exported file and as SVG for the browser preview. That is the only way the
+two can be guaranteed to agree, and it is why a preview is worth trusting.
+
+Charts are drawn as native shapes rather than embedded chart parts, so a deck
+carries no hidden workbook and cannot open with a repair prompt. The rules they
+follow are the ones a designer would apply by hand: colour is assigned by the
+job it does, marks stay thin, values are direct-labelled instead of gridded,
+stacked segments are separated by a gap rather than a border, and a categorical
+order is validated by computing perceptual distance — including under
+protanopia and deuteranopia — instead of eyeballing it. A hue that cannot be
+told apart from its neighbour is dropped rather than shipped.
+
 ## Template rendering
 
 `internal/pptx` reads and writes Office Open XML directly; no PowerPoint or

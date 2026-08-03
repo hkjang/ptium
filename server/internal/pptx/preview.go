@@ -37,6 +37,7 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 	// values a viewBox in EMU would require.
 	scale := float64(pixelWidth) / float64(width)
 
+	design := NewDesign(manifest)
 	var builder strings.Builder
 	fmt.Fprintf(&builder, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" role="img" preserveAspectRatio="xMidYMid meet">`,
 		pixelWidth, pixelHeight, pixelWidth, pixelHeight)
@@ -52,6 +53,13 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 			float64(decoration.X)*scale, float64(decoration.Y)*scale, width, height, radius, decoration.Fill)
 	}
 	for _, placeholder := range layout.Placeholders {
+		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
+			frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
+				builder.WriteString(component.SVG(scale))
+				continue
+			}
+		}
 		paragraphs := slide.Fields[placeholder.Slot]
 		if len(paragraphs) == 0 {
 			if !options.ShowEmptySlots {

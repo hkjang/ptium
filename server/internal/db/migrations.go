@@ -116,6 +116,11 @@ var migrations = []string{
 		created_at timestamptz NOT NULL DEFAULT now()
 	)`,
 	`UPDATE app_settings SET value='"aurora"'::jsonb WHERE key='generation.default_theme' AND value='"modern"'::jsonb AND updated_by IS NULL`,
+	// The shipped library moved from five themes to thirty named designs. An
+	// administrator's own choice is left alone; an untouched default moves to
+	// the safest design in the new library.
+	`UPDATE app_settings SET value='"slate-classic"'::jsonb WHERE key='generation.default_theme'
+		AND value IN ('"aurora"'::jsonb,'"modern"'::jsonb) AND updated_by IS NULL`,
 	`CREATE TABLE IF NOT EXISTS templates (
 		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 		owner_id uuid REFERENCES users(id) ON DELETE CASCADE,
@@ -151,7 +156,7 @@ var defaultSettings = map[string]struct {
 	"ai.api_key":                     {`""`, true, "Provider API key"},
 	"generation.default_slide_count": {`10`, false, "Default generated slide count"},
 	"generation.max_slides":          {`50`, false, "Maximum generated slides"},
-	"generation.default_theme":       {`"aurora"`, false, "Default presentation theme"},
+	"generation.default_theme":       {`"slate-classic"`, false, "Default shipped design, or a design key from the template library"},
 	"generation.default_lang":        {`"ko"`, false, "Default presentation language"},
 	"branding.product_name":          {`"Ptium"`, false, "Product display name"},
 	"branding.logo_url":              {`""`, false, "Public logo URL"},

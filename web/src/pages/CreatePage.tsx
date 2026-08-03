@@ -12,13 +12,6 @@ import { Link, navigate } from '../router'
 import type { Template } from '../types'
 import { displayError } from '../utils'
 
-const themes = [
-  { id: 'aurora', name: 'Aurora', description: '세련되고 선명한', colors: ['#17162d', '#8d72ff', '#f1c6ff'] },
-  { id: 'paper', name: 'Editorial', description: '차분하고 지적인', colors: ['#f4efe6', '#22201e', '#ce654a'] },
-  { id: 'mint', name: 'Fresh', description: '밝고 친근한', colors: ['#dff8ed', '#153a35', '#57c59d'] },
-  { id: 'graphite', name: 'Graphite', description: '전문적이고 절제된', colors: ['#22262d', '#f5f5f3', '#9da6b2'] },
-]
-
 export function CreatePage() {
   const [step, setStep] = useState(1)
   const [prompt, setPrompt] = useState('')
@@ -37,7 +30,6 @@ export function CreatePage() {
   const { showToast } = useToast()
   const { productName } = useBrand()
   const canContinue = prompt.trim().length >= 12
-  const selectedTheme = useMemo(() => themes.find((item) => item.id === theme) ?? themes[0], [theme])
   const selectedTemplate = useMemo(() => templates.find((item) => item.id === templateId), [templates, templateId])
   const examples = useMemo(() => {
     const pitchSlides = Math.min(10, maxSlides)
@@ -58,7 +50,7 @@ export function CreatePage() {
       setMaxSlides(configuredMaximum)
       setSlideCount(configuredDefault)
       const configuredTheme = String(profile?.defaultTheme || settings['generation.default_theme'] || '')
-      if (themes.some((item) => item.id === configuredTheme)) setTheme(configuredTheme)
+      if (configuredTheme) setTheme(configuredTheme)
 
       // A customer's own template outranks the built-in palette, because the
       // whole point of uploading one is that generated decks look like theirs.
@@ -99,7 +91,7 @@ export function CreatePage() {
     }
   }
 
-  if (generating && step === 3) return <GenerationScreen stage={generationStage} theme={selectedTheme} prompt={prompt} />
+  if (generating && step === 3) return <GenerationScreen stage={generationStage} templateName={selectedTemplate?.name || ''} prompt={prompt} />
 
   return (
     <main className="create-page">
@@ -197,10 +189,10 @@ function TemplatePicker({ templates, selectedId, loading, onSelect }: {
   )
 }
 
-function GenerationScreen({ stage, theme, prompt }: { stage: string; theme: typeof themes[number]; prompt: string }) {
+function GenerationScreen({ stage, templateName, prompt }: { stage: string; templateName: string; prompt: string }) {
   const { productName } = useBrand()
   return <main className="generation-page">
     <div className="generation-brand"><BrandMark /><span>{productName}</span></div>
-    <section className="generation-content"><div className="generation-visual"><div className={`generating-slide theme-${theme.id}`}><span>PTIUM ENGINE</span><div><i /><i /><i /></div><strong>{prompt.slice(0, 55)}{prompt.length > 55 ? '…' : ''}</strong><em /></div><div className="generation-spark spark-one"><Sparkles size={15} /></div><div className="generation-spark spark-two"><Sparkles size={11} /></div><span className="orbit orbit-one" /><span className="orbit orbit-two" /></div><span className="eyebrow">CREATING YOUR STORY</span><h1>아이디어를 생성 대기열에<br />등록하고 있어요.</h1><p>{stage}</p><div className="generation-tasks"><span className="done"><Check size={13} /> 입력 검증</span><span className="active"><LoaderCircle className="spin" size={13} /> 작업 등록</span><span><span /> 편집기 연결</span></div><small>등록 후 편집기에서 서버의 실제 생성 상태를 확인합니다.</small></section>
+    <section className="generation-content"><div className="generation-visual"><div className="generating-slide theme-aurora"><span>{templateName || 'PTIUM ENGINE'}</span><div><i /><i /><i /></div><strong>{prompt.slice(0, 55)}{prompt.length > 55 ? '…' : ''}</strong><em /></div><div className="generation-spark spark-one"><Sparkles size={15} /></div><div className="generation-spark spark-two"><Sparkles size={11} /></div><span className="orbit orbit-one" /><span className="orbit orbit-two" /></div><span className="eyebrow">CREATING YOUR STORY</span><h1>아이디어를 생성 대기열에<br />등록하고 있어요.</h1><p>{stage}</p><div className="generation-tasks"><span className="done"><Check size={13} /> 입력 검증</span><span className="active"><LoaderCircle className="spin" size={13} /> 작업 등록</span><span><span /> 편집기 연결</span></div><small>등록 후 편집기에서 서버의 실제 생성 상태를 확인합니다.</small></section>
   </main>
 }

@@ -19,10 +19,12 @@ type Paragraph struct {
 	Level int    `json:"level,omitempty"`
 }
 
-// Slide is one rendered slide bound to a template layout.
+// Slide is one rendered slide bound to a template layout. A slot carries
+// either paragraphs of prose or one visual component, never both.
 type Slide struct {
 	LayoutID string                 `json:"layoutId"`
 	Fields   map[string][]Paragraph `json:"fields"`
+	Blocks   map[string]Block       `json:"blocks,omitempty"`
 	Notes    string                 `json:"notes,omitempty"`
 }
 
@@ -47,6 +49,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 	}
 	pkg := template.Clone()
 	dropExistingSlides(pkg)
+	design := NewDesign(manifest)
 
 	language := normalizeLanguage(deck.Language)
 	notesNeeded := false
@@ -79,7 +82,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 			notesIndex++
 			notesPart = fmt.Sprintf("ppt/notesSlides/notesSlide%d.xml", notesIndex)
 		}
-		pkg.SetText(slidePart, slideXML(layout, slide, language))
+		pkg.SetText(slidePart, slideXML(layout, slide, language, design))
 		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart))
 		if notesPart != "" {
 			pkg.SetText(notesPart, notesSlideXML(slide.Notes, language))
@@ -138,10 +141,21 @@ func maxRelationshipNumber(pkg *Package, part string) int {
 	return highest
 }
 
-func slideXML(layout Layout, slide Slide, language string) string {
-	var shapes strings.Builder
+func slideXML(layout Layout, slide Slide, language string, design Design) string {
+	var shapes, components strings.Builder
 	shapeID := 2
 	for _, placeholder := range layout.Placeholders {
+		// A component replaces its placeholder rather than sitting on top of
+		// it, so the exported slide has no empty text box behind the drawing.
+		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
+			frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
+				markup, next := component.DrawingML(shapeID)
+				components.WriteString(markup)
+				shapeID = next
+				continue
+			}
+		}
 		paragraphs := slide.Fields[placeholder.Slot]
 		if len(paragraphs) == 0 && placeholder.AcceptsText() {
 			continue
@@ -150,7 +164,7 @@ func slideXML(layout Layout, slide Slide, language string) string {
 		shapeID++
 	}
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
-		shapes.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+		shapes.String() + components.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 
 func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string) string {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/model"
+	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
 // writingRequest is everything both generation passes need to know.
@@ -46,6 +47,7 @@ type writtenSlide struct {
 	Role     string                     `json:"role"`
 	Title    string                     `json:"title"`
 	Fields   map[string]json.RawMessage `json:"fields"`
+	Blocks   map[string]pptx.Block      `json:"blocks"`
 	Notes    string                     `json:"notes"`
 }
 
@@ -64,8 +66,8 @@ Rules:
 Respond with strict JSON only:
 {"deckTitle":"","thesis":"","slides":[{"role":"title|section|content|twoContent|comparison|quote|picture|closing","layoutId":"","headline":"","intent":"","keyPoints":[""]}]}`
 
-const writeSystemPrompt = `You are a senior presentation writer. Turn a deck plan into finished slide copy
-that fits a specific PowerPoint template.
+const writeSystemPrompt = `You are a senior presentation writer and information designer. Turn a deck plan
+into finished slides in a specific PowerPoint template.
 
 Hard constraints:
 - Use only the layout ids given in the catalog, and only the slot names that
@@ -75,20 +77,53 @@ Hard constraints:
 - Write in the requested language and tone. Never use markdown, asterisks or
   emoji.
 
-Craft rules:
-- Titles are assertions, not labels: "채널 이탈이 온보딩에서 발생한다", not "채널 분석".
+Writing craft:
+- Titles are assertions, not labels: "새 공급사 전환이 리스킬를 만든다", not "공급사 분석".
 - Bullets are complete thoughts, six to fourteen words, parallel in structure,
   and lead with the point. Three to five per slide, never one.
 - Use level 1 sub-bullets only for evidence supporting the bullet above.
-- Prefer concrete nouns and figures over adjectives. Do not invent statistics;
-  when a figure is unknown, describe the mechanism instead.
 - Speaker notes are two or three sentences of what to say out loud, not a
   repeat of the bullets.
 
+Design craft â a body slot may hold a visual component instead of prose, and the
+better deck usually does:
+- kpi: two to four headline numbers. Items are {label, value, delta, trend}
+  where trend is up|down|flat and decides the delta's colour. Use this for a
+  handful of metrics; never a chart for three numbers.
+- hero: the one number a slide is about, with a label and a line of context.
+- meter: progress against a target. Items carry number as a percent, 0-100.
+- columnChart: compare magnitude across up to six named categories. Items carry
+  {label, number}. Set emphasis to the 1-based item the story is about and the
+  rest recede to grey â that is how a chart makes a point.
+- barChart: the same comparison when the category names are long.
+- lineChart: a trend. series = [{name, points:[...]}], labels = the time axis.
+  Two or three series at most.
+- shareBar: part-to-whole across three to five parts. Items carry {label, number}.
+- steps: a three-to-five stage process. Items carry {label, detail}.
+- timeline: dated milestones. Items carry {value: the date, label, detail}.
+- comparison: two or three options. Items carry {label, value, bullets:[...]}.
+- table: columns plus rows when more than about seven classes carry meaning.
+- quote: one memorable sentence in text, with attribute for its source.
+- callout: one decision or statement that must not be missed.
+
+Rules for components:
+- Never invent a number. Use kpi, hero, meter, shareBar or a chart ONLY when the
+  brief supplies the figures or they follow arithmetically from it. When the
+  figures are unknown, choose steps, timeline, comparison, table, callout or
+  prose â those carry structure without fabricating data.
+- One component per slide, in a body slot. Prose bullets are still right for
+  argument and nuance; do not force every slide into a graphic.
+- Keep component labels short: two or three words, never a sentence.
+
 Respond with strict JSON only:
-{"slides":[{"layoutId":"","title":"","fields":{"slotName":["line","line"]},"notes":""}]}
-A slot value may be a string, an array of strings, or an array of
-{"text":"","level":0} objects where level 1 means a sub-bullet.`
+{"slides":[{"layoutId":"","title":"","fields":{"slotName":["line","line"]},
+"blocks":{"body":{"kind":"kpi","heading":"","unit":"%","emphasis":0,
+"text":"","attribute":"","caption":"","labels":[""],"columns":[""],"rows":[[""]],
+"items":[{"label":"","value":"","number":0,"delta":"","trend":"up","detail":"","bullets":[""]}],
+"series":[{"name":"","points":[0]}]}},"notes":""}]}
+Omit every key a component does not need. A field slot value may be a string, an
+array of strings, or an array of {"text":"","level":0} objects where level 1
+means a sub-bullet.`
 
 func planUserPrompt(request writingRequest) string {
 	var builder strings.Builder
@@ -114,6 +149,9 @@ func writeUserPrompt(request writingRequest) string {
 				index+1, slide.Role, slide.LayoutID, slide.Headline, slide.Intent, strings.Join(slide.KeyPoints, " / "))
 		}
 	}
+	fmt.Fprintf(&builder, "\nAvailable components: %s\n", strings.Join(pptx.BlockKinds(), ", "))
+	fmt.Fprintf(&builder, "This template can tell %d data series apart, so never plot more than that.\n",
+		pptx.NewDesign(request.Template.Manifest).SeriesCap())
 	fmt.Fprintf(&builder, "\nWrite exactly %d slides, in order.\n", request.Presentation.RequestedSlideCount)
 	return builder.String()
 }
