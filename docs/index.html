@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ptium - AI 프레젠테이션 생성 서비스 | 프롬프트로 PowerPoint 슬라이드 자동 생성</title>
+    <meta name="description" content="Ptium은 프롬프트를 회사 PowerPoint 템플릿에 맞춰 구조화된 슬라이드 덱으로 변환하는 자체 호스팅 AI 프레젠테이션 서비스입니다. REST API, MCP, 오프라인 지원.">
+    <meta name="keywords" content="AI 프레젠테이션, PowerPoint 자동 생성, 슬라이드 생성, MCP, REST API, 자체 호스팅, 오프라인, 프롬프트, 템플릿, Ptium">
+    <meta name="author" content="Ptium">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Ptium - AI 프레젠테이션 생성 서비스">
+    <meta property="og:description" content="프롬프트 하나로 회사 템플릿 그대로, AI가 만드는 슬라이드 덱. 자체 호스팅, REST API, MCP, 오프라인 지원.">
+    <meta property="og:url" content="https://hkjang.github.io/ptium/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Ptium">
+    <meta property="og:locale" content="ko_KR">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Ptium - AI 프레젠테이션 생성 서비스">
+    <meta name="twitter:description" content="프롬프트 하나로 회사 템플릿 그대로, AI가 만드는 슬라이드 덱.">
+
+    <!-- Canonical & Alternate -->
+    <link rel="canonical" href="https://hkjang.github.io/ptium/">
+    <link rel="alternate" hreflang="ko" href="https://hkjang.github.io/ptium/">
+    <link rel="alternate" hreflang="en" href="https://hkjang.github.io/ptium/en.html">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- JSON-LD: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Ptium",
+      "operatingSystem": "Linux, Windows, macOS",
+      "applicationCategory": "BusinessApplication",
+      "softwareVersion": "0.1.0",
+      "description": "프롬프트를 회사 PowerPoint 템플릿에 맞춰 구조화된 슬라이드 덱으로 변환하는 자체 호스팅 AI 프레젠테이션 서비스",
+      "url": "https://github.com/hkjang/ptium",
+      "downloadUrl": "https://github.com/hkjang/ptium",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "회사 PowerPoint 템플릿 기반 AI 슬라이드 생성",
+        "레이아웃 자동 선택",
+        "자리 표시자 용량 인식",
+        "브라우저 SVG 미리보기",
+        "폐쇄망/오프라인 지원",
+        "MCP JSON-RPC 통합",
+        "REST API v1",
+        "Keycloak OIDC SSO",
+        "관리자 콘솔"
+      ]
+    }
+    </script>
+
+    <!-- JSON-LD: FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Ptium이란 무엇인가요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium은 프롬프트를 입력하면 회사의 기존 PowerPoint 템플릿(.pptx/.potx)을 100% 유지하면서 AI가 구조화된 슬라이드 덱을 생성해주는 자체 호스팅 서비스입니다. Go 백엔드, React 프론트엔드, PostgreSQL로 구성된 단일 서비스 아키텍처를 가집니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "AI API 키 없이도 사용할 수 있나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "네, Ptium은 결정적 로컬 생성기를 내장하고 있어 AI 공급자 키 없이도 완결된 덱을 만들 수 있습니다. 이 기능은 특히 폐쇄망(에어갭) 환경에서 유용합니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "폐쇄망(오프라인) 환경에서도 사용할 수 있나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "네, Ptium은 오프라인 Docker 이미지 번들을 제공합니다. 인터넷이 없는 Linux/AMD64 환경에서도 ptium:<version> Docker 이미지를 사용하여 배포할 수 있으며, 로컬 생성기를 통해 AI 연결 없이도 프레젠테이션을 생성할 수 있습니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "어떤 PowerPoint 템플릿을 지원하나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "표준 PowerPoint 프레젠테이션 파일(.pptx)과 서식 파일(.potx)을 모두 지원합니다. 기존 발표 파일도 템플릿으로 사용할 수 있으며, 마스터, 레이아웃, 테마 색상, 글꼴, 로고가 모두 보존됩니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "MCP 통합은 어떻게 작동하나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium은 /mcp 엔드포인트에서 Streamable HTTP 방식의 MCP JSON-RPC를 제공합니다. Claude Desktop, Cursor 등의 AI 에이전트에서 ptium.create_presentation, ptium.generate_presentation 등의 도구를 호출하여 프레젠테이션을 직접 생성할 수 있습니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Ptium은 오픈소스인가요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "네, Ptium은 GitHub에서 공개된 오픈소스 프로젝트입니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "보안 인증은 어떻게 처리되나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium은 Keycloak 기반 OIDC 인증, PKCE(S256), 범위/만료일이 있는 해시 API 키, 무중단 유예 기간 키 회전, 비밀 값 쓰기 전용 관리, 구조화 감사 로그 등 엔터프라이즈급 보안을 제공합니다."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- JSON-LD: HowTo -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "Ptium으로 프레젠테이션 만드는 방법",
+      "description": "Ptium을 사용하여 프롬프트 하나로 PowerPoint 프레젠테이션을 생성하는 단계별 가이드",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "name": "템플릿 업로드",
+          "text": "회사 표준 PowerPoint 템플릿(.pptx 또는 .potx)을 업로드합니다. 기존 발표 파일도 템플릿으로 사용할 수 있습니다."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "프롬프트 입력",
+          "text": "주제, 청중, 톤, 언어, 테마, 슬라이드 수를 지정하여 원하는 프레젠테이션을 설명합니다."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "AI 생성",
+          "text": "Ptium이 개요 설계와 문안 작성 2단계를 거쳐 각 슬라이드의 목적에 맞는 레이아웃으로 콘텐츠를 생성합니다."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "미리보기 및 편집",
+          "text": "브라우저에서 SVG 미리보기로 실제 템플릿의 배치, 색상, 글꼴이 적용된 결과를 확인하고 편집합니다."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "PowerPoint 내보내기",
+          "text": "최종 결과를 .pptx 파일로 다운로드합니다. 원본 템플릿과 구분되지 않는 품질의 파일이 만들어집니다."
+        }
+      ]
+    }
+    </script>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                <span class="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 8h1M7 12h1"/><path d="M16 8h1M16 12h1"/><path d="M11 8h2M11 12h2"/></svg>
+                </span>
+                Ptium
+            </a>
+            <div class="nav-links desktop-only">
+                <a href="#features">기능</a>
+                <a href="#how-it-works">작동 방식</a>
+                <a href="#security">보안</a>
+                <a href="#api">API</a>
+                <a href="#deployment">배포</a>
+            </div>
+            <div class="nav-actions desktop-only">
+                <div class="lang-switcher">
+                    <a href="index.html" class="active">한국어</a>
+                    <span>|</span>
+                    <a href="en.html">English</a>
+                </div>
+                <a href="https://github.com/hkjang/ptium" class="btn btn-secondary github-star" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+                    GitHub
+                </a>
+            </div>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="메뉴 열기">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobile-menu">
+        <div class="mobile-nav-links">
+            <a href="#features" class="mobile-link">기능</a>
+            <a href="#how-it-works" class="mobile-link">작동 방식</a>
+            <a href="#security" class="mobile-link">보안</a>
+            <a href="#api" class="mobile-link">API</a>
+            <a href="#deployment" class="mobile-link">배포</a>
+            <a href="https://github.com/hkjang/ptium" class="btn btn-primary" target="_blank">GitHub에서 보기</a>
+            <div class="mobile-lang-switcher">
+                <a href="index.html" class="active">한국어</a>
+                <span>|</span>
+                <a href="en.html">English</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero" id="hero">
+            <div class="hero-bg-gradient"></div>
+            <div class="container">
+                <div class="hero-badge fade-up-element">🚀 v0.1.0 출시 — 자체 호스팅 AI 프레젠테이션</div>
+                <h1 class="hero-headline fade-up-element">
+                    프롬프트 하나로,<br>
+                    <span class="text-gradient">완벽한 프레젠테이션</span>
+                </h1>
+                <p class="hero-subtitle fade-up-element">회사 템플릿 그대로, AI가 만드는 슬라이드 덱</p>
+                <p class="hero-description fade-up-element">
+                    Ptium은 기존 PowerPoint 템플릿의 마스터, 레이아웃, 테마 색상, 글꼴, 로고를 100% 유지하면서
+                    AI가 구조화된 슬라이드 콘텐츠를 생성합니다. 자체 호스팅으로 데이터 주권을 보장하고,
+                    REST API와 MCP 통합으로 기존 워크플로에 자연스럽게 연결됩니다.
+                </p>
+                <div class="hero-ctas fade-up-element">
+                    <a href="https://github.com/hkjang/ptium" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="margin-right:8px"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+                        시작하기
+                    </a>
+                    <a href="https://github.com/hkjang/ptium#readme" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
+                        📖 문서 보기
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Bar -->
+        <section class="stats-bar">
+            <div class="nav-container stats-container">
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">⚡</span>
+                    <span>단일 Go 서비스</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🐘</span>
+                    <span>PostgreSQL만 필요</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🔌</span>
+                    <span>REST + MCP</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🔒</span>
+                    <span>오프라인 지원</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core Features -->
+        <section class="section" id="features">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">핵심 기능</h2>
+                <p class="section-subtitle text-center fade-up-element">프롬프트에서 프레젠테이션까지, 모든 과정을 지능적으로 처리합니다</p>
+                <div class="feature-grid">
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">📑</div>
+                        <h3 class="feature-title">회사 템플릿 기반 생성</h3>
+                        <p class="feature-desc">업로드한 PowerPoint 템플릿의 마스터, 레이아웃, 테마 색상, 글꼴, 로고를 100% 유지하면서 슬라이드만 새로 생성합니다. 결과물은 직접 작성한 자료와 구분할 수 없습니다.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🧠</div>
+                        <h3 class="feature-title">레이아웃 자동 선택</h3>
+                        <p class="feature-desc">표지, 구역, 본문, 2단, 비교, 인용, 이미지, 마무리 등 슬라이드의 목적을 인식하여 최적의 레이아웃을 자동으로 매칭합니다.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">📏</div>
+                        <h3 class="feature-title">용량 인식 텍스트</h3>
+                        <p class="feature-desc">각 자리 표시자의 글자 수를 em 단위로 측정하여 텍스트 넘침 없이 자동 조정합니다. 한글, 한자는 1em, 라틴 문자는 약 0.5em으로 정밀 계산합니다.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">👁️</div>
+                        <h3 class="feature-title">브라우저 SVG 미리보기</h3>
+                        <p class="feature-desc">PowerPoint 없이 브라우저에서 실제 템플릿의 배치, 색상, 글꼴로 렌더링된 슬라이드를 실시간으로 미리봅니다. 내보낸 파일과 동일한 결과입니다.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🌐</div>
+                        <h3 class="feature-title">폐쇄망/오프라인 지원</h3>
+                        <p class="feature-desc">결정적 로컬 생성기가 AI 공급자 키 없이도 완결된 덱을 만듭니다. 오프라인 Docker 이미지 번들로 인터넷 없는 환경에서도 완전히 동작합니다.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🤖</div>
+                        <h3 class="feature-title">MCP 통합</h3>
+                        <p class="feature-desc">Claude Desktop, Cursor 등 AI 에이전트에서 MCP JSON-RPC를 통해 직접 프레젠테이션을 생성하고 관리합니다. 같은 인증과 권한 체계를 사용합니다.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section class="section bg-light" id="how-it-works">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">이렇게 작동합니다</h2>
+                <p class="section-subtitle text-center fade-up-element">5단계로 완성되는 AI 프레젠테이션</p>
+
+                <div class="workflow-visual">
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">1</div>
+                        <h4>템플릿 업로드</h4>
+                        <p>회사 .pptx / .potx를 업로드하면 마스터와 레이아웃을 자동 분석합니다</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">2</div>
+                        <h4>프롬프트 입력</h4>
+                        <p>주제, 청중, 톤, 언어, 테마, 슬라이드 수를 설정합니다</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">3</div>
+                        <h4>AI 생성</h4>
+                        <p>개요 설계 → 문안 작성 2단계로 레이아웃별 콘텐츠를 생성합니다</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">4</div>
+                        <h4>미리보기 & 편집</h4>
+                        <p>브라우저에서 SVG로 실시간 확인하고 수정합니다</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">5</div>
+                        <h4>내보내기</h4>
+                        <p>네이티브 .pptx로 다운로드합니다</p>
+                    </div>
+                </div>
+
+                <!-- Architecture Diagram -->
+                <div class="architecture-diagram mt-12 fade-up-element">
+                    <div class="window-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                        <span class="window-title">architecture.md</span>
+                    </div>
+<pre><code>Browser / API client / MCP client
+                │
+        React 단일 페이지 앱 (Vite + TypeScript)
+                │
+       /api/v1 REST   /mcp JSON-RPC
+                │
+            Go 서비스
+       ┌────────┼─────────┐
+       │                  │
+OIDC discovery/JWKS   AI provider adapter
+       │                  │
+   Keycloak       OpenAI 호환 엔드포인트
+       └────────┬─────────┘
+           PostgreSQL
+  (설정, 덱, 슬라이드, 템플릿 패키지)</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Template Rendering -->
+        <section class="section" id="template-rendering">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">템플릿 렌더링 파이프라인</h2>
+                <p class="section-subtitle text-center fade-up-element">Office Open XML을 직접 읽고 쓰는 정밀한 처리</p>
+                <div class="architecture-diagram fade-up-element">
+                    <div class="window-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                        <span class="window-title">template-pipeline</span>
+                    </div>
+<pre><code>.pptx/.potx 업로드
+        │
+   분석기  →  매니페스트: 슬라이드 크기, 테마 색상/글꼴,
+        │     레이아웃별 자리 표시자 (역할, 위치, 텍스트 용량)
+        │
+   계획 패스  →  서사 구조, 슬라이드별 레이아웃 선택
+        │
+   작성 패스  →  명명된 슬롯에 용량 범위 내 문안 배치
+        │
+   구성기  →  슬롯 검증, 알 수 없는 레이아웃 복구, 오버플로 맞춤
+        │
+   렌더러  →  원본 패키지 + 새로 생성된 슬라이드 파트</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Enterprise Security -->
+        <section class="section bg-dark" id="security">
+            <div class="container text-white">
+                <h2 class="section-title text-center fade-up-element">엔터프라이즈급 보안</h2>
+                <p class="section-subtitle text-center fade-up-element" style="color: #94A3B8">자체 호스팅으로 데이터 주권을 보장하고, 표준 보안 프로토콜을 지원합니다</p>
+                <div class="security-grid">
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🔐</div>
+                        <h4>OIDC / Keycloak SSO</h4>
+                        <p>표준 OIDC 인증 프로토콜과 PKCE(S256)를 지원합니다. Keycloak 역할이 Ptium 관리자에 자동 매핑됩니다.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🔄</div>
+                        <h4>API 키 회전</h4>
+                        <p>범위·만료일이 있는 해시 API 키를 발급하고, 무중단 유예 기간으로 안전하게 회전합니다. 원문은 생성 시 한 번만 표시됩니다.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🛡️</div>
+                        <h4>비밀 관리</h4>
+                        <p>AI 공급자 키와 OIDC 클라이언트 시크릿은 쓰기 전용으로 관리됩니다. 로그, 인시던트, API 응답에서 민감 정보가 자동 제거됩니다.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">📋</div>
+                        <h4>인시던트 추적</h4>
+                        <p>서버 오류에 안정적 핑거프린트를 부여하고, 관리자 콘솔에서 심각도, 상태, 메모와 해결 이력을 관리합니다. 요청 ID로 로그를 추적합니다.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- API & Integration -->
+        <section class="section" id="api">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">개발자를 위한 통합</h2>
+                <p class="section-subtitle text-center fade-up-element">REST API와 MCP로 기존 워크플로에 자연스럽게 연결됩니다</p>
+                <div class="integration-layout fade-up-element">
+                    <div class="api-block glass-panel">
+                        <div class="api-title">
+                            <span class="badge badge-blue">REST</span>
+                            REST API v1
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem;">OpenAPI 스키마 기반의 버전형 REST API. OIDC 토큰 또는 API 키로 인증합니다.</p>
+                        <div class="code-editor">
+                            <div class="code-header">bash — REST API 호출 예시</div>
+<pre><code># 프레젠테이션 목록 조회
+curl -H 'Authorization: Bearer ptium_...' \
+  http://localhost:8080/api/v1/presentations
+
+# 템플릿 업로드
+curl -H 'Authorization: Bearer ptium_...' \
+  -F 'file=@company-template.pptx' \
+  -F 'name=사내 표준 제안서' \
+  http://localhost:8080/api/v1/templates</code></pre>
+                        </div>
+                    </div>
+                    <div class="api-block glass-panel">
+                        <div class="api-title">
+                            <span class="badge badge-purple">MCP</span>
+                            MCP JSON-RPC
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem;">Claude Desktop, Cursor 등 AI 에이전트에서 직접 프레젠테이션을 생성합니다.</p>
+                        <div class="code-editor">
+                            <div class="code-header">json — MCP 도구 호출 예시</div>
+<pre><code>{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "ptium.create_presentation",
+    "arguments": {
+      "title": "2027 제품 전략",
+      "prompt": "지역 리더를 위한 경영 의사결정 덱",
+      "language": "ko",
+      "theme": "aurora",
+      "slideCount": 10
+    }
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tech Stack -->
+                <div class="tech-stack text-center mt-12 fade-up-element">
+                    <h3 style="margin-bottom: 0.5rem;">기술 스택</h3>
+                    <div class="badges">
+                        <span class="tech-badge">🔵 Go</span>
+                        <span class="tech-badge">⚛️ React 19</span>
+                        <span class="tech-badge">📘 TypeScript</span>
+                        <span class="tech-badge">⚡ Vite</span>
+                        <span class="tech-badge">🐘 PostgreSQL</span>
+                        <span class="tech-badge">🐳 Docker</span>
+                        <span class="tech-badge">🔐 Keycloak</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Admin Console -->
+        <section class="section bg-light" id="admin">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">강력한 관리자 콘솔</h2>
+                <p class="section-subtitle text-center fade-up-element">별도 관리자 콘솔에서 서비스 전체를 제어합니다</p>
+                <div class="admin-layout fade-up-element">
+                    <div>
+                        <ul class="admin-list">
+                            <li>
+                                <div class="list-icon">🎨</div>
+                                <div>
+                                    <h5>브랜딩 관리</h5>
+                                    <p>제품명, 로고, 브랜드 색상을 커스터마이즈합니다</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🤖</div>
+                                <div>
+                                    <h5>AI 공급자 설정</h5>
+                                    <p>AI 공급자 URL, 모델, API 키를 쓰기 전용으로 관리합니다</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🔑</div>
+                                <div>
+                                    <h5>OIDC 정책</h5>
+                                    <p>OIDC issuer, client, 역할 정책을 실시간으로 변경합니다</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">👥</div>
+                                <div>
+                                    <h5>사용자 관리</h5>
+                                    <p>사용자 활성화, 관리자 역할 부여, 생성 정책을 관리합니다</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🚨</div>
+                                <div>
+                                    <h5>서버 오류 관리</h5>
+                                    <p>오류의 심각도, 상태, 메모, 해결 이력을 워크플로로 관리합니다</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="admin-image glass-panel">
+                        <div class="placeholder-dashboard">
+                            <div class="dash-nav"></div>
+                            <div style="display:flex;flex:1">
+                                <div class="dash-sidebar"></div>
+                                <div class="dash-main">
+                                    <div class="dash-row">
+                                        <div class="dash-card"></div>
+                                        <div class="dash-card"></div>
+                                        <div class="dash-card"></div>
+                                    </div>
+                                    <div class="dash-row">
+                                        <div class="dash-card h-large"></div>
+                                        <div class="dash-card h-large"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Deployment Options -->
+        <section class="section" id="deployment">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">유연한 배포</h2>
+                <p class="section-subtitle text-center fade-up-element">환경에 맞는 최적의 배포 방법을 선택하세요</p>
+                <div class="deploy-grid">
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>🐳 Docker Compose</h4>
+                        <p>PostgreSQL, Go 서비스, React 앱을 한 번에 실행합니다. 개발과 평가에 가장 빠른 시작점입니다.</p>
+<pre>cp .env.example .env
+docker compose up --build
+
+# 웹 UI: http://localhost:3000
+# API:   http://localhost:8080/api/v1
+# MCP:   http://localhost:8080/mcp</pre>
+                    </div>
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>⚡ 단일 바이너리</h4>
+                        <p>Go 바이너리 하나와 PostgreSQL DSN만으로 실행합니다. 스키마와 기본 설정이 자동으로 생성됩니다.</p>
+<pre>cd server
+DATABASE_URL='postgres://ptium:ptium@localhost:5432/ptium?sslmode=disable' \
+  go run ./cmd/ptium
+
+# 첫 실행 시 자동 마이그레이션
+# OIDC/AI 키 없이도 서버 기동 가능</pre>
+                    </div>
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>📦 오프라인 번들</h4>
+                        <p>인터넷이 없는 폐쇄망 환경을 위한 Docker 이미지 번들입니다. 체크섬 확인, 이미지 로드, 업그레이드를 지원합니다.</p>
+<pre># 빌드 호스트에서 번들 생성
+.\scripts\build-offline.ps1
+
+# 대상 호스트에서 배포
+docker load -i ptium-0.1.0.tar.gz
+docker compose -f docker-compose.offline.yml up</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section class="section bg-light" id="faq">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">자주 묻는 질문</h2>
+                <div class="faq-container">
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            Ptium이란 무엇인가요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Ptium은 프롬프트를 입력하면 회사의 기존 PowerPoint 템플릿을 100% 유지하면서 AI가 구조화된 슬라이드 덱을 생성해주는 자체 호스팅 서비스입니다. Go 백엔드, React 프론트엔드, PostgreSQL로 구성된 단일 서비스 아키텍처를 가집니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            AI API 키 없이도 사용할 수 있나요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>네, Ptium은 결정적 로컬 생성기를 내장하고 있어 AI 공급자 키 없이도 완결된 덱을 만들 수 있습니다. 이 기능은 특히 폐쇄망(에어갭) 환경에서 유용합니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            폐쇄망(오프라인) 환경에서도 사용할 수 있나요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>네, Ptium은 오프라인 Docker 이미지 번들을 제공합니다. 인터넷이 없는 Linux/AMD64 환경에서도 배포할 수 있으며, 로컬 생성기를 통해 AI 연결 없이도 프레젠테이션을 생성할 수 있습니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            어떤 PowerPoint 템플릿을 지원하나요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>표준 PowerPoint 프레젠테이션 파일(.pptx)과 서식 파일(.potx)을 모두 지원합니다. 기존 발표 파일도 템플릿으로 사용할 수 있으며, 마스터, 레이아웃, 테마 색상, 글꼴, 로고가 모두 보존됩니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            MCP 통합은 어떻게 작동하나요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Ptium은 /mcp 엔드포인트에서 Streamable HTTP 방식의 MCP JSON-RPC를 제공합니다. Claude Desktop, Cursor 등의 AI 에이전트에서 프레젠테이션을 직접 생성하고 관리할 수 있습니다. API 키에 mcp:use 범위를 부여하면 됩니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            보안 인증은 어떻게 처리되나요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Keycloak 기반 OIDC 인증, PKCE(S256), 범위/만료일이 있는 해시 API 키, 무중단 유예 기간 키 회전, 비밀 값 쓰기 전용 관리, 구조화 감사 로그 등 엔터프라이즈급 보안을 제공합니다.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            Ptium은 오픈소스인가요?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>네, Ptium은 GitHub에서 공개된 오픈소스 프로젝트입니다. 자체 호스팅하여 완전한 데이터 주권을 유지할 수 있습니다.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Section -->
+        <section class="section" id="get-started">
+            <div class="container">
+                <div class="cta-container glass-panel text-center fade-up-element" style="border-radius: var(--radius-xl)">
+                    <h2 class="cta-title">지금 바로 시작하세요</h2>
+                    <p class="cta-desc" style="margin-bottom: 2rem">프롬프트 하나로 완벽한 프레젠테이션을 만들어 보세요</p>
+                    <a href="https://github.com/hkjang/ptium" class="btn btn-primary btn-xl" target="_blank" rel="noopener">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="margin-right:8px"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+                        GitHub에서 시작하기
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <div class="logo" style="color: var(--white); margin-bottom: 0.5rem">
+                        <span class="logo-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                        </span>
+                        Ptium
+                    </div>
+                    <p class="footer-desc">프롬프트를 구조화된 슬라이드 덱으로 바꾸는 자체 호스팅 AI 프레젠테이션 서비스</p>
+                </div>
+                <div>
+                    <h4 class="footer-heading">링크</h4>
+                    <div class="footer-links">
+                        <a href="https://github.com/hkjang/ptium" target="_blank">GitHub</a>
+                        <a href="https://github.com/hkjang/ptium#readme" target="_blank">문서</a>
+                        <a href="https://github.com/hkjang/ptium/blob/main/LICENSE" target="_blank">라이선스</a>
+                        <a href="en.html">English</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>© 2025 Ptium. 오픈소스 프로젝트.</span>
+                <span class="footer-contact">문의: <a href="mailto:gagagiga@naver.com">gagagiga@naver.com</a></span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+    (function() {
+        'use strict';
+
+        // Mobile menu toggle
+        const menuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        if (menuBtn && mobileMenu) {
+            menuBtn.addEventListener('click', function() {
+                mobileMenu.classList.toggle('active');
+                const isOpen = mobileMenu.classList.contains('active');
+                menuBtn.setAttribute('aria-label', isOpen ? '메뉴 닫기' : '메뉴 열기');
+            });
+            // Close menu on link click
+            mobileMenu.querySelectorAll('a').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    mobileMenu.classList.remove('active');
+                });
+            });
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+            anchor.addEventListener('click', function(e) {
+                var target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Scroll animations with IntersectionObserver
+        var animatedElements = document.querySelectorAll('.fade-up-element');
+        if ('IntersectionObserver' in window) {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+            animatedElements.forEach(function(el) { observer.observe(el); });
+        } else {
+            animatedElements.forEach(function(el) { el.classList.add('animate-in'); });
+        }
+
+        // FAQ accordion
+        document.querySelectorAll('.faq-question').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var answer = this.nextElementSibling;
+                var icon = this.querySelector('.faq-icon');
+                var isOpen = answer.style.maxHeight && answer.style.maxHeight !== '0px';
+                // Close all
+                document.querySelectorAll('.faq-answer').forEach(function(a) { a.style.maxHeight = '0px'; });
+                document.querySelectorAll('.faq-icon').forEach(function(i) { i.textContent = '+'; });
+                document.querySelectorAll('.faq-question').forEach(function(q) { q.setAttribute('aria-expanded', 'false'); });
+                if (!isOpen) {
+                    answer.style.maxHeight = answer.scrollHeight + 'px';
+                    icon.textContent = '−';
+                    this.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+
+        // Navbar scroll effect
+        var navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', function() {
+            if (window.scrollY > 10) {
+                navbar.style.boxShadow = 'var(--shadow-md)';
+            } else {
+                navbar.style.boxShadow = 'none';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ptium - AI Presentation Generator | Create PowerPoint Slides from Prompts</title>
+    <meta name="description" content="Ptium is a self-hosted AI presentation service that converts prompts into structured slide decks using your company's PowerPoint templates. REST API, MCP, offline support.">
+    <meta name="keywords" content="AI presentation, PowerPoint generator, slide deck, MCP, REST API, self-hosted, offline, prompt, template, Ptium">
+    <meta name="author" content="Ptium">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Ptium - AI Presentation Generator">
+    <meta property="og:description" content="One prompt, perfect presentations. AI-powered slide decks that match your company templates. Self-hosted, REST API, MCP, offline support.">
+    <meta property="og:url" content="https://hkjang.github.io/ptium/en.html">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Ptium">
+    <meta property="og:locale" content="en_US">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Ptium - AI Presentation Generator">
+    <meta name="twitter:description" content="One prompt, perfect presentations. AI-powered slide decks that match your company templates.">
+
+    <!-- Canonical & Alternate -->
+    <link rel="canonical" href="https://hkjang.github.io/ptium/en.html">
+    <link rel="alternate" hreflang="ko" href="https://hkjang.github.io/ptium/">
+    <link rel="alternate" hreflang="en" href="https://hkjang.github.io/ptium/en.html">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+
+    <!-- JSON-LD: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Ptium",
+      "operatingSystem": "Linux, Windows, macOS",
+      "applicationCategory": "BusinessApplication",
+      "softwareVersion": "0.1.0",
+      "description": "Self-hosted AI presentation service that converts prompts into structured slide decks using your company's PowerPoint templates.",
+      "url": "https://github.com/hkjang/ptium",
+      "downloadUrl": "https://github.com/hkjang/ptium",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "Template-driven AI slide generation",
+        "Auto layout selection",
+        "Capacity-aware text fitting",
+        "Browser SVG preview",
+        "Offline/air-gapped support",
+        "MCP JSON-RPC integration",
+        "REST API v1",
+        "Keycloak OIDC SSO",
+        "Admin console"
+      ]
+    }
+    </script>
+
+    <!-- JSON-LD: FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Ptium?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium is a self-hosted AI presentation service that automatically generates structured PowerPoint slide decks from simple text prompts while preserving 100% of your existing PowerPoint templates — masters, layouts, theme colors, fonts, and logos. It uses a Go backend, React frontend, and PostgreSQL in a single-service architecture."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need an AI API key to use Ptium?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. Ptium includes a deterministic local generator that can create complete decks without any AI provider key. This is especially useful for air-gapped or offline deployments. When an AI provider key is configured, Ptium uses it for enhanced generation quality."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I use Ptium offline or in air-gapped environments?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Ptium provides offline Docker image bundles for Linux/AMD64 environments without internet access. The local generator works without external AI connections, and 5 built-in template designs are always available."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What PowerPoint templates does Ptium support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium supports standard PowerPoint presentation files (.pptx) and template files (.potx). Existing presentation files can also be used as templates. Masters, layouts, theme colors, fonts, and logos are all perfectly preserved."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does MCP integration work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium provides a Streamable HTTP MCP JSON-RPC endpoint at /mcp. AI agents like Claude Desktop and Cursor can directly create and manage presentations using tools like ptium.create_presentation and ptium.generate_presentation with an API key that has mcp:use scope."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is Ptium open source?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, Ptium is an open-source project available on GitHub. You can self-host it to maintain complete data sovereignty."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Ptium handle security and authentication?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Ptium supports Keycloak OIDC authentication with PKCE(S256), scoped and expirable hashed API keys with zero-downtime grace period rotation, write-only secret management, redacted logging, and structured audit trails — all enterprise-grade security features."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- JSON-LD: HowTo -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      "name": "How to Create a Presentation with Ptium",
+      "description": "Step-by-step guide to generating a PowerPoint presentation from a single prompt using Ptium.",
+      "step": [
+        {
+          "@type": "HowToStep",
+          "name": "Upload Template",
+          "text": "Upload your corporate PowerPoint template (.pptx or .potx). Existing presentation files can also be used as templates."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Enter Prompt",
+          "text": "Specify the topic, audience, tone, language, theme, and slide count to describe your desired presentation."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "AI Generation",
+          "text": "Ptium uses a two-pass generation process — outline design followed by copy writing — to create content matched to each slide's layout."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Preview & Edit",
+          "text": "Review the results in the browser SVG preview showing actual template layout, colors, and fonts. Edit as needed."
+        },
+        {
+          "@type": "HowToStep",
+          "name": "Export PowerPoint",
+          "text": "Download the final result as a native .pptx file. The output is indistinguishable from hand-authored presentations."
+        }
+      ]
+    }
+    </script>
+</head>
+<body>
+
+    <!-- Navigation -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="en.html" class="logo">
+                <span class="logo-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 8h1M7 12h1"/><path d="M16 8h1M16 12h1"/><path d="M11 8h2M11 12h2"/></svg>
+                </span>
+                Ptium
+            </a>
+            <div class="nav-links desktop-only">
+                <a href="#features">Features</a>
+                <a href="#how-it-works">How It Works</a>
+                <a href="#security">Security</a>
+                <a href="#api">API</a>
+                <a href="#deployment">Deployment</a>
+            </div>
+            <div class="nav-actions desktop-only">
+                <div class="lang-switcher">
+                    <a href="index.html">한국어</a>
+                    <span>|</span>
+                    <a href="en.html" class="active">English</a>
+                </div>
+                <a href="https://github.com/hkjang/ptium" class="btn btn-secondary github-star" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"></path></svg>
+                    GitHub
+                </a>
+            </div>
+            <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobile-menu">
+        <div class="mobile-nav-links">
+            <a href="#features" class="mobile-link">Features</a>
+            <a href="#how-it-works" class="mobile-link">How It Works</a>
+            <a href="#security" class="mobile-link">Security</a>
+            <a href="#api" class="mobile-link">API</a>
+            <a href="#deployment" class="mobile-link">Deployment</a>
+            <a href="https://github.com/hkjang/ptium" class="btn btn-primary" target="_blank">View on GitHub</a>
+            <div class="mobile-lang-switcher">
+                <a href="index.html">한국어</a>
+                <span>|</span>
+                <a href="en.html" class="active">English</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <!-- Hero Section -->
+        <section class="hero" id="hero">
+            <div class="hero-bg-gradient"></div>
+            <div class="container">
+                <div class="hero-badge fade-up-element">🚀 v0.1.0 Released — Self-Hosted AI Presentations</div>
+                <h1 class="hero-headline fade-up-element">
+                    One Prompt,<br>
+                    <span class="text-gradient">Perfect Presentations</span>
+                </h1>
+                <p class="hero-subtitle fade-up-element">AI-powered slide decks that match your company templates</p>
+                <p class="hero-description fade-up-element">
+                    Ptium generates structured PowerPoint content while preserving 100% of your existing template's
+                    masters, layouts, theme colors, fonts, and logos. Self-host for data sovereignty,
+                    integrate with REST API and MCP for seamless workflow automation.
+                </p>
+                <div class="hero-ctas fade-up-element">
+                    <a href="https://github.com/hkjang/ptium" class="btn btn-primary btn-lg" target="_blank" rel="noopener">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="margin-right:8px"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+                        Get Started
+                    </a>
+                    <a href="https://github.com/hkjang/ptium#readme" class="btn btn-outline btn-lg" target="_blank" rel="noopener">
+                        📖 Read Docs
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Stats Bar -->
+        <section class="stats-bar">
+            <div class="nav-container stats-container">
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">⚡</span>
+                    <span>Single Go Service</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🐘</span>
+                    <span>PostgreSQL Only</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🔌</span>
+                    <span>REST + MCP</span>
+                </div>
+                <div class="stat-item fade-up-element">
+                    <span class="stat-icon">🔒</span>
+                    <span>Offline Ready</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core Features -->
+        <section class="section" id="features">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Core Features</h2>
+                <p class="section-subtitle text-center fade-up-element">From prompt to presentation, every step is intelligently handled</p>
+                <div class="feature-grid">
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">📑</div>
+                        <h3 class="feature-title">Template-Driven Generation</h3>
+                        <p class="feature-desc">Preserves 100% of your existing PowerPoint template's masters, layouts, theme colors, fonts, and logos while generating new slides. The output is indistinguishable from hand-authored presentations.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🧠</div>
+                        <h3 class="feature-title">Auto Layout Selection</h3>
+                        <p class="feature-desc">Recognizes slide purposes — cover, section, body, two-column, comparison, quote, image, and closing — and automatically matches the optimal layout from your template.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">📏</div>
+                        <h3 class="feature-title">Capacity-Aware Text</h3>
+                        <p class="feature-desc">Measures each placeholder's character capacity in em units — Hangul/Kanji at 1em, Latin at ~0.5em — and auto-adjusts text to prevent overflow with precomputed scaling.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">👁️</div>
+                        <h3 class="feature-title">Browser SVG Preview</h3>
+                        <p class="feature-desc">Preview slides in your browser using actual template layout, colors, and fonts — no PowerPoint software needed. The preview matches the exported file exactly.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🌐</div>
+                        <h3 class="feature-title">Offline / Air-Gapped</h3>
+                        <p class="feature-desc">A deterministic local generator creates complete decks without AI provider keys. Offline Docker image bundles enable deployment in environments without internet access.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🤖</div>
+                        <h3 class="feature-title">MCP Integration</h3>
+                        <p class="feature-desc">Create presentations directly from AI agents like Claude Desktop and Cursor via MCP JSON-RPC. Uses the same authentication and authorization system as REST.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <!-- How It Works -->
+        <section class="section bg-light" id="how-it-works">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">How It Works</h2>
+                <p class="section-subtitle text-center fade-up-element">AI presentations in 5 simple steps</p>
+
+                <div class="workflow-visual">
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">1</div>
+                        <h4>Upload Template</h4>
+                        <p>Upload your .pptx / .potx and Ptium auto-analyzes masters and layouts</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">2</div>
+                        <h4>Enter Prompt</h4>
+                        <p>Set topic, audience, tone, language, theme, and slide count</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">3</div>
+                        <h4>AI Generation</h4>
+                        <p>Two-pass process: outline design → copy writing per layout</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">4</div>
+                        <h4>Preview & Edit</h4>
+                        <p>Review with real-time SVG preview in browser</p>
+                    </div>
+                    <div class="step-connector desktop-only">→</div>
+                    <div class="step-card fade-up-element">
+                        <div class="step-number">5</div>
+                        <h4>Export</h4>
+                        <p>Download as native .pptx file</p>
+                    </div>
+                </div>
+
+                <!-- Architecture Diagram -->
+                <div class="architecture-diagram mt-12 fade-up-element">
+                    <div class="window-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                        <span class="window-title">architecture.md</span>
+                    </div>
+<pre><code>Browser / API client / MCP client
+                │
+        React Single-Page App (Vite + TypeScript)
+                │
+       /api/v1 REST   /mcp JSON-RPC
+                │
+            Go Service
+       ┌────────┼─────────┐
+       │                  │
+OIDC discovery/JWKS   AI provider adapter
+       │                  │
+   Keycloak       OpenAI-compatible endpoint
+       └────────┬─────────┘
+           PostgreSQL
+  (settings, decks, slides, template packages)</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Template Rendering Pipeline -->
+        <section class="section" id="template-rendering">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Template Rendering Pipeline</h2>
+                <p class="section-subtitle text-center fade-up-element">Direct Office Open XML processing — no PowerPoint or LibreOffice needed</p>
+                <div class="architecture-diagram fade-up-element">
+                    <div class="window-header">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                        <span class="window-title">template-pipeline</span>
+                    </div>
+<pre><code>Upload .pptx/.potx
+        │
+   Analyzer  →  Manifest: slide size, theme colors & fonts,
+        │        per-layout placeholders (role, position, text capacity)
+        │
+   Plan pass  →  Narrative arc, one layout chosen per slide
+        │
+   Write pass →  Copy written into named slots within budgets
+        │
+   Composer   →  Validates slots, repairs unknown layouts, fits overflow
+        │
+   Renderer   →  Original package + newly generated slide parts</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Enterprise Security -->
+        <section class="section bg-dark" id="security">
+            <div class="container text-white">
+                <h2 class="section-title text-center fade-up-element">Enterprise-Grade Security</h2>
+                <p class="section-subtitle text-center fade-up-element" style="color: #94A3B8">Self-host for data sovereignty with industry-standard security protocols</p>
+                <div class="security-grid">
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🔐</div>
+                        <h4>OIDC / Keycloak SSO</h4>
+                        <p>Standard OIDC authentication with PKCE (S256). Keycloak realm or client roles automatically map to Ptium admin roles.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🔄</div>
+                        <h4>API Key Rotation</h4>
+                        <p>Issue scoped, expirable hashed API keys with zero-downtime grace period rotation. The raw key is shown only once at creation.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">🛡️</div>
+                        <h4>Secret Management</h4>
+                        <p>AI provider keys and OIDC client secrets are write-only. Logs, incidents, and API responses automatically redact sensitive information.</p>
+                    </div>
+                    <div class="security-card fade-up-element">
+                        <div class="sec-icon">📋</div>
+                        <h4>Incident Tracking</h4>
+                        <p>Server errors receive stable fingerprints. Manage severity, status, notes, and resolution history from the admin console with request ID correlation.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- API & Integration -->
+        <section class="section" id="api">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Built for Developers</h2>
+                <p class="section-subtitle text-center fade-up-element">Integrate with REST API and MCP for seamless workflow automation</p>
+                <div class="integration-layout fade-up-element">
+                    <div class="api-block glass-panel">
+                        <div class="api-title">
+                            <span class="badge badge-blue">REST</span>
+                            REST API v1
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem;">Versioned REST API with OpenAPI schema. Authenticate with OIDC tokens or API keys.</p>
+                        <div class="code-editor">
+                            <div class="code-header">bash — REST API Example</div>
+<pre><code># List presentations
+curl -H 'Authorization: Bearer ptium_...' \
+  http://localhost:8080/api/v1/presentations
+
+# Upload a template
+curl -H 'Authorization: Bearer ptium_...' \
+  -F 'file=@company-template.pptx' \
+  -F 'name=Corporate Standard' \
+  http://localhost:8080/api/v1/templates</code></pre>
+                        </div>
+                    </div>
+                    <div class="api-block glass-panel">
+                        <div class="api-title">
+                            <span class="badge badge-purple">MCP</span>
+                            MCP JSON-RPC
+                        </div>
+                        <p style="color: var(--text-muted); margin-bottom: 1rem;">Create presentations directly from AI agents like Claude Desktop and Cursor.</p>
+                        <div class="code-editor">
+                            <div class="code-header">json — MCP Tool Call Example</div>
+<pre><code>{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "ptium.create_presentation",
+    "arguments": {
+      "title": "2027 Product Strategy",
+      "prompt": "Executive deck for regional leaders",
+      "language": "en",
+      "theme": "aurora",
+      "slideCount": 10
+    }
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tech Stack -->
+                <div class="tech-stack text-center mt-12 fade-up-element">
+                    <h3 style="margin-bottom: 0.5rem;">Tech Stack</h3>
+                    <div class="badges">
+                        <span class="tech-badge">🔵 Go</span>
+                        <span class="tech-badge">⚛️ React 19</span>
+                        <span class="tech-badge">📘 TypeScript</span>
+                        <span class="tech-badge">⚡ Vite</span>
+                        <span class="tech-badge">🐘 PostgreSQL</span>
+                        <span class="tech-badge">🐳 Docker</span>
+                        <span class="tech-badge">🔐 Keycloak</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Admin Console -->
+        <section class="section bg-light" id="admin">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Powerful Admin Console</h2>
+                <p class="section-subtitle text-center fade-up-element">Manage your entire deployment from a unified dashboard</p>
+                <div class="admin-layout fade-up-element">
+                    <div>
+                        <ul class="admin-list">
+                            <li>
+                                <div class="list-icon">🎨</div>
+                                <div>
+                                    <h5>Branding</h5>
+                                    <p>Customize product name, logo, and brand colors</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🤖</div>
+                                <div>
+                                    <h5>AI Provider Settings</h5>
+                                    <p>Configure AI provider URLs, models, and write-only API keys</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🔑</div>
+                                <div>
+                                    <h5>OIDC Policy</h5>
+                                    <p>Manage OIDC issuer, client, and role policies in real-time</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">👥</div>
+                                <div>
+                                    <h5>User Management</h5>
+                                    <p>Activate users, assign admin roles, and manage generation policies</p>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="list-icon">🚨</div>
+                                <div>
+                                    <h5>Server Error Management</h5>
+                                    <p>Manage error severity, status, notes, and resolution history workflows</p>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="admin-image glass-panel">
+                        <div class="placeholder-dashboard">
+                            <div class="dash-nav"></div>
+                            <div style="display:flex;flex:1">
+                                <div class="dash-sidebar"></div>
+                                <div class="dash-main">
+                                    <div class="dash-row">
+                                        <div class="dash-card"></div>
+                                        <div class="dash-card"></div>
+                                        <div class="dash-card"></div>
+                                    </div>
+                                    <div class="dash-row">
+                                        <div class="dash-card h-large"></div>
+                                        <div class="dash-card h-large"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Deployment Options -->
+        <section class="section" id="deployment">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Flexible Deployment</h2>
+                <p class="section-subtitle text-center fade-up-element">Choose the deployment method that fits your environment</p>
+                <div class="deploy-grid">
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>🐳 Docker Compose</h4>
+                        <p>Run PostgreSQL, Go service, and React app all at once. The fastest way to get started for development and evaluation.</p>
+<pre>cp .env.example .env
+docker compose up --build
+
+# Web UI: http://localhost:3000
+# API:   http://localhost:8080/api/v1
+# MCP:   http://localhost:8080/mcp</pre>
+                    </div>
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>⚡ Single Binary</h4>
+                        <p>Run with just a Go binary and a PostgreSQL DSN. Schema and default settings are created automatically on first run.</p>
+<pre>cd server
+DATABASE_URL='postgres://ptium:ptium@localhost:5432/ptium?sslmode=disable' \
+  go run ./cmd/ptium
+
+# Auto migration on first run
+# Works without OIDC/AI keys</pre>
+                    </div>
+                    <div class="deploy-card glass-panel fade-up-element">
+                        <h4>📦 Offline Bundle</h4>
+                        <p>Docker image bundle for air-gapped environments without internet. Includes checksum verification, image loading, and upgrade support.</p>
+<pre># Build the bundle on a connected host
+.\scripts\build-offline.ps1
+
+# Deploy on the target host
+docker load -i ptium-0.1.0.tar.gz
+docker compose -f docker-compose.offline.yml up</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section class="section bg-light" id="faq">
+            <div class="container">
+                <h2 class="section-title text-center fade-up-element">Frequently Asked Questions</h2>
+                <div class="faq-container">
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            What is Ptium?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Ptium is a self-hosted AI presentation service that automatically generates structured PowerPoint slide decks from simple text prompts while preserving 100% of your existing PowerPoint templates. It uses a Go backend, React frontend, and PostgreSQL in a single-service architecture.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            Do I need an AI API key?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>No. Ptium includes a deterministic local generator that can create complete decks without any AI provider key. This is especially useful for air-gapped or offline deployments. An AI provider key enhances generation quality when configured.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            Can I use it offline or in air-gapped environments?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Yes! Ptium provides offline Docker image bundles for Linux/AMD64 environments without internet access. The local generator works without external AI connections, and 5 built-in template designs are always available.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            What PowerPoint templates are supported?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Standard PowerPoint presentation files (.pptx) and template files (.potx) are both supported. Existing presentation files can also be used as templates. Masters, layouts, theme colors, fonts, and logos are all perfectly preserved.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            How does MCP integration work?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Ptium provides a Streamable HTTP MCP JSON-RPC endpoint at /mcp. AI agents like Claude Desktop and Cursor can directly create and manage presentations. Create an API key with mcp:use scope and configure your MCP client to connect.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            How does security and authentication work?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Ptium supports Keycloak OIDC authentication with PKCE(S256), scoped and expirable hashed API keys with zero-downtime grace period rotation, write-only secret management, and structured audit trails.</p>
+                        </div>
+                    </div>
+                    <div class="faq-item fade-up-element">
+                        <button class="faq-question" aria-expanded="false">
+                            Is Ptium open source?
+                            <span class="faq-icon">+</span>
+                        </button>
+                        <div class="faq-answer">
+                            <p>Yes, Ptium is an open-source project available on GitHub. You can self-host it to maintain complete data sovereignty.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CTA Section -->
+        <section class="section" id="get-started">
+            <div class="container">
+                <div class="cta-container glass-panel text-center fade-up-element" style="border-radius: var(--radius-xl)">
+                    <h2 class="cta-title">Get Started Today</h2>
+                    <p class="cta-desc" style="margin-bottom: 2rem">Create perfect presentations from a single prompt</p>
+                    <a href="https://github.com/hkjang/ptium" class="btn btn-primary btn-xl" target="_blank" rel="noopener">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" style="margin-right:8px"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>
+                        Get Started on GitHub
+                    </a>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <div class="logo" style="color: var(--white); margin-bottom: 0.5rem">
+                        <span class="logo-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                        </span>
+                        Ptium
+                    </div>
+                    <p class="footer-desc">Self-hosted AI presentation service that converts prompts into structured slide decks.</p>
+                </div>
+                <div>
+                    <h4 class="footer-heading">Links</h4>
+                    <div class="footer-links">
+                        <a href="https://github.com/hkjang/ptium" target="_blank">GitHub</a>
+                        <a href="https://github.com/hkjang/ptium#readme" target="_blank">Documentation</a>
+                        <a href="https://github.com/hkjang/ptium/blob/main/LICENSE" target="_blank">License</a>
+                        <a href="index.html">한국어</a>
+                    </div>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>© 2025 Ptium. Open Source Project.</span>
+                <span class="footer-contact">Contact: <a href="mailto:gagagiga@naver.com">gagagiga@naver.com</a></span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script>
+    (function() {
+        'use strict';
+
+        // Mobile menu toggle
+        var menuBtn = document.getElementById('mobile-menu-btn');
+        var mobileMenu = document.getElementById('mobile-menu');
+        if (menuBtn && mobileMenu) {
+            menuBtn.addEventListener('click', function() {
+                mobileMenu.classList.toggle('active');
+                var isOpen = mobileMenu.classList.contains('active');
+                menuBtn.setAttribute('aria-label', isOpen ? 'Close menu' : 'Open menu');
+            });
+            mobileMenu.querySelectorAll('a').forEach(function(link) {
+                link.addEventListener('click', function() {
+                    mobileMenu.classList.remove('active');
+                });
+            });
+        }
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
+            anchor.addEventListener('click', function(e) {
+                var target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    e.preventDefault();
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Scroll animations with IntersectionObserver
+        var animatedElements = document.querySelectorAll('.fade-up-element');
+        if ('IntersectionObserver' in window) {
+            var observer = new IntersectionObserver(function(entries) {
+                entries.forEach(function(entry) {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('animate-in');
+                        observer.unobserve(entry.target);
+                    }
+                });
+            }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+            animatedElements.forEach(function(el) { observer.observe(el); });
+        } else {
+            animatedElements.forEach(function(el) { el.classList.add('animate-in'); });
+        }
+
+        // FAQ accordion
+        document.querySelectorAll('.faq-question').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var answer = this.nextElementSibling;
+                var icon = this.querySelector('.faq-icon');
+                var isOpen = answer.style.maxHeight && answer.style.maxHeight !== '0px';
+                // Close all
+                document.querySelectorAll('.faq-answer').forEach(function(a) { a.style.maxHeight = '0px'; });
+                document.querySelectorAll('.faq-icon').forEach(function(i) { i.textContent = '+'; });
+                document.querySelectorAll('.faq-question').forEach(function(q) { q.setAttribute('aria-expanded', 'false'); });
+                if (!isOpen) {
+                    answer.style.maxHeight = answer.scrollHeight + 'px';
+                    icon.textContent = '−';
+                    this.setAttribute('aria-expanded', 'true');
+                }
+            });
+        });
+
+        // Navbar scroll effect
+        var navbar = document.querySelector('.navbar');
+        window.addEventListener('scroll', function() {
+            if (window.scrollY > 10) {
+                navbar.style.boxShadow = 'var(--shadow-md)';
+            } else {
+                navbar.style.boxShadow = 'none';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>
