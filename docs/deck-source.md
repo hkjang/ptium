@@ -176,17 +176,27 @@ Compiling also measures the slides it produced, and every compile response
 carries `findings` beside its warnings. A warning says what compiling changed; a
 finding says what still looks wrong once the slide is drawn:
 
-| Kind | Meaning |
-| --- | --- |
-| `overflow` | text that must shrink past readability, or does not fit at all |
-| `outside` | something drawn past the edge of its region or of the slide |
-| `collision` | two regions on top of each other, or text over the template's own picture or lettering |
-| `contrast` | composed text below 4.5:1 against what sits behind it |
-| `orphan` | a heading whose wrap leaves one stray word or syllable on its last line |
+A finding is either a defect — the slide is drawn wrong — or advisory: the slide is
+drawn correctly and could still be better. The two are kept apart because
+conflating them trains people to ignore both, and because nothing advisory
+justifies rewriting an author's words to satisfy a measurement.
+
+| Kind | | Meaning |
+| --- | --- | --- |
+| `overflow` | defect | text that must shrink past readability, or does not fit at all |
+| `outside` | defect | something drawn past the edge of its region or of the slide |
+| `collision` | defect | two regions on top of each other, or text over the template's own picture or lettering |
+| `contrast` | defect | composed text below 4.5:1 against what sits behind it |
+| `orphan` | advisory | a heading whose wrap leaves one stray word or syllable on its last line |
+| `density` | advisory | more than six points on a slide, or a region filled to its last line |
+| `notes` | advisory | a slide that argues something with nothing written down to say |
+
+`GET …/inspect` reports `defects` and `advisories` separately, and `clean` refers
+to the defects: a deck can be drawn perfectly and still be unfinished.
 
 The same measurements run over every shipped design in the test suite, against a
-deck that uses a cover, prose, each component, a table and a chart. That is what
-replaced opening a rendered file and looking at it.
+deck that uses a cover, prose, each component, a table, a chart and a grid. That
+is what replaced opening a rendered file and looking at it.
 
 The first slide is a cover only by convention. One that carries a component or a
 list of points is compiled as content, whatever its position.

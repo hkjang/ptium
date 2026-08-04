@@ -1,6 +1,7 @@
 package pptx
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -39,7 +40,8 @@ func exerciseDeck(manifest Manifest) Deck {
 	closing := layoutFor(RoleClosing)
 
 	deck := Deck{Title: "클라우드 전환 로드맵", Language: "ko"}
-	deck.Slides = append(deck.Slides, Slide{LayoutID: cover.ID, Fields: map[string][]Paragraph{
+	notes := "이 슬라이드에서 말할 내용을 두세 문장으로 적어 둡니다."
+	deck.Slides = append(deck.Slides, Slide{LayoutID: cover.ID, Notes: notes, Fields: map[string][]Paragraph{
 		SlotTitle:    line("2026년 하반기 클라우드 전환 로드맵과 투자 타당성"),
 		SlotSubtitle: line("KCB 데이터혁신본부 · 임원 보고"),
 	}})
@@ -69,11 +71,11 @@ func exerciseDeck(manifest Manifest) Deck {
 		{Kind: BlockShare, Caption: "구성", Items: []Item{
 			{Label: "핵심", Number: pointer(52)}, {Label: "주변", Number: pointer(31)}, {Label: "폐기", Number: pointer(17)}}},
 	} {
-		deck.Slides = append(deck.Slides, Slide{LayoutID: content.ID,
+		deck.Slides = append(deck.Slides, Slide{LayoutID: content.ID, Notes: notes,
 			Fields: map[string][]Paragraph{SlotTitle: line("전환 계획 상세")},
 			Blocks: map[string]Block{bodySlot(content): block}})
 	}
-	deck.Slides = append(deck.Slides, Slide{LayoutID: closing.ID, Fields: map[string][]Paragraph{
+	deck.Slides = append(deck.Slides, Slide{LayoutID: closing.ID, Notes: notes, Fields: map[string][]Paragraph{
 		SlotTitle:         line("다음 단계"),
 		bodySlot(closing): line("3분기 착수를 승인해 주십시오"),
 	}})
@@ -103,7 +105,9 @@ func TestBuiltinDesignsDrawARealDeckCleanly(t *testing.T) {
 			t.Fatalf("%s: %v", key, err)
 		}
 		deck := exerciseDeck(manifest)
-		if findings := InspectDeck(manifest, deck); len(findings) > 0 {
+		// Drawing defects only: whether a deck has speaker notes is the author's
+		// business, and this test is about the designs.
+		if findings := Defects(InspectDeck(manifest, deck)); len(findings) > 0 {
 			messages := make([]string, 0, len(findings))
 			for _, finding := range findings {
 				messages = append(messages, finding.String())
@@ -198,6 +202,10 @@ func TestInspectFindsAHeadingThatEndsOnOneSyllable(t *testing.T) {
 	if len(findings) != 1 || findings[0].Kind != FindingOrphan {
 		t.Fatalf("findings = %+v", findings)
 	}
+	// Nothing is drawn wrong: the heading simply reads better if it is tightened.
+	if !findings[0].Advisory {
+		t.Fatal("an orphan is a polish issue, not a defect")
+	}
 
 	// A heading that fills both lines is fine, and so is one that fits on one.
 	for _, text := range []string{"클라우드 전환 로드맵", "클라우드 전환 로드맵과 투자 타당성 보고서 초안 검"} {
@@ -240,5 +248,60 @@ func TestFittingMovesACutRatherThanLeavingAnOrphan(t *testing.T) {
 	}
 	if !strings.HasPrefix("클라우드 전환 로드맵과 투자 타당성 검토", strings.TrimSuffix(fitted[0].Text, "…")) {
 		t.Fatalf("the text was rewritten rather than cut: %q", fitted[0].Text)
+	}
+}
+
+func TestInspectSeparatesUnfinishedFromBroken(t *testing.T) {
+	body := Placeholder{Slot: SlotBody, Kind: "text", Type: "body",
+		X: 800000, Y: 1800000, Width: 6000000, Height: 3600000,
+		FontSize: 1800, MaxChars: 240, MaxLines: 10, LineEm: 24}
+	layout := Layout{ID: "content", Name: "Content", Role: RoleContent, Background: "FFFFFF",
+		Placeholders: []Placeholder{
+			{Slot: SlotTitle, Kind: "text", Type: "title", Width: 8000000, Height: 900000,
+				FontSize: 3200, MaxChars: 40, MaxLines: 2, LineEm: 22},
+			body,
+		}}
+	manifest := Manifest{Version: ManifestVersion, SlideWidth: 12192000, SlideHeight: 6858000,
+		Theme:   Theme{Colors: map[string]string{"lt1": "FFFFFF", "dk1": "111111", "accent1": "1E6FFF"}},
+		Layouts: []Layout{layout}}
+
+	points := make([]Paragraph, 0, 8)
+	for index := range 8 {
+		points = append(points, Paragraph{Text: fmt.Sprintf("%d번째 요점입니다", index+1)})
+	}
+	crowded := Deck{Slides: []Slide{{LayoutID: "content", Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "전환 계획"}}, SlotBody: points}}}}
+
+	findings := InspectDeck(manifest, crowded)
+	kinds := map[string]bool{}
+	for _, finding := range findings {
+		kinds[finding.Kind] = true
+		if !finding.Advisory {
+			t.Fatalf("a crowded slide with no notes is unfinished, not broken: %+v", finding)
+		}
+	}
+	if !kinds[FindingDensity] || !kinds[FindingNotes] {
+		t.Fatalf("both the density and the missing notes should be reported: %v", kinds)
+	}
+	// Nothing is drawn wrong, so the defect list is empty.
+	if defects := Defects(findings); len(defects) != 0 {
+		t.Fatalf("defects = %+v", defects)
+	}
+
+	// Six points with notes is a slide, not a wall.
+	fine := Deck{Slides: []Slide{{LayoutID: "content", Notes: "말할 내용",
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "전환 계획"}}, SlotBody: points[:5]}}}}
+	if reported := InspectDeck(manifest, fine); len(reported) != 0 {
+		t.Fatalf("a reasonable slide must be quiet: %+v", reported)
+	}
+
+	// A cover carries the room on its own, so it needs no notes.
+	coverLayout := Layout{ID: "cover", Name: "Cover", Role: RoleTitle, Background: "FFFFFF",
+		Placeholders: []Placeholder{{Slot: SlotTitle, Kind: "text", Type: "title",
+			Width: 8000000, Height: 900000, FontSize: 4000, MaxChars: 40, MaxLines: 2, LineEm: 20}}}
+	manifest.Layouts = append(manifest.Layouts, coverLayout)
+	cover := Deck{Slides: []Slide{{LayoutID: "cover", Fields: map[string][]Paragraph{SlotTitle: {{Text: "전환 계획"}}}}}}
+	if reported := InspectDeck(manifest, cover); len(reported) != 0 {
+		t.Fatalf("a cover without notes must not be reported: %+v", reported)
 	}
 }

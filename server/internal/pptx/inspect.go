@@ -22,9 +22,28 @@ const (
 	FindingCollision = "collision"
 	// FindingContrast is text that cannot be read against what is behind it.
 	FindingContrast = "contrast"
+	// The kinds below are advisory. They describe a slide that is drawn correctly
+	// and could still be better: nothing is broken, so nothing here justifies
+	// rewriting an author's words to satisfy a measurement.
 	// FindingOrphan is a line holding one stray word or syllable, which is the
 	// detail that makes a deck look generated rather than written.
 	FindingOrphan = "orphan"
+	// FindingDensity is a slide carrying more than an audience can take in.
+	FindingDensity = "density"
+	// FindingNotes is a slide with nothing to say out loud.
+	FindingNotes = "notes"
+)
+
+// A slide is a thing someone stands next to and talks over. Two of its failures
+// are about that rather than about drawing: too much on one slide, and nothing
+// prepared to say. Both are measurable, so both are measured.
+const (
+	// maximumPoints is the most top-level points one region should carry. Past
+	// this an audience reads instead of listening.
+	maximumPoints = 6
+	// crowdedCapacity is the share of a region's lines above which a slide is
+	// full rather than composed.
+	crowdedCapacity = 0.92
 )
 
 // Finding is one defect in a drawn slide, in the terms an author can act on.
@@ -33,6 +52,23 @@ type Finding struct {
 	Slot   string `json:"slot,omitempty"`
 	Kind   string `json:"kind"`
 	Detail string `json:"detail"`
+	// Advisory separates a slide that is unfinished from one that is drawn wrong.
+	// Text off the edge of a slide is a defect; a slide with no speaker notes is a
+	// judgement about how ready the deck is, and conflating the two would train
+	// people to ignore both.
+	Advisory bool `json:"advisory,omitempty"`
+}
+
+// Defects returns the findings that are about the slide being drawn wrong, as
+// opposed to being unfinished.
+func Defects(findings []Finding) []Finding {
+	result := make([]Finding, 0, len(findings))
+	for _, finding := range findings {
+		if !finding.Advisory {
+			result = append(result, finding)
+		}
+	}
+	return result
 }
 
 func (f Finding) String() string {
@@ -99,6 +135,7 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 		case "text":
 			findings = append(findings, inspectText(current.placeholder, slide.Fields[current.slot])...)
 			findings = append(findings, inspectLineBreaks(current.placeholder, slide.Fields[current.slot])...)
+			findings = append(findings, inspectDensity(current.placeholder, slide.Fields[current.slot])...)
 		case "component":
 			findings = append(findings, inspectComponent(current.placeholder, slide.Blocks[current.slot], design, slideWidth, slideHeight)...)
 		}
@@ -135,6 +172,45 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 	return findings
 }
 
+// inspectDensity reports a region carrying more than an audience can take in.
+func inspectDensity(placeholder Placeholder, paragraphs []Paragraph) []Finding {
+	switch placeholder.Slot {
+	case SlotTitle, SlotSubtitle:
+		return nil
+	}
+	points := 0
+	for _, paragraph := range paragraphs {
+		if paragraph.Level == 0 {
+			points++
+		}
+	}
+	if points > maximumPoints {
+		return []Finding{{Slot: placeholder.Slot, Kind: FindingDensity, Advisory: true,
+			Detail: fmt.Sprintf("%d points on one slide; past %d an audience reads instead of listening",
+				points, maximumPoints)}}
+	}
+	// A region filled to its last line has no air in it, even when every line fits.
+	if placeholder.MaxLines > 3 {
+		lineEm := placeholder.LineEm
+		if lineEm <= 0 && placeholder.MaxChars > 0 {
+			lineEm = float64(placeholder.MaxChars) / float64(placeholder.MaxLines) * referenceAdvance
+		}
+		used := 0
+		for _, paragraph := range paragraphs {
+			available := lineEm - float64(paragraph.Level)*2
+			if available < 1 {
+				available = 1
+			}
+			used += wrappedLines(paragraph.Text, available)
+		}
+		if share := float64(used) / float64(placeholder.MaxLines); share > crowdedCapacity {
+			return []Finding{{Slot: placeholder.Slot, Kind: FindingDensity, Advisory: true,
+				Detail: fmt.Sprintf("the region is %.0f%% full; a slide needs room to breathe", share*100)}}
+		}
+	}
+	return nil
+}
+
 // InspectDeck reports the defects of a whole deck.
 func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	design := NewDesign(manifest)
@@ -150,8 +226,35 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		// A slide with something to argue and nothing prepared to say is half
+		// finished. A cover or a divider carries the room on its own.
+		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
+			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
+				Detail: "no speaker notes: nothing is written down to say over this slide"})
+		}
 	}
 	return findings
+}
+
+// carriesArgument reports whether a slide makes a point, as opposed to opening or
+// dividing the deck.
+func carriesArgument(slide Slide, layout Layout) bool {
+	switch layout.Role {
+	case RoleTitle, RoleSection, RoleBlank:
+		return false
+	}
+	if len(slide.Blocks) > 0 || len(slide.Pictures) > 0 {
+		return true
+	}
+	for slot, paragraphs := range slide.Fields {
+		if slot == SlotTitle || slot == SlotSubtitle {
+			continue
+		}
+		if len(paragraphs) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func hasBlockIn(slide Slide, slot string) bool {
@@ -212,7 +315,10 @@ func inspectLineBreaks(placeholder Placeholder, paragraphs []Paragraph) []Findin
 		if !orphaned {
 			continue
 		}
-		return []Finding{{Slot: placeholder.Slot, Kind: FindingOrphan,
+		// Advisory: the slide is drawn correctly, it just reads slightly
+		// amateurish. Treating it as a defect would invite mangling a heading to
+		// satisfy a measurement.
+		return []Finding{{Slot: placeholder.Slot, Kind: FindingOrphan, Advisory: true,
 			Detail: fmt.Sprintf("the last line holds %.0f%% of a line; shortening or rewording the text avoids the stray ending",
 				width/lineEm*100)}}
 	}

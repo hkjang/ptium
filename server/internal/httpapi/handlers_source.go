@@ -253,7 +253,11 @@ func (s *Server) inspectPresentation(writer http.ResponseWriter, request *http.R
 		return
 	}
 	findings := s.inspectCompiled(request, user.ID, presentation, manifest, presentation.Slides)
+	defects := pptx.Defects(findings)
 	writeData(writer, request, http.StatusOK, map[string]any{
-		"slides": len(presentation.Slides), "findings": findings, "clean": len(findings) == 0,
+		"slides": len(presentation.Slides), "findings": findings,
+		// clean is about the drawing. A deck can be drawn correctly and still be
+		// unfinished, and saying so in one boolean would hide both.
+		"clean": len(defects) == 0, "defects": len(defects), "advisories": len(findings) - len(defects),
 	})
 }

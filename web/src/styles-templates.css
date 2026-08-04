@@ -148,3 +148,4 @@
 .asset-actions button:hover:not(:disabled) { border-color:#cdc6e4; color:var(--ink); }
 .asset-actions button:first-child { flex:1; justify-content:center; }
 .asset-actions button.danger:hover { border-color:#e2a2a2; color:#9b2c2c; }
+.source-editor-advisory { color:var(--muted); }

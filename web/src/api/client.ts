@@ -296,8 +296,10 @@ export function bodySlots(fields: Record<string, SlideParagraph[]> | undefined) 
 export interface DeckFinding {
   slide: number
   slot: string
-  kind: 'overflow' | 'outside' | 'collision' | 'contrast' | string
+  kind: 'overflow' | 'outside' | 'collision' | 'contrast' | 'orphan' | 'density' | 'notes' | string
   detail: string
+  /** True for a slide that is unfinished rather than drawn wrong. */
+  advisory: boolean
 }
 
 function normalizeFindings(raw: unknown): DeckFinding[] {
@@ -307,6 +309,7 @@ function normalizeFindings(raw: unknown): DeckFinding[] {
     slot: String(entry.slot ?? ''),
     kind: String(entry.kind ?? ''),
     detail: String(entry.detail ?? ''),
+    advisory: Boolean(entry.advisory),
   }))
 }
 

@@ -78,6 +78,8 @@ function findingLabel(kind: string) {
     case 'collision': return '겹침'
     case 'contrast': return '대비 부족'
     case 'orphan': return '줄 끝에 한 음절만 남음'
+    case 'density': return '한 장에 너무 많음'
+    case 'notes': return '발표 노트 없음'
   }
   return kind
 }
@@ -272,11 +274,16 @@ export function EditorPage({ id }: { id: string }) {
       setSourceWarnings(result.warnings)
       setSourceFindings(result.findings)
       if (dryRun) {
-        const defects = result.findings.length
-        showToast(defects === 0
-          ? `${result.slideCount ?? 0}장으로 컴파일됩니다. 넘침·겹침 없음.`
-          : `${result.slideCount ?? 0}장으로 컴파일되고, 검사에서 ${defects}건이 나왔습니다.`,
-          defects === 0 ? 'success' : 'error')
+        // A slide drawn wrong and a slide left unfinished are different news.
+        const defects = result.findings.filter((finding) => !finding.advisory).length
+        const advisories = result.findings.length - defects
+        const slides = `${result.slideCount ?? 0}장으로 컴파일됩니다`
+        showToast(defects > 0
+          ? `${slides}. 검사에서 ${defects}건이 나왔습니다.`
+          : advisories > 0
+            ? `${slides}. 그려지는 데는 문제가 없고, 다듬을 곳 ${advisories}건이 있습니다.`
+            : `${slides}. 검사 통과.`,
+          defects > 0 ? 'error' : 'success')
         return
       }
       if (result.presentation) {
@@ -405,7 +412,8 @@ export function EditorPage({ id }: { id: string }) {
               {(sourceWarnings.length > 0 || sourceFindings.length > 0) && <ul className="source-editor-warnings">
                 {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warning}</li>)}
                 {sourceFindings.map((finding) => (
-                  <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className="source-editor-finding">
+                  <li key={`${finding.slide}-${finding.slot}-${finding.kind}`}
+                    className={finding.advisory ? 'source-editor-advisory' : 'source-editor-finding'}>
                     <AlertTriangle size={13} /> {finding.slide}번 슬라이드 {finding.slot} · {findingLabel(finding.kind)}: {finding.detail}
                   </li>
                 ))}

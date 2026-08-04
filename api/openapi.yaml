@@ -1221,7 +1221,11 @@ paths:
                         type: integer
                       clean:
                         type: boolean
-                        description: True when nothing was found.
+                        description: True when no defect was found; advisories do not affect it.
+                      defects:
+                        type: integer
+                      advisories:
+                        type: integer
                       findings:
                         type: array
                         items:
@@ -3455,10 +3459,15 @@ components:
           description: The template region the defect is in.
         kind:
           type: string
-          enum: [overflow, outside, collision, contrast, orphan]
+          enum: [overflow, outside, collision, contrast, orphan, density, notes]
         detail:
           type: string
           description: What is wrong, in numbers the author can act on.
+        advisory:
+          type: boolean
+          description: |
+            True for a slide that is drawn correctly and could still be better, as
+            opposed to one drawn wrong. `clean` refers to the defects only.
 
     Asset:
       type: object
