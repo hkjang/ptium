@@ -148,3 +148,46 @@ func truncateSVG(value string) string {
 	}
 	return value
 }
+
+// nestedGroupXML puts a shape three coordinate spaces deep: the outer group maps
+// a 1000x1000 child space onto a 4000x4000 frame at 10000,20000, and the inner
+// group maps a 100x100 space onto 500x500 within that.
+const nestedGroupXML = `<p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+	xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+ <p:cSld name="Nested"><p:spTree>
+  <p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>
+  <p:grpSp><p:nvGrpSpPr><p:cNvPr id="2" name="outer"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+   <p:grpSpPr><a:xfrm><a:off x="10000" y="20000"/><a:ext cx="4000" cy="4000"/>
+     <a:chOff x="0" y="0"/><a:chExt cx="1000" cy="1000"/></a:xfrm></p:grpSpPr>
+   <p:grpSp><p:nvGrpSpPr><p:cNvPr id="3" name="inner"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+    <p:grpSpPr><a:xfrm><a:off x="100" y="100"/><a:ext cx="500" cy="500"/>
+      <a:chOff x="0" y="0"/><a:chExt cx="100" cy="100"/></a:xfrm></p:grpSpPr>
+    <p:sp><p:nvSpPr><p:cNvPr id="4" name="deep"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+     <p:spPr><a:xfrm><a:off x="10" y="20"/><a:ext cx="30" cy="40"/></a:xfrm>
+      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+      <a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></p:spPr></p:sp></p:grpSp></p:grpSp>
+ </p:spTree></p:cSld></p:sldLayout>`
+
+func TestCollectArtworkProjectsNestedGroups(t *testing.T) {
+	var parsed struct {
+		CSld struct {
+			SpTree rawShapeTree `xml:"spTree"`
+		} `xml:"cSld"`
+	}
+	if err := xml.Unmarshal([]byte(nestedGroupXML), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	pieces := collectArtwork(parsed.CSld.SpTree, artworkContext{theme: Theme{}}, nil)
+	if len(pieces) != 1 {
+		t.Fatalf("pieces = %+v", pieces)
+	}
+	// Inner space: x=10 → 100 + 10*5 = 150 in the outer child space.
+	// Outer space: 150 → 10000 + 150*4 = 10600. Sizes scale by 5 then 4.
+	piece := pieces[0]
+	if piece.X != 10600 || piece.Y != 20800 {
+		t.Fatalf("a shape two groups deep sits at %d,%d; want 10600,20800", piece.X, piece.Y)
+	}
+	if piece.Width != 600 || piece.Height != 800 {
+		t.Fatalf("a shape two groups deep is %dx%d; want 600x800", piece.Width, piece.Height)
+	}
+}

@@ -89,7 +89,7 @@ var periodPattern = regexp.MustCompile(
 // figurePattern finds a number with a unit attached, the kind a prompt supplies
 // as a fact: "18%", "42개", "120억", "3배".
 // Longer units come first: "12개월" is a duration, not twelve of something.
-var figurePattern = regexp.MustCompile(`(\d[\d,.]*)\s*(%|퍼센트|억원|만원|개월|시간|주일|퍼센트|억|만|천|배|개|건|명|일|주|년|원|달러|USD|usd)`)
+var figurePattern = regexp.MustCompile(`(\d[\d,.]*)\s*(%|퍼센트|억원|만원|개월|시간|주일|억|만|천|배|개|건|명|일|주|년|원|달러|USD|usd)`)
 
 // topicSplitter breaks a subject into the things it names. Korean conjunctions
 // and list punctuation both appear constantly.

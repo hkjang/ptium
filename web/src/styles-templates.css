@@ -101,6 +101,11 @@
 .source-editor-head strong { display:block; font-size:13px; }
 .source-editor-head span { display:block; margin-top:4px; max-width:60ch; color:var(--muted-2); font-size:10.5px; line-height:1.6; }
 .source-editor-actions { display:flex; gap:7px; flex:0 0 auto; }
+.source-editor-body { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,44%); gap:14px; align-items:start; }
+.source-editor-preview { display:flex; flex-direction:column; gap:8px; }
+.source-editor-preview img { width:100%; aspect-ratio:16/9; object-fit:contain; border:1px solid var(--line); border-radius:10px; background:#fff; box-shadow:var(--shadow-sm); }
+.source-editor-preview-empty { display:flex; align-items:center; justify-content:center; width:100%; aspect-ratio:16/9; padding:18px; border:1px dashed var(--line); border-radius:10px; background:var(--surface-soft); color:var(--muted-2); font-size:11px; text-align:center; }
+.source-editor-preview-nav { display:flex; align-items:center; justify-content:center; gap:9px; color:var(--muted); font-size:11px; }
 .source-editor-code { width:100%; min-height:min(58vh,520px); padding:15px 17px; border:1px solid var(--line); border-radius:12px;
   background:#fbfbfa; color:var(--ink); font-family:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
   font-size:12.5px; line-height:1.75; tab-size:2; resize:vertical; box-shadow:inset 0 1px 3px rgba(0,0,0,.04); }

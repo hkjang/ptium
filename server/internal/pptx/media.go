@@ -221,10 +221,41 @@ func describePictures(pkg *Package, artwork []Artwork) {
 	}
 }
 
+// averageCache remembers a picture's mean colour by content. A master's
+// background is inherited by every layout, and decoding it once per layout is
+// wasted work on every template analysis.
+var averageCache = struct {
+	sync.Mutex
+	entries map[string]string
+}{entries: map[string]string{}}
+
+// maximumAverageCacheEntries bounds the cache; a template has a handful of
+// distinct images, so this is only a backstop.
+const maximumAverageCacheEntries = 512
+
 // averageColor is the mean of an image, computed over a coarse sample rather
 // than every pixel: a full-bleed photograph has millions, and a hundredth of
 // them describes its tone just as well.
 func averageColor(data []byte) (string, bool) {
+	digest := sha256.Sum256(data)
+	key := hex.EncodeToString(digest[:16])
+	averageCache.Lock()
+	cached, ok := averageCache.entries[key]
+	averageCache.Unlock()
+	if ok {
+		return cached, cached != ""
+	}
+	value, found := computeAverageColor(data)
+	averageCache.Lock()
+	if len(averageCache.entries) >= maximumAverageCacheEntries {
+		averageCache.entries = map[string]string{}
+	}
+	averageCache.entries[key] = value
+	averageCache.Unlock()
+	return value, found
+}
+
+func computeAverageColor(data []byte) (string, bool) {
 	decoded, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return "", false

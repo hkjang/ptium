@@ -10,6 +10,15 @@ import (
 // them in a <defs> block, which is emitted once at the end.
 type gradientRegistry struct {
 	definitions []string
+	// clips counts the clip paths issued, so each gets its own id. Deriving an id
+	// from a shape's coordinates collides whenever two pictures share an offset,
+	// and a negative offset produces an id no SVG parser accepts.
+	clips int
+}
+
+func (registry *gradientRegistry) clipID() string {
+	registry.clips++
+	return fmt.Sprintf("clip%d", registry.clips)
 }
 
 func (registry *gradientRegistry) add(stops []GradientStop, angle int) string {
@@ -95,7 +104,7 @@ func previewArtwork(piece Artwork, scale float64, media MediaResolver, gradients
 		// A cropped picture is drawn through a clip: the source rectangle says how
 		// much of the image the frame shows.
 		if piece.Crop != [4]int{} {
-			return previewCroppedPicture(piece, x, y, width, height, uri, opacity, transform)
+			return previewCroppedPicture(piece, x, y, width, height, uri, opacity, transform, gradients.clipID())
 		}
 		return fmt.Sprintf(`<image x="%.1f" y="%.1f" width="%.1f" height="%.1f" href="%s" preserveAspectRatio="none"%s%s/>`,
 			x, y, width, height, escapeAttribute(uri), opacity, transform)
@@ -160,7 +169,7 @@ func previewGeometry(preset string, x, y, width, height float64, attributes stri
 	return fmt.Sprintf(`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f"%s/>`, x, y, width, height, attributes)
 }
 
-func previewCroppedPicture(piece Artwork, x, y, width, height float64, uri, opacity, transform string) string {
+func previewCroppedPicture(piece Artwork, x, y, width, height float64, uri, opacity, transform, clipID string) string {
 	left := float64(piece.Crop[0]) / 100000
 	top := float64(piece.Crop[1]) / 100000
 	right := float64(piece.Crop[2]) / 100000
@@ -173,7 +182,6 @@ func previewCroppedPicture(piece Artwork, x, y, width, height float64, uri, opac
 	// Scale the image up so the visible window fills the frame, then clip to it.
 	fullWidth := width / visibleWidth
 	fullHeight := height / visibleHeight
-	clipID := fmt.Sprintf("c%d%d", piece.X, piece.Y)
 	return fmt.Sprintf(`<clipPath id="%s"><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f"/></clipPath>`+
 		`<g clip-path="url(#%s)"%s><image x="%.1f" y="%.1f" width="%.1f" height="%.1f" href="%s" preserveAspectRatio="none"%s/></g>`,
 		clipID, x, y, width, height, clipID, transform,

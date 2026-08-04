@@ -3,10 +3,12 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -122,6 +124,59 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 	writeData(writer, request, http.StatusOK, map[string]any{
 		"presentation": updated, "warnings": compiled.Warnings, "applied": true,
 	})
+}
+
+// previewSource renders one slide of source that has not been saved.
+//
+// This is what makes writing a deck as text feel like writing code: the slide
+// appears as it is typed, drawn through the real template, without the deck
+// having to be replaced first.
+func (s *Server) previewSource(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var input sourceRequest
+	if !decodeJSON(writer, request, &input) {
+		return
+	}
+	if len(input.Source) > maximumSourceBytes || !utf8.ValidString(input.Source) {
+		writeError(writer, request, http.StatusUnprocessableEntity, "invalid_source",
+			"The deck source must be UTF-8 text within the size limit", nil)
+		return
+	}
+	presentation, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	data, manifest, err := s.presentationTemplate(request.Context(), presentation)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_template_unavailable")
+		return
+	}
+	compiled := deck.Compile(deck.ParseSource(input.Source), manifest, deck.CompileOptions{Language: presentation.Language})
+	if len(compiled.Slides) == 0 {
+		writeError(writer, request, http.StatusUnprocessableEntity, "empty_source", "The deck source produced no slides", nil)
+		return
+	}
+	position, _ := strconv.Atoi(request.URL.Query().Get("slide"))
+	if position < 1 {
+		position = 1
+	}
+	if position > len(compiled.Slides) {
+		position = len(compiled.Slides)
+	}
+	// The compiled slides are rendered directly, so nothing is stored and the
+	// deck on screen is untouched until the author applies it.
+	preview := model.Presentation{
+		ID: presentation.ID, Title: presentation.Title, Language: presentation.Language,
+		Theme: presentation.Theme, TemplateID: presentation.TemplateID, Slides: compiled.Slides,
+	}
+	svg, err := export.PreviewSVG(preview, manifest, position, previewWidth(request), templateMedia(data))
+	if err != nil {
+		writeError(writer, request, http.StatusUnprocessableEntity, "preview_failed", err.Error(), nil)
+		return
+	}
+	writer.Header().Set("X-Ptium-Slide-Count", strconv.Itoa(len(compiled.Slides)))
+	writeSVG(writer, svg)
 }
 
 // sourceMatchesSlides reports whether stored source still describes the stored

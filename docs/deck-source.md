@@ -28,6 +28,11 @@ produces most reliably.
 That is all of it. A line that starts with none of those marks is prose: it
 becomes the lead if the slide has none yet, and a bullet otherwise.
 
+One escape exists. Text that would be misread where it sits is written with a
+leading backslash — a title that itself begins with `#`, or a component field
+containing a `|`. Nothing else needs escaping, because every line already carries
+its own marker: `- - dash` is a bullet whose text is "- dash".
+
 ### Slide kinds
 
 `@cover` `@section` `@content` `@two` `@comparison` `@quote` `@picture`
@@ -73,9 +78,14 @@ as a warning, because a deck someone is waiting for should arrive.
 | `GET /api/v1/presentations/{id}/source` | the deck as text, plus its layout and component vocabulary |
 | `PUT /api/v1/presentations/{id}/source` | compile and replace the deck's slides |
 | `PUT …/source` with `{"dryRun": true}` | compile and report without changing anything |
+| `POST …/source/preview.svg?slide=N` | render one slide of unsaved source, changing nothing |
 
 `GET` regenerates the text from the stored slides when they have been edited on
 the canvas since the source was written, so the two never disagree.
+
+`preview.svg` is what the editor calls while someone types: it compiles the text
+and draws the slide through the real template without storing anything, and
+reports the compiled slide count in `X-Ptium-Slide-Count`.
 
 ## Example
 

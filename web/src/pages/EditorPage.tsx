@@ -88,6 +88,9 @@ export function EditorPage({ id }: { id: string }) {
   const [sourceLoaded, setSourceLoaded] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([])
+  const [sourceSlide, setSourceSlide] = useState(1)
+  const [sourcePreview, setSourcePreview] = useState<{ url: string; slide: number; count: number } | null>(null)
+  const [sourcePreviewError, setSourcePreviewError] = useState('')
   const [presenting, setPresenting] = useState(false)
   const [presentIndex, setPresentIndex] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
@@ -213,6 +216,25 @@ export function EditorPage({ id }: { id: string }) {
     } catch (err) { showToast(displayError(err), 'error') } finally { setSourceBusy(false) }
   }
 
+  // The slide is drawn from the text as it is typed, a moment after typing stops.
+  // Nothing is stored: this renders the compiled source directly.
+  useEffect(() => {
+    if (canvasMode !== 'source' || !source.trim()) return
+    let active = true
+    let url = ''
+    const timer = window.setTimeout(() => {
+      void api.sourcePreview(id, source, sourceSlide)
+        .then((result) => {
+          if (!active) { URL.revokeObjectURL(result.url); return }
+          url = result.url
+          setSourcePreview((current) => { if (current) URL.revokeObjectURL(current.url); return { url: result.url, slide: sourceSlide, count: result.slideCount } })
+          setSourcePreviewError('')
+        })
+        .catch((err) => { if (active) setSourcePreviewError(displayError(err)) })
+    }, 500)
+    return () => { active = false; window.clearTimeout(timer); if (url) URL.revokeObjectURL(url) }
+  }, [canvasMode, source, sourceSlide, id])
+
   const applySource = async (dryRun: boolean) => {
     setSourceBusy(true)
     try {
@@ -327,6 +349,7 @@ export function EditorPage({ id }: { id: string }) {
                   </Button>
                 </div>
               </div>
+              <div className="source-editor-body">
               <textarea
                 className="source-editor-code"
                 spellCheck={false}
@@ -335,6 +358,15 @@ export function EditorPage({ id }: { id: string }) {
                 aria-label="덱 소스"
                 placeholder={'# 슬라이드 제목\n@content\n> 한 줄 리드\n- 핵심 요점\n::kpi 핵심 지표\n- 전환 대상 | 42개\n::'}
               />
+              <div className="source-editor-preview">
+                {sourcePreview ? <img src={sourcePreview.url} alt={`${sourceSlide}번 슬라이드 미리보기`} /> : <div className="source-editor-preview-empty">{sourcePreviewError || '입력을 멈추면 이 자리에 슬라이드가 그려집니다.'}</div>}
+                <div className="source-editor-preview-nav">
+                  <button type="button" className="icon-button small" onClick={() => setSourceSlide((current) => Math.max(1, current - 1))} disabled={sourceSlide <= 1} aria-label="이전 슬라이드"><ChevronLeft size={15} /></button>
+                  <span>{sourceSlide} / {sourcePreview?.count || 1}</span>
+                  <button type="button" className="icon-button small" onClick={() => setSourceSlide((current) => Math.min(sourcePreview?.count || 1, current + 1))} disabled={sourceSlide >= (sourcePreview?.count || 1)} aria-label="다음 슬라이드"><ChevronRight size={15} /></button>
+                </div>
+              </div>
+              </div>
               {sourceWarnings.length > 0 && <ul className="source-editor-warnings">
                 {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warning}</li>)}
               </ul>}

@@ -77,6 +77,16 @@ var roleAliases = map[string]string{
 	"blank": pptx.RoleBlank,
 }
 
+// canonicalRoleName is the word Format writes for a role. The alias table is for
+// reading, and iterating it to find a name would make Format's output depend on
+// map order — which would turn every re-read of a deck into a spurious diff.
+var canonicalRoleName = map[string]string{
+	pptx.RoleTitle: "cover", pptx.RoleSection: "section", pptx.RoleContent: "content",
+	pptx.RoleTwoContent: "two", pptx.RoleComparison: "comparison", pptx.RoleQuote: "quote",
+	pptx.RolePicture: "picture", pptx.RoleTable: "table", pptx.RoleChart: "chart",
+	pptx.RoleClosing: "closing", pptx.RoleBlank: "blank",
+}
+
 // ParseSource reads deck source. It is deliberately forgiving: unknown
 // directives become warnings rather than errors, because a half-written deck
 // should still show what it has.
@@ -145,7 +155,7 @@ func ParseSource(source string) Source {
 
 		case strings.HasPrefix(trimmed, "#"):
 			flush()
-			current, started = SourceSlide{Title: strings.TrimSpace(strings.TrimLeft(trimmed, "#")), Line: line}, true
+			current, started = SourceSlide{Title: unescapePayload(strings.TrimLeft(trimmed, "#")), Line: line}, true
 
 		case strings.HasPrefix(trimmed, "@"):
 			begin(line)
@@ -167,7 +177,7 @@ func ParseSource(source string) Source {
 
 		case strings.HasPrefix(trimmed, ">"):
 			begin(line)
-			lead := strings.TrimSpace(trimmed[1:])
+			lead := unescapePayload(trimmed[1:])
 			if current.Lead == "" {
 				current.Lead = lead
 			} else {
@@ -191,7 +201,7 @@ func ParseSource(source string) Source {
 				block.Items = append(block.Items, parseSourceItem(item))
 				continue
 			}
-			current.Bullets = append(current.Bullets, pptx.Paragraph{Text: item, Level: bulletLevel(text)})
+			current.Bullets = append(current.Bullets, pptx.Paragraph{Text: unescapePayload(item), Level: bulletLevel(text)})
 
 		default:
 			// A bare line is prose: the lead when there is none yet, a bullet
@@ -215,6 +225,46 @@ func ParseSource(source string) Source {
 // directive between slides produces.
 func (s SourceSlide) empty() bool {
 	return s.Title == "" && s.Lead == "" && len(s.Bullets) == 0 && len(s.Blocks) == 0 && s.Notes == ""
+}
+
+// unescapePayload removes the one escape the language has: a backslash in front
+// of text that would otherwise be read as markup. It is applied to what a
+// directive carries, not to the directive itself.
+func unescapePayload(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.HasPrefix(value, `\`) {
+		return strings.TrimSpace(value[1:])
+	}
+	return value
+}
+
+// splitItemFields splits a component row on its unescaped pipes, so a label may
+// contain one.
+func splitItemFields(text string) []string {
+	var fields []string
+	var current strings.Builder
+	escaped := false
+	for _, character := range text {
+		switch {
+		case escaped:
+			if character != '|' && character != '\\' {
+				current.WriteRune('\\')
+			}
+			current.WriteRune(character)
+			escaped = false
+		case character == '\\':
+			escaped = true
+		case character == '|':
+			fields = append(fields, current.String())
+			current.Reset()
+		default:
+			current.WriteRune(character)
+		}
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	return append(fields, current.String())
 }
 
 func isDirective(trimmed string) bool {
@@ -247,7 +297,7 @@ func bulletLevel(text string) int {
 // omitted. A value that looks like a number is kept as one so components can
 // draw it to scale.
 func parseSourceItem(text string) pptx.Item {
-	parts := strings.Split(text, "|")
+	parts := splitItemFields(text)
 	item := pptx.Item{Label: strings.TrimSpace(parts[0])}
 	if len(parts) > 1 {
 		raw := strings.TrimSpace(parts[1])

@@ -153,6 +153,9 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.getPresentationSource))))
 	api.Handle("PUT /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.putPresentationSource))))
 	api.Handle("POST /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.putPresentationSource))))
+	// Rendering source that has not been saved is how the code editor shows a
+	// slide as it is typed.
+	api.Handle("POST /api/v1/presentations/{id}/source/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.previewSource))))
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))

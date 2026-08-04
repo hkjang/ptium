@@ -18,85 +18,75 @@ type artworkContext struct {
 	relations map[string]string
 }
 
+// space maps a shape tree's coordinates onto the slide. A group states its own
+// frame and a separate child coordinate space, and groups nest, so the mapping is
+// carried down as an accumulated scale and offset rather than by rewriting each
+// subtree — which is easy to get subtly wrong one level down.
+type space struct {
+	offsetX, offsetY float64
+	scaleX, scaleY   float64
+}
+
+func identitySpace() space { return space{scaleX: 1, scaleY: 1} }
+
+// inside composes this space with a group's transform.
+func (s space) inside(group *rawGroupXfrm) space {
+	if group == nil || group.ChExt.CX <= 0 || group.ChExt.CY <= 0 {
+		return s
+	}
+	innerX := float64(group.Ext.CX) / float64(group.ChExt.CX)
+	innerY := float64(group.Ext.CY) / float64(group.ChExt.CY)
+	return space{
+		offsetX: s.offsetX + s.scaleX*(float64(group.Off.X)-float64(group.ChOff.X)*innerX),
+		offsetY: s.offsetY + s.scaleY*(float64(group.Off.Y)-float64(group.ChOff.Y)*innerY),
+		scaleX:  s.scaleX * innerX,
+		scaleY:  s.scaleY * innerY,
+	}
+}
+
+func (s space) apply(x, y, width, height int) (int, int, int, int) {
+	return int(math.Round(s.offsetX + s.scaleX*float64(x))),
+		int(math.Round(s.offsetY + s.scaleY*float64(y))),
+		int(math.Round(s.scaleX * float64(width))),
+		int(math.Round(s.scaleY * float64(height)))
+}
+
 // collectArtwork walks a shape tree in paint order and records everything a
 // preview can draw. Placeholders are skipped: they are the writable regions and
 // are drawn from the deck's own content.
 func collectArtwork(tree rawShapeTree, ctx artworkContext, into []Artwork) []Artwork {
+	return collectArtworkIn(tree, ctx, identitySpace(), into)
+}
+
+func collectArtworkIn(tree rawShapeTree, ctx artworkContext, at space, into []Artwork) []Artwork {
 	for _, child := range tree.Children {
 		if len(into) >= maximumArtwork {
 			return into
 		}
 		if child.Kind == "grpSp" && child.Group != nil {
-			// A group remaps its children's coordinates onto its own frame.
-			into = collectArtwork(projectGroup(*child.Group), ctx, into)
+			into = collectArtworkIn(*child.Group, ctx, at.inside(child.Group.Transform), into)
 			continue
 		}
 		if child.Shape.placeholder() != nil {
 			continue
 		}
 		if piece, ok := shapeArtwork(child.Shape, ctx); ok {
+			piece.X, piece.Y, piece.Width, piece.Height = at.apply(piece.X, piece.Y, piece.Width, piece.Height)
 			into = append(into, piece)
 		}
 		// A shape can be both a filled box and a label; the text is a second piece
 		// so it paints above its own background.
 		if label, ok := textArtwork(child.Shape, ctx); ok && len(into) < maximumArtwork {
+			label.X, label.Y, label.Width, label.Height = at.apply(label.X, label.Y, label.Width, label.Height)
+			// Type scales with the group it sits in, or a logo's caption keeps the
+			// size it had in a coordinate space ten times larger than the slide.
+			if scale := math.Min(at.scaleX, at.scaleY); scale > 0 && scale != 1 {
+				label.FontSize = int(math.Round(float64(label.FontSize) * scale))
+			}
 			into = append(into, label)
 		}
 	}
 	return into
-}
-
-// projectGroup rewrites a group's children into slide coordinates. DrawingML
-// gives a group a frame and a child coordinate space; without applying the
-// mapping, every grouped shape lands in the wrong place and at the wrong size.
-func projectGroup(group rawShapeTree) rawShapeTree {
-	transform := group.Transform
-	if transform == nil || transform.ChExt.CX <= 0 || transform.ChExt.CY <= 0 {
-		return group
-	}
-	scaleX := float64(transform.Ext.CX) / float64(transform.ChExt.CX)
-	scaleY := float64(transform.Ext.CY) / float64(transform.ChExt.CY)
-	project := func(shape rawShape) rawShape {
-		x, y, width, height, ok := shape.geometry()
-		if !ok {
-			return shape
-		}
-		mapped := &rawXfrm{}
-		if source := shape.transform(); source != nil {
-			*mapped = *source
-		}
-		mapped.Off.X = transform.Off.X + int(math.Round(float64(x-transform.ChOff.X)*scaleX))
-		mapped.Off.Y = transform.Off.Y + int(math.Round(float64(y-transform.ChOff.Y)*scaleY))
-		mapped.Ext.CX = int(math.Round(float64(width) * scaleX))
-		mapped.Ext.CY = int(math.Round(float64(height) * scaleY))
-		if shape.SpPr == nil {
-			shape.SpPr = &rawShapeProp{}
-		} else {
-			properties := *shape.SpPr
-			shape.SpPr = &properties
-		}
-		shape.SpPr.Xfrm = mapped
-		shape.Xfrm = nil
-		return shape
-	}
-	result := rawShapeTree{Transform: nil}
-	for _, child := range group.Children {
-		switch {
-		case child.Kind == "grpSp" && child.Group != nil:
-			nested := projectGroup(*child.Group)
-			// Fold the parent's mapping into the already-projected children.
-			for index := range nested.Children {
-				if nested.Children[index].Group == nil {
-					nested.Children[index].Shape = project(nested.Children[index].Shape)
-				}
-			}
-			inner := nested
-			result.Children = append(result.Children, rawTreeChild{Kind: "grpSp", Group: &inner})
-		default:
-			result.Children = append(result.Children, rawTreeChild{Kind: child.Kind, Shape: project(child.Shape)})
-		}
-	}
-	return result
 }
 
 func shapeArtwork(shape rawShape, ctx artworkContext) (Artwork, bool) {

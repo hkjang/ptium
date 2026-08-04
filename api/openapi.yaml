@@ -899,6 +899,55 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/presentations/{id}/source/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: previewPresentationSource
+      summary: Render one slide of unsaved deck source
+      description: |
+        Compiles source and draws one slide through the deck's template without
+        storing anything. This is what an editor calls while someone is typing.
+
+        The compiled slide count is returned in `X-Ptium-Slide-Count`, so a client
+        can page through a deck that does not exist yet.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              properties:
+                source:
+                  type: string
+      responses:
+        '200':
+          description: The rendered slide.
+          headers:
+            X-Ptium-Slide-Count:
+              description: How many slides the source compiles to.
+              schema:
+                type: integer
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: The source produced no slides or is not text.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/export:
     parameters:
       - $ref: '#/components/parameters/XRequestID'

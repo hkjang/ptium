@@ -554,6 +554,28 @@ export const api = {
       slideCount: Array.isArray(data.slides) ? data.slides.length : undefined,
     }
   },
+  /**
+   * Renders one slide of source that has not been applied, so the editor can show
+   * a slide as it is typed. Returns a blob URL the caller must revoke.
+   */
+  async sourcePreview(id: string, source: string, slide: number, width = 1000) {
+    const headers = new Headers({ 'Content-Type': 'application/json', Accept: 'image/svg+xml' })
+    const token = session.token()
+    if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+    if (session.devMode() && session.secret()) headers.set('X-Ptium-Dev-Secret', session.secret() as string)
+    const response = await fetch(
+      `${API_BASE}/presentations/${encodeURIComponent(id)}/source/preview.svg?slide=${slide}&width=${width}`,
+      { method: 'POST', headers, body: JSON.stringify({ source }), credentials: 'include' },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new ApiError(errorMessage(body, `미리보기를 만들지 못했습니다 (${response.status})`), response.status)
+    }
+    return {
+      url: URL.createObjectURL(await response.blob()),
+      slideCount: Number(response.headers.get('x-ptium-slide-count') || 0),
+    }
+  },
   async retryPresentation(id: string) {
     return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}/generate`, {
       method: 'POST', body: JSON.stringify({}),

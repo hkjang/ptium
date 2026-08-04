@@ -54,7 +54,9 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 				fmt.Fprintf(&builder, "%s- %s\n", strings.Repeat("  ", paragraph.Level), escapeSourceLine(text))
 			}
 		}
-		if body := strings.TrimSpace(content.Body); body != "" && len(content.Fields) == 0 {
+		// Text kept in Body had no slot to live in; it is still part of the deck and
+		// has to come back out, or a round trip would delete it.
+		if body := strings.TrimSpace(content.Body); body != "" && !wroteBody(content) {
 			for _, line := range strings.Split(body, "\n") {
 				if trimmed := strings.TrimSpace(line); trimmed != "" {
 					fmt.Fprintf(&builder, "- %s\n", escapeSourceLine(trimmed))
@@ -70,6 +72,17 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		}
 	}
 	return builder.String()
+}
+
+// wroteBody reports whether any body region carried content, as opposed to the
+// text having been kept aside in Content.Body.
+func wroteBody(content Content) bool {
+	for slot := range content.Fields {
+		if slot != pptx.SlotTitle && slot != pptx.SlotSubtitle {
+			return true
+		}
+	}
+	return len(content.Blocks) > 0
 }
 
 // bodySlotOrder lists the slots holding content, preferring the layout's own
@@ -108,17 +121,18 @@ func bodySlotOrder(layout pptx.Layout, hasLayout bool, content Content) []string
 func sourceRole(slide model.Slide, manifest pptx.Manifest) string {
 	role := strings.TrimSpace(slide.Layout)
 	if role == "" {
+		if slide.LayoutID != "" {
+			return "layout " + slide.LayoutID
+		}
 		return ""
 	}
-	for alias, mapped := range roleAliases {
-		if mapped == role && !strings.ContainsFunc(alias, func(character rune) bool { return character > 127 }) {
-			// A layout chosen explicitly is recorded as a layout, not a role, when
-			// the template has more than one layout for that role.
-			if matches := layoutsForRole(manifest, role); matches > 1 && slide.LayoutID != "" {
-				return "layout " + slide.LayoutID
-			}
-			return alias
-		}
+	// A template with several layouts for one role needs the layout named, or
+	// recompiling would move the slide to whichever one ranks first.
+	if layoutsForRole(manifest, role) > 1 && slide.LayoutID != "" {
+		return "layout " + slide.LayoutID
+	}
+	if name, ok := canonicalRoleName[role]; ok {
+		return name
 	}
 	if slide.LayoutID != "" {
 		return "layout " + slide.LayoutID
@@ -152,9 +166,9 @@ func formatBlock(block pptx.Block) string {
 		fmt.Fprintf(&builder, "- %s\n", escapeSourceLine(text))
 	}
 	for _, item := range block.Items {
-		parts := []string{strings.TrimSpace(item.Label)}
+		parts := []string{escapeItemField(item.Label)}
 		if value := strings.TrimSpace(item.Value); value != "" {
-			parts = append(parts, value)
+			parts = append(parts, escapeItemField(value))
 		} else if item.Number != nil {
 			parts = append(parts, trimNumber(*item.Number))
 		}
@@ -162,9 +176,9 @@ func formatBlock(block pptx.Block) string {
 			if len(parts) == 1 {
 				parts = append(parts, "")
 			}
-			parts = append(parts, detail)
+			parts = append(parts, escapeItemField(detail))
 		}
-		fmt.Fprintf(&builder, "- %s\n", escapeSourceLine(strings.Join(parts, " | ")))
+		fmt.Fprintf(&builder, "- %s\n", strings.Join(parts, " | "))
 	}
 	builder.WriteString("::\n")
 	return builder.String()
@@ -194,20 +208,29 @@ func trimNumber(value float64) string {
 	return text
 }
 
-// escapeSourceLine keeps a line of content from being read back as a directive.
+// escapeSourceLine protects text that a directive would otherwise misread.
+//
+// Every line Format writes begins with its own marker, so most content needs no
+// escaping at all: "- - dash" reads back as a bullet whose text is "- dash". Only
+// a leading hash matters, because a title strips its whole run of them, and a
+// leading backslash, because that is the escape itself.
 func escapeSourceLine(text string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
 	if text == "" {
 		return text
 	}
-	switch text[0] {
-	case '#', '@', '>', '-', '*', '!', ':':
-		return "​" + text
-	}
-	if strings.HasPrefix(text, "//") {
-		return "​" + text
+	if text[0] == '#' || text[0] == '\\' {
+		return `\` + text
 	}
 	return text
+}
+
+// escapeItemField protects a component row's fields, which are separated by
+// pipes, so a label may contain one.
+func escapeItemField(text string) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+	text = strings.ReplaceAll(text, `\`, `\\`)
+	return strings.ReplaceAll(text, "|", `\|`)
 }
 
 func firstText(paragraphs []pptx.Paragraph) string {

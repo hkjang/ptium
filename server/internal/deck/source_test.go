@@ -214,18 +214,44 @@ func TestFormatRoundTripsThroughCompile(t *testing.T) {
 	}
 }
 
-func TestFormatEscapesContentThatLooksLikeADirective(t *testing.T) {
+// TestFormatIsDeterministic runs Format repeatedly: a map iteration in the middle
+// of it would make the output vary.
+func TestFormatIsDeterministic(t *testing.T) {
+	manifest := testManifest()
+	first := Compile(ParseSource(sample), manifest, CompileOptions{Language: "ko"})
+	presentation := model.Presentation{Slides: first.Slides}
+	baseline := Format(presentation, manifest)
+	for attempt := 0; attempt < 40; attempt++ {
+		if got := Format(presentation, manifest); got != baseline {
+			t.Fatalf("Format is not deterministic. attempt %d differs:\n--- baseline\n%s\n--- got\n%s",
+				attempt, baseline, got)
+		}
+	}
+}
+
+// TestFormatEscapesWithoutAlteringText checks that escaping a directive-like line
+// does not smuggle characters into the deck's text.
+func TestFormatEscapesWithoutAlteringText(t *testing.T) {
 	manifest := testManifest()
 	content := Content{Type: ContentType, LayoutID: "content"}
-	content.SetField(pptx.SlotTitle, []pptx.Paragraph{{Text: "# 이건 제목이 아니라 본문"}})
-	content.SetField(pptx.SlotBody, []pptx.Paragraph{{Text: "- 대시로 시작하는 문장"}, {Text: "@역할처럼 보이는 문장"}})
-	presentation := model.Presentation{Slides: []model.Slide{{Position: 1, Title: "# 이건 제목이 아니라 본문",
+	content.SetField(pptx.SlotTitle, []pptx.Paragraph{{Text: "- 대시로 시작하는 제목"}})
+	content.SetField(pptx.SlotBody, []pptx.Paragraph{{Text: "@역할처럼 보이는 문장"}})
+	presentation := model.Presentation{Slides: []model.Slide{{Position: 1, Title: "- 대시로 시작하는 제목",
 		Content: content.Encode(), Layout: pptx.RoleContent, LayoutID: "content"}}}
-	parsed := ParseSource(Format(presentation, manifest))
-	if len(parsed.Slides) != 1 {
-		t.Fatalf("escaping failed, a line started a new slide: %+v", parsed.Slides)
+	formatted := Format(presentation, manifest)
+	round := Compile(ParseSource(formatted), manifest, CompileOptions{})
+	after := Decode(round.Slides[0].Content)
+	title := after.Fields[pptx.SlotTitle][0].Text
+	if title != "- 대시로 시작하는 제목" {
+		t.Fatalf("the title changed through a round trip: %q (bytes %v)", title, []byte(title))
 	}
-	if len(parsed.Warnings) != 0 {
-		t.Fatalf("escaped content should not warn: %v", parsed.Warnings)
+	body := after.Fields[pptx.SlotBody][0].Text
+	if body != "@역할처럼 보이는 문장" {
+		t.Fatalf("the body changed through a round trip: %q (bytes %v)", body, []byte(body))
+	}
+	for _, text := range []string{title, body} {
+		if strings.ContainsRune(text, '​') {
+			t.Fatalf("an invisible character was inserted into %q", text)
+		}
 	}
 }
