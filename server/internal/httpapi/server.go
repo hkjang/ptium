@@ -127,11 +127,16 @@ func (s *Server) Handler() http.Handler {
 	// definition; both apply their own throttling and validation.
 	root.HandleFunc("POST /api/v1/auth/login", s.passwordLogin)
 	root.HandleFunc("POST /api/v1/auth/token", s.exchangeToken)
+	// Signing out clears the cookie whether or not the session still verifies.
+	root.HandleFunc("POST /api/v1/auth/logout", s.signOut)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
 	api.HandleFunc("GET /auth/me", s.me) // compatibility for early clients
 	api.HandleFunc("POST /api/v1/auth/password", s.changePassword)
+	// Any interactive identity — the identity provider included — can trade itself
+	// for a renewable session cookie.
+	api.HandleFunc("POST /api/v1/auth/session", s.startSession)
 	api.Handle("GET /api/v1/profile", requireScope("profile:read", http.HandlerFunc(s.getProfile)))
 	api.Handle("PUT /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))
 	api.Handle("PATCH /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))
@@ -178,7 +183,7 @@ func (s *Server) Handler() http.Handler {
 		WriteError: func(writer http.ResponseWriter, request *http.Request, status int, code string) {
 			writeError(writer, request, status, code, http.StatusText(status), nil)
 		},
-	})(s.identityMiddleware(api))
+	})(s.sessionRenewalMiddleware(s.identityMiddleware(api)))
 	root.Handle("/api/v1/", protected)
 	root.Handle("/auth/me", protected)
 	if s.mcpHandler != nil {

@@ -54,6 +54,11 @@ export const session = {
     sessionStorage.setItem(DEV_MODE_KEY, 'true')
     sessionStorage.setItem(DEV_SECRET_KEY, secret)
   },
+  /** Drops only the bearer token, leaving the server's session cookie in place. */
+  clearBearer() {
+    localStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+  },
   clear() {
     localStorage.removeItem(TOKEN_KEY)
     sessionStorage.removeItem(TOKEN_KEY)
@@ -437,25 +442,43 @@ export const api = {
           : ['openid', 'profile', 'email'],
     }
   },
-  /** Signs in a local account and stores the returned session token. */
+  /**
+   * Signs in a local account. The session lives in the HttpOnly cookie the server
+   * sets, not in this tab's storage: a token kept here would be gone the moment
+   * the tab closed, and would go stale as soon as the server renewed the session.
+   */
   async passwordLogin(username: string, password: string) {
     const raw = await request<unknown>('/auth/login', {
       method: 'POST', body: JSON.stringify({ username, password }),
     })
     const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
-    const token = String(payload.access_token || '')
-    if (!token) throw new ApiError('로그인 응답에 토큰이 없습니다.', 500)
-    session.set(token)
+    session.clear()
     return normalizeUser(unwrapOne<User & Record<string, unknown>>(payload, ['user']))
   },
-  /** Changes the signed-in account's password and adopts the fresh token. */
+  /**
+   * Changes the signed-in account's password. Every earlier session is retired,
+   * including this browser's, which the server replaces via the cookie.
+   */
   async changePassword(currentPassword: string, newPassword: string) {
-    const raw = await request<unknown>('/auth/password', {
+    await request<unknown>('/auth/password', {
       method: 'POST', body: JSON.stringify({ currentPassword, newPassword }),
     })
-    const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
-    // A password change retires every earlier token, including this request's.
-    if (typeof payload.access_token === 'string' && payload.access_token) session.set(payload.access_token)
+  },
+  /**
+   * Trades the current identity for a renewable Ptium session cookie. Returns
+   * whether one was issued; the caller keeps its bearer token if not.
+   */
+  async startSession() {
+    try {
+      await request<unknown>('/auth/session', { method: 'POST' })
+      return true
+    } catch {
+      return false
+    }
+  },
+  /** Clears the session cookie. Safe to call when already signed out. */
+  async logout() {
+    try { await request<void>('/auth/logout', { method: 'POST' }) } catch { /* signing out must always succeed locally */ }
   },
   async me() {
     try {

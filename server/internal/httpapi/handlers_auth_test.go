@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hkjang/ptium/server/internal/auth"
 )
 
 func TestTokenExchangeSendsTheClientSecret(t *testing.T) {
@@ -198,5 +200,34 @@ func TestClientAddressStripsThePort(t *testing.T) {
 		if got := clientAddress(request); got != want {
 			t.Fatalf("clientAddress(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestSetSessionCookieReplacesAnEarlierOne(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	// Renewal runs before the handler; both would otherwise be sent, and a browser
+	// applying them in the wrong order would keep a token the handler just retired.
+	setSessionCookie(recorder, &http.Cookie{Name: auth.SessionCookieName, Value: "renewed", Path: "/"})
+	recorder.Header().Add("Set-Cookie", "other=keep-me; Path=/")
+	setSessionCookie(recorder, &http.Cookie{Name: auth.SessionCookieName, Value: "issued-by-handler", Path: "/"})
+
+	sessionCookies := 0
+	other := false
+	for _, cookie := range recorder.Result().Cookies() {
+		switch cookie.Name {
+		case auth.SessionCookieName:
+			sessionCookies++
+			if cookie.Value != "issued-by-handler" {
+				t.Fatalf("the surviving session cookie is %q", cookie.Value)
+			}
+		case "other":
+			other = true
+		}
+	}
+	if sessionCookies != 1 {
+		t.Fatalf("%d session cookies were sent, want 1", sessionCookies)
+	}
+	if !other {
+		t.Fatal("an unrelated cookie was dropped")
 	}
 }

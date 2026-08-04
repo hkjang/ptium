@@ -101,7 +101,8 @@ func main() {
 	if err != nil {
 		fatal("initialize session tokens", err)
 	}
-	authenticator, publicAuth, tokenExchange, err := buildAuthenticator(rootContext, authConfig, keyManager, dataStore, sessionIssuer, logger)
+	authenticator, publicAuth, tokenExchange, err := buildAuthenticator(rootContext, authConfig, keyManager, dataStore,
+		sessionIssuer, applicationConfig.CORSAllowedOrigins, logger)
 	if err != nil {
 		fatal("initialize authentication", err)
 	}
@@ -197,7 +198,7 @@ func main() {
 }
 
 func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyManager *keys.Manager,
-	dataStore *store.Store, sessions *auth.SessionIssuer, logger *slog.Logger,
+	dataStore *store.Store, sessions *auth.SessionIssuer, corsOrigins []string, logger *slog.Logger,
 ) (auth.Authenticator, httpapi.AuthPublicConfig, *httpapi.TokenExchange, error) {
 	var authenticators []auth.Authenticator
 	var exchange *httpapi.TokenExchange
@@ -214,6 +215,9 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 	// needs to guess at them.
 	authenticators = append(authenticators, auth.SessionAuthenticator{
 		Issuer: sessions,
+		// A browser on another origin may only present the session cookie if the
+		// deployment already listed that origin for CORS.
+		TrustedOrigin: originAllower(corsOrigins),
 		Resolver: auth.SessionResolverFunc(func(ctx context.Context, claims auth.SessionClaims) (*auth.Principal, error) {
 			epoch, err := dataStore.SessionEpoch(ctx, claims.UserID)
 			if err != nil {
@@ -227,8 +231,11 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 				return nil, auth.ErrInvalidCredentials
 			}
 			return &auth.Principal{
-				Subject:    "session:" + claims.UserID,
-				AuthMethod: "password",
+				Subject: "session:" + claims.UserID,
+				// "session", not "password": an identity that signed in through the
+				// provider holds the same cookie, and the cookie does not record
+				// which door it came through.
+				AuthMethod: "session",
 				Claims:     map[string]any{"ptium_user_id": claims.UserID},
 			}, nil
 		}),
@@ -281,6 +288,21 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 	}
 	authenticators = append(authenticators, apiKeyAuthenticator)
 	return auth.CompositeAuthenticator{Authenticators: authenticators}, public, exchange, nil
+}
+
+// originAllower matches a browser origin against the deployment's CORS list. A
+// wildcard entry is deliberately not honoured for cookie credentials: "any
+// origin may read the API" must not become "any site may act as the signed-in
+// user".
+func originAllower(origins []string) func(string) bool {
+	allowed := make(map[string]struct{}, len(origins))
+	for _, origin := range exactOrigins(origins) {
+		allowed[strings.ToLower(strings.TrimRight(origin, "/"))] = struct{}{}
+	}
+	return func(origin string) bool {
+		_, ok := allowed[strings.ToLower(strings.TrimRight(strings.TrimSpace(origin), "/"))]
+		return ok
+	}
 }
 
 func exactOrigins(origins []string) []string {

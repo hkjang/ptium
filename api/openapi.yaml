@@ -323,6 +323,69 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/auth/logout:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: signOut
+      summary: End the browser session
+      description: |
+        Expires the session cookie. The cookie is HttpOnly, so a browser cannot
+        clear it itself. Always succeeds, whether or not the session was still
+        valid — signing out must never fail.
+
+        A bearer token is not revoked by this call; discard it client-side.
+      tags: [Authentication]
+      security: []
+      responses:
+        '204':
+          description: The session cookie has been expired.
+
+  /api/v1/auth/session:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: startSession
+      summary: Trade the current identity for a session cookie
+      description: |
+        Issues a Ptium session for an already authenticated caller and returns it
+        as a `Set-Cookie` as well as in the body.
+
+        This is how a workspace stops depending on the identity provider's access
+        token, which lives minutes and whose refresh token deliberately never
+        reaches the browser. A Ptium session is renewed while its holder keeps
+        working, so an active person is not signed out mid-task.
+
+        An API key is refused: a server-to-server credential does not become a
+        browser session.
+      tags: [Authentication]
+      responses:
+        '200':
+          description: A session token and the signed-in account.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: An API key cannot open a browser session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: This deployment does not issue session cookies.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/me:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -2142,7 +2205,7 @@ components:
               $ref: '#/components/schemas/User'
             authMethod:
               type: string
-              enum: [oidc, api_key, dev, password]
+              enum: [oidc, api_key, dev, session]
             scopes:
               type: array
               items:
@@ -2824,9 +2887,14 @@ components:
             access_token:
               type: string
               description: |
-                Browser session token, prefixed `ptses_`. Send it as
-                `Authorization: Bearer <token>`. It is stateless and signed; it
-                stops working when the account's password changes.
+                Browser session token, prefixed `ptses_`. The same value is set as
+                the HttpOnly `ptium_session` cookie, which is what a browser should
+                rely on: it survives closing the tab, is invisible to scripts, and
+                is renewed automatically once past half its life. A scripted client
+                may instead send it as `Authorization: Bearer <token>`.
+
+                The token is stateless and signed, and stops working when the
+                account's password changes.
             token_type:
               type: string
               enum: [Bearer]

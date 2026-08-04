@@ -1,5 +1,5 @@
 import type { AuthConfig } from '../types'
-import { session } from '../api/client'
+import { api, session } from '../api/client'
 
 const PKCE_KEY = 'ptium.oidc_transaction'
 
@@ -80,5 +80,10 @@ export async function completeOidcCallback(config: AuthConfig): Promise<{ comple
   const tokenBody = await response.json().catch(() => null) as Record<string, unknown> | null
   if (!response.ok || !tokenBody?.access_token) throw new Error(String(tokenBody?.error_description || tokenBody?.error || 'OIDC 토큰 교환에 실패했습니다.'))
   session.set(String(tokenBody.access_token))
+  // The provider's access token lives minutes and cannot be refreshed here — the
+  // refresh token never reaches the browser. Trade it once for a Ptium session
+  // cookie, which is renewed while the person keeps working, and stop carrying the
+  // provider's token: a stale one in this tab would override the cookie.
+  if (await api.startSession()) session.clearBearer()
   return { completed: true, returnTo: transaction.returnTo }
 }

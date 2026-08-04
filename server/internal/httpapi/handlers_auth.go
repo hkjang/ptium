@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/store"
 )
 
@@ -205,6 +206,50 @@ func (s *Server) passwordLogin(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	s.store.Audit(request.Context(), &user.ID, "auth.password_login", "user", user.ID, nil)
+	// The browser keeps the session in an HttpOnly cookie so it survives closing
+	// the tab and cannot be read by a script; the token in the body is for
+	// scripted clients that manage their own credentials.
+	setSessionCookie(writer, auth.SessionCookie(token, expiresAt, secureRequest(request)))
+	writeData(writer, request, http.StatusOK, map[string]any{
+		"access_token": token,
+		"token_type":   "Bearer",
+		"expires_in":   int(time.Until(expiresAt).Seconds()),
+		"user":         user,
+	})
+}
+
+// startSession handles POST /api/v1/auth/session. It trades an already
+// authenticated identity for a Ptium session cookie.
+//
+// An identity provider's access token typically lives five to fifteen minutes
+// and its refresh token is deliberately never given to the browser, so a
+// workspace that keeps presenting that token is signed out again within minutes.
+// A Ptium session is renewed as long as the person keeps working, so this is what
+// the browser holds after signing in through the provider.
+func (s *Server) startSession(writer http.ResponseWriter, request *http.Request) {
+	if s.sessions == nil {
+		writeError(writer, request, http.StatusNotFound, "sessions_disabled", "This deployment does not issue session cookies", nil)
+		return
+	}
+	user, ok := UserFromContext(request.Context())
+	if !ok {
+		writeError(writer, request, http.StatusUnauthorized, "authentication_required", "Authentication is required", nil)
+		return
+	}
+	principal, _ := auth.PrincipalFromContext(request.Context())
+	if principal != nil && principal.AuthMethod == "api_key" {
+		// An API key is a server-to-server credential; it does not become a browser
+		// session, which would widen what a leaked key can reach.
+		writeError(writer, request, http.StatusForbidden, "not_an_interactive_identity",
+			"An API key cannot open a browser session", nil)
+		return
+	}
+	token, expiresAt, err := s.sessions.Issue(user.ID, user.SessionEpoch())
+	if err != nil {
+		s.internalError(writer, request, "session_issue_failed", err)
+		return
+	}
+	setSessionCookie(writer, auth.SessionCookie(token, expiresAt, secureRequest(request)))
 	writeData(writer, request, http.StatusOK, map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
@@ -259,11 +304,56 @@ func (s *Server) changePassword(writer http.ResponseWriter, request *http.Reques
 		writer.WriteHeader(http.StatusNoContent)
 		return
 	}
+	setSessionCookie(writer, auth.SessionCookie(token, expiresAt, secureRequest(request)))
 	writeData(writer, request, http.StatusOK, map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
 		"expires_in":   int(time.Until(expiresAt).Seconds()),
 	})
+}
+
+// setSessionCookie writes the session cookie, replacing any the same response
+// already carries. Renewal happens in middleware that runs before the handler,
+// so a handler that issues its own token — signing in, or changing a password,
+// which retires the renewed one — has to be the version the browser keeps.
+func setSessionCookie(writer http.ResponseWriter, cookie *http.Cookie) {
+	header := writer.Header()
+	existing := header.Values("Set-Cookie")
+	if len(existing) > 0 {
+		kept := make([]string, 0, len(existing))
+		for _, value := range existing {
+			if !strings.HasPrefix(value, auth.SessionCookieName+"=") {
+				kept = append(kept, value)
+			}
+		}
+		header.Del("Set-Cookie")
+		for _, value := range kept {
+			header.Add("Set-Cookie", value)
+		}
+	}
+	http.SetCookie(writer, cookie)
+}
+
+// signOut handles POST /api/v1/auth/logout. It clears the session cookie and
+// always succeeds: signing out must not depend on the session still being valid.
+func (s *Server) signOut(writer http.ResponseWriter, request *http.Request) {
+	setSessionCookie(writer, auth.ClearedSessionCookie(secureRequest(request)))
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// secureRequest reports whether the browser reached Ptium over TLS, directly or
+// through a proxy. A Secure cookie is dropped on a plain-HTTP origin, so this
+// cannot simply be hardcoded.
+func secureRequest(request *http.Request) bool {
+	if request.TLS != nil {
+		return true
+	}
+	forwarded := request.Header.Get("X-Forwarded-Proto")
+	if scheme, _, found := strings.Cut(forwarded, ","); found {
+		forwarded = scheme
+	}
+	return strings.EqualFold(strings.TrimSpace(forwarded), "https")
 }
 
 // validatePassword enforces a length floor rather than composition rules, which

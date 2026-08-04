@@ -110,6 +110,33 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// sessionRenewalMiddleware extends a cookie session that is running out.
+//
+// Without this, a session ends abruptly at its lifetime no matter how active its
+// holder was, which reads as being logged out at random. Renewal is written
+// straight back as a cookie, so an idle session still lapses on schedule while
+// someone working in the product stays signed in.
+func (s *Server) sessionRenewalMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if s.sessions != nil {
+			if principal, ok := auth.PrincipalFromContext(request.Context()); ok {
+				if state, found := auth.SessionStateFromPrincipal(principal); found && state.FromCookie {
+					// Halfway through its life: early enough that a slow request or a
+					// clock skew of minutes cannot land after the expiry.
+					if time.Until(state.ExpiresAt) < s.sessions.Lifetime()/2 {
+						if token, expiresAt, err := s.sessions.Issue(state.UserID, state.Epoch); err == nil {
+							setSessionCookie(writer, auth.SessionCookie(token, expiresAt, secureRequest(request)))
+						} else {
+							s.logger.Warn("could not renew session cookie", "request_id", RequestID(request.Context()), "error", err)
+						}
+					}
+				}
+			}
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
 func (s *Server) identityMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := auth.PrincipalFromContext(request.Context())

@@ -104,7 +104,7 @@ func TestSessionAuthenticatorOnlyClaimsItsOwnTokens(t *testing.T) {
 				// This is the revocation check: a stale epoch is not a session.
 				return nil, ErrInvalidCredentials
 			}
-			return &Principal{Subject: "session:" + claims.UserID, AuthMethod: "password"}, nil
+			return &Principal{Subject: "session:" + claims.UserID, AuthMethod: "session"}, nil
 		}),
 	}
 
@@ -112,7 +112,7 @@ func TestSessionAuthenticatorOnlyClaimsItsOwnTokens(t *testing.T) {
 	token, _, _ := issuer.Issue("user-1", 42)
 	request.Header.Set("Authorization", "Bearer "+token)
 	principal, err := authenticator.Authenticate(context.Background(), request)
-	if err != nil || principal == nil || principal.AuthMethod != "password" {
+	if err != nil || principal == nil || principal.AuthMethod != "session" {
 		t.Fatalf("Authenticate() = %+v, %v", principal, err)
 	}
 
@@ -166,5 +166,125 @@ func TestLoadBootstrapConfigReadsClientSecret(t *testing.T) {
 	}
 	if config.OIDC.ClientSecret != "confidential-value" {
 		t.Fatalf("client secret = %q", config.OIDC.ClientSecret)
+	}
+}
+
+func cookieAuthenticator(t *testing.T, issuer *SessionIssuer) SessionAuthenticator {
+	t.Helper()
+	return SessionAuthenticator{
+		Issuer:        issuer,
+		TrustedOrigin: func(origin string) bool { return origin == "https://studio.example.com" },
+		Resolver: SessionResolverFunc(func(_ context.Context, claims SessionClaims) (*Principal, error) {
+			return &Principal{Subject: "session:" + claims.UserID, AuthMethod: "session"}, nil
+		}),
+	}
+}
+
+func TestSessionCookieKeepsABrowserSignedIn(t *testing.T) {
+	issuer := testIssuer(t, time.Hour)
+	authenticator := cookieAuthenticator(t, issuer)
+	token, expiresAt, _ := issuer.Issue("user-1", 9)
+
+	cookie := SessionCookie(token, expiresAt, true)
+	if !cookie.HttpOnly || !cookie.Secure || cookie.SameSite != http.SameSiteLaxMode || cookie.Path != "/" {
+		t.Fatalf("cookie = %+v", cookie)
+	}
+	if cookie.MaxAge <= 0 {
+		// Without Max-Age the cookie would be a session cookie again, discarded
+		// when the browser closes, which is the bug this is meant to fix.
+		t.Fatalf("cookie must outlive the browser session, MaxAge = %d", cookie.MaxAge)
+	}
+	if cleared := ClearedSessionCookie(false); cleared.MaxAge >= 0 || cleared.Value != "" {
+		t.Fatalf("cleared cookie = %+v", cleared)
+	}
+
+	// A page load carrying only the cookie is authenticated, and the principal
+	// says so, which is what lets the server renew it.
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+	principal, err := authenticator.Authenticate(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	state, ok := SessionStateFromPrincipal(principal)
+	if !ok || !state.FromCookie || state.UserID != "user-1" || state.Epoch != 9 {
+		t.Fatalf("state = %+v (ok=%v)", state, ok)
+	}
+	if state.ExpiresAt.Unix() != expiresAt.Unix() {
+		t.Fatalf("expiry = %s, want %s", state.ExpiresAt, expiresAt)
+	}
+}
+
+func TestSessionCookieIsNotHonouredCrossSite(t *testing.T) {
+	issuer := testIssuer(t, time.Hour)
+	authenticator := cookieAuthenticator(t, issuer)
+	token, _, _ := issuer.Issue("user-1", 0)
+
+	withCookie := func(method, fetchSite, origin string) *http.Request {
+		request := httptest.NewRequest(method, "http://ptium.example.com/api/v1/presentations", nil)
+		request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+		if fetchSite != "" {
+			request.Header.Set("Sec-Fetch-Site", fetchSite)
+		}
+		if origin != "" {
+			request.Header.Set("Origin", origin)
+		}
+		return request
+	}
+
+	for name, testCase := range map[string]struct {
+		request *http.Request
+		allowed bool
+	}{
+		"same-origin write":             {withCookie(http.MethodPost, "same-origin", "http://ptium.example.com"), true},
+		"cross-site write":              {withCookie(http.MethodPost, "cross-site", "https://evil.example.com"), false},
+		"cross-site read":               {withCookie(http.MethodGet, "cross-site", "https://evil.example.com"), false},
+		"trusted cross-site write":      {withCookie(http.MethodPost, "cross-site", "https://studio.example.com"), true},
+		"same-site read":                {withCookie(http.MethodGet, "same-site", ""), true},
+		"same-site write":               {withCookie(http.MethodPost, "same-site", ""), false},
+		"no metadata, read":             {withCookie(http.MethodGet, "", ""), true},
+		"no metadata, write, no origin": {withCookie(http.MethodPost, "", ""), false},
+		"no metadata, matching origin":  {withCookie(http.MethodPost, "", "http://ptium.example.com"), true},
+		"no metadata, foreign origin":   {withCookie(http.MethodPost, "", "https://evil.example.com"), false},
+	} {
+		_, err := authenticator.Authenticate(context.Background(), testCase.request)
+		if testCase.allowed && err != nil {
+			t.Fatalf("%s: expected the cookie to authenticate, got %v", name, err)
+		}
+		if !testCase.allowed && !errors.Is(err, ErrNoCredentials) {
+			t.Fatalf("%s: expected the cookie to be ignored, got %v", name, err)
+		}
+	}
+}
+
+func TestExplicitCredentialsBeatTheSessionCookie(t *testing.T) {
+	issuer := testIssuer(t, time.Hour)
+	authenticator := cookieAuthenticator(t, issuer)
+	token, _, _ := issuer.Issue("user-1", 0)
+
+	// An API key must reach the next authenticator even with a cookie present, so
+	// a scripted caller is never silently answered as the browser's user.
+	apiKey := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	apiKey.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+	apiKey.Header.Set("Authorization", "Bearer ptium_abcdef123456_secret")
+	if _, err := authenticator.Authenticate(context.Background(), apiKey); !errors.Is(err, ErrNoCredentials) {
+		t.Fatalf("an API key must not be answered from the cookie, got %v", err)
+	}
+
+	// A developer sign-in is an explicit request to be someone else.
+	dev := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+	dev.AddCookie(&http.Cookie{Name: SessionCookieName, Value: token})
+	dev.Header.Set(defaultDevHeader, "dev-secret")
+	if _, err := authenticator.Authenticate(context.Background(), dev); !errors.Is(err, ErrNoCredentials) {
+		t.Fatalf("the dev header must take precedence, got %v", err)
+	}
+
+	// An empty or absent cookie is simply no credential.
+	for _, value := range []string{"", "   "} {
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+		request.AddCookie(&http.Cookie{Name: SessionCookieName, Value: value})
+		if _, err := authenticator.Authenticate(context.Background(), request); !errors.Is(err, ErrNoCredentials) {
+			t.Fatalf("an empty cookie must not be a credential, got %v", err)
+		}
 	}
 }

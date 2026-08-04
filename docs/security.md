@@ -46,6 +46,38 @@ exists. The design keeps that convenience from becoming a weakness:
   issued before it. Other browsers are signed out; the browser that made the
   change is handed a fresh token.
 
+## Browser sessions
+
+The browser holds its session in the `ptium_session` cookie: `HttpOnly`, `Path=/`,
+`SameSite=Lax`, and `Secure` whenever the request arrived over TLS, directly or
+through a proxy that sets `X-Forwarded-Proto`.
+
+A cookie rather than web storage, for two reasons. A token in `sessionStorage`
+disappears when the tab closes, so a new tab or a reopened browser is signed out;
+one in `localStorage` is readable by any script that reaches the page. An HttpOnly
+cookie is neither.
+
+- Cookie credentials are only honoured for a same-site request. `SameSite=Lax`
+  already keeps the browser from sending the cookie on a cross-site write; Ptium
+  additionally refuses one that arrives anyway, judging by `Sec-Fetch-Site` and,
+  for a client that sends no fetch metadata, by requiring an `Origin` matching the
+  request's own host on any unsafe method. A cross-origin browser client can use
+  the cookie only from an origin the deployment already listed for CORS, and a
+  wildcard CORS entry does not qualify.
+- An `Authorization` header always wins over the cookie, so a scripted caller is
+  never answered as whoever last signed in on that browser. The developer-auth
+  header likewise takes precedence.
+- A session past half its life is reissued on the next request, so someone working
+  in the product is never signed out mid-task, while an idle session still lapses
+  on schedule (`SESSION_LIFETIME`, default 12h).
+- `POST /api/v1/auth/session` trades an authenticated identity for a session
+  cookie, which is how a workspace stops depending on the identity provider's
+  access token — that token lives minutes and its refresh token deliberately never
+  reaches the browser. An API key is refused: a server-to-server credential does
+  not become a browser session.
+- `POST /api/v1/auth/logout` expires the cookie and always succeeds; a browser
+  cannot clear an HttpOnly cookie itself.
+
 ## Confidential OIDC clients
 
 `OIDC_CLIENT_SECRET` (environment, or the write-only `auth.oidc.client_secret`

@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signInDev = useCallback(async (secret: string) => {
+    // Drop any session cookie first, so the developer identity is what answers.
+    await api.logout()
     session.setDev(secret)
     try {
       const current = await api.me()
@@ -101,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInPassword = useCallback(async (username: string, password: string) => {
     session.clear()
+    await api.logout()
     const current = await api.passwordLogin(username, password)
     setUser(current)
     setError(null)
@@ -110,6 +113,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const endSessionEndpoint = config?.endSessionEndpoint
     const clientId = config?.clientId
     session.clear()
+    // The session cookie is HttpOnly, so only the server can clear it.
+    await api.logout()
     setUser(null)
     if (endSessionEndpoint) {
       const logout = new URL(endSessionEndpoint)
