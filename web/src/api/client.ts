@@ -313,6 +313,46 @@ function normalizeFindings(raw: unknown): DeckFinding[] {
   }))
 }
 
+/** A grid component an organisation defined. */
+export interface GridSpec {
+  name: string
+  title?: string
+  columns?: { label?: string; weight?: number; align?: string }[]
+  values?: Record<string, { label?: string; role?: string; chip?: boolean; meaning?: string }>
+  order?: string[]
+  zebra?: boolean
+  legend?: boolean
+}
+
+function normalizeGrid(value: Record<string, unknown>): GridSpec {
+  const columns = Array.isArray(value.columns)
+    ? (value.columns as Record<string, unknown>[]).map((column) => ({
+      label: String(column.label ?? ''),
+      weight: Number(column.weight ?? 0) || undefined,
+      align: String(column.align ?? '') || undefined,
+    }))
+    : undefined
+  const rawValues = (value.values && typeof value.values === 'object' ? value.values : {}) as Record<string, Record<string, unknown>>
+  const values: GridSpec['values'] = {}
+  for (const [key, entry] of Object.entries(rawValues)) {
+    values[key] = {
+      label: String(entry.label ?? ''),
+      role: String(entry.role ?? 'ink'),
+      chip: Boolean(entry.chip),
+      meaning: String(entry.meaning ?? ''),
+    }
+  }
+  return {
+    name: String(value.name ?? ''),
+    title: String(value.title ?? '') || undefined,
+    columns,
+    values,
+    order: Array.isArray(value.order) ? value.order.map(String) : undefined,
+    zebra: Boolean(value.zebra),
+    legend: Boolean(value.legend),
+  }
+}
+
 function normalizeTemplatePalette(raw: unknown): TemplatePalette | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
@@ -521,6 +561,20 @@ export const api = {
     } catch {
       return false
     }
+  },
+  /** Grid definitions: the caller's own, plus the shipped ones they have not replaced. */
+  async grids() {
+    const raw = await request<unknown>('/grids')
+    return unwrapList<Record<string, unknown>>(raw, ['grids', 'items', 'data']).map(normalizeGrid)
+  },
+  async saveGrid(spec: GridSpec) {
+    const raw = await request<unknown>(`/grids/${encodeURIComponent(spec.name)}`, {
+      method: 'PUT', body: JSON.stringify(spec),
+    })
+    return normalizeGrid(unwrapOne<Record<string, unknown>>(raw, ['data']))
+  },
+  async deleteGrid(name: string) {
+    await request<void>(`/grids/${encodeURIComponent(name)}`, { method: 'DELETE' })
   },
   /** Images a deck can place on its slides. */
   async assets() {

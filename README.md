@@ -142,7 +142,8 @@ curl -H 'Authorization: Bearer <key>' \
 조직 고유의 표는 격자로 정의합니다. `::grid raci` 처럼 부르면 정의된 값(R·A·C·I 등)이
 색 칩으로 그려집니다. 정의는 색을 직접 쓰지 않고 `accent1`·`positive`·`negative`·`muted`
 같은 **역할**만 지정하므로, 같은 정의가 템플릿마다 그 회사 색으로 나옵니다. `raci`,
-`matrix`, `checklist`가 기본 제공되고 같은 이름으로 자기 정의를 저장하면 그것이 우선합니다
+`matrix`, `checklist`가 기본 제공되고, 편집기 오른쪽 **격자** 탭에서 열·값·색 역할을 폼으로
+편집합니다. 같은 이름으로 자기 정의를 저장하면 그것이 우선합니다
 ([docs/deck-source.md](docs/deck-source.md)).
 
 이미지는 편집기 오른쪽 **이미지** 탭에서 끌어다 놓아 올리고, **코드에 넣기**를 누르면

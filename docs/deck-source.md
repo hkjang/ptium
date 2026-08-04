@@ -95,9 +95,11 @@ coloured chip.
 ::
 ```
 
-Three definitions ship: `raci`, `matrix` and `checklist`. A definition of your own
-under the same name replaces the shipped one, so the source above keeps working
-while the slide follows your house rules:
+Three definitions ship: `raci`, `matrix` and `checklist`. The editor's **격자** panel
+edits them as a form — columns, values, colour roles — and writes a worked example
+into the code for you. A definition of your own under the same name replaces the
+shipped one, so the source above keeps working while the slide follows your house
+rules. Over the API:
 
 ```bash
 curl -X PUT -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' \

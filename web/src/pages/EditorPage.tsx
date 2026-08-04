@@ -6,6 +6,7 @@ import {
 import { api, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary } from '../components/AssetLibrary'
+import { GridLibrary } from '../components/GridLibrary'
 import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
@@ -95,7 +96,7 @@ export function EditorPage({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [panel, setPanel] = useState<'design' | 'notes' | 'images'>('design')
+  const [panel, setPanel] = useState<'design' | 'notes' | 'images' | 'grids'>('design')
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
   // The deck as text. It is the same deck the canvas shows: applying it
   // recompiles the slides, and opening it reads them back out.
@@ -267,6 +268,20 @@ export function EditorPage({ id }: { id: string }) {
     showToast(`${directive} 을 코드 끝에 넣었습니다.`)
   }
 
+  const insertGridReference = (name: string) => {
+    const directive = `::grid ${name}\n- 항목 | 담당 A | 담당 B\n- 첫 번째 활동 | R | C\n::`
+    if (canvasMode !== 'source') {
+      void navigator.clipboard?.writeText(directive).catch(() => { /* the toast still says what to write */ })
+      showToast(`::grid ${name} 예시를 복사했습니다. 코드 탭에 붙여 넣으세요.`)
+      return
+    }
+    setSource((current) => {
+      const separator = current.length === 0 || current.endsWith('\n') ? '' : '\n'
+      return current + separator + directive + '\n'
+    })
+    showToast(`::grid ${name} 예시를 코드 끝에 넣었습니다.`)
+  }
+
   const applySource = async (dryRun: boolean) => {
     setSourceBusy(true)
     try {
@@ -430,7 +445,7 @@ export function EditorPage({ id }: { id: string }) {
         </section>
 
         <aside className="inspector-panel">
-          <div className="inspector-tabs"><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>발표 노트</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button></div>
+          <div className="inspector-tabs"><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>발표 노트</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button><button className={panel === 'grids' ? 'active' : ''} onClick={() => setPanel('grids')}>격자</button></div>
           {panel === 'design' ? <div className="inspector-content">
             <section>
               <div className="inspector-section-head"><strong>템플릿</strong>{template && <span className="inspector-hint">{template.layoutCount}개 레이아웃</span>}</div>
@@ -462,6 +477,12 @@ export function EditorPage({ id }: { id: string }) {
                   {active?.layoutId === layout.id && <em><Check size={11} /></em>}
                 </button>
               ))}</div>
+            </section>
+          </div> : panel === 'grids' ? <div className="inspector-content">
+            <section>
+              <strong>격자 정의</strong>
+              <p className="inspector-help">RACI·위험 매트릭스처럼 조직 고유의 표를 정의합니다. 소스에서는 <code>::grid 이름</code>으로 부릅니다. 색은 직접 쓰지 않고 역할만 고르므로, 같은 정의가 템플릿마다 그 회사 색으로 나옵니다.</p>
+              <GridLibrary onInsert={insertGridReference} notify={showToast} />
             </section>
           </div> : panel === 'images' ? <div className="inspector-content">
             <section>
