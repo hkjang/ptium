@@ -145,6 +145,9 @@ var migrations = []string{
 	`ALTER TABLE slides ADD COLUMN IF NOT EXISTS layout_id text NOT NULL DEFAULT ''`,
 	// Local password sign-in for the bootstrap administrator. The hash column is
 	// nullable: an account provisioned by the identity provider never has one.
+	// A deck's source is the text it was written as. Storing it makes the deck
+	// editable as text and recompilable into the same slides.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT ''`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash bytea`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz`,
 }

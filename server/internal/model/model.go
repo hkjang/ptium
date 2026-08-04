@@ -78,6 +78,9 @@ type Presentation struct {
 	Audience            string          `json:"audience"`
 	Tone                string          `json:"tone"`
 	RequestedSlideCount int             `json:"requestedSlideCount"`
+	// Source is the deck written in Ptium's slide language. It is the editable
+	// form of the deck: compiling it reproduces the slides.
+	Source string `json:"source,omitempty"`
 	SlideCount          int             `json:"slideCount,omitempty"`
 	Outline             json.RawMessage `json:"outline,omitempty"`
 	ErrorMessage        string          `json:"errorMessage,omitempty"`

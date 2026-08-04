@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
@@ -19,11 +18,23 @@ import (
 func compose(request writingRequest, written writtenDeck) (Deck, error) {
 	manifest := request.Template.Manifest
 	requested := request.Presentation.RequestedSlideCount
+	if requested < 1 {
+		requested = len(written.Slides)
+	}
+	var warnings []string
+	// A model that returns the wrong number of slides is a nuisance, not a
+	// failure. Extra slides are dropped from the end, where a deck's weakest
+	// material sits; a short deck is delivered short and says so. Failing here
+	// would throw away good work someone is waiting for.
 	if actual := len(written.Slides); actual != requested {
-		return Deck{}, fmt.Errorf("AI provider returned %d slides; exactly %d were requested", actual, requested)
+		warnings = append(warnings,
+			fmt.Sprintf("the model wrote %d slides for a request of %d", actual, requested))
+		if actual > requested {
+			written.Slides = written.Slides[:requested]
+		}
 	}
 
-	result := Deck{}
+	result := Deck{Warnings: warnings}
 	outline := make([]map[string]any, 0, requested)
 	for index, slide := range written.Slides {
 		layout := resolveWrittenLayout(manifest, request.Plan, slide, index, requested)
@@ -101,6 +112,9 @@ func compose(request writingRequest, written writtenDeck) (Deck, error) {
 		outline = append(outline, map[string]any{"position": index + 1, "title": title, "layout": layout.Name, "role": layout.Role})
 	}
 	result.Outline, _ = json.Marshal(outline)
+	// The deck is written back out as source, so a deck a model produced is as
+	// editable as one written by hand.
+	result.Source = deck.Format(model.Presentation{Slides: result.Slides, Language: request.Presentation.Language}, manifest)
 	return result, nil
 }
 
@@ -239,54 +253,14 @@ func splitLines(value string) []pptx.Paragraph {
 // fitParagraphs keeps copy inside the slot's budget. Mild overflow is left to
 // the renderer's autofit; only text that would still not fit after shrinking
 // is trimmed, and always at a word boundary.
+// fitParagraphs and sanitizeBlock live in the pptx package, which owns the
+// placeholder and component models; these keep the local call sites short.
 func fitParagraphs(paragraphs []pptx.Paragraph, placeholder pptx.Placeholder) []pptx.Paragraph {
-	if len(paragraphs) == 0 {
-		return nil
-	}
-	maxLines := placeholder.MaxLines
-	if maxLines <= 0 {
-		maxLines = 1
-	}
-	switch placeholder.Slot {
-	case pptx.SlotTitle, pptx.SlotSubtitle:
-		// A title is one statement; join stray lines rather than dropping them.
-		text := paragraphs[0].Text
-		for _, extra := range paragraphs[1:] {
-			text += " " + extra.Text
-		}
-		return []pptx.Paragraph{{Text: trimToWidth(text, placeholder.MaxChars*2)}}
-	}
-	// Two lines of wrapped text per bullet is the most a slide should carry.
-	budget := maxLines
-	if budget > 14 {
-		budget = 14
-	}
-	result := make([]pptx.Paragraph, 0, len(paragraphs))
-	used := 0
-	for _, paragraph := range paragraphs {
-		if used >= budget {
-			break
-		}
-		text := trimToWidth(paragraph.Text, placeholder.MaxChars)
-		used += pptx.LineCount(text, placeholder, paragraph.Level)
-		result = append(result, pptx.Paragraph{Text: text, Level: paragraph.Level})
-	}
-	return result
+	return pptx.FitParagraphs(paragraphs, placeholder, "")
 }
 
-// trimToWidth shortens text at a word boundary and marks the cut so an editor
-// can see something was dropped.
-func trimToWidth(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	cut := string(runes[:limit])
-	if index := strings.LastIndexAny(cut, " ,·"); index > limit/2 {
-		cut = cut[:index]
-	}
-	return strings.TrimSpace(cut) + "…"
+func sanitizeBlock(block pptx.Block, placeholder pptx.Placeholder) (pptx.Block, bool) {
+	return pptx.SanitizeBlock(block, placeholder)
 }
 
 func firstLine(raw json.RawMessage) string {
@@ -314,109 +288,6 @@ func firstBodyPlaceholder(layout pptx.Layout) (pptx.Placeholder, bool) {
 		return placeholder, true
 	}
 	return pptx.Placeholder{}, false
-}
-
-// sanitizeBlock validates a component a model produced. Everything a slide
-// renderer would trip over is corrected here rather than at draw time: an
-// unknown kind, a component with too few entries to mean anything, labels long
-// enough to collide, or a chart with more series than the template's palette
-// can tell apart.
-func sanitizeBlock(block pptx.Block, placeholder pptx.Placeholder) (pptx.Block, bool) {
-	kind := strings.TrimSpace(block.Kind)
-	if !knownBlockKind(kind) {
-		return pptx.Block{}, false
-	}
-	block.Kind = kind
-	block.Heading = truncate(strings.TrimSpace(block.Heading), 80)
-	block.Caption = truncate(strings.TrimSpace(block.Caption), 160)
-	block.Text = truncate(strings.TrimSpace(block.Text), 300)
-	block.Attribute = truncate(strings.TrimSpace(block.Attribute), 80)
-	block.Unit = truncate(strings.TrimSpace(block.Unit), 8)
-
-	items := make([]pptx.Item, 0, len(block.Items))
-	for _, item := range block.Items {
-		item.Label = truncate(strings.TrimSpace(item.Label), 60)
-		item.Value = truncate(strings.TrimSpace(item.Value), 24)
-		item.Delta = truncate(strings.TrimSpace(item.Delta), 24)
-		item.Detail = truncate(strings.TrimSpace(item.Detail), 120)
-		item.Trend = strings.ToLower(strings.TrimSpace(item.Trend))
-		bullets := make([]string, 0, len(item.Bullets))
-		for _, bullet := range item.Bullets {
-			if trimmed := strings.TrimSpace(bullet); trimmed != "" {
-				bullets = append(bullets, truncate(trimmed, 120))
-			}
-			if len(bullets) == 4 {
-				break
-			}
-		}
-		item.Bullets = bullets
-		if item.Label == "" && item.Value == "" && item.Number == nil && len(item.Bullets) == 0 {
-			continue
-		}
-		items = append(items, item)
-	}
-	block.Items = items
-
-	series := make([]pptx.Series, 0, len(block.Series))
-	for _, candidate := range block.Series {
-		if len(candidate.Points) < 2 {
-			continue
-		}
-		if len(candidate.Points) > 12 {
-			candidate.Points = candidate.Points[:12]
-		}
-		candidate.Name = truncate(strings.TrimSpace(candidate.Name), 40)
-		series = append(series, candidate)
-		if len(series) == 3 {
-			break
-		}
-	}
-	block.Series = series
-
-	labels := make([]string, 0, len(block.Labels))
-	for _, label := range block.Labels {
-		labels = append(labels, truncate(strings.TrimSpace(label), 24))
-	}
-	block.Labels = labels
-	if block.Emphasis < 0 || block.Emphasis > len(block.Items) {
-		block.Emphasis = 0
-	}
-
-	// A component that would draw nothing is worse than prose, so the caller is
-	// told to fall back rather than emitting an empty frame.
-	switch kind {
-	case pptx.BlockBullets:
-		return pptx.Block{}, false
-	case pptx.BlockKPI, pptx.BlockMeter, pptx.BlockColumns, pptx.BlockBars:
-		if len(block.Items) == 0 {
-			return pptx.Block{}, false
-		}
-	case pptx.BlockHero:
-		if len(block.Items) == 0 || block.Items[0].Display(block.Unit) == "" {
-			return pptx.Block{}, false
-		}
-	case pptx.BlockSteps, pptx.BlockTimeline, pptx.BlockComparison, pptx.BlockShare:
-		if len(block.Items) < 2 {
-			return pptx.Block{}, false
-		}
-	case pptx.BlockLine:
-		if len(block.Series) == 0 {
-			return pptx.Block{}, false
-		}
-	case pptx.BlockTable:
-		if len(block.Columns) == 0 || len(block.Rows) == 0 {
-			return pptx.Block{}, false
-		}
-	case pptx.BlockQuote, pptx.BlockCallout:
-		if block.Text == "" && block.Caption == "" && len(block.Items) == 0 {
-			return pptx.Block{}, false
-		}
-	}
-	// A component needs room; a slot too short for this kind stays prose.
-	if placeholder.MaxLines < pptx.BlockMinimumLines(kind) {
-		return pptx.Block{}, false
-	}
-	return block, true
 }
 
 func knownBlockKind(kind string) bool {

@@ -1020,3 +1020,40 @@ func withThousands(value float64) string {
 func textWidth(value string, size int) int {
 	return int(measureEm(value) * float64(size) / 100 * float64(EMUPerPoint))
 }
+
+// BlockKind resolves the name an author writes to a supported component, so
+// deck source can say "bar" or "steps" without knowing the internal spelling.
+func BlockKind(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "bullets", "list", "목록":
+		return BlockBullets
+	case "kpi", "kpis", "metrics", "지표":
+		return BlockKPI
+	case "hero", "figure", "big", "숫자":
+		return BlockHero
+	case "steps", "process", "단계", "절차":
+		return BlockSteps
+	case "timeline", "roadmap", "일정", "로드맵":
+		return BlockTimeline
+	case "comparison", "compare", "versus", "vs", "비교":
+		return BlockComparison
+	case "columnchart", "columns", "column", "bar", "bars", "세로막대":
+		return BlockColumns
+	case "barchart", "hbar", "hbars", "ranking", "가로막대":
+		return BlockBars
+	case "linechart", "line", "trend", "추이":
+		return BlockLine
+	case "sharebar", "share", "split", "비중":
+		return BlockShare
+	case "meter", "gauge", "progress", "달성률":
+		return BlockMeter
+	case "table", "표":
+		return BlockTable
+	case "quote", "statement", "인용":
+		return BlockQuote
+	case "callout", "note", "highlight", "강조":
+		return BlockCallout
+	}
+	return ""
+}

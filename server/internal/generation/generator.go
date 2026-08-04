@@ -31,6 +31,14 @@ type Generator struct {
 type Deck struct {
 	Outline json.RawMessage `json:"outline"`
 	Slides  []model.Slide   `json:"slides"`
+	// Source is the deck as written in Ptium's slide language. It is what the
+	// editor shows and edits, and recompiling it reproduces the slides exactly,
+	// so the text is the deck rather than a description of it.
+	Source string `json:"source,omitempty"`
+	// Warnings record what compiling adjusted — a layout that does not exist, a
+	// component that did not fit — without failing a generation someone is
+	// waiting for.
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // Template is the design a deck is written into. The manifest tells the model

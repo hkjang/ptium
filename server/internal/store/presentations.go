@@ -32,6 +32,7 @@ func presentationColumns(prefix string) string {
 		prefix + `theme,` + prefix + `language,` + prefix + `audience,` + prefix + `tone,` + prefix + `requested_slide_count,` +
 		prefix + `outline,` + prefix + `error_message,` + prefix + `created_at,` + prefix + `updated_at,` +
 		prefix + `generation_started_at,` + prefix + `generation_ended_at,` + prefix + `template_id::text,` +
+		`COALESCE(` + prefix + `source,''),` +
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),'')`
 }
 
@@ -258,7 +259,9 @@ func (s *Store) ClaimGeneration(ctx context.Context) (model.Presentation, error)
 	return p, nil
 }
 
-func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.RawMessage, slides []model.Slide) error {
+// CompleteGeneration stores a finished deck: its source, its outline and its
+// slides, in one transaction.
+func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.RawMessage, slides []model.Slide, source string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -276,12 +279,47 @@ func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.
 			return fmt.Errorf("insert slide %d: %w", i+1, err)
 		}
 	}
-	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,error_message='',generation_ended_at=now(),updated_at=now() WHERE id=$1 AND status='generating'`, id, outline)
+	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,source=$3,
+		error_message='',generation_ended_at=now(),updated_at=now() WHERE id=$1 AND status='generating'`, id, outline, source)
 	if err != nil {
 		return err
 	}
 	if result.RowsAffected() == 0 {
 		return errors.New("presentation generation state changed")
+	}
+	return tx.Commit(ctx)
+}
+
+// ReplaceSlidesFromSource stores hand-edited deck source and the slides it
+// compiles to. The two always move together: source that is stored without its
+// slides would describe a deck nobody can see.
+func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string, source string,
+	outline json.RawMessage, slides []model.Slide) error {
+	tx, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	result, err := tx.Exec(ctx, `UPDATE presentations SET source=$3,outline=$4,updated_at=now()
+		WHERE id=$1 AND owner_id=$2`, id, ownerID, source, outline)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM slides WHERE presentation_id=$1`, id); err != nil {
+		return err
+	}
+	for index, slide := range slides {
+		if len(slide.Content) == 0 {
+			slide.Content = json.RawMessage(`{}`)
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO slides(id,presentation_id,position,title,subtitle,content,speaker_notes,layout,layout_id)
+			VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+			newID(), id, index+1, slide.Title, slide.Subtitle, slide.Content, slide.SpeakerNotes, slide.Layout, slide.LayoutID); err != nil {
+			return fmt.Errorf("insert slide %d: %w", index+1, err)
+		}
 	}
 	return tx.Commit(ctx)
 }
@@ -294,5 +332,5 @@ func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
 func presentationScan(p *model.Presentation) []any {
 	return []any{&p.ID, &p.OwnerID, &p.Title, &p.Prompt, &p.Status, &p.Theme, &p.Language, &p.Audience, &p.Tone,
 		&p.RequestedSlideCount, &p.Outline, &p.ErrorMessage, &p.CreatedAt, &p.UpdatedAt,
-		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.TemplateName}
+		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.Source, &p.TemplateName}
 }

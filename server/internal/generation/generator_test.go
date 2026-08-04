@@ -193,31 +193,38 @@ func writtenSlides(count int, layoutID string) string {
 	return string(encoded)
 }
 
-func TestGenerateRequiresExactExternalSlideCount(t *testing.T) {
+func TestGenerateAdjustsAModelsSlideCountInsteadOfFailing(t *testing.T) {
 	template := testTemplate(t)
 	for _, test := range []struct {
-		name          string
-		returned      int
-		wantErrorText string
+		name       string
+		returned   int
+		wantSlides int
+		wantWarn   bool
 	}{
-		{name: "mismatch", returned: 2, wantErrorText: "returned 2 slides; exactly 3 were requested"},
-		{name: "exact match", returned: 3},
+		// A deck someone is waiting for is delivered and annotated, not discarded.
+		{name: "short", returned: 2, wantSlides: 2, wantWarn: true},
+		{name: "long", returned: 5, wantSlides: 3, wantWarn: true},
+		{name: "exact", returned: 3, wantSlides: 3},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stub := newStubProvider(t, writtenSlides(test.returned, template.Manifest.DefaultLayout))
 			generated, err := stub.generator().Generate(context.Background(),
 				model.Presentation{Title: "Plan", Prompt: "Growth", Language: "ko", RequestedSlideCount: 3}, model.Profile{}, template)
-			if test.wantErrorText != "" {
-				if err == nil || !strings.Contains(err.Error(), test.wantErrorText) {
-					t.Fatalf("Generate() error = %v, want containing %q", err, test.wantErrorText)
-				}
-				if len(generated.Slides) != 0 {
-					t.Fatalf("mismatched deck must not be returned: %#v", generated)
-				}
-				return
+			if err != nil {
+				t.Fatalf("Generate() error = %v", err)
 			}
-			if err != nil || len(generated.Slides) != 3 {
-				t.Fatalf("Generate() deck size = %d, error = %v", len(generated.Slides), err)
+			if len(generated.Slides) != test.wantSlides {
+				t.Fatalf("deck size = %d, want %d", len(generated.Slides), test.wantSlides)
+			}
+			if test.wantWarn && len(generated.Warnings) == 0 {
+				t.Fatal("an adjusted slide count must be reported")
+			}
+			if !test.wantWarn && len(generated.Warnings) != 0 {
+				t.Fatalf("an exact deck must not warn: %v", generated.Warnings)
+			}
+			// Every generated deck is editable as text.
+			if strings.TrimSpace(generated.Source) == "" {
+				t.Fatal("a generated deck must carry its source")
 			}
 		})
 	}

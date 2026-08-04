@@ -148,6 +148,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/presentations/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.updatePresentation))))
 	api.Handle("DELETE /api/v1/presentations/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deletePresentation))))
 	api.Handle("POST /api/v1/presentations/{id}/generate", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.generatePresentation))))
+	// A deck is editable as text: the source compiles to exactly the slides that
+	// are stored, so the two are the same deck in two forms.
+	api.Handle("GET /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.getPresentationSource))))
+	api.Handle("PUT /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.putPresentationSource))))
+	api.Handle("POST /api/v1/presentations/{id}/source", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.putPresentationSource))))
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))
