@@ -7,8 +7,17 @@
 #
 #   kubectl create secret generic ptium \
 #     --from-literal=DATABASE_URL='postgres://user:pass@postgres:5432/ptium?sslmode=require' \
-#     --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
+#     --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)" \
+#     --from-literal=BOOTSTRAP_ADMIN='admin@example.com' \
+#     --from-literal=BOOTSTRAP_ADMIN_PASSWORD="$(openssl rand -base64 24)" \
+#     --from-literal=OIDC_CLIENT_SECRET=''
 #   kubectl apply -f deploy/kubernetes.yaml
+#
+# BOOTSTRAP_ADMIN seeds a local administrator that signs in with a password, so
+# the deployment can be administered before OIDC is configured. It is written on
+# first start only; a password changed in the product survives a rollout.
+# OIDC_CLIENT_SECRET is only needed for a confidential client, and makes Ptium
+# exchange authorization codes server-side so the secret never reaches a browser.
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -24,6 +33,8 @@ data:
   OIDC_AUDIENCE: "ptium-web"
   AUTH_ADMIN_ROLES: "ptium-admin,admin"
   BOOTSTRAP_ADMIN_EMAILS: "admin@example.com"
+  BOOTSTRAP_ADMIN_NAME: "Ptium Administrator"
+  SESSION_LIFETIME: "12h"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -57,7 +68,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ptium
-          image: ptium:0.2.0
+          image: ptium:0.3.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

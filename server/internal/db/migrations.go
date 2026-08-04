@@ -143,6 +143,10 @@ var migrations = []string{
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS template_id uuid REFERENCES templates(id) ON DELETE SET NULL`,
 	`CREATE INDEX IF NOT EXISTS presentations_template_idx ON presentations(template_id) WHERE template_id IS NOT NULL`,
 	`ALTER TABLE slides ADD COLUMN IF NOT EXISTS layout_id text NOT NULL DEFAULT ''`,
+	// Local password sign-in for the bootstrap administrator. The hash column is
+	// nullable: an account provisioned by the identity provider never has one.
+	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash bytea`,
+	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz`,
 }
 
 var defaultSettings = map[string]struct {
@@ -162,7 +166,8 @@ var defaultSettings = map[string]struct {
 	"branding.logo_url":              {`""`, false, "Public logo URL"},
 	"branding.brand_color":           {`"#7C3AED"`, false, "Primary brand color"},
 	"auth.oidc.issuer_url":           {`""`, false, "OIDC issuer; bootstrap environment takes precedence until restart"},
-	"auth.oidc.client_id":            {`""`, false, "OIDC public client identifier"},
+	"auth.oidc.client_id":            {`""`, false, "OIDC client identifier"},
+	"auth.oidc.client_secret":        {`""`, true, "OIDC client secret; set only for a confidential client, which makes Ptium exchange authorization codes server-side"},
 	"auth.oidc.admin_roles":          {`["ptium-admin","admin"]`, false, "OIDC roles mapped to Ptium administrators"},
 	"security.api_key_grace":         {`"24h"`, false, "Default API-key rotation overlap"},
 	"security.cors_origins":          {`[]`, false, "Additional allowed browser origins"},

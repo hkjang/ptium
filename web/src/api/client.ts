@@ -149,6 +149,7 @@ function normalizeUser(value: User & Record<string, unknown>): User {
     createdAt: String(value.createdAt || value.created_at || '') || undefined,
     lastSeenAt: String(value.lastSeenAt || value.last_seen_at || value.lastLogin || value.last_login || '') || undefined,
     presentationsCount: Number(value.presentationsCount ?? value.presentations_count ?? 0),
+    hasPassword: Boolean(value.hasPassword ?? value.has_password ?? false),
   }
 }
 
@@ -423,6 +424,7 @@ export const api = {
       loginUrl: String(raw.login_url ?? raw.authorization_url ?? oidc.login_url ?? '') || undefined,
       providerName: String(raw.provider_name ?? oidc.provider_name ?? 'SSO'),
       devAuthRequiresSecret: Boolean(raw.dev_auth_requires_secret ?? dev.requires_secret ?? false),
+      passwordLoginEnabled: Boolean(raw.passwordLoginEnabled ?? raw.password_login_enabled ?? false),
       authorizationEndpoint: String(raw.authorizationEndpoint ?? raw.authorization_endpoint ?? oidc.authorization_endpoint ?? '') || undefined,
       tokenEndpoint: String(raw.tokenEndpoint ?? raw.token_endpoint ?? oidc.token_endpoint ?? '') || undefined,
       endSessionEndpoint: String(raw.endSessionEndpoint ?? raw.end_session_endpoint ?? oidc.end_session_endpoint ?? '') || undefined,
@@ -434,6 +436,26 @@ export const api = {
           ? rawScopes.split(/\s+/).filter(Boolean)
           : ['openid', 'profile', 'email'],
     }
+  },
+  /** Signs in a local account and stores the returned session token. */
+  async passwordLogin(username: string, password: string) {
+    const raw = await request<unknown>('/auth/login', {
+      method: 'POST', body: JSON.stringify({ username, password }),
+    })
+    const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const token = String(payload.access_token || '')
+    if (!token) throw new ApiError('로그인 응답에 토큰이 없습니다.', 500)
+    session.set(token)
+    return normalizeUser(unwrapOne<User & Record<string, unknown>>(payload, ['user']))
+  },
+  /** Changes the signed-in account's password and adopts the fresh token. */
+  async changePassword(currentPassword: string, newPassword: string) {
+    const raw = await request<unknown>('/auth/password', {
+      method: 'POST', body: JSON.stringify({ currentPassword, newPassword }),
+    })
+    const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    // A password change retires every earlier token, including this request's.
+    if (typeof payload.access_token === 'string' && payload.access_token) session.set(payload.access_token)
   },
   async me() {
     try {

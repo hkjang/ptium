@@ -9,6 +9,7 @@ interface AuthState {
   loading: boolean
   error: string | null
   signInDev: (secret: string) => Promise<void>
+  signInPassword: (username: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
 }
@@ -98,6 +99,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const signInPassword = useCallback(async (username: string, password: string) => {
+    session.clear()
+    const current = await api.passwordLogin(username, password)
+    setUser(current)
+    setError(null)
+  }, [])
+
   const signOut = useCallback(async () => {
     const endSessionEndpoint = config?.endSessionEndpoint
     const clientId = config?.clientId
@@ -111,7 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [config?.clientId, config?.endSessionEndpoint])
 
-  const value = useMemo(() => ({ user, config, loading, error, signInDev, signOut, refreshUser }), [user, config, loading, error, signInDev, signOut, refreshUser])
+  const value = useMemo(() => ({ user, config, loading, error, signInDev, signInPassword, signOut, refreshUser }),
+    [user, config, loading, error, signInDev, signInPassword, signOut, refreshUser])
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

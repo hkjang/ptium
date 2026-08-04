@@ -17,6 +17,21 @@ type User struct {
 	LastLogin          time.Time `json:"lastLogin,omitempty"`
 	CreatedAt          time.Time `json:"createdAt"`
 	UpdatedAt          time.Time `json:"updatedAt"`
+	// HasPassword marks an account that signs in with a password rather than
+	// through the identity provider.
+	HasPassword bool `json:"hasPassword,omitempty"`
+	// PasswordUpdatedAt binds a session token to the current password. It is
+	// never serialized: it is an internal revocation signal, not user data.
+	PasswordUpdatedAt *time.Time `json:"-"`
+}
+
+// SessionEpoch is the value a session token records so that changing the
+// password invalidates tokens issued before it.
+func (u User) SessionEpoch() int64 {
+	if u.PasswordUpdatedAt == nil {
+		return 0
+	}
+	return u.PasswordUpdatedAt.Unix()
 }
 
 type Profile struct {

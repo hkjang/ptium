@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,6 +29,12 @@ type AuthPublicConfig struct {
 	PKCERequired          bool   `json:"pkceRequired"`
 	DevAuthEnabled        bool   `json:"devAuthEnabled"`
 	DevAuthHeader         string `json:"devAuthHeader,omitempty"`
+	// PasswordLoginEnabled tells the workspace to offer a username and password
+	// form, which is how a bootstrap administrator signs in.
+	PasswordLoginEnabled bool `json:"passwordLoginEnabled"`
+	// TokenExchangeURL is set when Ptium exchanges the authorization code on the
+	// browser's behalf, which a confidential OIDC client requires.
+	TokenExchangeURL string `json:"tokenExchangeUrl,omitempty"`
 }
 
 type Options struct {
@@ -45,6 +52,15 @@ type Options struct {
 	MCPHandler             http.Handler
 	// WebHandler serves the compiled workspace when the process also hosts it.
 	WebHandler http.Handler
+	// Sessions issues browser session tokens for password sign-in. Nil disables
+	// password sign-in entirely.
+	Sessions *auth.SessionIssuer
+	// PasswordLoginEnabled tells the workspace whether to offer the form. A
+	// deployment with no local account should not show one.
+	PasswordLoginEnabled bool
+	// TokenExchange performs the OIDC code exchange server-side. Nil leaves the
+	// browser talking to the identity provider directly.
+	TokenExchange *TokenExchange
 }
 
 type Server struct {
@@ -61,6 +77,9 @@ type Server struct {
 	logger                 *slog.Logger
 	mcpHandler             http.Handler
 	webHandler             http.Handler
+	sessions               *auth.SessionIssuer
+	tokenExchange          *TokenExchange
+	loginLimiter           *loginLimiter
 	captureIncident        func(context.Context, model.Incident) error
 }
 
@@ -81,12 +100,19 @@ func New(options Options) (*Server, error) {
 		options.AuthPublic.Scopes = "openid profile email"
 	}
 	options.AuthPublic.PKCERequired = options.AuthPublic.OIDCEnabled
+	options.AuthPublic.PasswordLoginEnabled = options.Sessions != nil && options.PasswordLoginEnabled
+	if options.TokenExchange != nil && strings.TrimSpace(options.TokenExchange.Endpoint) != "" {
+		options.AuthPublic.TokenExchangeURL = "/api/v1/auth/token"
+	}
 	return &Server{
 		store: options.Store, settings: options.Settings, keys: options.Keys, worker: options.Worker,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,
 		webHandler:      options.WebHandler,
+		sessions:        options.Sessions,
+		tokenExchange:   options.TokenExchange,
+		loginLimiter:    newLoginLimiter(),
 		captureIncident: options.Store.CaptureIncident,
 	}, nil
 }
@@ -97,10 +123,15 @@ func (s *Server) Handler() http.Handler {
 	root.HandleFunc("GET /readyz", s.ready)
 	root.HandleFunc("GET /api/v1/auth/config", s.authConfig)
 	root.HandleFunc("GET /api/v1/settings", s.publicSettings)
+	// Sign-in and the OIDC code exchange are reachable without credentials, by
+	// definition; both apply their own throttling and validation.
+	root.HandleFunc("POST /api/v1/auth/login", s.passwordLogin)
+	root.HandleFunc("POST /api/v1/auth/token", s.exchangeToken)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
 	api.HandleFunc("GET /auth/me", s.me) // compatibility for early clients
+	api.HandleFunc("POST /api/v1/auth/password", s.changePassword)
 	api.Handle("GET /api/v1/profile", requireScope("profile:read", http.HandlerFunc(s.getProfile)))
 	api.Handle("PUT /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))
 	api.Handle("PATCH /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))

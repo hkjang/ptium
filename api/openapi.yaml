@@ -116,6 +116,213 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthConfigEnvelope'
 
+  /api/v1/auth/login:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: passwordLogin
+      summary: Sign in a local account with a password
+      description: |
+        Exchanges a username and password for a browser session token. Available
+        when `passwordLoginEnabled` is true in the public auth config, which is
+        the case once a local account exists — normally the bootstrap
+        administrator seeded from the environment.
+
+        Repeated failures back off per client address; a throttled caller
+        receives 429 with a `Retry-After` header. The response never reveals
+        whether the username exists.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              additionalProperties: false
+              properties:
+                username:
+                  type: string
+                  minLength: 1
+                  description: The account's username or email address.
+                password:
+                  type: string
+                  minLength: 1
+      responses:
+        '200':
+          description: A session token and the signed-in account.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: The username or password is incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: The account is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: This deployment does not accept password sign-in.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          description: Too many sign-in attempts from this client.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/password:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: changePassword
+      summary: Change the signed-in account's password
+      description: |
+        Replaces the password after confirming the current one. Every session
+        token issued before the change stops working, so the response carries a
+        fresh token for the caller while other browsers are signed out.
+      tags: [Authentication]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              additionalProperties: false
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 12
+                  maxLength: 256
+      responses:
+        '200':
+          description: Password changed; a replacement session token is returned.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+        '204':
+          description: Password changed, but no replacement token could be issued.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: The current password is incorrect.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: The account signs in through the identity provider and has no password.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/auth/token:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: exchangeOIDCToken
+      summary: Exchange an OIDC authorization code
+      description: |
+        Completes the Authorization Code + PKCE exchange on the browser's behalf.
+        A confidential client's secret must never reach a single-page app, so
+        Ptium presents it to the identity provider itself. The public auth config
+        advertises this path as `tokenExchangeUrl` when it is available; a public
+        client exchanges the code with the provider directly instead.
+
+        The refresh token the provider returns is deliberately not forwarded.
+      tags: [Authentication]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [code, redirect_uri, code_verifier]
+              properties:
+                grant_type:
+                  type: string
+                  enum: [authorization_code]
+                code:
+                  type: string
+                redirect_uri:
+                  type: string
+                code_verifier:
+                  type: string
+      responses:
+        '200':
+          description: The provider's token response, without any refresh token.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token]
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                  expires_in:
+                    type: integer
+                  id_token:
+                    type: string
+                  scope:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: The identity provider rejected the exchange.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: This deployment does not exchange tokens server-side.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/me:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -1906,6 +2113,17 @@ components:
           type: boolean
         devAuthEnabled:
           type: boolean
+        passwordLoginEnabled:
+          type: boolean
+          description: |
+            True when at least one local account can sign in with a password, so
+            a client should offer the username and password form.
+        tokenExchangeUrl:
+          type: string
+          description: |
+            Where to exchange an OIDC authorization code. Present only when Ptium
+            performs the exchange server-side, which a confidential client
+            requires; otherwise the client uses `tokenEndpoint` directly.
         devAuthHeader:
           type: string
           example: X-Ptium-Dev-Secret
@@ -1924,7 +2142,7 @@ components:
               $ref: '#/components/schemas/User'
             authMethod:
               type: string
-              enum: [oidc, api_key, dev]
+              enum: [oidc, api_key, dev, password]
             scopes:
               type: array
               items:
@@ -1938,6 +2156,11 @@ components:
       additionalProperties: false
       required: [id, email, name, roles, isAdmin, disabled, lastLogin, createdAt, updatedAt]
       properties:
+        hasPassword:
+          type: boolean
+          description: |
+            True for an account that signs in with a password rather than through
+            the identity provider. Such an account can change its own password.
         id:
           type: string
           format: uuid
@@ -2586,6 +2809,32 @@ components:
             $ref: '#/components/schemas/Template'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    SessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, requestId]
+      properties:
+        data:
+          type: object
+          required: [access_token, token_type, expires_in]
+          properties:
+            access_token:
+              type: string
+              description: |
+                Browser session token, prefixed `ptses_`. Send it as
+                `Authorization: Bearer <token>`. It is stateless and signed; it
+                stops working when the account's password changes.
+            token_type:
+              type: string
+              enum: [Bearer]
+            expires_in:
+              type: integer
+              description: Seconds until the token expires.
+            user:
+              $ref: '#/components/schemas/User'
         requestId:
           $ref: '#/components/schemas/RequestID'
 

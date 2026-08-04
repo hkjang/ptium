@@ -14,29 +14,46 @@ const slides = [
 ]
 
 export function LoginPage() {
-  const { user, config, loading, error, signInDev } = useAuth()
+  const { user, config, loading, error, signInDev, signInPassword } = useAuth()
   const { productName } = useBrand()
   const [secret, setSecret] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const [formError, setFormError] = useState('')
+  // Two sign-in forms can be on screen at once, so an error names the form it
+  // belongs to; otherwise a failed developer sign-in would appear to come from
+  // the password form above it.
+  const [formError, setFormError] = useState<{ form: 'password' | 'dev' | 'sso'; message: string } | null>(null)
 
   const oidcLogin = async () => {
     if (!config) return
     if (!supportsBrowserPkce(config)) { window.location.assign(authLoginUrl(config)); return }
-    setFormError('')
-    try { await beginOidcLogin(config) } catch (err) { setFormError(err instanceof Error ? err.message : 'SSO 로그인을 시작하지 못했습니다.') }
+    setFormError(null)
+    try { await beginOidcLogin(config) } catch (err) { setFormError({ form: 'sso', message: err instanceof Error ? err.message : 'SSO 로그인을 시작하지 못했습니다.' }) }
   }
 
   useEffect(() => { if (!loading && user) navigate('/dashboard', true) }, [loading, user])
 
+  const passwordSignIn = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setSubmitting(true); setFormError(null)
+    try {
+      await signInPassword(username.trim(), password)
+      navigate('/dashboard', true)
+    } catch (err) {
+      setPassword('')
+      setFormError({ form: 'password', message: err instanceof Error ? err.message : '로그인하지 못했습니다.' })
+    } finally { setSubmitting(false) }
+  }
+
   const devLogin = async (event: React.FormEvent) => {
     event.preventDefault()
-    setSubmitting(true); setFormError('')
+    setSubmitting(true); setFormError(null)
     try {
       await signInDev(secret)
       navigate('/dashboard', true)
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : '로그인하지 못했습니다.')
+      setFormError({ form: 'dev', message: err instanceof Error ? err.message : '로그인하지 못했습니다.' })
     } finally { setSubmitting(false) }
   }
 
@@ -65,14 +82,28 @@ export function LoginPage() {
             <>
               {error && <ErrorState title="서버에 연결할 수 없습니다" message={error} />}
               {config?.oidcEnabled && <button type="button" className="sso-button" onClick={() => void oidcLogin()}><span className="sso-logo"><LockKeyhole size={18} /></span><span>{config.providerName || 'SSO'}로 계속하기</span><ArrowRight size={17} /></button>}
-              {config?.oidcEnabled && config?.devAuthEnabled && <div className="login-divider"><span>또는 개발자 로그인</span></div>}
+              {formError?.form === 'sso' && <p className="inline-error">{formError.message}</p>}
+              {config?.oidcEnabled && config?.passwordLoginEnabled && <div className="login-divider"><span>또는 계정으로 로그인</span></div>}
+              {config?.passwordLoginEnabled && <form className="password-login" onSubmit={passwordSignIn}>
+                <Field label="아이디 또는 이메일">
+                  <Input value={username} onChange={(event) => setUsername(event.target.value)} required autoComplete="username" autoFocus={!config?.oidcEnabled} />
+                </Field>
+                <Field label="비밀번호">
+                  <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" />
+                </Field>
+                {formError?.form === 'password' && <p className="inline-error">{formError.message}</p>}
+                <Button type="submit" size="large" disabled={submitting || !username.trim() || !password}>
+                  {submitting ? '로그인 중…' : '로그인'} <ArrowRight size={17} />
+                </Button>
+              </form>}
+              {config?.devAuthEnabled && (config?.oidcEnabled || config?.passwordLoginEnabled) && <div className="login-divider"><span>또는 개발자 로그인</span></div>}
               {config?.devAuthEnabled && <form className="dev-login" onSubmit={devLogin}>
                 <div className="dev-login-label"><KeyRound size={15} /><span>개발 환경 액세스</span></div>
                 <Field label="개발 인증 시크릿" hint="서버의 DEV_AUTH_SECRET과 같은 값을 입력하세요."><Input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} required autoComplete="off" /></Field>
-                {formError && <p className="inline-error">{formError}</p>}
+                {formError?.form === 'dev' && <p className="inline-error">{formError.message}</p>}
                 <Button type="submit" size="large" disabled={submitting || !secret}>{submitting ? '로그인 중…' : '개발 계정으로 로그인'} <ArrowRight size={17} /></Button>
               </form>}
-              {!config?.oidcEnabled && !config?.devAuthEnabled && !error && <div className="auth-unavailable"><ShieldCheck size={23} /><strong>로그인 설정이 필요합니다</strong><p>관리자에게 OIDC 또는 개발 인증 활성화를 요청하세요.</p></div>}
+              {!config?.oidcEnabled && !config?.devAuthEnabled && !config?.passwordLoginEnabled && !error && <div className="auth-unavailable"><ShieldCheck size={23} /><strong>로그인 설정이 필요합니다</strong><p>서버에 <code>BOOTSTRAP_ADMIN</code>과 <code>BOOTSTRAP_ADMIN_PASSWORD</code>를 설정하거나 OIDC를 구성해 주세요.</p></div>}
             </>
           )}
           <p className="login-footnote"><ShieldCheck size={14} /> 로그인 정보는 조직의 인증 정책에 따라 안전하게 처리됩니다.</p>

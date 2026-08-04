@@ -30,6 +30,15 @@ func mapNotFound(err error) error {
 
 func (s *Store) Ping(ctx context.Context) error { return s.Pool.Ping(ctx) }
 
+// userColumns and userScan keep every user query reading the same shape.
+const userColumns = `id::text,COALESCE(subject,''),email,name,roles,is_admin,disabled,
+	COALESCE(last_login,created_at),created_at,updated_at,(password_hash IS NOT NULL),password_updated_at`
+
+func userScan(user *model.User) []any {
+	return []any{&user.ID, &user.Subject, &user.Email, &user.Name, &user.Roles, &user.IsAdmin,
+		&user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt, &user.HasPassword, &user.PasswordUpdatedAt}
+}
+
 func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, roles []string, admin bool) (model.User, error) {
 	var user model.User
 	err := s.Pool.QueryRow(ctx, `
@@ -38,10 +47,8 @@ func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, rol
 		ON CONFLICT(subject) DO UPDATE SET
 			email=EXCLUDED.email,name=EXCLUDED.name,roles=EXCLUDED.roles,
 			is_admin=(users.is_admin OR EXCLUDED.is_admin),last_login=now(),updated_at=now()
-		RETURNING id::text,subject,email,name,roles,is_admin,disabled,last_login,created_at,updated_at`,
-		subject, email, name, roles, admin).Scan(
-		&user.ID, &user.Subject, &user.Email, &user.Name, &user.Roles, &user.IsAdmin,
-		&user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt)
+		RETURNING `+userColumns,
+		subject, email, name, roles, admin).Scan(userScan(&user)...)
 	if err != nil {
 		return model.User{}, fmt.Errorf("upsert user: %w", err)
 	}
@@ -51,10 +58,7 @@ func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, rol
 
 func (s *Store) GetUser(ctx context.Context, id string) (model.User, error) {
 	var user model.User
-	err := s.Pool.QueryRow(ctx, `SELECT id::text,COALESCE(subject,''),email,name,roles,is_admin,disabled,
-		COALESCE(last_login,created_at),created_at,updated_at FROM users WHERE id=$1`, id).Scan(
-		&user.ID, &user.Subject, &user.Email, &user.Name, &user.Roles, &user.IsAdmin,
-		&user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt)
+	err := s.Pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id=$1`, id).Scan(userScan(&user)...)
 	return user, mapNotFound(err)
 }
 

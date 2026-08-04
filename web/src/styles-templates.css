@@ -89,3 +89,8 @@
   .template-layout-list { max-height:240px; }
   .template-picker-options { grid-template-columns:minmax(0,1fr); }
 }
+
+/* Password sign-in and password change */
+.password-login { display:flex; flex-direction:column; gap:15px; }
+.password-login .field-label { font-size:11px; }
+.auth-unavailable code { padding:1px 5px; border-radius:4px; background:#f1f0ec; font-size:11px; }

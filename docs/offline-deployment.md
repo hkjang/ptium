@@ -36,11 +36,11 @@ To reproduce the same bundle from source on a build host:
 ## Import on the target host
 
 ```powershell
-.\load-ptium-0.2.0.ps1 -Archive .\ptium-0.2.0.tar.gz
+.\load-ptium-0.3.0.ps1 -Archive .\ptium-0.3.0.tar.gz
 ```
 
 ```bash
-./load-ptium-0.2.0.sh ptium-0.2.0.tar.gz
+./load-ptium-0.3.0.sh ptium-0.3.0.tar.gz
 ```
 
 Both loaders verify the adjacent `.sha256` file and stop before import if it
@@ -48,9 +48,9 @@ does not match. Pass `-SkipChecksum` only when verification has already been
 enforced by the network-transfer process. Without a helper:
 
 ```bash
-sha256sum -c ptium-0.2.0.tar.gz.sha256
-gzip -dc ptium-0.2.0.tar.gz | docker load
-docker image inspect ptium-0.2.0:latest ptium:0.2.0 >/dev/null
+sha256sum -c ptium-0.3.0.tar.gz.sha256
+gzip -dc ptium-0.3.0.tar.gz | docker load
+docker image inspect ptium-0.3.0:latest ptium:0.3.0 >/dev/null
 ```
 
 ## Provide the database
@@ -77,8 +77,8 @@ Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
 every remaining placeholder:
 
 ```bash
-docker compose --env-file .env -f docker-compose.ptium-0.2.0.yml up -d
-docker compose --env-file .env -f docker-compose.ptium-0.2.0.yml ps
+docker compose --env-file .env -f docker-compose.ptium-0.3.0.yml up -d
+docker compose --env-file .env -f docker-compose.ptium-0.3.0.yml ps
 curl --fail http://localhost:8080/readyz
 ```
 
@@ -90,7 +90,7 @@ Ptium is then available at `http://<host>:8080`.
 kubectl create secret generic ptium \
   --from-literal=DATABASE_URL='postgres://ptium:...@postgres:5432/ptium?sslmode=require' \
   --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
-kubectl apply -f ptium-0.2.0.kubernetes.yaml
+kubectl apply -f ptium-0.3.0.kubernetes.yaml
 ```
 
 The manifest runs two replicas as a non-root user with a read-only root
@@ -106,15 +106,45 @@ sets `proxy-body-size: 64m` for the nginx ingress controller.
 ## Authentication
 
 The examples start safely with both OIDC and development authentication
-disabled. Before users can sign in, configure the internal OIDC issuer/client
-and at least one bootstrap administrator. Development authentication is only for
-an isolated evaluation host and must not be exposed to an untrusted network.
+disabled. Development authentication is only for an isolated evaluation host and
+must not be exposed to an untrusted network.
+
+### First sign-in
+
+An air-gapped installation usually has to be usable before anyone wires up the
+identity service, so name the first administrator in the environment:
+
+```dotenv
+BOOTSTRAP_ADMIN=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=at-least-twelve-characters
+BOOTSTRAP_ADMIN_NAME=Ptium Administrator
+```
+
+On Kubernetes put both values in the same secret as `DATABASE_URL`; the manifest
+already reads them from there.
+
+The account is created on the first start with a bcrypt hash, and the login page
+then offers a username and password form. The password is recorded only once —
+changing it in the product survives a restart, and the environment variable is
+not read again. If it is lost, start once with
+`BOOTSTRAP_ADMIN_PASSWORD_RESET=true` and remove that variable afterwards. Once
+OIDC is in place, delete `BOOTSTRAP_ADMIN_PASSWORD` from the environment so the
+password is no longer held in the deployment.
+
+Sessions last `SESSION_LIFETIME` (default 12h) and every token issued before a
+password change stops working.
+
+### OIDC
 
 For Keycloak, set the reachable realm issuer (for example
-`https://sso.internal/realms/company`) and the public SPA client ID. Keycloak
-must allow the exact Ptium origin and redirect URI. Discovery and JWKS refresh
-happen automatically; the Keycloak container is not part of the bundle because
-most offline environments already operate a central identity service.
+`https://sso.internal/realms/company`) and the SPA client ID. Keycloak must allow
+the exact Ptium origin and redirect URI. Discovery and JWKS refresh happen
+automatically; the Keycloak container is not part of the bundle because most
+offline environments already operate a central identity service.
+
+If the realm client is confidential, add `OIDC_CLIENT_SECRET`. Ptium then
+exchanges the authorization code itself instead of handing the secret to the
+browser. Leave it unset for a public client.
 
 ## Upgrade
 

@@ -10,6 +10,8 @@ export interface User {
   createdAt?: string
   lastSeenAt?: string
   presentationsCount?: number
+  /** True for an account that signs in with a password rather than through SSO. */
+  hasPassword?: boolean
 }
 
 export interface AuthConfig {
@@ -21,6 +23,7 @@ export interface AuthConfig {
   loginUrl?: string
   providerName?: string
   devAuthRequiresSecret?: boolean
+  passwordLoginEnabled?: boolean
   authorizationEndpoint?: string
   tokenEndpoint?: string
   endSessionEndpoint?: string

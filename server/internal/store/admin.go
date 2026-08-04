@@ -116,7 +116,8 @@ func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int)
 		return nil, 0, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT u.id::text,COALESCE(u.subject,''),u.email,u.name,u.roles,u.is_admin,u.disabled,
-		COALESCE(u.last_login,u.created_at),u.created_at,u.updated_at,COALESCE(p.presentation_count,0)
+		COALESCE(u.last_login,u.created_at),u.created_at,u.updated_at,(u.password_hash IS NOT NULL),u.password_updated_at,
+		COALESCE(p.presentation_count,0)
 		FROM users u LEFT JOIN (SELECT owner_id,count(*)::int AS presentation_count FROM presentations GROUP BY owner_id) p ON p.owner_id=u.id
 		WHERE $1='' OR u.email ILIKE $2 OR u.name ILIKE $2 ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, search, pattern, limit, offset)
 	if err != nil {
@@ -126,7 +127,7 @@ func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int)
 	users := make([]model.User, 0)
 	for rows.Next() {
 		var user model.User
-		if err := rows.Scan(&user.ID, &user.Subject, &user.Email, &user.Name, &user.Roles, &user.IsAdmin, &user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt, &user.PresentationsCount); err != nil {
+		if err := rows.Scan(append(userScan(&user), &user.PresentationsCount)...); err != nil {
 			return nil, 0, err
 		}
 		users = append(users, user)
@@ -136,9 +137,8 @@ func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int)
 
 func (s *Store) UpdateUserAdmin(ctx context.Context, id string, isAdmin, disabled bool) (model.User, error) {
 	var user model.User
-	err := s.Pool.QueryRow(ctx, `UPDATE users SET is_admin=$2,disabled=$3,updated_at=now() WHERE id=$1 RETURNING
-		id::text,COALESCE(subject,''),email,name,roles,is_admin,disabled,COALESCE(last_login,created_at),created_at,updated_at`, id, isAdmin, disabled).Scan(
-		&user.ID, &user.Subject, &user.Email, &user.Name, &user.Roles, &user.IsAdmin, &user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt)
+	err := s.Pool.QueryRow(ctx, `UPDATE users SET is_admin=$2,disabled=$3,updated_at=now() WHERE id=$1
+		RETURNING `+userColumns, id, isAdmin, disabled).Scan(userScan(&user)...)
 	return user, mapNotFound(err)
 }
 

@@ -38,11 +38,17 @@ func (source MapSource) Lookup(key string) (string, bool) {
 }
 
 // OIDCConfig configures a generic OIDC resource server. It works with Keycloak
-// through standard issuer discovery and does not require a client secret.
+// through standard issuer discovery. A client secret is optional: a public
+// client uses Authorization Code + PKCE and needs none, while a confidential
+// client needs one and therefore has to exchange the code through Ptium rather
+// than from the browser.
 type OIDCConfig struct {
-	Enabled           bool
-	Issuer            string
-	ClientID          string
+	Enabled  bool
+	Issuer   string
+	ClientID string
+	// ClientSecret turns the browser flow into a confidential-client flow: the
+	// secret never reaches the browser, so Ptium performs the token exchange.
+	ClientSecret      string
 	Audiences         []string
 	AllowedAlgorithms []string
 	AllowHTTP         bool
@@ -102,6 +108,8 @@ func LoadBootstrapConfig(source ValueSource) (BootstrapConfig, error) {
 		"OIDC_ISSUER_URL", "PTIUM_OIDC_ISSUER_URL", "PTIUM_AUTH_OIDC_ISSUER")
 	config.OIDC.ClientID = firstValue(source,
 		"OIDC_CLIENT_ID", "PTIUM_OIDC_CLIENT_ID", "PTIUM_AUTH_OIDC_CLIENT_ID")
+	config.OIDC.ClientSecret = firstValue(source,
+		"OIDC_CLIENT_SECRET", "PTIUM_OIDC_CLIENT_SECRET", "PTIUM_AUTH_OIDC_CLIENT_SECRET")
 
 	keycloakURL := firstValue(source, "KEYCLOAK_URL", "PTIUM_KEYCLOAK_URL")
 	keycloakRealm := firstValue(source, "KEYCLOAK_REALM", "PTIUM_KEYCLOAK_REALM")
@@ -224,6 +232,10 @@ func (config OIDCConfig) Validate() error {
 	}
 	if len(config.AllowedAlgorithms) == 0 {
 		return fmt.Errorf("auth config: at least one OIDC signing algorithm is required")
+	}
+	// A secret without a client id cannot be presented to the token endpoint.
+	if strings.TrimSpace(config.ClientSecret) != "" && strings.TrimSpace(config.ClientID) == "" {
+		return fmt.Errorf("auth config: OIDC client secret requires a client id")
 	}
 	for _, algorithm := range config.AllowedAlgorithms {
 		if !supportedAlgorithm(algorithm) {

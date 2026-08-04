@@ -52,6 +52,32 @@ func main() {
 	}
 	cancelSeed()
 
+	// A local administrator lets a deployment be administered before any identity
+	// provider is wired up. The password is read from the environment only; it is
+	// never stored in the settings table and never returned by the API.
+	if applicationConfig.BootstrapAdmin != "" {
+		if applicationConfig.BootstrapAdminPassword == "" {
+			fatal("provision bootstrap administrator", errors.New("BOOTSTRAP_ADMIN requires BOOTSTRAP_ADMIN_PASSWORD"))
+		}
+		adminContext, cancelAdmin := context.WithTimeout(rootContext, 30*time.Second)
+		admin, written, err := dataStore.EnsureLocalAdmin(adminContext,
+			applicationConfig.BootstrapAdmin, applicationConfig.BootstrapAdminPassword,
+			applicationConfig.BootstrapAdminName, applicationConfig.BootstrapAdminPasswordReset)
+		cancelAdmin()
+		if err != nil {
+			fatal("provision bootstrap administrator", err)
+		}
+		logger.Info("bootstrap administrator ready", "username", applicationConfig.BootstrapAdmin,
+			"user_id", admin.ID, "password_written", written)
+		if !written {
+			logger.Info("the bootstrap administrator already has a password; set BOOTSTRAP_ADMIN_PASSWORD_RESET=true to overwrite it")
+		}
+	}
+	passwordLoginEnabled, err := dataStore.HasLocalAccounts(rootContext)
+	if err != nil {
+		fatal("check local accounts", err)
+	}
+
 	keyMaterial := applicationConfig.KeyEncryptionSecret
 	if keyMaterial == "" {
 		keyMaterial = applicationConfig.DatabaseURL
@@ -71,9 +97,16 @@ func main() {
 	if authConfig.OIDC.Enabled && strings.TrimSpace(authConfig.OIDC.ClientID) == "" {
 		fatal("load authentication configuration", errors.New("OIDC_CLIENT_ID (or auth.oidc.client_id) is required for the browser PKCE flow"))
 	}
-	authenticator, publicAuth, err := buildAuthenticator(rootContext, authConfig, keyManager, logger)
+	sessionIssuer, err := auth.NewSessionIssuer(keyMaterial, applicationConfig.SessionLifetime)
+	if err != nil {
+		fatal("initialize session tokens", err)
+	}
+	authenticator, publicAuth, tokenExchange, err := buildAuthenticator(rootContext, authConfig, keyManager, dataStore, sessionIssuer, logger)
 	if err != nil {
 		fatal("initialize authentication", err)
+	}
+	if !authConfig.OIDC.Enabled && !authConfig.Dev.Enabled && !passwordLoginEnabled {
+		logger.Warn("no interactive authentication is configured; set BOOTSTRAP_ADMIN and BOOTSTRAP_ADMIN_PASSWORD, or configure OIDC, before anyone can sign in")
 	}
 
 	generator := generation.New(settingService)
@@ -122,7 +155,8 @@ func main() {
 		Authenticator: authenticator, AuthPublic: publicAuth, AdminRoles: authConfig.AdminRoles,
 		BootstrapAdminEmails: applicationConfig.BootstrapAdminEmails, BootstrapAdminSubjects: applicationConfig.BootstrapAdminSubjects,
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
-		WebHandler: webHandler,
+		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
+		PasswordLoginEnabled: passwordLoginEnabled,
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)
@@ -162,20 +196,47 @@ func main() {
 	logger.Info("Ptium server stopped")
 }
 
-func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyManager *keys.Manager, logger *slog.Logger) (auth.Authenticator, httpapi.AuthPublicConfig, error) {
+func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyManager *keys.Manager,
+	dataStore *store.Store, sessions *auth.SessionIssuer, logger *slog.Logger,
+) (auth.Authenticator, httpapi.AuthPublicConfig, *httpapi.TokenExchange, error) {
 	var authenticators []auth.Authenticator
+	var exchange *httpapi.TokenExchange
 	public := httpapi.AuthPublicConfig{Scopes: "openid profile email", DevAuthEnabled: config.Dev.Enabled, DevAuthHeader: config.Dev.Header}
 	if config.Dev.Enabled {
 		dev, err := auth.NewDevAuthenticator(config.Dev)
 		if err != nil {
-			return nil, public, err
+			return nil, public, nil, err
 		}
 		authenticators = append(authenticators, dev)
 	}
+	// Session tokens come before the identity provider and the API key: they are
+	// prefixed, so recognising them costs nothing and no other authenticator
+	// needs to guess at them.
+	authenticators = append(authenticators, auth.SessionAuthenticator{
+		Issuer: sessions,
+		Resolver: auth.SessionResolverFunc(func(ctx context.Context, claims auth.SessionClaims) (*auth.Principal, error) {
+			epoch, err := dataStore.SessionEpoch(ctx, claims.UserID)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return nil, auth.ErrInvalidCredentials
+				}
+				return nil, err
+			}
+			// A password change moves the epoch forward and retires the token.
+			if epoch != claims.Epoch {
+				return nil, auth.ErrInvalidCredentials
+			}
+			return &auth.Principal{
+				Subject:    "session:" + claims.UserID,
+				AuthMethod: "password",
+				Claims:     map[string]any{"ptium_user_id": claims.UserID},
+			}, nil
+		}),
+	})
 	if config.OIDC.Enabled {
 		oidc, err := auth.NewOIDCAuthenticator(ctx, config.OIDC)
 		if err != nil {
-			return nil, public, err
+			return nil, public, nil, err
 		}
 		discovery := oidc.Discovery()
 		public.OIDCEnabled = true
@@ -185,6 +246,17 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 		public.TokenEndpoint = discovery.TokenEndpoint
 		public.EndSessionEndpoint = discovery.EndSessionEndpoint
 		authenticators = append(authenticators, oidc)
+		// A confidential client must not hand its secret to the browser, so the
+		// code exchange runs here instead. A public client keeps talking to the
+		// provider directly.
+		if strings.TrimSpace(config.OIDC.ClientSecret) != "" && discovery.TokenEndpoint != "" {
+			exchange = &httpapi.TokenExchange{
+				Endpoint:     discovery.TokenEndpoint,
+				ClientID:     config.OIDC.ClientID,
+				ClientSecret: config.OIDC.ClientSecret,
+			}
+			logger.Info("OIDC client secret configured; exchanging authorization codes server-side")
+		}
 	}
 	apiKeyAuthenticator := auth.APIKeyAuthenticator{
 		Verifier: auth.APIKeyVerifierFunc(func(ctx context.Context, token string) (*auth.Principal, error) {
@@ -208,10 +280,7 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 		AllowBearer: true,
 	}
 	authenticators = append(authenticators, apiKeyAuthenticator)
-	if !config.OIDC.Enabled && !config.Dev.Enabled {
-		logger.Warn("no interactive authentication is configured; configure OIDC or DEV_AUTH_* before creating the first API key")
-	}
-	return auth.CompositeAuthenticator{Authenticators: authenticators}, public, nil
+	return auth.CompositeAuthenticator{Authenticators: authenticators}, public, exchange, nil
 }
 
 func exactOrigins(origins []string) []string {
@@ -248,6 +317,12 @@ func databaseAuthSource(ctx context.Context, service *settings.Service) auth.Val
 		var value string
 		if service.Get(ctx, "auth.oidc.client_id", &value) == nil && value != "" {
 			values["OIDC_CLIENT_ID"] = value
+		}
+	}
+	if !anyEnvironment("OIDC_CLIENT_SECRET", "PTIUM_OIDC_CLIENT_SECRET", "PTIUM_AUTH_OIDC_CLIENT_SECRET") {
+		var value string
+		if service.Get(ctx, "auth.oidc.client_secret", &value) == nil && value != "" {
+			values["OIDC_CLIENT_SECRET"] = value
 		}
 	}
 	if !anyEnvironment("AUTH_ADMIN_ROLES", "OIDC_ADMIN_ROLES", "PTIUM_AUTH_ADMIN_ROLES") {

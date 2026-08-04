@@ -111,6 +111,26 @@ curl -H 'Authorization: Bearer <key>' \
 30종 팔레트는 명도 대역, 채도 하한, 인접 색 구분(정상 시각과 적·녹색약 모두),
 배경 대비를 모두 통과한 값입니다.
 
+## 첫 로그인: 로컬 관리자
+
+OIDC를 붙이기 전에도 서비스를 운영할 수 있도록, 아이디와 비밀번호로 로그인하는
+관리자 계정을 환경변수로 지정합니다.
+
+```dotenv
+BOOTSTRAP_ADMIN=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=replace-with-at-least-12-characters
+BOOTSTRAP_ADMIN_NAME=Ptium Administrator
+```
+
+- 비밀번호는 **처음 기동할 때 한 번만** 기록됩니다. 이후 제품 화면(개인화 →
+  비밀번호)에서 바꾼 비밀번호는 재시작해도 환경변수 값으로 되돌아가지 않습니다.
+- 비밀번호를 잊었다면 한 번만 `BOOTSTRAP_ADMIN_PASSWORD_RESET=true`로 기동하면
+  환경변수 값으로 다시 설정됩니다.
+- 비밀번호는 bcrypt로 저장되며 환경변수에서만 읽습니다. 설정 테이블에 저장되지
+  않고 API로도 반환되지 않습니다.
+- 로그인 시도는 클라이언트 주소 기준으로 지연이 늘어나며, 비밀번호를 변경하면
+  이전에 발급된 세션 토큰이 모두 무효화됩니다.
+
 ## Keycloak 연결
 
 Keycloak에서 공개 클라이언트를 하나 만들고 Standard Flow와 PKCE(S256)를
@@ -122,6 +142,15 @@ Keycloak에서 공개 클라이언트를 하나 만들고 Standard Flow와 PKCE(
 OIDC_ISSUER_URL=https://sso.example.com/realms/company
 OIDC_CLIENT_ID=ptium-web
 BOOTSTRAP_ADMIN_EMAILS=admin@example.com
+```
+
+클라이언트에 시크릿이 필요한 **기밀 클라이언트**라면 `OIDC_CLIENT_SECRET`을
+설정하십시오. 시크릿은 브라우저로 내려가지 않고, Ptium이 authorization code
+교환을 서버에서 대신 수행합니다(`POST /api/v1/auth/token`). 시크릿을 비워 두면
+브라우저가 PKCE로 직접 교환하는 공개 클라이언트로 동작합니다.
+
+```dotenv
+OIDC_CLIENT_SECRET=only-for-a-confidential-client
 ```
 
 Keycloak 역할 `ptium-admin` 또는 `admin`은 기본적으로 Ptium 관리자에 매핑됩니다.
