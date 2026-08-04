@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6D3DD6"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="112" ry="112" fill="url(#bg)"/>
+  <!-- P letter with play arrow -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
+    <!-- P vertical bar -->
+    <path d="M175 400 L175 130"/>
+    <!-- P curve -->
+    <path d="M175 130 C175 130, 175 110, 200 110 L280 110 C340 110, 370 145, 370 190 C370 235, 340 270, 280 270 L175 270"/>
+    <!-- Play arrow inside P head -->
+    <polygon points="250,160 250,220 295,190" fill="#FFFFFF" stroke="none"/>
+  </g>
+</svg>

@@ -1,4 +1,18 @@
-# Ptium
+<p align="center">
+  <img src="docs/logo.png" alt="Ptium Logo" width="120" height="120" style="border-radius: 24px">
+</p>
+
+<h1 align="center">Ptium</h1>
+
+<p align="center">
+  <strong>프롬프트를 구조화된 슬라이드 덱으로 바꾸는 자체 호스팅 AI 프레젠테이션 서비스</strong>
+</p>
+
+<p align="center">
+  <a href="https://hkjang.github.io/ptium/">🇰🇷 홍보 페이지</a> · <a href="https://hkjang.github.io/ptium/en.html">🇺🇸 English</a> · <a href="https://github.com/hkjang/ptium">GitHub</a>
+</p>
+
+---
 
 Ptium은 프롬프트를 구조화된 슬라이드 덱으로 바꾸는 자체 호스팅 AI
 프레젠테이션 서비스입니다. 사용자 워크스페이스와 관리자 콘솔을 분리하고,
