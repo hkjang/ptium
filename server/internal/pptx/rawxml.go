@@ -1,6 +1,9 @@
 package pptx
 
 import (
+	"encoding/xml"
+	"errors"
+	"io"
 	"strings"
 )
 
@@ -13,6 +16,97 @@ type rawShapeTree struct {
 	Pictures []rawShape     `xml:"pic"`
 	Frames   []rawShape     `xml:"graphicFrame"`
 	Groups   []rawShapeTree `xml:"grpSp"`
+	// Children keeps the shapes in document order, which is paint order. The
+	// typed slices above are what most of the analyzer wants; drawing a
+	// template's artwork needs to know what sits on top of what.
+	Children []rawTreeChild
+	// Transform is a group's own frame, needed to place its children.
+	Transform *rawGroupXfrm
+}
+
+type rawTreeChild struct {
+	Kind  string // "sp" | "pic" | "graphicFrame" | "grpSp"
+	Shape rawShape
+	Group *rawShapeTree
+}
+
+// rawGroupXfrm is a group shape's transform. A group maps its child coordinate
+// space onto its own frame, so children have to be projected through it.
+type rawGroupXfrm struct {
+	Off struct {
+		X int `xml:"x,attr"`
+		Y int `xml:"y,attr"`
+	} `xml:"off"`
+	Ext struct {
+		CX int `xml:"cx,attr"`
+		CY int `xml:"cy,attr"`
+	} `xml:"ext"`
+	ChOff struct {
+		X int `xml:"x,attr"`
+		Y int `xml:"y,attr"`
+	} `xml:"chOff"`
+	ChExt struct {
+		CX int `xml:"cx,attr"`
+		CY int `xml:"cy,attr"`
+	} `xml:"chExt"`
+}
+
+// UnmarshalXML decodes a shape tree while remembering the order of its
+// children. encoding/xml would otherwise sort them into per-type slices and
+// lose paint order, which is the one thing artwork extraction cannot guess.
+func (t *rawShapeTree) UnmarshalXML(decoder *xml.Decoder, start xml.StartElement) error {
+	for {
+		token, err := decoder.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		switch element := token.(type) {
+		case xml.StartElement:
+			switch element.Name.Local {
+			case "sp", "pic", "graphicFrame":
+				var shape rawShape
+				if err := decoder.DecodeElement(&shape, &element); err != nil {
+					return err
+				}
+				switch element.Name.Local {
+				case "sp":
+					t.Shapes = append(t.Shapes, shape)
+				case "pic":
+					t.Pictures = append(t.Pictures, shape)
+				default:
+					t.Frames = append(t.Frames, shape)
+				}
+				t.Children = append(t.Children, rawTreeChild{Kind: element.Name.Local, Shape: shape})
+			case "grpSp":
+				var group rawShapeTree
+				if err := decoder.DecodeElement(&group, &element); err != nil {
+					return err
+				}
+				t.Groups = append(t.Groups, group)
+				nested := group
+				t.Children = append(t.Children, rawTreeChild{Kind: "grpSp", Group: &nested})
+			case "grpSpPr":
+				var properties struct {
+					Xfrm *rawGroupXfrm `xml:"xfrm"`
+				}
+				if err := decoder.DecodeElement(&properties, &element); err != nil {
+					return err
+				}
+				t.Transform = properties.Xfrm
+			default:
+				if err := decoder.Skip(); err != nil {
+					return err
+				}
+			}
+		case xml.EndElement:
+			if element.Name.Local == start.Name.Local {
+				return nil
+			}
+		}
+	}
 }
 
 func (t rawShapeTree) flatten() []rawShape {
@@ -31,8 +125,22 @@ type rawShape struct {
 	NvPicPr          *rawNonVisual `xml:"nvPicPr"`
 	NvGraphicFramePr *rawNonVisual `xml:"nvGraphicFramePr"`
 	SpPr             *rawShapeProp `xml:"spPr"`
-	Xfrm             *rawXfrm      `xml:"xfrm"`
-	TxBody           *rawTxBody    `xml:"txBody"`
+	// BlipFill sits beside spPr on a picture rather than inside it, which is
+	// where every real template's photographs and logos are.
+	BlipFill *rawBlipFill `xml:"blipFill"`
+	Xfrm     *rawXfrm     `xml:"xfrm"`
+	TxBody   *rawTxBody   `xml:"txBody"`
+}
+
+// picture returns the shape's blip fill, wherever it is recorded.
+func (s rawShape) picture() *rawBlipFill {
+	if s.BlipFill != nil {
+		return s.BlipFill
+	}
+	if s.SpPr != nil {
+		return s.SpPr.BlipFill
+	}
+	return nil
 }
 
 type rawNonVisual struct {
@@ -55,9 +163,77 @@ type rawPlaceholderRef struct {
 type rawShapeProp struct {
 	Xfrm      *rawXfrm      `xml:"xfrm"`
 	SolidFill *rawSolidFill `xml:"solidFill"`
+	GradFill  *rawGradFill  `xml:"gradFill"`
+	BlipFill  *rawBlipFill  `xml:"blipFill"`
+	NoFill    *struct{}     `xml:"noFill"`
+	Line      *rawLine      `xml:"ln"`
 	PrstGeom  *struct {
 		Prst string `xml:"prst,attr"`
 	} `xml:"prstGeom"`
+	CustGeom *struct{} `xml:"custGeom"`
+}
+
+// rawGradFill is a linear gradient reduced to its stops and angle. Radial and
+// path gradients are approximated by their first and last stop, which reads far
+// closer to the template than a flat fill would.
+type rawGradFill struct {
+	GsLst struct {
+		Gs []struct {
+			Pos       int `xml:"pos,attr"`
+			SchemeClr *struct {
+				Val   string `xml:"val,attr"`
+				Alpha *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"alpha"`
+				LumMod *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"lumMod"`
+				LumOff *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"lumOff"`
+				Shade *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"shade"`
+				Tint *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"tint"`
+			} `xml:"schemeClr"`
+			SrgbClr *struct {
+				Val   string `xml:"val,attr"`
+				Alpha *struct {
+					Val int `xml:"val,attr"`
+				} `xml:"alpha"`
+			} `xml:"srgbClr"`
+		} `xml:"gs"`
+	} `xml:"gsLst"`
+	Lin *struct {
+		Ang int `xml:"ang,attr"`
+	} `xml:"lin"`
+}
+
+// rawBlipFill points at an image part through a relationship id.
+type rawBlipFill struct {
+	Blip struct {
+		Embed string `xml:"embed,attr"`
+		Link  string `xml:"link,attr"`
+		Alpha *struct {
+			Val int `xml:"val,attr"`
+		} `xml:"alphaModFix"`
+	} `xml:"blip"`
+	SrcRect *struct {
+		L int `xml:"l,attr"`
+		T int `xml:"t,attr"`
+		R int `xml:"r,attr"`
+		B int `xml:"b,attr"`
+	} `xml:"srcRect"`
+	Stretch *struct{} `xml:"stretch"`
+	Tile    *struct{} `xml:"tile"`
+}
+
+type rawLine struct {
+	Width     int           `xml:"w,attr"`
+	SolidFill *rawSolidFill `xml:"solidFill"`
+	NoFill    *struct{}     `xml:"noFill"`
 }
 
 // fill returns a hex value or an unresolved scheme color name for a shape's
@@ -86,7 +262,10 @@ func (s rawShape) geometryPreset() string {
 }
 
 type rawXfrm struct {
-	Off struct {
+	Rotation int    `xml:"rot,attr"`
+	FlipH    string `xml:"flipH,attr"`
+	FlipV    string `xml:"flipV,attr"`
+	Off      struct {
 		X int `xml:"x,attr"`
 		Y int `xml:"y,attr"`
 	} `xml:"off"`
@@ -98,14 +277,28 @@ type rawXfrm struct {
 
 type rawTxBody struct {
 	BodyPr struct {
-		Vert string `xml:"vert,attr"`
+		Vert   string `xml:"vert,attr"`
+		Anchor string `xml:"anchor,attr"`
 	} `xml:"bodyPr"`
-	LstStyle rawTextStyle `xml:"lstStyle"`
-	Para     []struct {
-		Runs []struct {
-			Text string `xml:"t"`
-		} `xml:"r"`
-	} `xml:"p"`
+	LstStyle rawTextStyle   `xml:"lstStyle"`
+	Para     []rawParagraph `xml:"p"`
+}
+
+type rawParagraph struct {
+	PPr struct {
+		Align string `xml:"algn,attr"`
+	} `xml:"pPr"`
+	Runs []struct {
+		RPr struct {
+			Size      int           `xml:"sz,attr"`
+			Bold      string        `xml:"b,attr"`
+			SolidFill *rawSolidFill `xml:"solidFill"`
+			Latin     struct {
+				Typeface string `xml:"typeface,attr"`
+			} `xml:"latin"`
+		} `xml:"rPr"`
+		Text string `xml:"t"`
+	} `xml:"r"`
 }
 
 type rawTextStyle struct {
@@ -193,11 +386,16 @@ func (s rawShape) name() string {
 	return ""
 }
 
-func (s rawShape) geometry() (x, y, width, height int, ok bool) {
-	transform := s.Xfrm
+// transform returns the shape's own transform, wherever it is recorded.
+func (s rawShape) transform() *rawXfrm {
 	if s.SpPr != nil && s.SpPr.Xfrm != nil {
-		transform = s.SpPr.Xfrm
+		return s.SpPr.Xfrm
 	}
+	return s.Xfrm
+}
+
+func (s rawShape) geometry() (x, y, width, height int, ok bool) {
+	transform := s.transform()
 	if transform == nil || transform.Ext.CX <= 0 || transform.Ext.CY <= 0 {
 		return 0, 0, 0, 0, false
 	}
@@ -243,6 +441,8 @@ func (s rawShape) sampleText() string {
 type rawFillHolder struct {
 	BgPr struct {
 		SolidFill *rawSolidFill `xml:"solidFill"`
+		GradFill  *rawGradFill  `xml:"gradFill"`
+		BlipFill  *rawBlipFill  `xml:"blipFill"`
 	} `xml:"bgPr"`
 	BgRef *struct {
 		SchemeClr *struct {
@@ -256,14 +456,21 @@ type rawFillHolder struct {
 
 type rawSolidFill struct {
 	SchemeClr *struct {
-		Val string `xml:"val,attr"`
+		Val   string    `xml:"val,attr"`
+		Alpha *rawAlpha `xml:"alpha"`
 	} `xml:"schemeClr"`
 	SrgbClr *struct {
-		Val string `xml:"val,attr"`
+		Val   string    `xml:"val,attr"`
+		Alpha *rawAlpha `xml:"alpha"`
 	} `xml:"srgbClr"`
 	SysClr *struct {
 		LastClr string `xml:"lastClr,attr"`
 	} `xml:"sysClr"`
+}
+
+// rawAlpha is DrawingML's opacity modifier, in thousandths of a percent.
+type rawAlpha struct {
+	Val int `xml:"val,attr"`
 }
 
 // solidColor returns either a hex value or an unresolved scheme color name.

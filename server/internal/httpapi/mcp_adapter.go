@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/mcp"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
@@ -52,6 +53,11 @@ func (operations MCPOperations) CreatePresentation(ctx context.Context, user mod
 			return model.Presentation{}, mcp.NewServiceError(mcp.ServiceErrorInvalidArgument, "the selected template does not exist")
 		}
 		storeInput.TemplateID = &trimmed
+	}
+	// A prompt that names its own length is honoured before any default, the same
+	// way the REST API treats it.
+	if storeInput.SlideCount == 0 {
+		storeInput.SlideCount = generation.ParseIntent(storeInput.Prompt).SlideCount
 	}
 	if operations.Settings != nil {
 		if storeInput.SlideCount == 0 {

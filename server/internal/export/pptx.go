@@ -47,7 +47,7 @@ func PPTX(presentation model.Presentation, options Options) ([]byte, error) {
 
 // PreviewSVG renders one slide as scalable vector graphics so the workspace
 // can show the real template design without a PowerPoint engine.
-func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, position, width int) (string, error) {
+func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, position, width int, media pptx.MediaResolver) (string, error) {
 	if position < 1 || position > len(presentation.Slides) {
 		return "", fmt.Errorf("slide %d does not exist", position)
 	}
@@ -60,5 +60,5 @@ func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, positio
 	if !ok {
 		layout = manifest.Layouts[0]
 	}
-	return pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{Width: width}), nil
+	return pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{Width: width, Media: media}), nil
 }

@@ -172,6 +172,9 @@ func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Para
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s %d", capitalize(placeholder.Slot), shapeID-1)
 	}
+	if placeholder.Synthetic {
+		return composedShapeXML(shapeID, name, placeholder, paragraphs, language)
+	}
 	reference := `<p:ph type="` + escapeAttribute(placeholder.Type) + `"`
 	if placeholder.Index > 0 {
 		reference += ` idx="` + strconv.Itoa(placeholder.Index) + `"`
@@ -183,6 +186,88 @@ func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Para
 	}
 	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) + `"/>` +
 		`<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>` + reference + `</p:nvPr></p:nvSpPr><p:spPr/>` + body + `</p:sp>`
+}
+
+// composedShapeXML draws a text box for a region Ptium derived itself.
+//
+// A synthetic region has no placeholder to inherit from, so everything the
+// template would normally supply — position, size, colour, typeface — is written
+// out explicitly, taken from the template's own theme. The shape is a plain text
+// box rather than a placeholder reference, which keeps it editable in PowerPoint
+// and keeps the layout's artwork untouched behind it.
+func composedShapeXML(shapeID int, name string, placeholder Placeholder, paragraphs []Paragraph, language string) string {
+	geometry := `<a:xfrm><a:off x="` + strconv.Itoa(placeholder.X) + `" y="` + strconv.Itoa(placeholder.Y) + `"/>` +
+		`<a:ext cx="` + strconv.Itoa(placeholder.Width) + `" cy="` + strconv.Itoa(placeholder.Height) + `"/></a:xfrm>` +
+		`<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/>`
+	anchor := ""
+	if placeholder.Slot == SlotTitle {
+		anchor = ` anchor="b"`
+	}
+	scale, reduction := autofit(placeholder, paragraphs)
+	autofitXML := `<a:normAutofit/>`
+	if scale < 100 {
+		autofitXML = `<a:normAutofit fontScale="` + strconv.Itoa(int(scale*1000)) + `"`
+		if reduction > 0 {
+			autofitXML += ` lnSpcReduction="` + strconv.Itoa(reduction*1000) + `"`
+		}
+		autofitXML += `/>`
+	}
+	body := `<p:txBody><a:bodyPr wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720"` + anchor + `>` +
+		autofitXML + `</a:bodyPr><a:lstStyle/>` + composedParagraphsXML(placeholder, paragraphs, language) + `</p:txBody>`
+	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) + `"/>` +
+		`<p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>` + geometry + `</p:spPr>` + body + `</p:sp>`
+}
+
+// composedParagraphsXML writes run properties explicitly, since a composed box
+// inherits nothing from a placeholder.
+func composedParagraphsXML(placeholder Placeholder, paragraphs []Paragraph, language string) string {
+	runProperties := func(level int) string {
+		size := placeholder.FontSize
+		if size <= 0 {
+			size = 1800
+		}
+		// A sub-bullet steps down a little, the way a designed template would.
+		for range level {
+			size = size * 88 / 100
+		}
+		properties := `<a:rPr lang="` + language + `" sz="` + strconv.Itoa(size) + `" dirty="0"`
+		if placeholder.Bold {
+			properties += ` b="1"`
+		}
+		properties += `>`
+		if placeholder.Color != "" {
+			properties += `<a:solidFill><a:srgbClr val="` + escapeAttribute(placeholder.Color) + `"/></a:solidFill>`
+		}
+		if font := strings.TrimSpace(placeholder.Font); font != "" && !strings.HasPrefix(font, "+") {
+			properties += `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+		}
+		return properties + `</a:rPr>`
+	}
+	if len(paragraphs) == 0 {
+		return `<a:p><a:endParaRPr lang="` + language + `"/></a:p>`
+	}
+	var builder strings.Builder
+	for _, paragraph := range paragraphs {
+		level := min(max(paragraph.Level, 0), 8)
+		text := strings.TrimSpace(paragraph.Text)
+		// Bullets are drawn by the paragraph properties, and a title never gets one.
+		properties := `<a:pPr`
+		if level > 0 {
+			properties += ` lvl="` + strconv.Itoa(level) + `"`
+		}
+		if placeholder.Slot == SlotTitle || placeholder.Slot == SlotSubtitle {
+			properties += `><a:buNone/></a:pPr>`
+		} else {
+			properties += ` indent="-171450" marL="` + strconv.Itoa(228600+level*228600) + `"><a:buChar char="•"/></a:pPr>`
+		}
+		if text == "" {
+			builder.WriteString(`<a:p>` + properties + `<a:endParaRPr lang="` + language + `"/></a:p>`)
+			continue
+		}
+		builder.WriteString(`<a:p>` + properties + `<a:r>` + runProperties(level) + `<a:t>` +
+			escapeText(text) + `</a:t></a:r></a:p>`)
+	}
+	return builder.String()
 }
 
 // bodyPropertiesXML asks PowerPoint to shrink text that would otherwise spill

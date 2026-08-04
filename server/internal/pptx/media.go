@@ -1,0 +1,258 @@
+package pptx
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"fmt"
+	"image"
+	"image/color"
+	_ "image/gif" // registers the GIF decoder for image.Decode
+	"image/jpeg"
+	"image/png"
+	"math"
+	"strings"
+	"sync"
+)
+
+// A preview embeds its pictures as data URIs. An SVG loaded through <img> is in
+// secure static mode and will not fetch anything, so a reference to an API URL
+// would silently render as nothing.
+//
+// Embedding raw template images would be far too heavy — a full-bleed
+// photograph is routinely a megabyte — so each one is decoded, scaled to the
+// size the preview actually paints it at, and re-encoded.
+const (
+	// previewImagePixels bounds the longest edge of an embedded picture.
+	previewImagePixels = 1400
+	// previewJPEGQuality trades a little fidelity for a much smaller preview.
+	previewJPEGQuality = 76
+	// maximumMediaBytes refuses to decode an implausibly large image part.
+	maximumMediaBytes = 24 << 20
+)
+
+// MediaResolver returns a data URI for a package part, or an empty string when
+// the part cannot be drawn.
+type MediaResolver func(part string) string
+
+// PackageMedia builds a resolver over a template package. Results are cached by
+// content, so a gallery of previews over the same template pays for each image
+// once.
+func PackageMedia(pkg *Package, maxPixels int) MediaResolver {
+	if pkg == nil {
+		return func(string) string { return "" }
+	}
+	if maxPixels <= 0 {
+		maxPixels = previewImagePixels
+	}
+	return func(part string) string {
+		data, ok := pkg.Part(part)
+		if !ok || len(data) == 0 || len(data) > maximumMediaBytes {
+			return ""
+		}
+		return mediaDataURI(part, data, maxPixels)
+	}
+}
+
+type mediaCacheEntry struct {
+	uri  string
+	size int
+}
+
+var mediaCache = struct {
+	sync.Mutex
+	entries map[string]mediaCacheEntry
+	bytes   int
+}{entries: map[string]mediaCacheEntry{}}
+
+// maximumMediaCacheBytes bounds what the encoded-image cache may hold. Previews
+// are cheap to regenerate, so the cache is simply emptied when it grows past
+// this rather than tracking access order.
+const maximumMediaCacheBytes = 64 << 20
+
+func mediaDataURI(part string, data []byte, maxPixels int) string {
+	digest := sha256.Sum256(data)
+	key := fmt.Sprintf("%s|%d", hex.EncodeToString(digest[:16]), maxPixels)
+
+	mediaCache.Lock()
+	if entry, ok := mediaCache.entries[key]; ok {
+		mediaCache.Unlock()
+		return entry.uri
+	}
+	mediaCache.Unlock()
+
+	uri := encodeMedia(part, data, maxPixels)
+
+	mediaCache.Lock()
+	defer mediaCache.Unlock()
+	if mediaCache.bytes+len(uri) > maximumMediaCacheBytes {
+		mediaCache.entries = map[string]mediaCacheEntry{}
+		mediaCache.bytes = 0
+	}
+	mediaCache.entries[key] = mediaCacheEntry{uri: uri, size: len(uri)}
+	mediaCache.bytes += len(uri)
+	return uri
+}
+
+func encodeMedia(part string, data []byte, maxPixels int) string {
+	// SVG needs no decoding: a browser draws it directly, and it is usually the
+	// smallest form of a logo anyway.
+	if strings.HasSuffix(strings.ToLower(part), ".svg") {
+		return "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString(data)
+	}
+	decoded, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		// EMF, WMF and TIFF are common in older templates and cannot be decoded
+		// here. Drawing nothing is better than drawing a broken image.
+		return ""
+	}
+	scaled := downscale(decoded, maxPixels)
+	// A JPEG cannot carry transparency, and a logo that loses its transparency
+	// paints a white box over the design.
+	if hasTransparency(scaled) {
+		var buffer bytes.Buffer
+		if png.Encode(&buffer, scaled) != nil {
+			return ""
+		}
+		return "data:image/png;base64," + base64.StdEncoding.EncodeToString(buffer.Bytes())
+	}
+	var buffer bytes.Buffer
+	if jpeg.Encode(&buffer, scaled, &jpeg.Options{Quality: previewJPEGQuality}) != nil {
+		return ""
+	}
+	// An already-small original may still be the better choice.
+	if format == "jpeg" && len(data) <= buffer.Len() && sameBounds(decoded, scaled) {
+		return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(data)
+	}
+	return "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(buffer.Bytes())
+}
+
+func sameBounds(a, b image.Image) bool {
+	return a.Bounds().Dx() == b.Bounds().Dx() && a.Bounds().Dy() == b.Bounds().Dy()
+}
+
+// downscale reduces an image to fit maxPixels on its longest edge, averaging
+// over each source region so the result stays smooth rather than aliased.
+func downscale(source image.Image, maxPixels int) image.Image {
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	if width <= 0 || height <= 0 {
+		return source
+	}
+	longest := max(width, height)
+	if longest <= maxPixels {
+		return source
+	}
+	ratio := float64(maxPixels) / float64(longest)
+	targetWidth := max(1, int(math.Round(float64(width)*ratio)))
+	targetHeight := max(1, int(math.Round(float64(height)*ratio)))
+	target := image.NewNRGBA(image.Rect(0, 0, targetWidth, targetHeight))
+	for y := 0; y < targetHeight; y++ {
+		sourceTop := bounds.Min.Y + y*height/targetHeight
+		sourceBottom := bounds.Min.Y + (y+1)*height/targetHeight
+		if sourceBottom <= sourceTop {
+			sourceBottom = sourceTop + 1
+		}
+		for x := 0; x < targetWidth; x++ {
+			sourceLeft := bounds.Min.X + x*width/targetWidth
+			sourceRight := bounds.Min.X + (x+1)*width/targetWidth
+			if sourceRight <= sourceLeft {
+				sourceRight = sourceLeft + 1
+			}
+			var red, green, blue, alpha, count uint64
+			for sampleY := sourceTop; sampleY < sourceBottom; sampleY++ {
+				for sampleX := sourceLeft; sampleX < sourceRight; sampleX++ {
+					r, g, b, a := source.At(sampleX, sampleY).RGBA()
+					red += uint64(r)
+					green += uint64(g)
+					blue += uint64(b)
+					alpha += uint64(a)
+					count++
+				}
+			}
+			if count == 0 {
+				continue
+			}
+			target.SetNRGBA(x, y, color.NRGBA{
+				R: uint8(red / count >> 8), G: uint8(green / count >> 8),
+				B: uint8(blue / count >> 8), A: uint8(alpha / count >> 8),
+			})
+		}
+	}
+	return target
+}
+
+func hasTransparency(source image.Image) bool {
+	switch source.ColorModel() {
+	case color.YCbCrModel, color.CMYKModel, color.GrayModel, color.Gray16Model:
+		return false
+	}
+	bounds := source.Bounds()
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if _, _, _, alpha := source.At(x, y).RGBA(); alpha < 0xffff {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// describePictures fills in each picture's mean colour, which is what decides
+// whether text placed over it should be light or dark. It happens once, during
+// analysis, so no preview or export pays for it.
+func describePictures(pkg *Package, artwork []Artwork) {
+	if pkg == nil {
+		return
+	}
+	for index := range artwork {
+		piece := &artwork[index]
+		if piece.Kind != "picture" || piece.Image == "" || piece.Average != "" {
+			continue
+		}
+		data, ok := pkg.Part(piece.Image)
+		if !ok || len(data) == 0 || len(data) > maximumMediaBytes {
+			continue
+		}
+		if average, found := averageColor(data); found {
+			piece.Average = average
+		}
+	}
+}
+
+// averageColor is the mean of an image, computed over a coarse sample rather
+// than every pixel: a full-bleed photograph has millions, and a hundredth of
+// them describes its tone just as well.
+func averageColor(data []byte) (string, bool) {
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", false
+	}
+	bounds := decoded.Bounds()
+	if bounds.Empty() {
+		return "", false
+	}
+	stepX := max(1, bounds.Dx()/48)
+	stepY := max(1, bounds.Dy()/48)
+	var red, green, blue, weight uint64
+	for y := bounds.Min.Y; y < bounds.Max.Y; y += stepY {
+		for x := bounds.Min.X; x < bounds.Max.X; x += stepX {
+			r, g, b, a := decoded.At(x, y).RGBA()
+			if a == 0 {
+				continue
+			}
+			// Weight by coverage so a mostly transparent logo does not drag the
+			// average toward its few opaque pixels.
+			alpha := uint64(a >> 8)
+			red += uint64(r>>8) * alpha
+			green += uint64(g>>8) * alpha
+			blue += uint64(b>>8) * alpha
+			weight += alpha
+		}
+	}
+	if weight == 0 {
+		return "", false
+	}
+	return fmt.Sprintf("%02X%02X%02X", red/weight, green/weight, blue/weight), true
+}

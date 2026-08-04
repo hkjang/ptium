@@ -235,12 +235,14 @@ func (s *Server) downloadTemplate(writer http.ResponseWriter, request *http.Requ
 // can show the customer their own design rather than a generic thumbnail.
 func (s *Server) templateLayoutPreview(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
-	template, err := s.store.GetTemplate(request.Context(), request.PathValue("id"), user.ID, false)
+	// The package itself is needed, not just the manifest: a template's identity
+	// is usually a photograph or a logo, and those live in the package.
+	data, template, err := s.store.TemplateData(request.Context(), request.PathValue("id"), user.ID, false)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "template_read_failed")
 		return
 	}
-	manifest, err := decodeManifest(template)
+	manifest, media, err := s.templateArtwork(request.Context(), template, data)
 	if err != nil {
 		s.internalError(writer, request, "template_manifest_unreadable", err)
 		return
@@ -256,7 +258,7 @@ func (s *Server) templateLayoutPreview(writer http.ResponseWriter, request *http
 			layout = manifest.Layouts[0]
 		}
 	}
-	svg := pptx.PreviewLayoutSVG(manifest, layout, pptx.PreviewOptions{Width: previewWidth(request)})
+	svg := pptx.PreviewLayoutSVG(manifest, layout, pptx.PreviewOptions{Width: previewWidth(request), Media: media})
 	writeSVG(writer, svg)
 }
 
@@ -273,7 +275,7 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 		writeError(writer, request, http.StatusConflict, "presentation_has_no_slides", "Generate or add slides before previewing", nil)
 		return
 	}
-	_, manifest, err := s.presentationTemplate(request.Context(), presentation)
+	data, manifest, err := s.presentationTemplate(request.Context(), presentation)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "presentation_template_unavailable")
 		return
@@ -282,7 +284,7 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 	if position < 1 {
 		position = 1
 	}
-	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request))
+	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request), templateMedia(data))
 	if err != nil {
 		writeError(writer, request, http.StatusNotFound, "not_found", err.Error(), nil)
 		return
@@ -293,7 +295,8 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 func writeSVG(writer http.ResponseWriter, svg string) {
 	writer.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+	// Pictures are embedded as data URIs, which the policy has to allow.
+	writer.Header().Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'")
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(writer, svg)
@@ -323,6 +326,41 @@ func decodeManifest(template model.Template) (pptx.Manifest, error) {
 
 // presentationTemplate resolves the package and manifest a deck renders with,
 // falling back to a built-in design when the deck predates templates.
+// templateArtwork returns a template's manifest and a resolver for its pictures,
+// re-analyzing the package when the stored manifest predates the current
+// analyzer. An older manifest has no artwork recorded at all, so a template
+// uploaded before this release would otherwise keep previewing as a blank slide.
+func (s *Server) templateArtwork(ctx context.Context, template model.Template, data []byte) (pptx.Manifest, pptx.MediaResolver, error) {
+	manifest, err := decodeManifest(template)
+	if err != nil {
+		return pptx.Manifest{}, nil, err
+	}
+	if manifest.Version != pptx.ManifestVersion && len(data) > 0 {
+		if _, refreshed, analyzeErr := pptx.AnalyzeBytes(data); analyzeErr == nil {
+			manifest = refreshed
+			// Store it so the next preview, and every export, uses the same
+			// analysis rather than repeating it.
+			if updateErr := s.store.UpdateTemplateManifest(ctx, template.ID, refreshed); updateErr != nil {
+				s.logger.Warn("could not store a refreshed template manifest",
+					"request_id", RequestID(ctx), "template_id", template.ID, "error", updateErr)
+			}
+		}
+	}
+	return manifest, templateMedia(data), nil
+}
+
+// templateMedia builds a picture resolver over template bytes.
+func templateMedia(data []byte) pptx.MediaResolver {
+	if len(data) == 0 {
+		return nil
+	}
+	pkg, err := pptx.Open(data)
+	if err != nil {
+		return nil
+	}
+	return pptx.PackageMedia(pkg, 0)
+}
+
 func (s *Server) presentationTemplate(ctx context.Context, presentation model.Presentation) ([]byte, pptx.Manifest, error) {
 	id := ""
 	if presentation.TemplateID != nil {

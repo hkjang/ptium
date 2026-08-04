@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/export"
+	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/store"
 )
@@ -146,6 +147,7 @@ func (s *Server) createAndGeneratePresentation(writer http.ResponseWriter, reque
 	}
 	storeInput := s.defaultPresentationInput(request.Context())
 	mergePresentationInput(&storeInput, input)
+	applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
 	if message := validatePresentationInput(storeInput, s.maximumSlides(request.Context())); message != "" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", message, nil)
 		return
@@ -168,6 +170,7 @@ func (s *Server) createAndGeneratePresentation(writer http.ResponseWriter, reque
 func (s *Server) createPresentationFromInput(writer http.ResponseWriter, request *http.Request, input presentationRequest) (model.Presentation, bool) {
 	storeInput := s.defaultPresentationInput(request.Context())
 	mergePresentationInput(&storeInput, input)
+	applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
 	if message := validatePresentationInput(storeInput, s.maximumSlides(request.Context())); message != "" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", message, nil)
 		return model.Presentation{}, false
@@ -335,6 +338,31 @@ func (s *Server) defaultPresentationInput(ctx context.Context) store.Presentatio
 		result.SlideCount = 8
 	}
 	return result
+}
+
+// applyPromptIntent lets the prompt decide what the caller did not state.
+//
+// "3장만 만들어줘" is a clearer statement of intent than a slide-count control the
+// person never touched, so a request that omits requestedSlideCount takes the
+// number from the prompt and only then falls back to the deployment default. An
+// explicit value always wins — it is the caller overriding their own prose.
+func applyPromptIntent(target *store.PresentationInput, input presentationRequest, maximum int) generation.Intent {
+	intent := generation.ParseIntent(target.Prompt)
+	explicit := 0
+	if input.RequestedSlideCount != nil {
+		explicit = *input.RequestedSlideCount
+	}
+	if input.SlideCount != nil {
+		explicit = *input.SlideCount
+	}
+	target.SlideCount = intent.ApplySlideCount(explicit, target.SlideCount, maximum)
+	if input.Language == nil && intent.Language != "" {
+		target.Language = intent.Language
+	}
+	if input.Audience == nil && intent.Audience != "" {
+		target.Audience = intent.Audience
+	}
+	return intent
 }
 
 func mergePresentationInput(target *store.PresentationInput, input presentationRequest) {

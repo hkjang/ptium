@@ -62,6 +62,18 @@ func (s *Store) CreateTemplate(ctx context.Context, ownerID string, in TemplateI
 }
 
 // UpdateTemplate changes the editable metadata of a template.
+// UpdateTemplateManifest replaces a template's stored analysis. It is how a
+// template uploaded by an earlier release picks up an improved analyzer without
+// being uploaded again, and it deliberately leaves every other column alone.
+func (s *Store) UpdateTemplateManifest(ctx context.Context, id string, manifest pptx.Manifest) error {
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+	_, err = s.Pool.Exec(ctx, `UPDATE templates SET manifest=$2 WHERE id=$1`, id, encoded)
+	return err
+}
+
 func (s *Store) UpdateTemplate(ctx context.Context, id, ownerID string, admin bool, in TemplateInput) (model.Template, error) {
 	scope := in.Scope
 	if scope != "shared" {

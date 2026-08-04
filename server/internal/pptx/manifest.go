@@ -86,6 +86,11 @@ type Placeholder struct {
 	Color    string  `json:"color,omitempty"`
 	Font     string  `json:"font,omitempty"`
 	Prompt   string  `json:"prompt,omitempty"`
+	// Synthetic marks a region Ptium derived from the layout's free space because
+	// the layout has no text placeholder of its own. The renderer draws a real
+	// text box for it, styled from the template's theme, instead of filling a
+	// placeholder that does not exist.
+	Synthetic bool `json:"synthetic,omitempty"`
 }
 
 // AcceptsText reports whether the generator may write text into the slot.
@@ -94,6 +99,10 @@ func (p Placeholder) AcceptsText() bool { return p.Kind == "text" }
 // Decoration is a static solid-filled shape a layout draws behind its
 // placeholders — an accent rule, a colour block, a sidebar. Preview rendering
 // includes them so a template's identity is recognisable in the browser.
+//
+// Deprecated: superseded by Artwork, which carries the same shapes plus the
+// pictures, gradients and static text that most real templates are built from.
+// It is still read so a manifest stored by an older release keeps rendering.
 type Decoration struct {
 	X      int    `json:"x"`
 	Y      int    `json:"y"`
@@ -101,6 +110,69 @@ type Decoration struct {
 	Height int    `json:"height"`
 	Fill   string `json:"fill"`
 	Round  bool   `json:"round,omitempty"`
+}
+
+// Artwork is one element a master or layout paints behind the placeholders,
+// captured in paint order.
+//
+// Most real templates carry their identity here rather than in the colour
+// scheme: a full-bleed photograph, a brand bar, a logo, a gradient panel, a
+// footer. A preview that skips it shows a blank white slide and the person who
+// uploaded the template concludes, correctly, that their design was ignored.
+type Artwork struct {
+	// Kind is "shape", "picture" or "text".
+	Kind   string `json:"kind"`
+	X      int    `json:"x"`
+	Y      int    `json:"y"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+	// Rotation is in sixtieths of a thousandth of a degree, as DrawingML stores it.
+	Rotation int  `json:"rot,omitempty"`
+	FlipH    bool `json:"flipH,omitempty"`
+	FlipV    bool `json:"flipV,omitempty"`
+	// Preset is the DrawingML preset geometry name; empty means a rectangle.
+	Preset string `json:"preset,omitempty"`
+	// Fill is a resolved hex colour, empty when the shape is unfilled.
+	Fill string `json:"fill,omitempty"`
+	// Opacity is 0..1; zero means fully opaque so the field can stay omitted.
+	Opacity float64 `json:"opacity,omitempty"`
+	// Gradient holds two or more stops when the fill is a gradient.
+	Gradient      []GradientStop `json:"gradient,omitempty"`
+	GradientAngle int            `json:"gradientAngle,omitempty"`
+	Stroke        string         `json:"stroke,omitempty"`
+	StrokeWidth   int            `json:"strokeWidth,omitempty"`
+	// Image is the package part of a picture fill, e.g. "ppt/media/image3.png".
+	Image string `json:"image,omitempty"`
+	// Crop is the source rectangle inset in thousandths of a percent: l, t, r, b.
+	Crop [4]int `json:"crop,omitempty"`
+	// Average is a picture's mean colour, which is what decides whether text
+	// placed over it should be light or dark.
+	Average string `json:"average,omitempty"`
+	// Text is the static copy a template writes into its own artwork.
+	Text     string `json:"text,omitempty"`
+	FontSize int    `json:"fontSize,omitempty"`
+	Bold     bool   `json:"bold,omitempty"`
+	Color    string `json:"color,omitempty"`
+	Font     string `json:"font,omitempty"`
+	// Align is "l", "ctr" or "r"; Anchor is "t", "ctr" or "b".
+	Align  string `json:"align,omitempty"`
+	Anchor string `json:"anchor,omitempty"`
+}
+
+// GradientStop is one colour stop, positioned 0..1 along the gradient.
+type GradientStop struct {
+	Position float64 `json:"pos"`
+	Color    string  `json:"color"`
+	Opacity  float64 `json:"opacity,omitempty"`
+}
+
+// Background is what a slide paints before anything else.
+type Background struct {
+	// Fill is a resolved hex colour, used when there is no gradient or picture.
+	Fill          string         `json:"fill,omitempty"`
+	Gradient      []GradientStop `json:"gradient,omitempty"`
+	GradientAngle int            `json:"gradientAngle,omitempty"`
+	Image         string         `json:"image,omitempty"`
 }
 
 // Layout is one slide layout offered by the template.
@@ -114,6 +186,14 @@ type Layout struct {
 	Background   string        `json:"background,omitempty"`
 	Decorations  []Decoration  `json:"decorations,omitempty"`
 	Placeholders []Placeholder `json:"placeholders"`
+	// Fill describes the background in full: a gradient or picture background is
+	// not expressible as the single colour in Background.
+	Fill Background `json:"fill,omitzero"`
+	// Artwork is everything the master and layout paint, in paint order.
+	Artwork []Artwork `json:"artwork,omitempty"`
+	// Composed marks a layout whose writable regions Ptium derived from its free
+	// space because it declares no text placeholder of its own.
+	Composed bool `json:"composed,omitempty"`
 }
 
 // Slot finds a placeholder by canonical slot name.
@@ -170,7 +250,7 @@ type Manifest struct {
 
 // ManifestVersion is bumped whenever the analyzer changes in a way that makes
 // previously stored manifests stale.
-const ManifestVersion = 2
+const ManifestVersion = 3
 
 // Layout finds a layout by identifier.
 func (m Manifest) Layout(id string) (Layout, bool) {

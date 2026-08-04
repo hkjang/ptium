@@ -100,14 +100,14 @@ func TestPreviewSVGRendersRequestedSlide(t *testing.T) {
 		{Position: 1, Title: "첫 장", Content: json.RawMessage(`{}`)},
 		{Position: 2, Title: "둘째 장", Content: json.RawMessage(`{}`)},
 	}}
-	svg, err := PreviewSVG(presentation, manifest, 2, 480)
+	svg, err := PreviewSVG(presentation, manifest, 2, 480, nil)
 	if err != nil {
 		t.Fatalf("PreviewSVG: %v", err)
 	}
 	if !strings.Contains(svg, "둘째 장") || strings.Contains(svg, "첫 장") {
 		t.Fatalf("preview rendered the wrong slide:\n%s", svg)
 	}
-	if _, err := PreviewSVG(presentation, manifest, 5, 480); err == nil {
+	if _, err := PreviewSVG(presentation, manifest, 5, 480, nil); err == nil {
 		t.Fatal("an out-of-range slide must fail")
 	}
 }

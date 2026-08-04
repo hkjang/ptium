@@ -36,7 +36,7 @@ func Analyze(pkg *Package) (Manifest, error) {
 	for _, masterPart := range masters {
 		master := analyzeMaster(pkg, masterPart, manifest.Theme)
 		for _, layoutPart := range pkg.RelatedParts(masterPart, "slideLayout") {
-			layout, err := analyzeLayout(pkg, layoutPart, masterPart, master, manifest.Theme)
+			layout, err := analyzeLayout(pkg, layoutPart, masterPart, master, manifest.Theme, manifest.SlideWidth, manifest.SlideHeight)
 			if err != nil {
 				manifest.Warnings = append(manifest.Warnings, fmt.Sprintf("%s: %v", path.Base(layoutPart), err))
 				continue
@@ -77,6 +77,8 @@ type master struct {
 	BodyStyle    rawLevelStyle
 	OtherStyle   rawLevelStyle
 	Decorations  []Decoration
+	Artwork      []Artwork
+	Fill         Background
 }
 
 type rawPlaceholder struct {
@@ -155,11 +157,16 @@ func analyzeMaster(pkg *Package, part string, theme Theme) master {
 	if parsed.CSld.Background != nil {
 		result.Background = parsed.CSld.Background.solidColor()
 	}
+	context := artworkContext{colorMap: result.ColorMap, theme: theme, relations: imageRelations(pkg, part)}
+	if fill, ok := context.background(parsed.CSld.Background); ok {
+		result.Fill = fill
+	}
 	result.Decorations = decorations(parsed.CSld.SpTree, result.ColorMap, theme)
+	result.Artwork = collectArtwork(parsed.CSld.SpTree, context, nil)
 	return result
 }
 
-func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme Theme) (Layout, error) {
+func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme Theme, slideWidth, slideHeight int) (Layout, error) {
 	content, ok := pkg.Text(part)
 	if !ok {
 		return Layout{}, errors.New("layout part is missing")
@@ -188,10 +195,22 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 		}
 	}
 	layout.Background = resolveColorReference(background, parent.ColorMap, theme)
+	context := artworkContext{colorMap: parent.ColorMap, theme: theme, relations: imageRelations(pkg, part)}
+	layout.Fill = parent.Fill
+	if fill, ok := context.background(parsed.CSld.Background); ok {
+		layout.Fill = fill
+	}
+	if layout.Fill.Fill == "" && len(layout.Fill.Gradient) == 0 && layout.Fill.Image == "" {
+		layout.Fill.Fill = layout.Background
+	}
+	// The master paints first, and only when the layout does not opt out of it.
 	if parsed.ShowMasterShp != "0" {
 		layout.Decorations = append(layout.Decorations, parent.Decorations...)
+		layout.Artwork = append(layout.Artwork, parent.Artwork...)
 	}
 	layout.Decorations = append(layout.Decorations, decorations(parsed.CSld.SpTree, parent.ColorMap, theme)...)
+	layout.Artwork = collectArtwork(parsed.CSld.SpTree, context, layout.Artwork)
+	describePictures(pkg, layout.Artwork)
 
 	bodyIndex := 0
 	for _, shape := range parsed.CSld.SpTree.flatten() {
@@ -251,6 +270,17 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 	}
 	sort.SliceStable(layout.Placeholders, func(i, j int) bool { return readingOrder(layout.Placeholders[i], layout.Placeholders[j]) })
 	dedupeSlots(&layout)
+	// A layout whose design lives entirely in artwork has no placeholder to write
+	// into. Rather than leaving it unusable — which sends every slide to whichever
+	// plain layout does have placeholders — derive regions from its free space.
+	titleSize, bodySize := parent.TitleSize, parent.OtherSize
+	if len(parent.BodySizes) > 0 && parent.BodySizes[0] > 0 {
+		bodySize = parent.BodySizes[0]
+	}
+	if synthetic := synthesizeSlots(layout, theme, slideWidth, slideHeight, titleSize, bodySize); len(synthetic) > 0 {
+		layout.Placeholders = append(layout.Placeholders, synthetic...)
+		layout.Composed = true
+	}
 	layout.Role = classify(layout)
 	return layout, nil
 }
@@ -259,6 +289,19 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 // simple rectangles are kept: they are what templates use for accent rules and
 // colour blocks, and anything more elaborate is better left out of an
 // approximate preview than drawn wrongly.
+// imageRelations maps a part's relationship ids to the image parts they point
+// at, which is how a blip fill names its picture.
+func imageRelations(pkg *Package, part string) map[string]string {
+	result := map[string]string{}
+	for _, relationship := range pkg.Relationships(part) {
+		if relationship.TargetMode == "External" || relationship.ShortType() != "image" {
+			continue
+		}
+		result[relationship.ID] = Resolve(part, relationship.Target)
+	}
+	return result
+}
+
 func decorations(tree rawShapeTree, colorMap map[string]string, theme Theme) []Decoration {
 	var result []Decoration
 	for _, shape := range tree.flatten() {

@@ -13,6 +13,10 @@ type PreviewOptions struct {
 	// ShowEmptySlots draws the layout's own prompt text for slots the deck
 	// leaves empty, which is what a template gallery wants to show.
 	ShowEmptySlots bool
+	// Media resolves a picture part to a data URI. Without it a template built
+	// from photographs previews as an empty slide, which reads as the design
+	// having been thrown away.
+	Media MediaResolver
 }
 
 // PreviewSVG renders an approximate but faithful picture of a slide using the
@@ -41,16 +45,26 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 	var builder strings.Builder
 	fmt.Fprintf(&builder, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" role="img" preserveAspectRatio="xMidYMid meet">`,
 		pixelWidth, pixelHeight, pixelWidth, pixelHeight)
-	fmt.Fprintf(&builder, `<rect x="0" y="0" width="%d" height="%d" fill="#%s"/>`, pixelWidth, pixelHeight, background)
-	for _, decoration := range layout.Decorations {
-		width := float64(decoration.Width) * scale
-		height := float64(decoration.Height) * scale
-		radius := 0.0
-		if decoration.Round {
-			radius = math.Min(width, height) / 2
+	gradients := &gradientRegistry{}
+	builder.WriteString(previewBackground(layout, background, pixelWidth, pixelHeight, options.Media, gradients))
+	// A template's identity usually lives in its artwork rather than its colour
+	// scheme, and it paints in document order underneath the placeholders.
+	if len(layout.Artwork) > 0 {
+		for _, piece := range layout.Artwork {
+			builder.WriteString(previewArtwork(piece, scale, options.Media, gradients))
 		}
-		fmt.Fprintf(&builder, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#%s"/>`,
-			float64(decoration.X)*scale, float64(decoration.Y)*scale, width, height, radius, decoration.Fill)
+	} else {
+		// A manifest stored by an older release has only the flat decoration list.
+		for _, decoration := range layout.Decorations {
+			width := float64(decoration.Width) * scale
+			height := float64(decoration.Height) * scale
+			radius := 0.0
+			if decoration.Round {
+				radius = math.Min(width, height) / 2
+			}
+			fmt.Fprintf(&builder, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="#%s"/>`,
+				float64(decoration.X)*scale, float64(decoration.Y)*scale, width, height, radius, decoration.Fill)
+		}
 	}
 	for _, placeholder := range layout.Placeholders {
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
@@ -74,6 +88,7 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 		}
 		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale))
 	}
+	builder.WriteString(gradients.defs())
 	builder.WriteString(`</svg>`)
 	return builder.String()
 }
