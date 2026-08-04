@@ -74,6 +74,24 @@ const (
 )
 
 // Primitive is one drawn element: a filled shape, a stroked path or a text box.
+// bounds is the rectangle a primitive actually covers. A polyline carries its
+// geometry in its points and leaves the frame empty, so reading the frame would
+// place it at the origin.
+func (p Primitive) bounds() Frame {
+	if len(p.Points) == 0 {
+		return p.Frame
+	}
+	left, top := p.Points[0].X, p.Points[0].Y
+	right, bottom := left, top
+	for _, point := range p.Points[1:] {
+		left = min(left, point.X)
+		top = min(top, point.Y)
+		right = max(right, point.X)
+		bottom = max(bottom, point.Y)
+	}
+	return Frame{X: left, Y: top, Width: right - left, Height: bottom - top}
+}
+
 type Primitive struct {
 	Kind        string
 	Frame       Frame

@@ -126,3 +126,4 @@
 .template-palette li { display:flex; align-items:center; gap:6px; color:var(--muted-2); font-size:10px; }
 .template-palette li code { padding:1px 5px; border-radius:4px; background:#fff; border:1px solid var(--line); font-size:9.5px; }
 .template-palette-chip { width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.1); flex:0 0 auto; }
+.source-editor-finding { color:#9b2c2c; }

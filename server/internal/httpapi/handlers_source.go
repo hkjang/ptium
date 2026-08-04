@@ -100,9 +100,11 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 			map[string]any{"slides": len(compiled.Slides)})
 		return
 	}
+	findings := s.inspectCompiled(request, user.ID, presentation, manifest, compiled.Slides)
 	if input.DryRun {
 		writeData(writer, request, http.StatusOK, map[string]any{
-			"slides": compiled.Slides, "outline": compiled.Outline, "warnings": compiled.Warnings, "applied": false,
+			"slides": compiled.Slides, "outline": compiled.Outline, "warnings": compiled.Warnings,
+			"findings": findings, "applied": false,
 		})
 		return
 	}
@@ -122,7 +124,7 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 		return
 	}
 	writeData(writer, request, http.StatusOK, map[string]any{
-		"presentation": updated, "warnings": compiled.Warnings, "applied": true,
+		"presentation": updated, "warnings": compiled.Warnings, "findings": findings, "applied": true,
 	})
 }
 
@@ -181,6 +183,20 @@ func (s *Server) previewSource(writer http.ResponseWriter, request *http.Request
 	writeSVG(writer, svg)
 }
 
+// inspectCompiled measures the drawn slides: text that will not fit, something
+// drawn off the slide, a collision, unreadable contrast. A warning says what
+// compiling adjusted; a finding says what still looks wrong once it is drawn.
+func (s *Server) inspectCompiled(request *http.Request, ownerID string,
+	presentation model.Presentation, manifest pptx.Manifest, slides []model.Slide) []pptx.Finding {
+	if len(slides) == 0 {
+		return nil
+	}
+	copied := presentation
+	copied.Slides = slides
+	built := deck.BuildWithImages(copied, manifest, "", s.imageSource(request, ownerID))
+	return pptx.InspectDeck(manifest, built)
+}
+
 // sourceMatchesSlides reports whether stored source still describes the stored
 // slides, by compiling it and comparing what it produces.
 func sourceMatchesSlides(source string, presentation model.Presentation, manifest pptx.Manifest) bool {
@@ -210,4 +226,32 @@ func templateIDOf(presentation model.Presentation) string {
 		return *presentation.TemplateID
 	}
 	return ""
+}
+
+// inspectPresentation measures a stored deck as it will be drawn.
+//
+// It answers the question a person would otherwise answer by exporting the file
+// and looking at every slide: does anything overflow, collide, fall off the edge
+// or become unreadable.
+func (s *Server) inspectPresentation(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	presentation, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	if len(presentation.Slides) == 0 {
+		writeError(writer, request, http.StatusConflict, "presentation_has_no_slides",
+			"Generate or add slides before inspecting", nil)
+		return
+	}
+	_, manifest, err := s.presentationTemplate(request.Context(), presentation)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_template_unavailable")
+		return
+	}
+	findings := s.inspectCompiled(request, user.ID, presentation, manifest, presentation.Slides)
+	writeData(writer, request, http.StatusOK, map[string]any{
+		"slides": len(presentation.Slides), "findings": findings, "clean": len(findings) == 0,
+	})
 }

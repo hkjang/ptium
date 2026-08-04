@@ -286,8 +286,20 @@ func distributeBullets(content *Content, layout pptx.Layout, claimed map[string]
 	bullets []pptx.Paragraph, language string, warnings *[]string, where string) {
 	var slots []pptx.Placeholder
 	for _, placeholder := range layout.BodySlots() {
-		if !claimed[placeholder.Slot] {
+		// A region that holds one line is a caption, not a column: putting a share
+		// of the points there crowds them into type nobody can read.
+		if !claimed[placeholder.Slot] && placeholder.MaxLines >= 2 {
 			slots = append(slots, placeholder)
+		}
+	}
+	if len(slots) == 0 {
+		// Nothing roomy enough: use whatever body region exists rather than
+		// dropping the text.
+		for _, placeholder := range layout.BodySlots() {
+			if !claimed[placeholder.Slot] {
+				slots = append(slots, placeholder)
+				break
+			}
 		}
 	}
 	if len(slots) == 0 {
@@ -303,7 +315,11 @@ func distributeBullets(content *Content, layout pptx.Layout, claimed map[string]
 		if len(group) == 0 {
 			continue
 		}
-		content.SetField(slots[index].Slot, fit(slots[index], group, language))
+		fitted, report := pptx.FitParagraphsReport(group, slots[index], language)
+		content.SetField(slots[index].Slot, fitted)
+		if report.Lost() {
+			*warnings = append(*warnings, fmt.Sprintf("%s: %s", where, describeFitLoss(report, slots[index].Slot)))
+		}
 	}
 }
 
@@ -434,6 +450,19 @@ func paragraphsText(paragraphs []pptx.Paragraph) string {
 		lines = append(lines, strings.Repeat("  ", paragraph.Level)+paragraph.Text)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// describeFitLoss says what a region could not hold, in the terms an author can
+// act on: shorten the text, or move it to another slide.
+func describeFitLoss(report pptx.FitReport, slot string) string {
+	parts := make([]string, 0, 2)
+	if report.Dropped > 0 {
+		parts = append(parts, fmt.Sprintf("%d point(s) did not fit in %s and were left out", report.Dropped, slot))
+	}
+	if report.Shortened > 0 {
+		parts = append(parts, fmt.Sprintf("%d line(s) were shortened to fit %s", report.Shortened, slot))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // fit trims paragraphs to what a slot can hold, so no exported slide overflows

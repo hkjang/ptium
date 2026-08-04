@@ -9,9 +9,29 @@ import (
 // never overflows the box its template drew. Language matters: a Korean line
 // holds far fewer characters than an English one of the same width.
 func FitParagraphs(paragraphs []Paragraph, placeholder Placeholder, language string) []Paragraph {
+	result, _ := FitParagraphsReport(paragraphs, placeholder, language)
+	return result
+}
+
+// FitReport says what fitting had to remove. Silently dropping a point is the
+// one behaviour a tool like this must not have: the author has to know that the
+// slide does not say everything they wrote.
+type FitReport struct {
+	// Dropped is how many paragraphs did not fit at all.
+	Dropped int
+	// Shortened is how many paragraphs were cut mid-sentence.
+	Shortened int
+}
+
+// Lost reports whether anything was removed.
+func (r FitReport) Lost() bool { return r.Dropped > 0 || r.Shortened > 0 }
+
+// FitParagraphsReport is FitParagraphs with an account of what it removed.
+func FitParagraphsReport(paragraphs []Paragraph, placeholder Placeholder, language string) ([]Paragraph, FitReport) {
 	if len(paragraphs) == 0 {
-		return nil
+		return nil, FitReport{}
 	}
+	var report FitReport
 	maxLines := placeholder.MaxLines
 	if maxLines <= 0 {
 		maxLines = 1
@@ -23,7 +43,11 @@ func FitParagraphs(paragraphs []Paragraph, placeholder Placeholder, language str
 		for _, extra := range paragraphs[1:] {
 			text += " " + extra.Text
 		}
-		return []Paragraph{{Text: trimToWidth(text, budgetChars(placeholder.MaxChars*2, language))}}
+		fitted := trimToWidth(text, budgetChars(placeholder.MaxChars*2, language))
+		if fitted != strings.TrimSpace(text) {
+			report.Shortened++
+		}
+		return []Paragraph{{Text: fitted}}, report
 	}
 	// Two lines of wrapped text per bullet is the most a slide should carry.
 	budget := maxLines
@@ -32,15 +56,19 @@ func FitParagraphs(paragraphs []Paragraph, placeholder Placeholder, language str
 	}
 	result := make([]Paragraph, 0, len(paragraphs))
 	used := 0
-	for _, paragraph := range paragraphs {
+	for index, paragraph := range paragraphs {
 		if used >= budget {
+			report.Dropped = len(paragraphs) - index
 			break
 		}
 		text := trimToWidth(paragraph.Text, budgetChars(placeholder.MaxChars, language))
+		if text != strings.TrimSpace(paragraph.Text) {
+			report.Shortened++
+		}
 		used += LineCount(text, placeholder, paragraph.Level)
 		result = append(result, Paragraph{Text: text, Level: paragraph.Level})
 	}
-	return result
+	return result, report
 }
 
 // trimToWidth shortens text at a word boundary and marks the cut so an editor

@@ -295,9 +295,19 @@ func hasBody(fields map[string][]pptx.Paragraph) bool {
 	return false
 }
 
+// firstBodySlot is where a deck's text goes when nothing else has claimed a
+// region: the roomiest body region, not merely the first one. A layout may put a
+// one-line eyebrow above its title, and reading order would hand the deck's
+// content to that.
 func firstBodySlot(layout pptx.Layout) (string, bool) {
+	best, found := pptx.Placeholder{}, false
 	for _, placeholder := range layout.BodySlots() {
-		return placeholder.Slot, true
+		if !found || placeholder.Width*placeholder.Height > best.Width*best.Height {
+			best, found = placeholder, true
+		}
+	}
+	if found {
+		return best.Slot, true
 	}
 	if _, ok := layout.Slot(pptx.SlotSubtitle); ok {
 		return pptx.SlotSubtitle, true

@@ -1071,6 +1071,57 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/presentations/{id}/inspect:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: inspectPresentation
+      summary: Measure a deck as it will be drawn
+      description: |
+        Answers the question someone would otherwise answer by exporting the file
+        and looking at every slide: does anything overflow, collide, fall off the
+        edge, or become unreadable.
+
+        The same measurements run inside every source compile, whose response
+        carries `findings` beside its warnings.
+      tags: [Presentations]
+      responses:
+        '200':
+          description: What the deck looks like once drawn.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      slides:
+                        type: integer
+                      clean:
+                        type: boolean
+                        description: True when nothing was found.
+                      findings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeckFinding'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The deck has no slides to measure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/export:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -3218,6 +3269,22 @@ components:
           $ref: '#/components/schemas/PaginationMeta'
         requestId:
           $ref: '#/components/schemas/RequestID'
+
+    DeckFinding:
+      type: object
+      description: One defect measured in a drawn slide.
+      properties:
+        slide:
+          type: integer
+        slot:
+          type: string
+          description: The template region the defect is in.
+        kind:
+          type: string
+          enum: [overflow, outside, collision, contrast]
+        detail:
+          type: string
+          description: What is wrong, in numbers the author can act on.
 
     Asset:
       type: object

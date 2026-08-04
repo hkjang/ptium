@@ -289,6 +289,24 @@ export function bodySlots(fields: Record<string, SlideParagraph[]> | undefined) 
 }
 
 /** The slot the editor's body textarea is bound to. */
+/** A defect the server measured in a drawn slide. */
+export interface DeckFinding {
+  slide: number
+  slot: string
+  kind: 'overflow' | 'outside' | 'collision' | 'contrast' | string
+  detail: string
+}
+
+function normalizeFindings(raw: unknown): DeckFinding[] {
+  if (!Array.isArray(raw)) return []
+  return (raw as Record<string, unknown>[]).map((entry) => ({
+    slide: Number(entry.slide ?? 0),
+    slot: String(entry.slot ?? ''),
+    kind: String(entry.kind ?? ''),
+    detail: String(entry.detail ?? ''),
+  }))
+}
+
 function normalizeTemplatePalette(raw: unknown): TemplatePalette | undefined {
   if (!raw || typeof raw !== 'object') return undefined
   const value = raw as Record<string, unknown>
@@ -498,6 +516,12 @@ export const api = {
       return false
     }
   },
+  /** Measures a stored deck as it will be drawn. */
+  async inspectPresentation(id: string) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/inspect`)
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return { clean: Boolean(data.clean), findings: normalizeFindings(data.findings) }
+  },
   /** Clears the session cookie. Safe to call when already signed out. */
   async logout() {
     try { await request<void>('/auth/logout', { method: 'POST' }) } catch { /* signing out must always succeed locally */ }
@@ -570,6 +594,7 @@ export const api = {
     return {
       applied: Boolean(data.applied),
       warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      findings: normalizeFindings(data.findings),
       presentation: data.presentation
         ? normalizePresentation(data.presentation as Presentation & Record<string, unknown>)
         : null,

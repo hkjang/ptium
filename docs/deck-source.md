@@ -121,7 +121,26 @@ Compiling binds source to the template that deck uses:
 Nothing is rejected for being imperfect. A layout that does not exist, a
 component with no room, text with nowhere to go — each is adjusted and reported
 as a warning that names the line it came from, because a deck someone is waiting
-for should arrive.
+for should arrive. Text that had to be shortened or left out is reported the same
+way: a slide that quietly says less than its author wrote is worse than one that
+says so.
+
+## Inspection
+
+Compiling also measures the slides it produced, and every compile response
+carries `findings` beside its warnings. A warning says what compiling changed; a
+finding says what still looks wrong once the slide is drawn:
+
+| Kind | Meaning |
+| --- | --- |
+| `overflow` | text that must shrink past readability, or does not fit at all |
+| `outside` | something drawn past the edge of its region or of the slide |
+| `collision` | two regions on top of each other, or text over the template's own picture or lettering |
+| `contrast` | composed text below 4.5:1 against what sits behind it |
+
+The same measurements run over every shipped design in the test suite, against a
+deck that uses a cover, prose, each component, a table and a chart. That is what
+replaced opening a rendered file and looking at it.
 
 The first slide is a cover only by convention. One that carries a component or a
 list of points is compiled as content, whatever its position.
@@ -147,6 +166,7 @@ one differ in how good the prose is, not in how the deck is built:
 | `PUT /api/v1/presentations/{id}/source` | compile and replace the deck's slides |
 | `PUT …/source` with `{"dryRun": true}` | compile and report without changing anything |
 | `POST …/source/preview.svg?slide=N` | render one slide of unsaved source, changing nothing |
+| `GET /api/v1/presentations/{id}/inspect` | measure the stored deck as it will be drawn |
 
 `GET` regenerates the text from the stored slides when they have been edited on
 the canvas since the source was written, so the two never disagree.

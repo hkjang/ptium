@@ -530,10 +530,12 @@ func (d Design) layoutComparison(frame Frame, block Block) []Primitive {
 	// Cards are sized to what they hold. Stretching two short cards down a tall
 	// region leaves two empty boxes, which reads as unfinished rather than airy.
 	needed := 0
+	columnWidth := frame.Width / max(len(items), 1)
 	for _, item := range items {
 		height := d.Unit*5 + lineHeightFor(d.Body)*2
-		if strings.TrimSpace(item.Display(block.Unit)) != "" {
-			height += lineHeightFor(d.Title) + d.Unit/2
+		if value := strings.TrimSpace(item.Display(block.Unit)); value != "" {
+			size, lines := d.comparisonValueType(value, columnWidth-d.Unit*4)
+			height += lineHeightFor(size)*lines + d.Unit/2
 		}
 		points := len(item.Bullets)
 		if points == 0 && strings.TrimSpace(item.Detail) != "" {
@@ -560,19 +562,7 @@ func (d Design) layoutComparison(frame Frame, block Block) []Primitive {
 			line(item.Label), textOptions{Size: d.Body, Color: d.InkPrimary, Bold: true, Font: d.Minor, Wrap: true}))
 		cursor += headingHeight
 		if value := strings.TrimSpace(item.Display(block.Unit)); value != "" {
-			// A figure is set as a figure; a phrase is set as text, because display
-			// type at phrase length either overflows or shrinks to nothing.
-			size := d.Title
-			if utf8.RuneCountInString(value) > 12 {
-				size = d.Heading
-			}
-			if utf8.RuneCountInString(value) > 26 {
-				size = d.Body
-			}
-			// How many lines the phrase needs at this size, capped so a long one
-			// cannot push the points below it off the card.
-			perLine := float64(inner.Width) / (float64(size) / 100 * EMUPerPoint)
-			lines := min(max(1, int(measureEm(value)/max(perLine, 1))+1), 3)
+			size, lines := d.comparisonValueType(value, inner.Width)
 			height := lineHeightFor(size) * lines
 			primitives = append(primitives, text(
 				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: height},
@@ -939,6 +929,21 @@ func (d Design) layoutLine(frame Frame, block Block) []Primitive {
 		}
 	}
 	return primitives
+}
+
+// comparisonValueType picks the size a comparison card's headline is set at and
+// how many lines it needs. A figure is set as a figure; a phrase is set as text,
+// because display type at phrase length either overflows or shrinks to nothing.
+func (d Design) comparisonValueType(value string, width int) (size, lines int) {
+	size = d.Title
+	if utf8.RuneCountInString(value) > 12 {
+		size = d.Heading
+	}
+	if utf8.RuneCountInString(value) > 26 {
+		size = d.Body
+	}
+	perLine := float64(width) / (float64(size) / 100 * EMUPerPoint)
+	return size, min(max(1, int(measureEm(value)/math.Max(perLine, 1))+1), 3)
 }
 
 // layoutShare draws a 100% stacked bar for part-to-whole, with a legend. It

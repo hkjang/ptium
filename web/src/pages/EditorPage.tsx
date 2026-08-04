@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
   Copy, Download, FileText, LoaderCircle, MonitorPlay, Plus, Trash2, X,
 } from 'lucide-react'
-import { api, primaryBodySlot, textToParagraphs } from '../api/client'
+import { api, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
@@ -69,6 +69,17 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
   })
 }
 
+// findingLabel names a measured defect in the workspace's language.
+function findingLabel(kind: string) {
+  switch (kind) {
+    case 'overflow': return '텍스트 넘침'
+    case 'outside': return '슬라이드 밖으로 나감'
+    case 'collision': return '겹침'
+    case 'contrast': return '대비 부족'
+  }
+  return kind
+}
+
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
   const [slides, setSlides] = useState<Slide[]>([])
@@ -88,6 +99,7 @@ export function EditorPage({ id }: { id: string }) {
   const [sourceLoaded, setSourceLoaded] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([])
+  const [sourceFindings, setSourceFindings] = useState<DeckFinding[]>([])
   const [sourceSlide, setSourceSlide] = useState(1)
   const [sourcePreview, setSourcePreview] = useState<{ url: string; slide: number; count: number } | null>(null)
   const [sourcePreviewError, setSourcePreviewError] = useState('')
@@ -240,8 +252,13 @@ export function EditorPage({ id }: { id: string }) {
     try {
       const result = await api.applyPresentationSource(id, source, dryRun)
       setSourceWarnings(result.warnings)
+      setSourceFindings(result.findings)
       if (dryRun) {
-        showToast(`${result.slideCount ?? 0}장으로 컴파일됩니다.`)
+        const defects = result.findings.length
+        showToast(defects === 0
+          ? `${result.slideCount ?? 0}장으로 컴파일됩니다. 넘침·겹침 없음.`
+          : `${result.slideCount ?? 0}장으로 컴파일되고, 검사에서 ${defects}건이 나왔습니다.`,
+          defects === 0 ? 'success' : 'error')
         return
       }
       if (result.presentation) {
@@ -367,8 +384,13 @@ export function EditorPage({ id }: { id: string }) {
                 </div>
               </div>
               </div>
-              {sourceWarnings.length > 0 && <ul className="source-editor-warnings">
+              {(sourceWarnings.length > 0 || sourceFindings.length > 0) && <ul className="source-editor-warnings">
                 {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warning}</li>)}
+                {sourceFindings.map((finding) => (
+                  <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className="source-editor-finding">
+                    <AlertTriangle size={13} /> {finding.slide}번 슬라이드 {finding.slot} · {findingLabel(finding.kind)}: {finding.detail}
+                  </li>
+                ))}
               </ul>}
             </div> : <div className="canvas-template-preview">
               <SlidePreview

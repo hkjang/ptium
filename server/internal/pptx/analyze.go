@@ -588,6 +588,36 @@ var layoutKeywords = []struct {
 }
 
 func classify(layout Layout) string {
+	role := classifyByName(layout)
+	// A layout with nowhere to write more than a line cannot carry content,
+	// whatever its name suggests. Several templates put a one-line eyebrow above
+	// the title and nothing else; choosing that for a bulleted slide crowds every
+	// point into unreadable type.
+	switch role {
+	case RoleContent, RoleTwoContent, RoleComparison:
+		if !hasRoomForContent(layout) {
+			return RoleSection
+		}
+	}
+	return role
+}
+
+// hasRoomForContent reports whether a layout has a writable region that holds
+// more than a single line.
+func hasRoomForContent(layout Layout) bool {
+	for _, placeholder := range layout.BodySlots() {
+		if placeholder.MaxLines >= 2 {
+			return true
+		}
+	}
+	// A layout whose only region is the subtitle can still carry a lead line.
+	if placeholder, ok := layout.Slot(SlotSubtitle); ok && placeholder.MaxLines >= 2 {
+		return true
+	}
+	return false
+}
+
+func classifyByName(layout Layout) string {
 	lowered := strings.ToLower(layout.Name)
 	for _, entry := range layoutKeywords {
 		for _, pattern := range entry.Patterns {
@@ -613,6 +643,9 @@ func classify(layout Layout) string {
 		return RoleTwoContent
 	}
 	var hasTitle, hasSubtitle, hasPicture bool
+	// Only a region with room for more than a line counts as a column. Templates
+	// routinely put a one-line eyebrow or kicker above the title, and counting it
+	// as content makes an ordinary slide look like a two-column layout.
 	bodies := 0
 	for _, placeholder := range layout.Placeholders {
 		switch {
@@ -622,7 +655,7 @@ func classify(layout Layout) string {
 			hasSubtitle = true
 		case placeholder.Kind == "picture":
 			hasPicture = true
-		case placeholder.AcceptsText():
+		case placeholder.AcceptsText() && placeholder.MaxLines >= 2:
 			bodies++
 		}
 	}

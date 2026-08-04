@@ -404,3 +404,27 @@ func TestCompileDoesNotRepeatTheLeadLine(t *testing.T) {
 		t.Fatalf("the lead appears %d times: %+v", occurrences, body.Fields)
 	}
 }
+
+func TestCompileReportsTextItCouldNotFit(t *testing.T) {
+	manifest := testManifest()
+	long := strings.Repeat("전환 대상 시스템의 이관 순서와 선행 조건을 한 문장에 담아 설명하는 긴 문장입니다. ", 3)
+	var builder strings.Builder
+	builder.WriteString("# 과적재\n")
+	for range 8 {
+		builder.WriteString("- " + long + "\n")
+	}
+	result := Compile(ParseSource(builder.String()), manifest, CompileOptions{Language: "ko"})
+	joined := strings.Join(result.Warnings, "\n")
+	// Dropping a point silently is the one behaviour this must not have.
+	if !strings.Contains(joined, "did not fit") {
+		t.Fatalf("text that was left out must be reported: %v", result.Warnings)
+	}
+	if !strings.Contains(joined, "line 1") {
+		t.Fatalf("the report should name the line: %v", result.Warnings)
+	}
+	// A slide that fits says nothing.
+	quiet := Compile(ParseSource("# 제목\n- 짧은 요점\n- 두 번째 요점\n"), manifest, CompileOptions{Language: "ko"})
+	if len(quiet.Warnings) != 0 {
+		t.Fatalf("a slide that fits must be quiet: %v", quiet.Warnings)
+	}
+}
