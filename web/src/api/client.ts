@@ -79,7 +79,10 @@ function errorMessage(body: unknown, fallback: string) {
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
-  if (!headers.has('Content-Type') && options.body) headers.set('Content-Type', 'application/json')
+  // FormData sets its own content type, including the multipart boundary.
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json')
+  }
   headers.set('Accept', 'application/json')
   const token = session.token()
   const secret = session.secret()
@@ -258,7 +261,7 @@ function normalizeTemplate(value: Template & Record<string, unknown>): Template 
  * inert in the browser.
  */
 async function fetchImage(path: string) {
-  const headers = new Headers({ Accept: 'image/svg+xml' })
+  const headers = new Headers({ Accept: 'image/svg+xml, image/png, image/jpeg, image/gif' })
   const token = session.token(); const secret = session.secret()
   if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
   if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
@@ -515,6 +518,35 @@ export const api = {
     } catch {
       return false
     }
+  },
+  /** Images a deck can place on its slides. */
+  async assets() {
+    const raw = await request<unknown>('/assets?limit=100')
+    return unwrapList<Record<string, unknown>>(raw, ['assets', 'items', 'data']).map((value) => ({
+      id: String(value.id ?? ''),
+      name: String(value.name ?? ''),
+      contentType: String(value.contentType ?? value.content_type ?? ''),
+      sizeBytes: Number(value.sizeBytes ?? value.size_bytes ?? 0),
+      width: Number(value.width ?? 0),
+      height: Number(value.height ?? 0),
+      createdAt: String(value.createdAt ?? value.created_at ?? ''),
+    }))
+  },
+  /** Uploads an image. A second upload under the same name replaces it. */
+  async uploadAsset(file: File, name?: string) {
+    const form = new FormData()
+    form.append('file', file)
+    if (name && name.trim()) form.append('name', name.trim())
+    const raw = await request<unknown>('/assets', { method: 'POST', body: form })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return { id: String(data.id ?? ''), name: String(data.name ?? '') }
+  },
+  async deleteAsset(id: string) {
+    await request<void>(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  /** The image's bytes as a blob URL the caller must revoke. */
+  assetImage(id: string) {
+    return fetchImage(`/assets/${encodeURIComponent(id)}`)
   },
   /** Measures a stored deck as it will be drawn. */
   async inspectPresentation(id: string) {

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { api, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
+import { AssetLibrary } from '../components/AssetLibrary'
 import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
@@ -91,7 +92,7 @@ export function EditorPage({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
-  const [panel, setPanel] = useState<'design' | 'notes'>('design')
+  const [panel, setPanel] = useState<'design' | 'notes' | 'images'>('design')
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
   // The deck as text. It is the same deck the canvas shows: applying it
   // recompiles the slides, and opening it reads them back out.
@@ -246,6 +247,22 @@ export function EditorPage({ id }: { id: string }) {
     }, 500)
     return () => { active = false; window.clearTimeout(timer); if (url) URL.revokeObjectURL(url) }
   }, [canvasMode, source, sourceSlide, id])
+
+  // Writing `::image <name>` is the other half of uploading one, so the library
+  // hands the reference to the code editor rather than making anyone retype it.
+  const insertImageReference = (name: string) => {
+    const directive = `::image ${name}`
+    if (canvasMode !== 'source') {
+      void navigator.clipboard?.writeText(directive).catch(() => { /* the toast still tells them what to write */ })
+      showToast(`${directive} 을 복사했습니다. 코드 탭에 붙여 넣으세요.`)
+      return
+    }
+    setSource((current) => {
+      const separator = current.length === 0 || current.endsWith('\n') ? '' : '\n'
+      return current + separator + directive + '\n'
+    })
+    showToast(`${directive} 을 코드 끝에 넣었습니다.`)
+  }
 
   const applySource = async (dryRun: boolean) => {
     setSourceBusy(true)
@@ -404,7 +421,7 @@ export function EditorPage({ id }: { id: string }) {
         </section>
 
         <aside className="inspector-panel">
-          <div className="inspector-tabs"><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>발표 노트</button></div>
+          <div className="inspector-tabs"><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>발표 노트</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button></div>
           {panel === 'design' ? <div className="inspector-content">
             <section>
               <div className="inspector-section-head"><strong>템플릿</strong>{template && <span className="inspector-hint">{template.layoutCount}개 레이아웃</span>}</div>
@@ -436,6 +453,12 @@ export function EditorPage({ id }: { id: string }) {
                   {active?.layoutId === layout.id && <em><Check size={11} /></em>}
                 </button>
               ))}</div>
+            </section>
+          </div> : panel === 'images' ? <div className="inspector-content">
+            <section>
+              <strong>이미지</strong>
+              <p className="inspector-help">올린 이미지는 코드에서 <code>::image 이름</code>으로 불러 씁니다. 레이아웃의 그림 영역, 없으면 가장 넓은 본문 영역에 들어갑니다.</p>
+              <AssetLibrary onInsert={insertImageReference} notify={showToast} />
             </section>
           </div> : <div className="inspector-content"><section><strong>발표자 노트</strong><p className="inspector-help">{active ? '슬라이드와 별도로 저장되는 내부 발표 메모입니다.' : '노트를 작성하려면 슬라이드를 먼저 추가하세요.'}</p><Textarea className="notes-editor" disabled={!active} maxLength={4000} value={active?.speakerNotes || ''} onChange={(event) => updateActive({ speakerNotes: event.target.value })} placeholder="이 슬라이드에서 전달할 포인트, 참고할 숫자 등을 기록하세요." /></section></div>}
         </aside>

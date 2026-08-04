@@ -87,6 +87,9 @@ goes into the layout's own picture region when it has one, and otherwise into th
 largest free body region, centre-cropped to the frame rather than stretched — a
 tight crop reads better than a squashed logo.
 
+In the workspace, the editor's **이미지** panel uploads by drag and drop and
+writes the directive into the code for you. Over the API:
+
 ```bash
 curl -H 'Authorization: Bearer <key>' \
      -F 'file=@logo.png' -F 'name=로고' \
