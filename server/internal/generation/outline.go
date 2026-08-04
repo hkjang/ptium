@@ -206,6 +206,19 @@ func figureLabel(prompt, match string) string {
 	return strings.Trim(label, " .,·-—:()[]")
 }
 
+// headingName is a topic as a slide heading. The timeframe the prompt stated
+// belongs on the cover, and repeating it in every heading is what pushed titles
+// past their line and left a syllable stranded.
+func headingName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if prefix := periodPattern.FindString(trimmed); prefix != "" && strings.HasPrefix(trimmed, prefix) {
+		if rest := strings.TrimSpace(trimmed[len(prefix):]); utf8.RuneCountInString(rest) >= 4 {
+			return rest
+		}
+	}
+	return trimmed
+}
+
 // hasFigures reports whether the prompt supplied enough numbers to draw.
 func (outline promptOutline) hasFigures() bool { return len(outline.Figures) >= 2 }
 
@@ -231,9 +244,12 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	if candidate == "" {
 		candidate = outline.Subject
 	}
-	// A cover line runs to about forty characters; beyond that it is a sentence.
-	if utf8.RuneCountInString(candidate) > 44 && len(names) > 1 {
-		candidate = names[0]
+	// A cover title is read at a glance. Past about thirty characters it wraps,
+	// and a wrapped join of three subjects reliably leaves one syllable stranded
+	// on the last line — so the join gives way to the leading subject.
+	for len(names) > 1 && utf8.RuneCountInString(candidate) > 30 {
+		names = names[:len(names)-1]
+		candidate = strings.Join(names, joiner)
 	}
 	if utf8.RuneCountInString(candidate) > 60 {
 		candidate = string([]rune(candidate)[:60])

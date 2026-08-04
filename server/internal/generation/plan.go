@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/model"
 )
@@ -56,14 +57,23 @@ func coverLine(period, presenter, audience string) string {
 }
 
 // partTitle titles one slide of a topic that spans several.
+//
+// A long subject plus a suffix wraps and leaves a stray ending, and by the second
+// slide about a subject the audience knows what it is — so a long name gives way
+// to the aspect alone.
 func partTitle(language, name, frame string, part, share int) string {
 	if share <= 1 || part == 0 {
 		return name
 	}
-	if suffix, ok := frameTitleSuffix[language][frame]; ok && suffix != "" {
-		return name + " — " + suffix
+	suffix, ok := frameTitleSuffix[language][frame]
+	if !ok || suffix == "" {
+		return fmt.Sprintf("%s (%d/%d)", name, part+1, share)
 	}
-	return fmt.Sprintf("%s (%d/%d)", name, part+1, share)
+	combined := name + " — " + suffix
+	if utf8.RuneCountInString(combined) > 24 {
+		return suffix
+	}
+	return combined
 }
 
 // sectionPlan is one slide, before it becomes source.
@@ -126,7 +136,7 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 	}
 	plan.Section = func(topic promptTopic, part, share int) sectionPlan {
 		name := topic.Name
-		section := sectionPlan{Title: partTitle("ko", name, topic.Frame, part, share), Role: "content"}
+		section := sectionPlan{Title: partTitle("ko", headingName(name), topic.Frame, part, share), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:
 			section.Lead = fmt.Sprintf("%s 순서대로 나눠 봅니다.", josa(name, "을", "를"))
@@ -227,7 +237,7 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 	}
 	plan.Section = func(topic promptTopic, part, share int) sectionPlan {
 		name := topic.Name
-		section := sectionPlan{Title: partTitle("en", name, topic.Frame, part, share), Role: "content"}
+		section := sectionPlan{Title: partTitle("en", headingName(name), topic.Frame, part, share), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:
 			section.Lead = "The order this happens in."
@@ -342,7 +352,7 @@ func buildPlan(outline promptOutline, title, audience string, words planWords) d
 		}
 		section := build(topic.Name, audience)
 		section.Role = "content"
-		section.Title = partTitle(words.language, topic.Name, topic.Frame, part, share)
+		section.Title = partTitle(words.language, headingName(topic.Name), topic.Frame, part, share)
 		// Figures the prompt supplied belong on the outcome slide as figures.
 		if topic.Frame == frameOutcome && outline.hasFigures() {
 			section.Block, section.BlockCaption, section.Points, section.Items = "kpi", words.figureCaption, nil, nil

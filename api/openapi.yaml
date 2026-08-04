@@ -3455,7 +3455,7 @@ components:
           description: The template region the defect is in.
         kind:
           type: string
-          enum: [overflow, outside, collision, contrast]
+          enum: [overflow, outside, collision, contrast, orphan]
         detail:
           type: string
           description: What is wrong, in numbers the author can act on.

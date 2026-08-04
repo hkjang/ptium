@@ -99,3 +99,67 @@ func LineCount(text string, placeholder Placeholder, level int) int {
 	}
 	return wrappedLines(text, available)
 }
+
+// wrapText splits a string into lines that fit a width given in em units,
+// preferring word boundaries but breaking mid-word for CJK text that has none.
+func wrapLines(value string, lineEm float64) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if lineEm < 1 {
+		lineEm = 1
+	}
+	if measureEm(value) <= lineEm {
+		return []string{value}
+	}
+	var lines []string
+	current := make([]rune, 0, 32)
+	width := 0.0
+	lastSpace := -1
+	for _, character := range value {
+		current = append(current, character)
+		width += advanceEm(character)
+		if character == ' ' {
+			lastSpace = len(current) - 1
+		}
+		if width < lineEm {
+			continue
+		}
+		if lastSpace > 0 {
+			lines = append(lines, strings.TrimSpace(string(current[:lastSpace])))
+			current = append([]rune{}, current[lastSpace+1:]...)
+		} else {
+			lines = append(lines, strings.TrimSpace(string(current)))
+			current = current[:0]
+		}
+		width = measureEm(string(current))
+		lastSpace = -1
+	}
+	if remainder := strings.TrimSpace(string(current)); remainder != "" {
+		lines = append(lines, remainder)
+	}
+	return lines
+}
+
+// orphanShare is how narrow a last line may be before it reads as an orphan: a
+// title whose final line holds one syllable is the detail that makes a deck look
+// generated rather than written.
+const orphanShare = 0.3
+
+// orphanedLine reports whether wrapping leaves a final line too short to belong,
+// and by how much, measured in em.
+func orphanedLine(text string, lineEm float64) (float64, bool) {
+	if lineEm <= 1 {
+		return 0, false
+	}
+	lines := wrapLines(text, lineEm)
+	if len(lines) < 2 {
+		return 0, false
+	}
+	last := measureEm(lines[len(lines)-1])
+	if last >= lineEm*orphanShare {
+		return 0, false
+	}
+	return last, true
+}

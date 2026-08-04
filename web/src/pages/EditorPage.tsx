@@ -77,6 +77,7 @@ function findingLabel(kind: string) {
     case 'outside': return '슬라이드 밖으로 나감'
     case 'collision': return '겹침'
     case 'contrast': return '대비 부족'
+    case 'orphan': return '줄 끝에 한 음절만 남음'
   }
   return kind
 }

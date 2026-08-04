@@ -182,6 +182,7 @@ finding says what still looks wrong once the slide is drawn:
 | `outside` | something drawn past the edge of its region or of the slide |
 | `collision` | two regions on top of each other, or text over the template's own picture or lettering |
 | `contrast` | composed text below 4.5:1 against what sits behind it |
+| `orphan` | a heading whose wrap leaves one stray word or syllable on its last line |
 
 The same measurements run over every shipped design in the test suite, against a
 deck that uses a cover, prose, each component, a table and a chart. That is what

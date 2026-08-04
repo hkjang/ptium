@@ -180,7 +180,7 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 		if available < 1 {
 			available = 1
 		}
-		for index, wrapped := range wrapText(prefix+strings.TrimSpace(paragraph.Text), available) {
+		for index, wrapped := range wrapLines(prefix+strings.TrimSpace(paragraph.Text), available) {
 			offset := indent
 			if index > 0 {
 				offset += fontSize
@@ -219,48 +219,6 @@ func previewEmptySlot(placeholder Placeholder, theme Theme, scale float64) strin
 		`<text x="%.1f" y="%.1f" fill="#%s" font-size="%.1f" text-anchor="middle" opacity="0.75" font-family="Malgun Gothic, sans-serif">%s</text></g>`,
 		x, y, boxWidth, boxHeight, fontSize*0.4, color,
 		x+boxWidth/2, y+boxHeight/2+fontSize/3, color, fontSize, escapeText(label))
-}
-
-// wrapText splits a string into lines that fit a width given in em units,
-// preferring word boundaries but breaking mid-word for CJK text that has none.
-func wrapText(value string, lineEm float64) []string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	if lineEm < 1 {
-		lineEm = 1
-	}
-	if measureEm(value) <= lineEm {
-		return []string{value}
-	}
-	var lines []string
-	current := make([]rune, 0, 32)
-	width := 0.0
-	lastSpace := -1
-	for _, character := range value {
-		current = append(current, character)
-		width += advanceEm(character)
-		if character == ' ' {
-			lastSpace = len(current) - 1
-		}
-		if width < lineEm {
-			continue
-		}
-		if lastSpace > 0 {
-			lines = append(lines, strings.TrimSpace(string(current[:lastSpace])))
-			current = append([]rune{}, current[lastSpace+1:]...)
-		} else {
-			lines = append(lines, strings.TrimSpace(string(current)))
-			current = current[:0]
-		}
-		width = measureEm(string(current))
-		lastSpace = -1
-	}
-	if remainder := strings.TrimSpace(string(current)); remainder != "" {
-		lines = append(lines, remainder)
-	}
-	return lines
 }
 
 func fallbackFamily(family string) string {

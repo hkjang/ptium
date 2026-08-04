@@ -476,7 +476,7 @@ func (p Primitive) textSVG(scale float64) string {
 	}
 	wrapped := make([]string, 0, len(p.Lines))
 	for _, paragraph := range p.Lines {
-		pieces := wrapText(paragraph.Text, lineEm)
+		pieces := wrapLines(paragraph.Text, lineEm)
 		if len(pieces) == 0 {
 			pieces = []string{""}
 		}

@@ -178,3 +178,67 @@ func TestInspectFindsTextOverALogoAndOffTheSlide(t *testing.T) {
 		t.Fatalf("unreadable composed text must be reported: %v", kinds)
 	}
 }
+
+func TestInspectFindsAHeadingThatEndsOnOneSyllable(t *testing.T) {
+	// A title region fourteen ems wide. "…투자 타" wraps to a second line holding
+	// one syllable, which is the classic amateur tell.
+	title := Placeholder{Slot: SlotTitle, Kind: "text", Type: "title",
+		X: 800000, Y: 600000, Width: 6000000, Height: 1200000,
+		FontSize: 3200, MaxChars: 28, MaxLines: 2, LineEm: 14}
+	layout := Layout{ID: "content", Name: "Content", Role: RoleContent, Background: "FFFFFF",
+		Placeholders: []Placeholder{title}}
+	manifest := Manifest{Version: ManifestVersion, SlideWidth: 12192000, SlideHeight: 6858000,
+		Theme:   Theme{Colors: map[string]string{"lt1": "FFFFFF", "dk1": "111111", "accent1": "1E6FFF"}},
+		Layouts: []Layout{layout}}
+	design := NewDesign(manifest)
+
+	orphaned := Slide{LayoutID: "content", Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "클라우드 전환 로드맵과 투자 타"}}}}
+	findings := InspectSlide(manifest, layout, orphaned, design)
+	if len(findings) != 1 || findings[0].Kind != FindingOrphan {
+		t.Fatalf("findings = %+v", findings)
+	}
+
+	// A heading that fills both lines is fine, and so is one that fits on one.
+	for _, text := range []string{"클라우드 전환 로드맵", "클라우드 전환 로드맵과 투자 타당성 보고서 초안 검"} {
+		slide := Slide{LayoutID: "content", Fields: map[string][]Paragraph{SlotTitle: {{Text: text}}}}
+		for _, finding := range InspectSlide(manifest, layout, slide, design) {
+			if finding.Kind == FindingOrphan {
+				t.Fatalf("%q should not be reported as an orphan: %s", text, finding.Detail)
+			}
+		}
+	}
+
+	// A bulleted body legitimately ends its lines wherever the words fall.
+	body := Placeholder{Slot: SlotBody, Kind: "text", Type: "body", Width: 6000000, Height: 3000000,
+		FontSize: 1800, MaxChars: 200, MaxLines: 8, LineEm: 24}
+	bodyLayout := Layout{ID: "b", Name: "B", Role: RoleContent, Placeholders: []Placeholder{body}}
+	bodySlide := Slide{LayoutID: "b", Fields: map[string][]Paragraph{
+		SlotBody: {{Text: "전환 대상 시스템을 세 묶음으로 나누어 순차적으로 이관합니다 그리고 하"}}}}
+	for _, finding := range InspectSlide(manifest, bodyLayout, bodySlide, design) {
+		if finding.Kind == FindingOrphan {
+			t.Fatal("a body region must not be checked for orphans")
+		}
+	}
+}
+
+func TestFittingMovesACutRatherThanLeavingAnOrphan(t *testing.T) {
+	title := Placeholder{Slot: SlotTitle, Kind: "text", Type: "title",
+		Width: 6000000, Height: 1200000, FontSize: 3200, MaxChars: 14, MaxLines: 2, LineEm: 14}
+	// The cut lands mid-phrase and would leave a fragment on its own line.
+	fitted, report := FitParagraphsReport(
+		[]Paragraph{{Text: "클라우드 전환 로드맵과 투자 타당성 검토"}}, title, "ko")
+	if !report.Lost() {
+		t.Fatal("a heading longer than its region must be reported as shortened")
+	}
+	if _, orphaned := orphanedLine(fitted[0].Text, title.LineEm); orphaned {
+		t.Fatalf("the cut left an orphan: %q", fitted[0].Text)
+	}
+	// Nothing was invented, and the cut is marked.
+	if !strings.HasSuffix(fitted[0].Text, "…") {
+		t.Fatalf("a shortened heading should say so: %q", fitted[0].Text)
+	}
+	if !strings.HasPrefix("클라우드 전환 로드맵과 투자 타당성 검토", strings.TrimSuffix(fitted[0].Text, "…")) {
+		t.Fatalf("the text was rewritten rather than cut: %q", fitted[0].Text)
+	}
+}

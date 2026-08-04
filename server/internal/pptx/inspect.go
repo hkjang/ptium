@@ -22,6 +22,9 @@ const (
 	FindingCollision = "collision"
 	// FindingContrast is text that cannot be read against what is behind it.
 	FindingContrast = "contrast"
+	// FindingOrphan is a line holding one stray word or syllable, which is the
+	// detail that makes a deck look generated rather than written.
+	FindingOrphan = "orphan"
 )
 
 // Finding is one defect in a drawn slide, in the terms an author can act on.
@@ -95,6 +98,7 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 		switch current.kind {
 		case "text":
 			findings = append(findings, inspectText(current.placeholder, slide.Fields[current.slot])...)
+			findings = append(findings, inspectLineBreaks(current.placeholder, slide.Fields[current.slot])...)
 		case "component":
 			findings = append(findings, inspectComponent(current.placeholder, slide.Blocks[current.slot], design, slideWidth, slideHeight)...)
 		}
@@ -187,6 +191,32 @@ func inspectText(placeholder Placeholder, paragraphs []Paragraph) []Finding {
 			needed, placeholder.MaxLines, scale)
 	}
 	return []Finding{{Slot: placeholder.Slot, Kind: FindingOverflow, Detail: detail}}
+}
+
+// inspectLineBreaks reports a heading whose wrap leaves a stray last line. It is
+// only checked where a slide has one statement to make — a title, a lead, a
+// component's heading — because a bulleted list of full sentences legitimately
+// ends lines wherever the words fall.
+func inspectLineBreaks(placeholder Placeholder, paragraphs []Paragraph) []Finding {
+	switch placeholder.Slot {
+	case SlotTitle, SlotSubtitle:
+	default:
+		return nil
+	}
+	lineEm := placeholder.LineEm
+	if lineEm <= 0 && placeholder.MaxChars > 0 && placeholder.MaxLines > 0 {
+		lineEm = float64(placeholder.MaxChars) / float64(placeholder.MaxLines) * referenceAdvance
+	}
+	for _, paragraph := range paragraphs {
+		width, orphaned := orphanedLine(paragraph.Text, lineEm)
+		if !orphaned {
+			continue
+		}
+		return []Finding{{Slot: placeholder.Slot, Kind: FindingOrphan,
+			Detail: fmt.Sprintf("the last line holds %.0f%% of a line; shortening or rewording the text avoids the stray ending",
+				width/lineEm*100)}}
+	}
+	return nil
 }
 
 // inspectComponent reports a drawing that escapes its own frame or the slide.

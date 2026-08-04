@@ -46,6 +46,9 @@ func FitParagraphsReport(paragraphs []Paragraph, placeholder Placeholder, langua
 		fitted := trimToWidth(text, budgetChars(placeholder.MaxChars*2, language))
 		if fitted != strings.TrimSpace(text) {
 			report.Shortened++
+			// A cut that leaves one syllable on its own line reads worse than a
+			// slightly shorter heading, so the cut moves back a word.
+			fitted = avoidOrphan(fitted, placeholder.LineEm)
 		}
 		return []Paragraph{{Text: fitted}}, report
 	}
@@ -97,6 +100,28 @@ func trimToWidth(value string, limit int) string {
 		cut = cut[:index]
 	}
 	return strings.TrimSpace(cut) + "…"
+}
+
+// avoidOrphan shortens a heading at a word boundary when its wrap would leave a
+// stray last line. It only moves a cut Ptium was already making, so the author's
+// own wording is never rewritten.
+func avoidOrphan(value string, lineEm float64) string {
+	if _, orphaned := orphanedLine(value, lineEm); !orphaned {
+		return value
+	}
+	trimmed := strings.TrimSuffix(strings.TrimSpace(value), "…")
+	index := strings.LastIndexAny(strings.TrimSpace(trimmed), " ·")
+	if index <= 0 {
+		return value
+	}
+	shorter := strings.TrimSpace(trimmed[:index])
+	if shorter == "" {
+		return value
+	}
+	if _, still := orphanedLine(shorter+"…", lineEm); still {
+		return value
+	}
+	return shorter + "…"
 }
 
 // SanitizeBlock validates a component before it is drawn. Everything a slide
