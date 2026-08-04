@@ -772,6 +772,133 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/presentations/{id}/source:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getPresentationSource
+      summary: Read the deck as source
+      description: |
+        Returns the deck written in Ptium's slide language, together with the
+        layout ids and component names this template accepts. The source is the
+        deck: compiling it produces exactly the stored slides.
+
+        When the slides have been edited on the canvas since the source was
+        written, the text is regenerated from them, so the two never disagree.
+
+        The language is documented in `docs/deck-source.md`.
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The deck as text.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      source:
+                        type: string
+                      slideCount:
+                        type: integer
+                      language:
+                        type: string
+                      blockKinds:
+                        type: array
+                        items:
+                          type: string
+                      layouts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                            role:
+                              type: string
+                              enum: [title, section, content, twoContent, comparison, quote, picture, table, chart, closing, blank]
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      operationId: applyPresentationSource
+      summary: Compile deck source into slides
+      description: |
+        Compiles source against the deck's template and replaces its slides.
+
+        Source that asks for something the template cannot do is adjusted rather
+        than rejected — a missing layout, a component with no room, text with
+        nowhere to go — and every adjustment is reported in `warnings`.
+
+        With `dryRun` the deck is left untouched and only the result is reported,
+        which is what an editor uses to check before applying.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source]
+              additionalProperties: false
+              properties:
+                source:
+                  type: string
+                  description: The deck in Ptium's slide language.
+                dryRun:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: The compiled deck, applied unless this was a dry run.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      applied:
+                        type: boolean
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                      presentation:
+                        $ref: '#/components/schemas/Presentation'
+                      slides:
+                        type: array
+                        description: Present on a dry run only.
+                        items:
+                          $ref: '#/components/schemas/Slide'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: The source produced no slides, more than the limit, or is not text.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/export:
     parameters:
       - $ref: '#/components/parameters/XRequestID'

@@ -66,21 +66,21 @@ type Template struct {
 }
 
 type Presentation struct {
-	ID                  string          `json:"id"`
-	OwnerID             string          `json:"ownerId"`
-	Title               string          `json:"title"`
-	Prompt              string          `json:"prompt"`
-	Status              string          `json:"status"`
-	TemplateID          *string         `json:"templateId,omitempty"`
-	TemplateName        string          `json:"templateName,omitempty"`
-	Theme               string          `json:"theme"`
-	Language            string          `json:"language"`
-	Audience            string          `json:"audience"`
-	Tone                string          `json:"tone"`
-	RequestedSlideCount int             `json:"requestedSlideCount"`
+	ID                  string  `json:"id"`
+	OwnerID             string  `json:"ownerId"`
+	Title               string  `json:"title"`
+	Prompt              string  `json:"prompt"`
+	Status              string  `json:"status"`
+	TemplateID          *string `json:"templateId,omitempty"`
+	TemplateName        string  `json:"templateName,omitempty"`
+	Theme               string  `json:"theme"`
+	Language            string  `json:"language"`
+	Audience            string  `json:"audience"`
+	Tone                string  `json:"tone"`
+	RequestedSlideCount int     `json:"requestedSlideCount"`
 	// Source is the deck written in Ptium's slide language. It is the editable
 	// form of the deck: compiling it reproduces the slides.
-	Source string `json:"source,omitempty"`
+	Source              string          `json:"source,omitempty"`
 	SlideCount          int             `json:"slideCount,omitempty"`
 	Outline             json.RawMessage `json:"outline,omitempty"`
 	ErrorMessage        string          `json:"errorMessage,omitempty"`

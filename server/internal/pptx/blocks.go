@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Block kinds. A slide body is either prose or one of these components, which
@@ -136,11 +137,14 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 	}
 	statementBlock := block.Kind == BlockQuote || block.Kind == BlockCallout
 	if caption := strings.TrimSpace(block.Caption); caption != "" && !statementBlock {
+		// A caption labels what follows, so it sits above it. Pinned to the bottom
+		// of a frame that its content does not fill, it reads as a stray line.
 		height := lineHeightFor(design.Small)
 		component.Primitives = append(component.Primitives, text(
-			Frame{X: body.X, Y: body.Bottom() - height, Width: body.Width, Height: height},
+			Frame{X: body.X, Y: body.Y, Width: body.Width, Height: height},
 			line(caption), textOptions{Size: design.Small, Color: design.InkMuted, Font: design.Minor, Wrap: true}))
-		body.Height -= height + design.Unit
+		body.Y += height + design.Unit/2
+		body.Height -= height + design.Unit/2
 	}
 	if body.Height <= design.Unit {
 		return Component{}
@@ -523,6 +527,25 @@ func (d Design) layoutComparison(frame Frame, block Block) []Primitive {
 	if len(items) > 3 {
 		items = items[:3]
 	}
+	// Cards are sized to what they hold. Stretching two short cards down a tall
+	// region leaves two empty boxes, which reads as unfinished rather than airy.
+	needed := 0
+	for _, item := range items {
+		height := d.Unit*5 + lineHeightFor(d.Body)*2
+		if strings.TrimSpace(item.Display(block.Unit)) != "" {
+			height += lineHeightFor(d.Title) + d.Unit/2
+		}
+		points := len(item.Bullets)
+		if points == 0 && strings.TrimSpace(item.Detail) != "" {
+			points = 1
+		}
+		height += lineHeightFor(d.Small) * 2 * min(points, 4)
+		needed = max(needed, height)
+	}
+	if needed > 0 && needed < frame.Height {
+		frame.Height = needed
+	}
+
 	var primitives []Primitive
 	for index, card := range frame.Columns(len(items), d.Unit*2) {
 		item := items[index]
@@ -537,10 +560,23 @@ func (d Design) layoutComparison(frame Frame, block Block) []Primitive {
 			line(item.Label), textOptions{Size: d.Body, Color: d.InkPrimary, Bold: true, Font: d.Minor, Wrap: true}))
 		cursor += headingHeight
 		if value := strings.TrimSpace(item.Display(block.Unit)); value != "" {
-			height := lineHeightFor(d.Title)
+			// A figure is set as a figure; a phrase is set as text, because display
+			// type at phrase length either overflows or shrinks to nothing.
+			size := d.Title
+			if utf8.RuneCountInString(value) > 12 {
+				size = d.Heading
+			}
+			if utf8.RuneCountInString(value) > 26 {
+				size = d.Body
+			}
+			// How many lines the phrase needs at this size, capped so a long one
+			// cannot push the points below it off the card.
+			perLine := float64(inner.Width) / (float64(size) / 100 * EMUPerPoint)
+			lines := min(max(1, int(measureEm(value)/max(perLine, 1))+1), 3)
+			height := lineHeightFor(size) * lines
 			primitives = append(primitives, text(
 				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: height},
-				line(value), textOptions{Size: d.Title, Color: accent, Bold: true, Font: d.Major}))
+				line(value), textOptions{Size: size, Color: accent, Bold: true, Font: d.Major, Wrap: true}))
 			cursor += height + d.Unit/2
 		}
 		points := item.Bullets

@@ -356,6 +356,9 @@ func applyPromptIntent(target *store.PresentationInput, input presentationReques
 		explicit = *input.SlideCount
 	}
 	target.SlideCount = intent.ApplySlideCount(explicit, target.SlideCount, maximum)
+	// A deck is named after what it is about. A client that sends the first line
+	// of the prompt, or its own placeholder, has not named it.
+	target.Title = generation.TitleFor(target.Prompt, target.Title, target.Language)
 	if input.Language == nil && intent.Language != "" {
 		target.Language = intent.Language
 	}

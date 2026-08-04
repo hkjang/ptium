@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Copy,
-  Download, FileText, LoaderCircle, MonitorPlay, Plus, Trash2, X,
+  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
+  Copy, Download, FileText, LoaderCircle, MonitorPlay, Plus, Trash2, X,
 } from 'lucide-react'
 import { api, primaryBodySlot, textToParagraphs } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
@@ -81,7 +81,13 @@ export function EditorPage({ id }: { id: string }) {
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
   const [panel, setPanel] = useState<'design' | 'notes'>('design')
-  const [canvasMode, setCanvasMode] = useState<'edit' | 'preview'>('edit')
+  const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
+  // The deck as text. It is the same deck the canvas shows: applying it
+  // recompiles the slides, and opening it reads them back out.
+  const [source, setSource] = useState('')
+  const [sourceLoaded, setSourceLoaded] = useState(false)
+  const [sourceBusy, setSourceBusy] = useState(false)
+  const [sourceWarnings, setSourceWarnings] = useState<string[]>([])
   const [presenting, setPresenting] = useState(false)
   const [presentIndex, setPresentIndex] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
@@ -192,6 +198,43 @@ export function EditorPage({ id }: { id: string }) {
   const addSlide = () => { if (slides.length >= MAX_SLIDES) return; markEdited(); const next = defaultSlide(slides.length + 1, contentLayoutId); setSlides((current) => [...current, next]); setActiveId(next.id); setDirty(true) }
   const duplicateSlide = () => { if (!active || slides.length >= MAX_SLIDES) return; markEdited(); const next = { ...active, id: `new-${crypto.randomUUID()}`, order: slides.length + 1, title: `${active.title} 복사본` }; setSlides((current) => [...current, next]); setActiveId(next.id); setDirty(true) }
   const removeSlide = () => { if (!active || slides.length <= 1) return; markEdited(); const next = slides.filter((slide) => slide.id !== active.id).map((slide, index) => ({ ...slide, order: index + 1 })); setSlides(next); setActiveId(next[Math.min(activeIndex, next.length - 1)]?.id || ''); setDirty(true) }
+  const openSource = async () => {
+    setCanvasMode('source')
+    if (dirty) {
+      // The source is read from the stored deck, so unsaved edits are written first.
+      try { await save() } catch { /* the source falls back to the saved deck */ }
+    }
+    if (sourceLoaded) return
+    setSourceBusy(true)
+    try {
+      const loaded = await api.presentationSource(id)
+      setSource(loaded.source)
+      setSourceLoaded(true)
+    } catch (err) { showToast(displayError(err), 'error') } finally { setSourceBusy(false) }
+  }
+
+  const applySource = async (dryRun: boolean) => {
+    setSourceBusy(true)
+    try {
+      const result = await api.applyPresentationSource(id, source, dryRun)
+      setSourceWarnings(result.warnings)
+      if (dryRun) {
+        showToast(`${result.slideCount ?? 0}장으로 컴파일됩니다.`)
+        return
+      }
+      if (result.presentation) {
+        setPresentation(result.presentation)
+        const compiled = result.presentation.slides || []
+        setSlides(compiled)
+        setActiveId(compiled[0]?.id || '')
+        setDirty(false)
+        setLastSaved(new Date())
+      }
+      showToast('코드를 적용했습니다.')
+      setCanvasMode('preview')
+    } catch (err) { showToast(displayError(err), 'error') } finally { setSourceBusy(false) }
+  }
+
   const moveSlide = (direction: -1 | 1) => { const nextIndex = activeIndex + direction; if (nextIndex < 0 || nextIndex >= slides.length) return; markEdited(); const next = [...slides]; [next[activeIndex], next[nextIndex]] = [next[nextIndex], next[activeIndex]]; setSlides(next.map((slide, index) => ({ ...slide, order: index + 1 }))); setDirty(true) }
   // Switching template keeps each slide's narrative role and rebinds it to the
   // equivalent layout in the new design, so content survives the change.
@@ -263,6 +306,7 @@ export function EditorPage({ id }: { id: string }) {
           <div className="canvas-toolbar"><div className="canvas-mode-switch">
             <button className={canvasMode === 'edit' ? 'active' : ''} onClick={() => setCanvasMode('edit')}>편집</button>
             <button className={canvasMode === 'preview' ? 'active' : ''} onClick={() => { if (dirty) void save().catch(() => { /* the preview falls back to the saved state */ }); setCanvasMode('preview') }}>템플릿 미리보기</button>
+            <button className={canvasMode === 'source' ? 'active' : ''} onClick={() => void openSource()}><Code2 size={13} /> 코드</button>
           </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
           {active ? <div className="canvas-stage">
             {canvasMode === 'edit' ? <div className={`slide-canvas layout-${active.layout} theme-${presentation.theme || 'aurora'}`}>
@@ -270,6 +314,30 @@ export function EditorPage({ id }: { id: string }) {
               <input value={active.title} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} className="slide-title-editor" aria-label="슬라이드 제목" placeholder="슬라이드 제목" />
               <Textarea value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." />
               <span className="slide-decoration" style={{ background: active.accent || undefined }} /><span className="slide-page-number">{String(activeIndex + 1).padStart(2, '0')}</span>
+            </div> : canvasMode === 'source' ? <div className="source-editor">
+              <div className="source-editor-head">
+                <div>
+                  <strong>덱 소스</strong>
+                  <span># 제목 · @cover · &gt; 리드 · - 항목 · ::steps … ::  형식으로 씁니다. 적용하면 템플릿에 맞춰 다시 그립니다.</span>
+                </div>
+                <div className="source-editor-actions">
+                  <Button variant="ghost" onClick={() => void applySource(true)} disabled={sourceBusy || !source.trim()}>검사</Button>
+                  <Button onClick={() => void applySource(false)} disabled={sourceBusy || !source.trim()}>
+                    {sourceBusy ? '적용 중…' : '적용'}
+                  </Button>
+                </div>
+              </div>
+              <textarea
+                className="source-editor-code"
+                spellCheck={false}
+                value={source}
+                onChange={(event) => setSource(event.target.value)}
+                aria-label="덱 소스"
+                placeholder={'# 슬라이드 제목\n@content\n> 한 줄 리드\n- 핵심 요점\n::kpi 핵심 지표\n- 전환 대상 | 42개\n::'}
+              />
+              {sourceWarnings.length > 0 && <ul className="source-editor-warnings">
+                {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warning}</li>)}
+              </ul>}
             </div> : <div className="canvas-template-preview">
               <SlidePreview
                 cacheKey={`${id}-${activeIndex}-${lastSaved?.getTime() || 0}`}

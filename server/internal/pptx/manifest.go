@@ -250,7 +250,7 @@ type Manifest struct {
 
 // ManifestVersion is bumped whenever the analyzer changes in a way that makes
 // previously stored manifests stale.
-const ManifestVersion = 3
+const ManifestVersion = 4
 
 // Layout finds a layout by identifier.
 func (m Manifest) Layout(id string) (Layout, bool) {

@@ -521,6 +521,39 @@ export const api = {
       method: 'PATCH', body: JSON.stringify(input),
     }), ['presentation', 'data']))
   },
+  /** Reads the deck as source: the text form that compiles to these slides. */
+  async presentationSource(id: string) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/source`)
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      source: String(data.source ?? ''),
+      slideCount: Number(data.slideCount ?? 0),
+      blockKinds: Array.isArray(data.blockKinds) ? data.blockKinds.map(String) : [],
+      layouts: Array.isArray(data.layouts)
+        ? (data.layouts as Record<string, string>[]).map((layout) => ({
+          id: String(layout.id ?? ''), name: String(layout.name ?? ''), role: String(layout.role ?? ''),
+        }))
+        : [],
+    }
+  },
+  /**
+   * Compiles deck source. With dryRun the deck is left alone and only the
+   * result is reported, which is how the editor checks before applying.
+   */
+  async applyPresentationSource(id: string, source: string, dryRun = false) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/source`, {
+      method: 'PUT', body: JSON.stringify({ source, dryRun }),
+    })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      applied: Boolean(data.applied),
+      warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      presentation: data.presentation
+        ? normalizePresentation(data.presentation as Presentation & Record<string, unknown>)
+        : null,
+      slideCount: Array.isArray(data.slides) ? data.slides.length : undefined,
+    }
+  },
   async retryPresentation(id: string) {
     return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}/generate`, {
       method: 'POST', body: JSON.stringify({}),

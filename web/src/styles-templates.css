@@ -94,3 +94,17 @@
 .password-login { display:flex; flex-direction:column; gap:15px; }
 .password-login .field-label { font-size:11px; }
 .auth-unavailable code { padding:1px 5px; border-radius:4px; background:#f1f0ec; font-size:11px; }
+
+/* Deck source: the deck as text, beside the canvas that draws it */
+.source-editor { width:100%; display:flex; flex-direction:column; gap:11px; }
+.source-editor-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }
+.source-editor-head strong { display:block; font-size:13px; }
+.source-editor-head span { display:block; margin-top:4px; max-width:60ch; color:var(--muted-2); font-size:10.5px; line-height:1.6; }
+.source-editor-actions { display:flex; gap:7px; flex:0 0 auto; }
+.source-editor-code { width:100%; min-height:min(58vh,520px); padding:15px 17px; border:1px solid var(--line); border-radius:12px;
+  background:#fbfbfa; color:var(--ink); font-family:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  font-size:12.5px; line-height:1.75; tab-size:2; resize:vertical; box-shadow:inset 0 1px 3px rgba(0,0,0,.04); }
+.source-editor-code:focus { outline:none; border-color:var(--violet); box-shadow:0 0 0 3px var(--violet-soft); }
+.source-editor-warnings { list-style:none; display:flex; flex-direction:column; gap:5px; }
+.source-editor-warnings li { display:flex; align-items:flex-start; gap:6px; color:#8a6410; font-size:11px; line-height:1.5; }
+.source-editor-warnings svg { flex:0 0 auto; margin-top:2px; }

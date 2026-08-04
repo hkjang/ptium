@@ -73,21 +73,38 @@ func synthesizeSlots(layout Layout, theme Theme, slideWidth, slideHeight, titleS
 	}
 	result := []Placeholder{title}
 
-	bodyY := frame.Y + titleHeight + gap
-	bodyHeight := frame.Y + frame.Height - bodyY
-	if bodyHeight >= EMUPerInch/2 {
-		slot := SlotBody
-		size := bodySize
-		if statement {
-			// A divider's second line is a lead-in, not a bullet list.
-			slot = SlotSubtitle
-			size = bodySize * 6 / 5
+	next := frame.Y + titleHeight + gap
+	remaining := frame.Y + frame.Height - next
+	if statement {
+		// A cover or divider carries one supporting line, not a list.
+		if remaining >= EMUPerInch/2 {
+			result = append(result, Placeholder{
+				Slot: SlotSubtitle, Kind: "text", Type: "body", Synthetic: true,
+				Name: "Ptium subtitle", X: frame.X, Y: next, Width: frame.Width, Height: remaining,
+				FontSize: bodySize * 6 / 5, Color: ink, Font: theme.MinorLatin,
+			})
 		}
-		result = append(result, Placeholder{
-			Slot: slot, Kind: "text", Type: "body", Synthetic: true,
-			Name: "Ptium body", X: frame.X, Y: bodyY, Width: frame.Width, Height: bodyHeight,
-			FontSize: size, Color: ink, Font: theme.MinorLatin,
-		})
+	} else {
+		// A content slide needs somewhere for its lead line as well as its body.
+		// Without both, a slide that carries a component and an introduction has
+		// nowhere to put the introduction.
+		leadLine := bodySize * EMUPerPoint * 122 / 100 / 100
+		if remaining >= leadLine*4 {
+			result = append(result, Placeholder{
+				Slot: SlotSubtitle, Kind: "text", Type: "body", Synthetic: true,
+				Name: "Ptium lead", X: frame.X, Y: next, Width: frame.Width, Height: leadLine * 3 / 2,
+				FontSize: bodySize, Color: ink, Font: theme.MinorLatin,
+			})
+			next += leadLine*3/2 + gap
+			remaining = frame.Y + frame.Height - next
+		}
+		if remaining >= EMUPerInch/2 {
+			result = append(result, Placeholder{
+				Slot: SlotBody, Kind: "text", Type: "body", Synthetic: true,
+				Name: "Ptium body", X: frame.X, Y: next, Width: frame.Width, Height: remaining,
+				FontSize: bodySize, Color: ink, Font: theme.MinorLatin,
+			})
+		}
 	}
 	for index := range result {
 		result[index].MaxChars, result[index].MaxLines, result[index].LineEm = capacity(result[index])

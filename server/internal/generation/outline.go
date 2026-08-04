@@ -243,3 +243,41 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	}
 	return candidate
 }
+
+// TitleFor is the deck title a prompt implies. It is exported so a deck is named
+// when it is created rather than only when it is written, which is what the
+// workspace lists and what the cover shows.
+//
+// A caller's own title wins. A placeholder — an empty string, or the default a
+// client sends when the person typed nothing — does not.
+func TitleFor(prompt, given, language string) string {
+	if isAuthoredTitle(given, prompt) {
+		return strings.TrimSpace(given)
+	}
+	joiner := ", "
+	if strings.HasPrefix(strings.ToLower(language), "ko") || strings.TrimSpace(language) == "" {
+		joiner = " · "
+	}
+	outline := outlinePrompt(prompt, given, localizedCopy(language))
+	if title := outline.deckTitle("", prompt, joiner); strings.TrimSpace(title) != "" {
+		return title
+	}
+	return strings.TrimSpace(given)
+}
+
+// placeholderTitles are the names a client sends when the author typed none.
+var placeholderTitles = []string{"untitled presentation", "untitled", "새 프레젠테이션", "제목 없음", "무제"}
+
+func isAuthoredTitle(given, prompt string) bool {
+	trimmed := strings.TrimSpace(given)
+	if trimmed == "" {
+		return false
+	}
+	for _, placeholder := range placeholderTitles {
+		if strings.EqualFold(trimmed, placeholder) {
+			return false
+		}
+	}
+	// A title that is the opening of the prompt was sliced from it, not written.
+	return !strings.HasPrefix(strings.TrimSpace(prompt), trimmed)
+}
