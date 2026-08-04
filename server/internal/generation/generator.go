@@ -172,7 +172,9 @@ func trimSourceSlides(source string, count int) string {
 	lines := strings.Split(source, "\n")
 	slides := 0
 	for index, line := range lines {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") && !strings.HasPrefix(strings.TrimSpace(line), "##") {
+		// Any leading hash starts a slide, which is how the parser reads it: a
+		// stricter rule here would miscount a model that wrote "## Title".
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			slides++
 			if slides > count {
 				return strings.Join(lines[:index], "\n")

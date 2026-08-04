@@ -10,6 +10,7 @@ import type {
   SlideParagraph,
   Template,
   TemplateLayout,
+  TemplatePalette,
   User,
 } from '../types'
 
@@ -245,6 +246,7 @@ function normalizeTemplate(value: Template & Record<string, unknown>): Template 
     usageCount: Number(value.usageCount ?? value.usage_count ?? 0),
     ownerId: String(value.ownerId || value.owner_id || '') || undefined,
     layouts: layouts.length > 0 ? layouts : undefined,
+    palette: normalizeTemplatePalette(value.palette),
     createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
     updatedAt: String(value.updatedAt || value.updated_at || value.createdAt || value.created_at || new Date().toISOString()),
   }
@@ -287,6 +289,26 @@ export function bodySlots(fields: Record<string, SlideParagraph[]> | undefined) 
 }
 
 /** The slot the editor's body textarea is bound to. */
+function normalizeTemplatePalette(raw: unknown): TemplatePalette | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const value = raw as Record<string, unknown>
+  const colors = Array.isArray(value.dataColors) ? value.dataColors.map(String) : []
+  if (colors.length === 0) return undefined
+  const rejected = Array.isArray(value.rejected)
+    ? (value.rejected as Record<string, unknown>[]).map((entry) => ({
+      slot: String(entry.slot ?? ''), color: String(entry.color ?? ''), reason: String(entry.reason ?? ''),
+    }))
+    : undefined
+  return {
+    surface: String(value.surface ?? ''),
+    ink: String(value.ink ?? ''),
+    inkContrast: Number(value.inkContrast ?? 0),
+    dataColors: colors,
+    seriesLimit: Number(value.seriesLimit ?? colors.length),
+    rejected: rejected && rejected.length > 0 ? rejected : undefined,
+  }
+}
+
 export function primaryBodySlot(slide: Slide, layout?: TemplateLayout) {
   const existing = bodySlots(slide.fields)
   if (existing.length > 0) return existing[0]

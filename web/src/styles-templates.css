@@ -113,3 +113,16 @@
 .source-editor-warnings { list-style:none; display:flex; flex-direction:column; gap:5px; }
 .source-editor-warnings li { display:flex; align-items:flex-start; gap:6px; color:#8a6410; font-size:11px; line-height:1.5; }
 .source-editor-warnings svg { flex:0 0 auto; margin-top:2px; }
+
+/* What a template's own palette can carry */
+.template-palette { margin-top:13px; padding:13px 14px; border:1px solid var(--line); border-radius:10px; background:var(--surface-soft); }
+.template-palette-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.template-palette-head strong { font-size:12px; }
+.template-palette-head span { color:var(--muted-2); font-size:10px; }
+.template-palette-swatches { display:flex; gap:6px; margin-top:10px; }
+.template-palette-swatches span { width:30px; height:22px; border-radius:5px; border:1px solid rgba(0,0,0,.08); }
+.template-palette p { margin-top:10px; color:var(--muted); font-size:10.5px; line-height:1.6; }
+.template-palette ul { margin-top:9px; list-style:none; display:flex; flex-direction:column; gap:5px; }
+.template-palette li { display:flex; align-items:center; gap:6px; color:var(--muted-2); font-size:10px; }
+.template-palette li code { padding:1px 5px; border-radius:4px; background:#fff; border:1px solid var(--line); font-size:9.5px; }
+.template-palette-chip { width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.1); flex:0 0 auto; }

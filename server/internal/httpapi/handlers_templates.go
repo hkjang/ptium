@@ -43,7 +43,18 @@ func (s *Server) getTemplate(writer http.ResponseWriter, request *http.Request) 
 		s.handleStoreError(writer, request, err, "template_read_failed")
 		return
 	}
-	writeData(writer, request, http.StatusOK, template)
+	// What a template's own palette can carry is a property of the customer's
+	// design, and they are the only ones who can change it — so it is reported
+	// rather than silently worked around.
+	manifest, manifestErr := decodeManifest(template)
+	if manifestErr != nil || len(manifest.Layouts) == 0 {
+		writeData(writer, request, http.StatusOK, template)
+		return
+	}
+	writeData(writer, request, http.StatusOK, struct {
+		model.Template
+		Palette pptx.ThemeAudit `json:"palette"`
+	}{Template: template, Palette: pptx.AuditTheme(manifest)})
 }
 
 func (s *Server) createTemplate(writer http.ResponseWriter, request *http.Request) {

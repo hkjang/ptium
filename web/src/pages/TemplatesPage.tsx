@@ -17,6 +17,17 @@ const roleLabels: Record<string, string> = {
   chart: '차트', closing: '마무리', blank: '빈 화면',
 }
 
+// rejectionText translates the server's reason, which is written in English for
+// the API, into the workspace's language.
+function rejectionText(reason: string) {
+  if (reason.includes('background')) return '배경색과 구분되지 않아 데이터 색으로 쓰지 않습니다.'
+  if (reason.includes('grey')) return '회색에 가까워 강조 해제 색과 겹칩니다.'
+  if (reason.includes('deuteranopia')) return '적록색약에서 앞 색과 구분되지 않습니다.'
+  if (reason.includes('protanopia')) return '적색약에서 앞 색과 구분되지 않습니다.'
+  if (reason.includes('indistinguishable')) return '앞 색과 구분되지 않습니다.'
+  return '데이터 색으로 쓸 수 없습니다.'
+}
+
 export function roleLabel(role: string) {
   return roleLabels[role] || role
 }
@@ -178,6 +189,29 @@ function TemplateDetailModal({ template, onClose }: { template: Template | null;
             <ul>{selected.placeholders.filter((placeholder) => placeholder.kind === 'text').map((placeholder) => (
               <li key={placeholder.slot}><code>{placeholder.slot}</code> 최대 {placeholder.maxChars.toLocaleString()}자 · {placeholder.maxLines}줄{placeholder.region ? ` · ${placeholder.region}` : ''}</li>
             ))}</ul>
+          </div>}
+          {template.palette && <div className="template-palette">
+            <div className="template-palette-head">
+              <strong>이 템플릿의 데이터 색</strong>
+              <span>차트 계열 최대 {template.palette.seriesLimit}개</span>
+            </div>
+            <div className="template-palette-swatches">
+              {template.palette.dataColors.map((color, index) => (
+                <span key={color + index} style={{ background: `#${color}` }} title={`#${color}`} />
+              ))}
+            </div>
+            <p>
+              본문 글자 대비 {template.palette.inkContrast.toFixed(1)}:1
+              {template.palette.inkContrast < 4.5 ? ' — 4.5:1 미만이라 템플릿 자체가 읽기 어렵습니다.' : ' (권장 4.5:1 이상)'}
+            </p>
+            {template.palette.rejected && <ul>
+              {template.palette.rejected.map((entry) => (
+                <li key={entry.slot}>
+                  <span className="template-palette-chip" style={{ background: `#${entry.color}` }} />
+                  <code>{entry.slot}</code> {rejectionText(entry.reason)}
+                </li>
+              ))}
+            </ul>}
           </div>}
         </div>
         <ul className="template-layout-list">

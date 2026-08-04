@@ -164,29 +164,20 @@ func (d Design) Track() string { return mixColor(d.Surface, d.Accent, ifElse(d.D
 // The check is the same perceptual distance a designer would validate by hand,
 // computed instead of eyeballed.
 func categoricalOrder(theme Theme, surface string) []string {
-	const minimumSeparation = 8.0
 	order := make([]string, 0, 6)
 	for index := 1; index <= 6; index++ {
 		candidate := strings.ToUpper(strings.TrimSpace(theme.Colors[fmt.Sprintf("accent%d", index)]))
 		if !hexColorPattern.MatchString(candidate) {
 			continue
 		}
-		// A hue that vanishes into the surface cannot carry identity, and a
-		// near-grey slot collides with the de-emphasis colour reserved for
-		// context — both are dropped rather than mistaken for data colours.
-		if colorDistance(candidate, surface) < 12 || chroma(candidate) < 0.045 {
+		// A hue that vanishes into the surface cannot carry identity, a near-grey
+		// slot collides with the de-emphasis colour reserved for context, and a
+		// slot that reads as one already accepted — to any eye, including one that
+		// cannot separate red from green — is not a second series.
+		if rejectionReason(candidate, surface, order) != "" {
 			continue
 		}
-		distinct := true
-		for _, accepted := range order {
-			if colorDistance(candidate, accepted) < minimumSeparation {
-				distinct = false
-				break
-			}
-		}
-		if distinct {
-			order = append(order, candidate)
-		}
+		order = append(order, candidate)
 	}
 	if len(order) == 0 {
 		order = append(order, theme.Color("accent1"))

@@ -94,6 +94,16 @@ export interface TemplateLayout {
   placeholders: TemplatePlaceholder[]
 }
 
+/** What a template's own palette supports, reported by the server. */
+export interface TemplatePalette {
+  surface: string
+  ink: string
+  inkContrast: number
+  dataColors: string[]
+  seriesLimit: number
+  rejected?: { slot: string; color: string; reason: string }[]
+}
+
 export interface Template {
   id: string
   name: string
@@ -108,6 +118,7 @@ export interface Template {
   usageCount?: number
   ownerId?: string
   layouts?: TemplateLayout[]
+  palette?: TemplatePalette
   createdAt: string
   updatedAt: string
 }
