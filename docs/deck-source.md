@@ -47,7 +47,7 @@ cover, the last of three or more is a closing, everything between is content.
 ### Components
 
 `kpi` `hero` `steps` `timeline` `comparison` `columns` `bars` `line` `share`
-`meter` `table` `quote` `callout`, with aliases in both languages (`지표`,
+`meter` `table` `quote` `callout` `grid`, with aliases in both languages (`지표`,
 `단계`, `로드맵`, `비교`, `추이`, `비중`, `달성률`, `강조`, …).
 
 Rows are `label | value | detail`; any part may be omitted. A value that carries
@@ -79,6 +79,48 @@ than bare numbers is the time axis:
 
 When a component fills the only body region, the slide's lead line is drawn as the
 component's heading rather than being dropped.
+
+### Grids
+
+`::grid <definition> [caption]` draws a grid an organisation defined for itself:
+a RACI chart, a risk matrix, a readiness checklist. The first row is the header,
+the rest are data, and a cell whose value the definition knows is drawn as a
+coloured chip.
+
+```
+::grid raci 전환 프로젝트
+- 활동 | 데이터본부 | 개발팀 | 운영팀
+- 요건 정의 | A | R | C
+- 이관 실행 | I | R | A
+::
+```
+
+Three definitions ship: `raci`, `matrix` and `checklist`. A definition of your own
+under the same name replaces the shipped one, so the source above keeps working
+while the slide follows your house rules:
+
+```bash
+curl -X PUT -H 'Authorization: Bearer <key>' -H 'Content-Type: application/json' \
+  -d '{"title":"KCB 담당 체계","zebra":true,"legend":true,
+       "order":["R","A","C","I"],
+       "columns":[{"label":"업무","weight":2.4,"align":"l"}],
+       "values":{"R":{"label":"실행","role":"accent1","chip":true,"meaning":"직접 수행"},
+                 "A":{"label":"승인","role":"negative","chip":true,"meaning":"최종 책임"}}}' \
+  http://localhost:8080/api/v1/grids/raci
+```
+
+A definition never names a colour — it names a role: `accent1`…`accent6`,
+`positive`, `negative`, `muted`, `ink`. Each template resolves those through its
+own theme, so one definition comes out in every house's colours, and the colours
+it gets are the ones that passed the palette check. `weight` is a column's share
+of the width, `order` is the legend's reading order, and `zebra` shades alternate
+rows.
+
+| Request | Effect |
+| --- | --- |
+| `GET /api/v1/grids` | your definitions, plus the shipped ones you have not replaced |
+| `POST /api/v1/grids` · `PUT /api/v1/grids/{name}` | save a definition |
+| `DELETE /api/v1/grids/{name}` | remove yours; a shipped definition returns |
 
 ### Images
 

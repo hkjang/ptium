@@ -25,6 +25,9 @@ const (
 	BlockTable      = "table"
 	BlockQuote      = "quote"
 	BlockCallout    = "callout"
+	// BlockGrid is a component an organisation defined: a labelled grid whose
+	// cell values are drawn from a stored definition.
+	BlockGrid = "grid"
 )
 
 // BlockKinds lists every component the renderer supports, for prompts and
@@ -32,7 +35,7 @@ const (
 func BlockKinds() []string {
 	return []string{BlockBullets, BlockKPI, BlockHero, BlockSteps, BlockTimeline,
 		BlockComparison, BlockColumns, BlockBars, BlockLine, BlockShare,
-		BlockMeter, BlockTable, BlockQuote, BlockCallout}
+		BlockMeter, BlockTable, BlockQuote, BlockCallout, BlockGrid}
 }
 
 // Item is one entry of a component: a statistic, a step, a milestone, a bar.
@@ -92,6 +95,9 @@ type Block struct {
 	Columns []string   `json:"columns,omitempty"`
 	Rows    [][]string `json:"rows,omitempty"`
 	Unit    string     `json:"unit,omitempty"`
+	// Grid is the definition a grid component is drawn from. It travels with the
+	// slide so a deck renders the same way after the definition changes.
+	Grid *GridSpec `json:"grid,omitempty"`
 	// Text is the single statement a quote or callout carries.
 	Text      string `json:"text,omitempty"`
 	Caption   string `json:"caption,omitempty"`
@@ -109,7 +115,7 @@ func BlockMinimumLines(kind string) int {
 	switch kind {
 	case BlockQuote, BlockCallout, BlockHero:
 		return 2
-	case BlockColumns, BlockBars, BlockLine, BlockTimeline:
+	case BlockColumns, BlockBars, BlockLine, BlockTimeline, BlockGrid:
 		return 4
 	}
 	return 3
@@ -178,6 +184,8 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		primitives = design.layoutQuote(body, block)
 	case BlockCallout:
 		primitives = design.layoutCallout(body, block)
+	case BlockGrid:
+		primitives = design.layoutGrid(body, block)
 	default:
 		return Component{}
 	}
@@ -194,6 +202,7 @@ func componentName(kind string) string {
 		BlockTimeline: "Timeline", BlockComparison: "Comparison", BlockColumns: "Column chart",
 		BlockBars: "Bar chart", BlockLine: "Line chart", BlockShare: "Share bar",
 		BlockMeter: "Meter", BlockTable: "Table", BlockQuote: "Pull quote", BlockCallout: "Callout",
+		BlockGrid: "Grid",
 	}
 	if name, ok := names[kind]; ok {
 		return name
@@ -1093,6 +1102,8 @@ func BlockKind(name string) string {
 		return BlockMeter
 	case "table", "표":
 		return BlockTable
+	case "grid", "격자", "matrix", "raci":
+		return BlockGrid
 	case "quote", "statement", "인용":
 		return BlockQuote
 	case "callout", "note", "highlight", "강조":

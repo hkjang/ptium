@@ -145,6 +145,17 @@ var migrations = []string{
 	`ALTER TABLE slides ADD COLUMN IF NOT EXISTS layout_id text NOT NULL DEFAULT ''`,
 	// Local password sign-in for the bootstrap administrator. The hash column is
 	// nullable: an account provisioned by the identity provider never has one.
+	// Grid components an organisation defined for itself: a RACI chart, a risk
+	// matrix, a readiness checklist. The definition names colour roles rather than
+	// colours, so one definition works in every template.
+	`CREATE TABLE IF NOT EXISTS grids(
+		id uuid PRIMARY KEY,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name text NOT NULL,
+		spec jsonb NOT NULL,
+		created_at timestamptz NOT NULL DEFAULT now(),
+		updated_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS grids_owner_name_idx ON grids(owner_id,lower(name))`,
 	// Images a deck places on its slides. Kept in the database like everything
 	// else, so an air-gapped deployment has no second thing to back up.
 	`CREATE TABLE IF NOT EXISTS assets(

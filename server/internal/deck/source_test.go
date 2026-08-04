@@ -428,3 +428,64 @@ func TestCompileReportsTextItCouldNotFit(t *testing.T) {
 		t.Fatalf("a slide that fits must be quiet: %v", quiet.Warnings)
 	}
 }
+
+func TestCompileDrawsAGridFromItsDefinition(t *testing.T) {
+	manifest := testManifest()
+	source := "# 담당 체계\n::grid raci 전환 프로젝트\n- 활동 | 기획 | 개발 | 운영\n- 요건 정의 | R | C | I\n- 설계 | A | R | C\n::\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if len(result.Warnings) != 0 {
+		t.Fatalf("warnings = %v", result.Warnings)
+	}
+	block := Decode(result.Slides[0].Content).Blocks[pptx.SlotBody]
+	if block.Kind != pptx.BlockGrid || block.Grid == nil {
+		t.Fatalf("block = %+v", block)
+	}
+	// The shipped definition is found without anything being configured.
+	if block.Grid.Name != "raci" || len(block.Grid.Values) == 0 {
+		t.Fatalf("definition = %+v", block.Grid)
+	}
+	// The first row is the header; the rest are data.
+	if len(block.Columns) != 4 || block.Columns[1] != "기획" {
+		t.Fatalf("columns = %v", block.Columns)
+	}
+	if len(block.Rows) != 2 || block.Rows[1][0] != "설계" {
+		t.Fatalf("rows = %v", block.Rows)
+	}
+	if block.Caption != "전환 프로젝트" {
+		t.Fatalf("caption = %q", block.Caption)
+	}
+
+	// A definition nobody wrote is reported with its line, and the rows are kept
+	// as text rather than vanishing.
+	missing := Compile(ParseSource("# 표\n::grid nonexistent\n- 항목 | 값\n::\n"), manifest, CompileOptions{})
+	if len(missing.Warnings) == 0 || !strings.Contains(strings.Join(missing.Warnings, " "), "nonexistent") {
+		t.Fatalf("warnings = %v", missing.Warnings)
+	}
+	if content := Decode(missing.Slides[0].Content); len(content.Fields[pptx.SlotBody]) == 0 && strings.TrimSpace(content.Body) == "" {
+		t.Fatalf("the rows should survive as text: %+v", content)
+	}
+
+	// A deployment's own definition shadows the shipped one.
+	custom := pptx.GridSpec{Name: "raci", Title: "우리 회사 RACI",
+		Values: map[string]pptx.GridValue{"R": {Label: "실행", Role: "accent2", Chip: true}}}
+	overridden := Compile(ParseSource(source), manifest, CompileOptions{
+		ResolveGrid: func(name string) (pptx.GridSpec, bool) {
+			if name == "raci" {
+				return custom, true
+			}
+			return pptx.GridSpec{}, false
+		}})
+	if title := Decode(overridden.Slides[0].Content).Blocks[pptx.SlotBody].Grid.Title; title != "우리 회사 RACI" {
+		t.Fatalf("the deployment's own definition should win, got %q", title)
+	}
+
+	// The grid survives a round trip through the text, definition name and all.
+	formatted := Format(model.Presentation{Slides: result.Slides}, manifest)
+	if !strings.Contains(formatted, "::grid raci") || !strings.Contains(formatted, "- 요건 정의 | R | C | I") {
+		t.Fatalf("the grid was not written back out:\n%s", formatted)
+	}
+	again := Compile(ParseSource(formatted), manifest, CompileOptions{Language: "ko"})
+	if block := Decode(again.Slides[0].Content).Blocks[pptx.SlotBody]; block.Grid == nil || len(block.Rows) != 2 {
+		t.Fatalf("the grid was lost on the round trip:\n%s", formatted)
+	}
+}

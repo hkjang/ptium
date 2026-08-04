@@ -87,8 +87,9 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 		return
 	}
 	profile, _ := s.store.GetProfile(request.Context(), user.ID)
-	compiled := generation.CompileSourceWithImages(input.Source, presentation, profile,
-		generation.Template{ID: templateIDOf(presentation), Manifest: manifest}, s.resolveImage(request, user.ID))
+	compiled := generation.CompileSourceWith(input.Source, presentation, profile,
+		generation.Template{ID: templateIDOf(presentation), Manifest: manifest},
+		s.resolveImage(request, user.ID), s.gridResolver(request, user.ID))
 	if len(compiled.Slides) == 0 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "empty_source",
 			"The deck source produced no slides", map[string]any{"warnings": compiled.Warnings})
@@ -155,7 +156,8 @@ func (s *Server) previewSource(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	compiled := deck.Compile(deck.ParseSource(input.Source), manifest, deck.CompileOptions{
-		Language: presentation.Language, ResolveImage: s.resolveImage(request, user.ID)})
+		Language: presentation.Language, ResolveImage: s.resolveImage(request, user.ID),
+		ResolveGrid: s.gridResolver(request, user.ID)})
 	if len(compiled.Slides) == 0 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "empty_source", "The deck source produced no slides", nil)
 		return

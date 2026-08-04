@@ -178,9 +178,17 @@ func formatBlock(block pptx.Block) string {
 	var builder strings.Builder
 	kind := blockSourceName(block.Kind)
 	fmt.Fprintf(&builder, "::%s", kind)
+	if block.Kind == pptx.BlockGrid && block.Grid != nil {
+		// The definition's name comes first, the way it was written.
+		fmt.Fprintf(&builder, " %s", escapeItemField(block.Grid.Name))
+	}
 	caption := strings.TrimSpace(block.Caption)
 	if caption == "" {
 		caption = strings.TrimSpace(block.Heading)
+	}
+	// A caption that only repeats the definition's own title adds nothing.
+	if block.Kind == pptx.BlockGrid && block.Grid != nil && caption == strings.TrimSpace(block.Grid.Title) {
+		caption = ""
 	}
 	if caption != "" {
 		fmt.Fprintf(&builder, " %s", escapeSourceLine(caption))
@@ -188,6 +196,23 @@ func formatBlock(block pptx.Block) string {
 	builder.WriteString("\n")
 	if text := strings.TrimSpace(block.Text); text != "" {
 		fmt.Fprintf(&builder, "- %s\n", escapeSourceLine(text))
+	}
+	// A table or a grid is rows of fields, not label/value items.
+	if len(block.Columns) > 0 || len(block.Rows) > 0 {
+		rows := append([][]string{}, block.Columns)
+		if len(block.Columns) == 0 {
+			rows = nil
+		}
+		rows = append(rows, block.Rows...)
+		for _, row := range rows {
+			fields := make([]string, 0, len(row))
+			for _, field := range row {
+				fields = append(fields, escapeItemField(field))
+			}
+			fmt.Fprintf(&builder, "- %s\n", strings.Join(fields, " | "))
+		}
+		builder.WriteString("::\n")
+		return builder.String()
 	}
 	for _, item := range block.Items {
 		parts := []string{escapeItemField(item.Label)}
@@ -219,6 +244,8 @@ func blockSourceName(kind string) string {
 		return "line"
 	case pptx.BlockShare:
 		return "share"
+	case pptx.BlockGrid:
+		return "grid"
 	}
 	return kind
 }

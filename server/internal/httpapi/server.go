@@ -160,6 +160,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))
+	// Grid components an organisation defined for itself.
+	api.Handle("GET /api/v1/grids", requireScope("presentations:read", http.HandlerFunc(s.listGrids)))
+	api.Handle("POST /api/v1/grids", requireScope("presentations:write", http.HandlerFunc(s.saveGrid)))
+	api.Handle("PUT /api/v1/grids/{name}", requireScope("presentations:write", http.HandlerFunc(s.saveGrid)))
+	api.Handle("DELETE /api/v1/grids/{name}", requireScope("presentations:write", http.HandlerFunc(s.deleteGrid)))
 	// Images a deck places on its slides.
 	api.Handle("GET /api/v1/assets", requireScope("presentations:read", http.HandlerFunc(s.listAssets)))
 	api.Handle("POST /api/v1/assets", requireScope("presentations:write", http.HandlerFunc(s.createAsset)))

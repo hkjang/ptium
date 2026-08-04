@@ -62,6 +62,10 @@ func exerciseDeck(manifest Manifest) Deck {
 		{Kind: BlockLine, Caption: "월별 처리량", Labels: []string{"1월", "2월", "3월", "4월", "5월"},
 			Series: []Series{{Name: "전환 전", Points: []float64{120, 118, 121, 119, 122}},
 				{Name: "전환 후", Points: []float64{120, 132, 148, 165, 181}}}},
+		{Kind: BlockGrid, Caption: "담당 체계", Grid: gridSpecFor("raci"),
+			Columns: []string{"활동", "기획", "개발", "운영"},
+			Rows: [][]string{{"요건 정의", "R", "C", "I"}, {"설계", "A", "R", "C"},
+				{"이관", "C", "R", "A"}, {"검증", "I", "C", "R"}}},
 		{Kind: BlockShare, Caption: "구성", Items: []Item{
 			{Label: "핵심", Number: pointer(52)}, {Label: "주변", Number: pointer(31)}, {Label: "폐기", Number: pointer(17)}}},
 	} {
@@ -77,6 +81,14 @@ func exerciseDeck(manifest Manifest) Deck {
 }
 
 func pointer(value float64) *float64 { return &value }
+
+func gridSpecFor(name string) *GridSpec {
+	spec, ok := LookupBuiltinGrid(name)
+	if !ok {
+		return nil
+	}
+	return &spec
+}
 
 // Every shipped design has to draw a realistic deck without a single defect.
 // This is the test that replaces looking at a rendered PNG.

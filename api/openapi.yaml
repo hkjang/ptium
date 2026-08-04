@@ -648,6 +648,125 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/grids:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listGrids
+      summary: List grid definitions
+      description: |
+        The caller's own grid definitions, plus the shipped ones they have not
+        replaced. A definition describes a component an organisation defines for
+        itself — a RACI chart, a risk matrix — and deck source refers to it by name
+        with `::grid <name>`.
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The definitions available to this caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GridSpec'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createGrid
+      summary: Save a grid definition
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GridSpec'
+      responses:
+        '200':
+          description: The stored definition.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GridSpec'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: The definition names a colour rather than a role, or is otherwise unusable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/grids/{name}:
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{1,39}$'
+      - $ref: '#/components/parameters/XRequestID'
+    put:
+      operationId: saveGrid
+      summary: Save a grid definition under a name
+      description: |
+        A definition saved under the name of a shipped one replaces it, so deck
+        source that already says `::grid raci` keeps working while the slide
+        follows the organisation's own rules.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GridSpec'
+      responses:
+        '200':
+          description: The stored definition.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GridSpec'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: The definition is unusable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: deleteGrid
+      summary: Remove a grid definition
+      description: Removing an override restores the shipped definition of that name.
+      tags: [Presentations]
+      responses:
+        '204':
+          description: The definition has been removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/presentations:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -3269,6 +3388,61 @@ components:
           $ref: '#/components/schemas/PaginationMeta'
         requestId:
           $ref: '#/components/schemas/RequestID'
+
+    GridSpec:
+      type: object
+      description: |
+        A grid component an organisation defined. It names colour roles rather
+        than colours, so one definition works in every template.
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{1,39}$'
+          description: How deck source refers to it.
+        title:
+          type: string
+          description: Shown above the grid when the source supplies no caption.
+        columns:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            properties:
+              label:
+                type: string
+              weight:
+                type: number
+                description: The column's share of the width, relative to the others.
+              align:
+                type: string
+                enum: [l, ctr, r]
+        values:
+          type: object
+          description: How each cell value is drawn, keyed by the value as written.
+          additionalProperties:
+            type: object
+            properties:
+              label:
+                type: string
+              role:
+                type: string
+                enum: [accent1, accent2, accent3, accent4, accent5, accent6, positive, negative, muted, ink]
+              chip:
+                type: boolean
+                description: Draw the value in a filled pill rather than as coloured text.
+              meaning:
+                type: string
+                description: Shown in the legend.
+        order:
+          type: array
+          items:
+            type: string
+          description: The legend's reading order; "R, A, C, I" is not alphabetical.
+        zebra:
+          type: boolean
+        legend:
+          type: boolean
 
     DeckFinding:
       type: object

@@ -190,6 +190,12 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 		if len(block.Columns) == 0 || len(block.Rows) == 0 {
 			return Block{}, false
 		}
+	case BlockGrid:
+		// A grid without its definition cannot be drawn, and one without rows says
+		// nothing; either way prose is better than an empty frame.
+		if block.Grid == nil || len(block.Rows) == 0 {
+			return Block{}, false
+		}
 	case BlockQuote, BlockCallout:
 		if block.Text == "" && block.Caption == "" && len(block.Items) == 0 {
 			return Block{}, false

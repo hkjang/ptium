@@ -59,7 +59,9 @@ type SourceImage struct {
 type SourceBlock struct {
 	Kind    string
 	Caption string
-	Items   []pptx.Item
+	// Definition names the stored grid a ::grid component is drawn from.
+	Definition string
+	Items      []pptx.Item
 	// Rows keeps each row's fields verbatim. A table has as many columns as its
 	// author wrote, which label/value/detail cannot express.
 	Rows [][]string
@@ -177,6 +179,14 @@ func ParseSource(source string) Source {
 				continue
 			}
 			block, inBlock = SourceBlock{Kind: resolved, Caption: strings.TrimSpace(caption), Line: line}, true
+			if resolved == pptx.BlockGrid {
+				// A grid names its definition first: "::grid raci 담당 체계".
+				definition, rest, _ := strings.Cut(strings.TrimSpace(caption), " ")
+				if definition == "" {
+					definition = strings.ToLower(strings.TrimSpace(kind))
+				}
+				block.Definition, block.Caption = definition, strings.TrimSpace(rest)
+			}
 
 		case strings.HasPrefix(trimmed, "#"):
 			flush()

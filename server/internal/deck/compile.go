@@ -16,6 +16,9 @@ type CompileOptions struct {
 	// Language is used for text measurement, since a Korean line holds far fewer
 	// characters than an English one of the same width.
 	Language string
+	// ResolveGrid finds the grid definition a ::grid component names. Without it
+	// only the shipped definitions are available.
+	ResolveGrid func(name string) (pptx.GridSpec, bool)
 	// ResolveImage turns the name an author wrote into a stored image. Without it
 	// an ::image directive is reported rather than silently dropped, because a
 	// missing picture is something the author has to know about.
@@ -88,6 +91,25 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 				continue
 			}
 			assembled := pptx.Block{Kind: block.Kind, Caption: block.Caption, Items: block.Items}
+			if block.Kind == pptx.BlockGrid {
+				spec, ok := resolveGrid(options, block.Definition)
+				if !ok {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("%s: no grid is defined as %q", blockWhere(where, block), block.Definition))
+					slide.Bullets = append(slide.Bullets, blockAsBullets(block)...)
+					continue
+				}
+				assembled.Grid = &spec
+				if len(block.Rows) > 1 {
+					assembled.Columns, assembled.Rows = block.Rows[0], block.Rows[1:]
+				} else {
+					assembled.Rows = block.Rows
+				}
+				assembled.Items = nil
+				if strings.TrimSpace(assembled.Caption) == "" {
+					assembled.Caption = spec.Title
+				}
+			}
 			if block.Kind == pptx.BlockTable && len(block.Rows) > 1 {
 				// The first row is the header; the rest are the body.
 				assembled.Columns = block.Rows[0]
@@ -353,6 +375,17 @@ func splitEvenly(bullets []pptx.Paragraph, columns int) [][]pptx.Paragraph {
 		result[column] = append(result[column], bullet)
 	}
 	return result
+}
+
+// resolveGrid finds a grid definition: the deployment's own first, then the
+// shipped examples.
+func resolveGrid(options CompileOptions, name string) (pptx.GridSpec, bool) {
+	if options.ResolveGrid != nil {
+		if spec, ok := options.ResolveGrid(name); ok {
+			return spec, true
+		}
+	}
+	return pptx.LookupBuiltinGrid(name)
 }
 
 // seriesFromRows reads "name | v1, v2, v3" rows into chart series. A row of bare
