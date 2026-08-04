@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -47,9 +48,15 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		return result
 	}
 	for index, slide := range source.Slides {
+		// Warnings name the line the slide starts on as well as its position: an
+		// author fixing something needs to find it in the text.
+		where := fmt.Sprintf("slide %d", index+1)
+		if slide.Line > 0 {
+			where = fmt.Sprintf("line %d (slide %d)", slide.Line, index+1)
+		}
 		layout, note := resolveSourceLayout(manifest, slide, index, len(source.Slides))
 		if note != "" {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("slide %d: %s", index+1, note))
+			result.Warnings = append(result.Warnings, where+": "+note)
 		}
 		content := Content{Type: ContentType, LayoutID: layout.ID}
 		if options.Accent != nil {
@@ -71,16 +78,26 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			placeholder, ok := blockSlot(layout, claimed)
 			if !ok {
 				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("slide %d: %s has no free region in layout %q and was written as text",
-						index+1, block.Kind, layout.Name))
+					fmt.Sprintf("%s: %s has no free region in layout %q and was written as text",
+						blockWhere(where, block), block.Kind, layout.Name))
 				slide.Bullets = append(slide.Bullets, blockAsBullets(block)...)
 				continue
 			}
 			assembled := pptx.Block{Kind: block.Kind, Caption: block.Caption, Items: block.Items}
+			if block.Kind == pptx.BlockTable && len(block.Rows) > 1 {
+				// The first row is the header; the rest are the body.
+				assembled.Columns = block.Rows[0]
+				assembled.Rows = block.Rows[1:]
+				assembled.Items = nil
+			}
+			if block.Kind == pptx.BlockLine {
+				assembled.Series, assembled.Labels = seriesFromRows(block.Rows)
+			}
 			sanitized, usable := pptx.SanitizeBlock(assembled, placeholder)
 			if !usable {
 				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("slide %d: %s did not have enough room and was written as text", index+1, block.Kind))
+					fmt.Sprintf("%s: %s did not have enough room and was written as text",
+						blockWhere(where, block), block.Kind))
 				slide.Bullets = append(slide.Bullets, blockAsBullets(block)...)
 				continue
 			}
@@ -90,16 +107,27 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 
 		lead := strings.TrimSpace(slide.Lead)
 		if lead != "" && lead != title {
-			if placeholder, ok := leadSlot(layout, claimed); ok {
+			switch placeholder, ok := leadSlot(layout, claimed); {
+			case ok:
 				content.SetField(placeholder.Slot, fit(placeholder, []pptx.Paragraph{{Text: lead}}, options.Language))
 				claimed[placeholder.Slot] = true
-			} else if len(slide.Bullets) == 0 {
+			case len(content.Blocks) > 0:
+				// The component took the only body region. A lead line belongs above
+				// it as its heading rather than being dropped or held aside as text.
+				for slot, block := range content.Blocks {
+					if strings.TrimSpace(block.Heading) == "" {
+						block.Heading = lead
+						content.SetBlock(slot, block)
+					}
+					break
+				}
+			case len(slide.Bullets) == 0:
 				slide.Bullets = append(slide.Bullets, pptx.Paragraph{Text: lead})
 			}
 		}
 
 		if len(slide.Bullets) > 0 {
-			distributeBullets(&content, layout, claimed, slide.Bullets, options.Language, &result.Warnings, index+1)
+			distributeBullets(&content, layout, claimed, slide.Bullets, options.Language, &result.Warnings, where)
 		}
 
 		notes := strings.TrimSpace(slide.Notes)
@@ -139,6 +167,12 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 	role := slide.Role
 	if role == "" {
 		role = sourcePositionRole(index, total)
+		// Position only implies a role. A first slide that carries a component or a
+		// list of points is not a cover, whatever its position says, and putting it
+		// on a title layout would throw the content away.
+		if role == pptx.RoleTitle && (len(slide.Blocks) > 0 || len(slide.Bullets) > 1) {
+			role = pptx.RoleContent
+		}
 	}
 	if layout, ok := manifest.LayoutForRole(role); ok {
 		return layout, ""
@@ -187,8 +221,16 @@ func leadSlot(layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, bo
 
 // distributeBullets fills the layout's body slots, splitting the list across
 // columns when the layout has more than one.
+// blockWhere names a component's own line when it has one.
+func blockWhere(slideWhere string, block SourceBlock) string {
+	if block.Line > 0 {
+		return fmt.Sprintf("line %d", block.Line)
+	}
+	return slideWhere
+}
+
 func distributeBullets(content *Content, layout pptx.Layout, claimed map[string]bool,
-	bullets []pptx.Paragraph, language string, warnings *[]string, position int) {
+	bullets []pptx.Paragraph, language string, warnings *[]string, where string) {
 	var slots []pptx.Placeholder
 	for _, placeholder := range layout.BodySlots() {
 		if !claimed[placeholder.Slot] {
@@ -199,8 +241,8 @@ func distributeBullets(content *Content, layout pptx.Layout, claimed map[string]
 		// Nowhere to write: keep the text on the slide so nothing is silently lost.
 		content.Body = paragraphsText(bullets)
 		*warnings = append(*warnings,
-			fmt.Sprintf("slide %d: layout %q has no free body region, so its points were kept as plain text",
-				position, layout.Name))
+			fmt.Sprintf("%s: layout %q has no free body region, so its points were kept as plain text",
+				where, layout.Name))
 		return
 	}
 	groups := splitEvenly(bullets, len(slots))
@@ -242,6 +284,69 @@ func splitEvenly(bullets []pptx.Paragraph, columns int) [][]pptx.Paragraph {
 		result[column] = append(result[column], bullet)
 	}
 	return result
+}
+
+// seriesFromRows reads "name | v1, v2, v3" rows into chart series. A row of bare
+// labels with no numbers is the time axis.
+func seriesFromRows(rows [][]string) ([]pptx.Series, []string) {
+	var series []pptx.Series
+	var labels []string
+	for _, row := range rows {
+		if len(row) < 2 {
+			continue
+		}
+		name := row[0]
+		fields := strings.Split(strings.Join(row[1:], ","), ",")
+		points := make([]float64, 0, 8)
+		labelled := 0
+		for _, field := range fields {
+			field = strings.TrimSpace(field)
+			if field == "" {
+				continue
+			}
+			// A plotted value is a bare number. "1월" carries a digit but is a month,
+			// and reading it as the number one would draw the axis as data.
+			if value, ok := parseBareNumber(field); ok {
+				points = append(points, value)
+				continue
+			}
+			labelled++
+		}
+		// A row whose values are labels is the time axis, not a series.
+		if labelled > 0 && len(points) == 0 {
+			labels = labels[:0]
+			for _, field := range fields {
+				if trimmed := strings.TrimSpace(field); trimmed != "" {
+					labels = append(labels, trimmed)
+				}
+			}
+			continue
+		}
+		if len(points) >= 2 {
+			series = append(series, pptx.Series{Name: name, Points: points})
+		}
+	}
+	return series, labels
+}
+
+// parseBareNumber accepts only a number, optionally signed, with thousands
+// separators and an optional percent sign — the forms a chart value takes.
+func parseBareNumber(value string) (float64, bool) {
+	trimmed := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(value), "%"))
+	if trimmed == "" {
+		return 0, false
+	}
+	cleaned := strings.ReplaceAll(trimmed, ",", "")
+	for index, character := range cleaned {
+		switch {
+		case character >= '0' && character <= '9', character == '.':
+		case (character == '-' || character == '+') && index == 0:
+		default:
+			return 0, false
+		}
+	}
+	number, err := strconv.ParseFloat(cleaned, 64)
+	return number, err == nil
 }
 
 func blockAsBullets(block SourceBlock) []pptx.Paragraph {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -333,5 +334,85 @@ func TestGenerateRejectsMissingTemplate(t *testing.T) {
 	if _, err := generator.Generate(context.Background(),
 		model.Presentation{Title: "x", RequestedSlideCount: 3}, model.Profile{}, Template{}); err == nil {
 		t.Fatal("generation without a template must fail")
+	}
+}
+
+func TestGenerateWritesAndCompilesDeckSource(t *testing.T) {
+	template := testTemplate(t)
+	// A model routinely wraps its answer in a fence even when told not to.
+	response := "```\n" + `# 전환은 지금 결정해야 합니다
+@cover
+> 2026년 하반기 · 임원 보고
+!notes 결론부터 말하고 근거를 두 가지로 좁힙니다.
+
+# 전환 대상과 규모
+> 42개 시스템을 세 묶음으로 나눴습니다.
+::kpi 규모
+- 전환 대상 | 42개
+- 1차 범위 | 12개
+::
+
+# 다음 단계
+@closing
+- 오늘 요청하는 결정 한 가지
+- 30일 내 착수 항목
+` + "\n```"
+	stub := newStubProvider(t, response)
+	generated, err := stub.generator().Generate(context.Background(),
+		model.Presentation{Title: "전환", Prompt: "클라우드 전환", Language: "ko", RequestedSlideCount: 3},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(generated.Slides) != 3 {
+		t.Fatalf("slides = %d, warnings %v", len(generated.Slides), generated.Warnings)
+	}
+	// The fence is stripped and the source is what the model wrote.
+	if strings.Contains(generated.Source, "```") || !strings.Contains(generated.Source, "# 전환 대상과 규모") {
+		t.Fatalf("source = %q", generated.Source)
+	}
+	// Slides are bound to the template's real layouts, and the component was kept.
+	if generated.Slides[0].LayoutID != template.Manifest.TitleLayout {
+		t.Fatalf("cover layout = %q, want %q", generated.Slides[0].LayoutID, template.Manifest.TitleLayout)
+	}
+	content := deck.Decode(generated.Slides[1].Content)
+	if len(content.Blocks) != 1 {
+		t.Fatalf("the kpi component was not bound: %+v", content)
+	}
+	// The prompt asked the model for prose, not JSON: forcing JSON mode would make
+	// it wrap the deck in a string field.
+	if strings.Contains(stub.prompts[0], "json_object") {
+		t.Fatal("the writing pass must not request JSON mode")
+	}
+	if !strings.Contains(stub.prompts[0], "slide language") {
+		t.Fatalf("the model was not asked for the slide language: %s", stub.prompts[0])
+	}
+}
+
+func TestGenerateTrimsAModelThatOverwritesTheSlideCount(t *testing.T) {
+	template := testTemplate(t)
+	var builder strings.Builder
+	for index := 1; index <= 6; index++ {
+		fmt.Fprintf(&builder, "# 슬라이드 %d\n- 요점 하나\n- 요점 둘\n\n", index)
+	}
+	stub := newStubProvider(t, builder.String())
+	generated, err := stub.generator().Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "성장", Language: "ko", RequestedSlideCount: 3},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(generated.Slides) != 3 {
+		t.Fatalf("slides = %d, want 3", len(generated.Slides))
+	}
+	if generated.Slides[0].Title != "슬라이드 1" || generated.Slides[2].Title != "슬라이드 3" {
+		t.Fatalf("the wrong slides were kept: %q … %q", generated.Slides[0].Title, generated.Slides[2].Title)
+	}
+	if len(generated.Warnings) == 0 {
+		t.Fatal("an adjusted slide count must be reported")
+	}
+	// The stored source matches the slides that were kept.
+	if strings.Contains(generated.Source, "슬라이드 4") {
+		t.Fatalf("source still carries the dropped slides:\n%s", generated.Source)
 	}
 }

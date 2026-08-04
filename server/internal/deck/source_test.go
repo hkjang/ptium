@@ -255,3 +255,62 @@ func TestFormatEscapesWithoutAlteringText(t *testing.T) {
 		}
 	}
 }
+
+func TestCompileBuildsATableFromItsRows(t *testing.T) {
+	manifest := testManifest()
+	source := "# 비용 비교\n::table 연간 비용\n- 항목 | 2026 | 2027\n- 인건비 | 4.2억 | 3.4억\n- 라이선스 | 1.1억 | 1.4억\n::\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	block, ok := content.Blocks[pptx.SlotBody]
+	if !ok {
+		t.Fatalf("the table was not bound: %+v (warnings %v)", content, result.Warnings)
+	}
+	if len(block.Columns) != 3 || block.Columns[2] != "2027" {
+		t.Fatalf("columns = %v", block.Columns)
+	}
+	if len(block.Rows) != 2 || block.Rows[1][0] != "라이선스" {
+		t.Fatalf("rows = %v", block.Rows)
+	}
+	// A table's header must not also appear as an item.
+	if len(block.Items) != 0 {
+		t.Fatalf("items should be empty for a table: %+v", block.Items)
+	}
+}
+
+func TestCompileBuildsLineSeriesFromRows(t *testing.T) {
+	manifest := testManifest()
+	source := "# 추이\n::line 월별 처리량\n- 월 | 1월, 2월, 3월, 4월\n- 전환 전 | 120, 118, 121, 119\n- 전환 후 | 120, 132, 148, 165\n::\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	block := Decode(result.Slides[0].Content).Blocks[pptx.SlotBody]
+	if len(block.Series) != 2 {
+		t.Fatalf("series = %+v (warnings %v)", block.Series, result.Warnings)
+	}
+	if block.Series[1].Name != "전환 후" || len(block.Series[1].Points) != 4 || block.Series[1].Points[3] != 165 {
+		t.Fatalf("second series = %+v", block.Series[1])
+	}
+	// A row of words is the axis, not a series.
+	if len(block.Labels) != 4 || block.Labels[0] != "1월" {
+		t.Fatalf("labels = %v", block.Labels)
+	}
+}
+
+func TestCompileWarningsPointAtTheLine(t *testing.T) {
+	manifest := testManifest()
+	source := "# 제목\n@layout nonexistent\n- 내용\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{})
+	joined := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(joined, "line 1") {
+		t.Fatalf("a warning should name the line it belongs to: %v", result.Warnings)
+	}
+}
+
+func TestParseSourceKeepsAPipeInsideAField(t *testing.T) {
+	parsed := ParseSource("# 제목\n::kpi\n- A \\| B | 42개\n::\n")
+	if len(parsed.Slides) != 1 || len(parsed.Slides[0].Blocks) != 1 {
+		t.Fatalf("parsed = %+v", parsed)
+	}
+	item := parsed.Slides[0].Blocks[0].Items[0]
+	if item.Label != "A | B" || item.Value != "42개" {
+		t.Fatalf("item = %+v", item)
+	}
+}

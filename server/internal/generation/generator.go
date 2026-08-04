@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -92,11 +93,7 @@ func (g *Generator) Generate(ctx context.Context, presentation model.Presentatio
 		}
 		request.Plan = plan
 	}
-	written, err := g.write(ctx, endpoint, modelName, apiKey, request)
-	if err != nil {
-		return Deck{}, err
-	}
-	return compose(request, written)
+	return g.writeDeck(ctx, endpoint, modelName, apiKey, request)
 }
 
 // plan asks the model to design the deck before writing any copy.
@@ -115,20 +112,74 @@ func (g *Generator) plan(ctx context.Context, endpoint, modelName, apiKey string
 	return &plan, nil
 }
 
-// write turns the plan into finished slide copy bound to template slots.
-func (g *Generator) write(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (writtenDeck, error) {
-	raw, err := g.complete(ctx, endpoint, modelName, apiKey, writeSystemPrompt, writeUserPrompt(request), 0.35)
+// writeDeck asks the model for the deck and binds it to the template.
+//
+// The model writes Ptium's slide language, which is one construct per line: far
+// less to get wrong than a nested schema, and readable by the person who has to
+// check it. A provider that answers with the older JSON shape is still accepted,
+// so a deployment pinned to a tuned model keeps working.
+func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (Deck, error) {
+	raw, err := g.completeText(ctx, endpoint, modelName, apiKey, sourceSystemPrompt, sourceUserPrompt(request), 0.35)
 	if err != nil {
-		return writtenDeck{}, err
+		return Deck{}, err
 	}
-	var written writtenDeck
-	if err := json.Unmarshal([]byte(raw), &written); err != nil {
-		return writtenDeck{}, errors.New("AI provider response did not contain a valid deck")
+	source := cleanModelSource(raw)
+	if strings.HasPrefix(source, "{") {
+		var written writtenDeck
+		if json.Unmarshal([]byte(source), &written) == nil && len(written.Slides) > 0 {
+			return compose(request, written)
+		}
 	}
-	if len(written.Slides) == 0 {
-		return writtenDeck{}, errors.New("AI provider returned a deck without slides")
+	parsed := deck.ParseSource(source)
+	if len(parsed.Slides) == 0 {
+		return Deck{}, errors.New("AI provider returned a deck without slides")
 	}
-	return written, nil
+	result := CompileSource(source, request.Presentation, request.Profile, request.Template)
+	if len(result.Slides) == 0 {
+		return Deck{}, errors.New("the deck the AI provider wrote could not be bound to this template")
+	}
+	if requested := request.Presentation.RequestedSlideCount; requested > 0 && len(result.Slides) != requested {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("the model wrote %d slides for a request of %d", len(result.Slides), requested))
+		if len(result.Slides) > requested {
+			// Extra slides are dropped from the end, where a deck's weakest
+			// material sits, rather than failing a generation someone waits for.
+			result = CompileSource(trimSourceSlides(source, requested), request.Presentation, request.Profile, request.Template)
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("kept the first %d slides", requested))
+		}
+	}
+	return result, nil
+}
+
+// cleanModelSource strips what a model wraps around an answer even when told not
+// to: a fenced code block, a leading label.
+func cleanModelSource(raw string) string {
+	source := strings.TrimSpace(raw)
+	if strings.HasPrefix(source, "```") {
+		if _, rest, found := strings.Cut(source, "\n"); found {
+			source = rest
+		}
+		if index := strings.LastIndex(source, "```"); index >= 0 {
+			source = source[:index]
+		}
+	}
+	return strings.TrimSpace(source)
+}
+
+// trimSourceSlides keeps the first count slides of a source document.
+func trimSourceSlides(source string, count int) string {
+	lines := strings.Split(source, "\n")
+	slides := 0
+	for index, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") && !strings.HasPrefix(strings.TrimSpace(line), "##") {
+			slides++
+			if slides > count {
+				return strings.Join(lines[:index], "\n")
+			}
+		}
+	}
+	return source
 }
 
 type completionRequest struct {
@@ -161,11 +212,23 @@ func completionsEndpoint(baseURL string) (string, error) {
 }
 
 func (g *Generator) complete(ctx context.Context, endpoint, modelName, apiKey, system, user string, temperature float64) (string, error) {
+	return g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, map[string]string{"type": "json_object"})
+}
+
+// completeText asks for prose rather than JSON. Forcing JSON mode here would make
+// the model wrap the deck in a string field, which is exactly the indirection the
+// slide language exists to avoid.
+func (g *Generator) completeText(ctx context.Context, endpoint, modelName, apiKey, system, user string, temperature float64) (string, error) {
+	return g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, nil)
+}
+
+func (g *Generator) request(ctx context.Context, endpoint, modelName, apiKey, system, user string,
+	temperature float64, format map[string]string) (string, error) {
 	payload, err := json.Marshal(completionRequest{
 		Model:          modelName,
 		Messages:       []completionMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
 		Temperature:    temperature,
-		ResponseFormat: map[string]string{"type": "json_object"},
+		ResponseFormat: format,
 	})
 	if err != nil {
 		return "", err

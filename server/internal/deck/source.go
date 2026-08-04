@@ -51,7 +51,10 @@ type SourceBlock struct {
 	Kind    string
 	Caption string
 	Items   []pptx.Item
-	Line    int
+	// Rows keeps each row's fields verbatim. A table has as many columns as its
+	// author wrote, which label/value/detail cannot express.
+	Rows [][]string
+	Line int
 }
 
 // Source is a parsed deck.
@@ -199,6 +202,7 @@ func ParseSource(source string) Source {
 			item := strings.TrimSpace(trimmed[1:])
 			if inBlock {
 				block.Items = append(block.Items, parseSourceItem(item))
+				block.Rows = append(block.Rows, itemFields(item))
 				continue
 			}
 			current.Bullets = append(current.Bullets, pptx.Paragraph{Text: unescapePayload(item), Level: bulletLevel(text)})
@@ -210,6 +214,7 @@ func ParseSource(source string) Source {
 			switch {
 			case inBlock:
 				block.Items = append(block.Items, parseSourceItem(trimmed))
+				block.Rows = append(block.Rows, itemFields(trimmed))
 			case current.Lead == "" && len(current.Bullets) == 0:
 				current.Lead = trimmed
 			default:
@@ -236,6 +241,16 @@ func unescapePayload(value string) string {
 		return strings.TrimSpace(value[1:])
 	}
 	return value
+}
+
+// itemFields is a row's fields, trimmed and unescaped.
+func itemFields(text string) []string {
+	parts := splitItemFields(text)
+	fields := make([]string, 0, len(parts))
+	for _, part := range parts {
+		fields = append(fields, strings.TrimSpace(part))
+	}
+	return fields
 }
 
 // splitItemFields splits a component row on its unescaped pipes, so a label may

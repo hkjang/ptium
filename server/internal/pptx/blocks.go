@@ -661,12 +661,15 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 		rows = rows[:8]
 	}
 	var primitives []Primitive
-	rowHeight := (frame.Height - lineHeightFor(d.Small) - d.Unit) / max(len(rows), 1)
+	cells := frame.Columns(len(columns), d.Unit)
+	headerHeight := lineHeightFor(d.Small) + d.Unit
+	// The rule under the last row needs its own hairline of room. Dividing the
+	// frame without reserving it made the loop's own guard drop that row.
+	const hairlineHeight = 9525
+	rowHeight := (frame.Height - headerHeight - hairlineHeight) / max(len(rows), 1)
 	if minimum := lineHeightFor(d.Body) + d.Unit; rowHeight < minimum {
 		rowHeight = minimum
 	}
-	cells := frame.Columns(len(columns), d.Unit)
-	headerHeight := lineHeightFor(d.Small) + d.Unit
 	for index, cell := range cells {
 		align := "l"
 		if index > 0 {
@@ -679,8 +682,7 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 	cursor := frame.Y + headerHeight
 	primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: 9525}, d.Line))
 	for _, row := range rows {
-		// The closing rule under a row needs a hairline of room as well.
-		if cursor+rowHeight+9525 > frame.Bottom() {
+		if cursor+rowHeight+hairlineHeight > frame.Bottom() {
 			break
 		}
 		for index, cell := range cells {
@@ -699,7 +701,7 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 				line(row[index]), textOptions{Size: d.Body, Color: color, Align: align, Anchor: "ctr", Font: d.Minor, Wrap: true}))
 		}
 		cursor += rowHeight
-		primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: 9525}, mixColor(d.Surface, d.Line, 0.6)))
+		primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: hairlineHeight}, mixColor(d.Surface, d.Line, 0.6)))
 	}
 	return primitives
 }

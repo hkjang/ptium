@@ -55,6 +55,31 @@ a number — `42개`, `18%`, `1,200억`, `-3.5pt` — is read as one, so bars an
 meters draw to scale. Components are drawn as native PowerPoint shapes in the
 template's own colours, not as images.
 
+A table takes as many columns as its author writes, and its first row is the
+header:
+
+```
+::table 연간 비용 (억원)
+- 항목 | 2026 | 2027 | 2028
+- 인건비 | 4.2 | 3.4 | 3.1
+- 라이선스 | 1.1 | 1.4 | 1.4
+::
+```
+
+A line chart takes one row per series, and a row whose values are labels rather
+than bare numbers is the time axis:
+
+```
+::line 월별 처리량
+- 월 | 1월, 2월, 3월, 4월
+- 전환 전 | 120, 118, 121, 119
+- 전환 후 | 120, 132, 148, 165
+::
+```
+
+When a component fills the only body region, the slide's lead line is drawn as the
+component's heading rather than being dropped.
+
 ## Compiling
 
 Compiling binds source to the template that deck uses:
@@ -69,7 +94,24 @@ Compiling binds source to the template that deck uses:
 
 Nothing is rejected for being imperfect. A layout that does not exist, a
 component with no room, text with nowhere to go — each is adjusted and reported
-as a warning, because a deck someone is waiting for should arrive.
+as a warning that names the line it came from, because a deck someone is waiting
+for should arrive.
+
+The first slide is a cover only by convention. One that carries a component or a
+list of points is compiled as content, whatever its position.
+
+## Where the source comes from
+
+Both writers produce this language, so a connected deployment and an air-gapped
+one differ in how good the prose is, not in how the deck is built:
+
+- An AI provider is asked for the slide language directly rather than for nested
+  JSON. There is one construct per line, nothing to balance, and a mistake costs
+  one line instead of the whole response — and what the model wrote is what the
+  author reads and corrects. A provider that answers with the older JSON shape is
+  still accepted.
+- Without a provider, the deterministic writer reads the prompt for its subjects,
+  timeframe and figures and writes the same language.
 
 ## API
 
