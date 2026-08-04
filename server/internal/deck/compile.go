@@ -16,6 +16,10 @@ type CompileOptions struct {
 	// Language is used for text measurement, since a Korean line holds far fewer
 	// characters than an English one of the same width.
 	Language string
+	// ResolveImage turns the name an author wrote into a stored image. Without it
+	// an ::image directive is reported rather than silently dropped, because a
+	// missing picture is something the author has to know about.
+	ResolveImage func(reference string) (ContentImage, bool)
 }
 
 // CompileResult is a compiled deck: slides ready to store, plus everything worth
@@ -105,12 +109,47 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			claimed[placeholder.Slot] = true
 		}
 
+		// An image takes the layout's picture region when it has one, and otherwise
+		// the largest free body region — the same rule a component follows.
+		for _, picture := range slide.Images {
+			at := where
+			if picture.Line > 0 {
+				at = fmt.Sprintf("line %d", picture.Line)
+			}
+			if options.ResolveImage == nil {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("%s: images cannot be resolved here, so %q was skipped", at, picture.Reference))
+				continue
+			}
+			resolved, ok := options.ResolveImage(picture.Reference)
+			if !ok {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("%s: no uploaded image is named %q", at, picture.Reference))
+				continue
+			}
+			placeholder, found := imageSlot(layout, claimed)
+			if !found {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("%s: layout %q has no region for an image", at, layout.Name))
+				continue
+			}
+			resolved.Name = picture.Reference
+			resolved.Caption = picture.Caption
+			content.SetImage(placeholder.Slot, resolved)
+			claimed[placeholder.Slot] = true
+		}
+
 		lead := strings.TrimSpace(slide.Lead)
+		// subtitle is only set when the lead really went into the layout's subtitle
+		// region. Recording it otherwise makes the renderer write the same sentence
+		// a second time, into whichever subtitle slot the layout happens to have.
+		subtitle := ""
 		if lead != "" && lead != title {
 			switch placeholder, ok := leadSlot(layout, claimed); {
 			case ok:
 				content.SetField(placeholder.Slot, fit(placeholder, []pptx.Paragraph{{Text: lead}}, options.Language))
 				claimed[placeholder.Slot] = true
+				subtitle = lead
 			case len(content.Blocks) > 0:
 				// The component took the only body region. A lead line belongs above
 				// it as its heading rather than being dropped or held aside as text.
@@ -121,8 +160,10 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 					}
 					break
 				}
-			case len(slide.Bullets) == 0:
-				slide.Bullets = append(slide.Bullets, pptx.Paragraph{Text: lead})
+			default:
+				// No subtitle region and no component: the lead leads the points,
+				// which is where it belongs and stops it being dropped.
+				slide.Bullets = append([]pptx.Paragraph{{Text: lead}}, slide.Bullets...)
 			}
 		}
 
@@ -134,7 +175,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		result.Slides = append(result.Slides, model.Slide{
 			Position:     index + 1,
 			Title:        truncate(title, 200),
-			Subtitle:     truncate(lead, 300),
+			Subtitle:     truncate(subtitle, 300),
 			Content:      content.WithNotes(notes).Encode(),
 			SpeakerNotes: truncate(notes, 4000),
 			Layout:       layout.Role,
@@ -211,7 +252,19 @@ func blockSlot(layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, b
 	return best, found
 }
 
-// leadSlot is where a lead line goes: the subtitle if the layout has one.
+// imageSlot is where a picture goes: the layout's own picture region first,
+// since that is where its designer meant one to be.
+func imageSlot(layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, bool) {
+	for _, placeholder := range layout.Placeholders {
+		if placeholder.Kind == "picture" && !claimed[placeholder.Slot] {
+			return placeholder, true
+		}
+	}
+	return blockSlot(layout, claimed)
+}
+
+// leadSlot is where a lead line goes: the layout's subtitle region, when it has
+// one that is still free.
 func leadSlot(layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, bool) {
 	if placeholder, ok := layout.Slot(pptx.SlotSubtitle); ok && !claimed[placeholder.Slot] {
 		return placeholder, true

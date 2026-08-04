@@ -80,6 +80,32 @@ than bare numbers is the time axis:
 When a component fills the only body region, the slide's lead line is drawn as the
 component's heading rather than being dropped.
 
+### Images
+
+`::image <name or id> | <caption>` places an image that was uploaded first. It
+goes into the layout's own picture region when it has one, and otherwise into the
+largest free body region, centre-cropped to the frame rather than stretched — a
+tight crop reads better than a squashed logo.
+
+```bash
+curl -H 'Authorization: Bearer <key>' \
+     -F 'file=@logo.png' -F 'name=로고' \
+     http://localhost:8080/api/v1/assets
+```
+
+PNG, JPEG, GIF and SVG, up to 16 MiB each, named per account: a second upload
+under the same name replaces it, so a logo is changed in one place. The deck holds
+a reference rather than a copy, which is why the same logo on twenty slides is
+stored once. A name nobody uploaded is reported as a warning with its line, not
+silently skipped.
+
+| Request | Effect |
+| --- | --- |
+| `POST /api/v1/assets` | upload an image (multipart `file`, optional `name`) |
+| `GET /api/v1/assets` | list your images |
+| `GET /api/v1/assets/{id}` | the image's bytes |
+| `DELETE /api/v1/assets/{id}` | remove it |
+
 ## Compiling
 
 Compiling binds source to the template that deck uses:

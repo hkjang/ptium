@@ -23,11 +23,25 @@ type Content struct {
 	Fields   map[string][]pptx.Paragraph `json:"fields,omitempty"`
 	// Blocks maps a slot to the visual component drawn in it. A slot holds
 	// either paragraphs or a component, never both.
-	Blocks  map[string]pptx.Block `json:"blocks,omitempty"`
-	Bullets []string              `json:"bullets,omitempty"`
-	Body    string                `json:"body,omitempty"`
-	Accent  string                `json:"accent,omitempty"`
-	Notes   string                `json:"notes,omitempty"`
+	Blocks map[string]pptx.Block `json:"blocks,omitempty"`
+	// Images maps a slot to a stored image drawn in it. A slot holds text, a
+	// component or an image — never two of them.
+	Images  map[string]ContentImage `json:"images,omitempty"`
+	Bullets []string                `json:"bullets,omitempty"`
+	Body    string                  `json:"body,omitempty"`
+	Accent  string                  `json:"accent,omitempty"`
+	Notes   string                  `json:"notes,omitempty"`
+}
+
+// ContentImage is an image placed on a slide, by reference. The bytes stay in
+// the asset store: a deck holds pointers, so the same logo on twenty slides is
+// stored once and can be replaced in one place.
+type ContentImage struct {
+	AssetID string `json:"assetId"`
+	// Name is what the author wrote in the source, kept so the text can be
+	// written back out even if the image is later deleted.
+	Name    string `json:"name,omitempty"`
+	Caption string `json:"caption,omitempty"`
 }
 
 // Decode parses stored slide content, tolerating payloads written before
@@ -77,6 +91,17 @@ func (c Content) PrimaryBullets() []string {
 		return strings.Split(c.Body, "\n")
 	}
 	return nil
+}
+
+// SetImage places an image in a slot.
+func (c *Content) SetImage(slot string, image ContentImage) {
+	if strings.TrimSpace(image.AssetID) == "" {
+		return
+	}
+	if c.Images == nil {
+		c.Images = map[string]ContentImage{}
+	}
+	c.Images[slot] = image
 }
 
 // SetField replaces a slot's paragraphs, dropping empty entries.
@@ -178,6 +203,15 @@ func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 
 // Build converts a whole presentation into renderer input.
 func Build(presentation model.Presentation, manifest pptx.Manifest, author string) pptx.Deck {
+	return BuildWithImages(presentation, manifest, author, nil)
+}
+
+// ImageSource supplies the bytes of a stored image. A deck references images;
+// rendering has to carry them, so the caller that owns the store passes this in.
+type ImageSource func(assetID string) (pptx.Picture, bool)
+
+// BuildWithImages is Build with the deck's images resolved.
+func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, author string, images ImageSource) pptx.Deck {
 	result := pptx.Deck{
 		Title:    presentation.Title,
 		Subject:  presentation.Prompt,
@@ -186,7 +220,27 @@ func Build(presentation model.Presentation, manifest pptx.Manifest, author strin
 	}
 	for index, slide := range presentation.Slides {
 		layout := resolveLayout(manifest, slide, index, len(presentation.Slides))
-		result.Slides = append(result.Slides, RenderSlide(slide, layout))
+		rendered := RenderSlide(slide, layout)
+		if images != nil {
+			for slot, placed := range Decode(slide.Content).Images {
+				if _, ok := layout.Slot(slot); !ok {
+					continue
+				}
+				picture, found := images(placed.AssetID)
+				if !found {
+					continue
+				}
+				picture.Caption = placed.Caption
+				if rendered.Pictures == nil {
+					rendered.Pictures = map[string]pptx.Picture{}
+				}
+				rendered.Pictures[slot] = picture
+				// The slot holds the picture, not text left over from an earlier edit.
+				delete(rendered.Fields, slot)
+				delete(rendered.Blocks, slot)
+			}
+		}
+		result.Slides = append(result.Slides, rendered)
 	}
 	return result
 }

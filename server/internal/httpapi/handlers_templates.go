@@ -295,7 +295,8 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 	if position < 1 {
 		position = 1
 	}
-	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request), templateMedia(data))
+	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request),
+		templateMedia(data), s.imageSource(request, user.ID))
 	if err != nil {
 		writeError(writer, request, http.StatusNotFound, "not_found", err.Error(), nil)
 		return

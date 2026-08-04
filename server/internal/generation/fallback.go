@@ -44,10 +44,18 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 // CompileSource binds deck source to a template and returns a stored deck. It is
 // the one path from source to slides, used by generation and by the editor.
 func CompileSource(source string, presentation model.Presentation, profile model.Profile, template Template) Deck {
+	return CompileSourceWithImages(source, presentation, profile, template, nil)
+}
+
+// CompileSourceWithImages is CompileSource with a resolver for the images a deck
+// places. Generation has no access to the store, so the caller supplies one.
+func CompileSourceWithImages(source string, presentation model.Presentation, profile model.Profile,
+	template Template, resolveImage func(string) (deck.ContentImage, bool)) Deck {
 	parsed := deck.ParseSource(source)
 	compiled := deck.Compile(parsed, template.Manifest, deck.CompileOptions{
-		Language: presentation.Language,
-		Accent:   func(position int) string { return profileAccent(profile, position) },
+		Language:     presentation.Language,
+		Accent:       func(position int) string { return profileAccent(profile, position) },
+		ResolveImage: resolveImage,
 	})
 	outlineJSON, err := json.Marshal(compiled.Outline)
 	if err != nil {

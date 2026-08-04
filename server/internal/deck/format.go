@@ -42,6 +42,10 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		// appears on the slide.
 		layout, hasLayout := manifest.Layout(content.LayoutID)
 		for _, slot := range bodySlotOrder(layout, hasLayout, content) {
+			if picture, ok := content.Images[slot]; ok {
+				builder.WriteString(formatImage(picture))
+				continue
+			}
 			if block, ok := content.Blocks[slot]; ok {
 				builder.WriteString(formatBlock(block))
 				continue
@@ -82,7 +86,7 @@ func wroteBody(content Content) bool {
 			return true
 		}
 	}
-	return len(content.Blocks) > 0
+	return len(content.Blocks) > 0 || len(content.Images) > 0
 }
 
 // bodySlotOrder lists the slots holding content, preferring the layout's own
@@ -99,16 +103,22 @@ func bodySlotOrder(layout pptx.Layout, hasLayout bool, content Content) []string
 			order = append(order, placeholder.Slot)
 		}
 	}
-	for _, slot := range []string{pptx.SlotBody, "body2", "body3", "body4"} {
+	for _, slot := range []string{pptx.SlotBody, pptx.SlotPicture, "body2", "body3", "body4"} {
 		if seen[slot] {
 			continue
 		}
-		if _, ok := content.Fields[slot]; ok {
+		_, hasField := content.Fields[slot]
+		_, hasBlock := content.Blocks[slot]
+		_, hasImage := content.Images[slot]
+		if hasField || hasBlock || hasImage {
 			seen[slot] = true
 			order = append(order, slot)
-			continue
 		}
-		if _, ok := content.Blocks[slot]; ok {
+	}
+	// A picture region is not a body region, so it is not in BodySlots; an image
+	// placed there still has to be written out.
+	for slot := range content.Images {
+		if !seen[slot] {
 			seen[slot] = true
 			order = append(order, slot)
 		}
@@ -148,6 +158,20 @@ func layoutsForRole(manifest pptx.Manifest, role string) int {
 		}
 	}
 	return count
+}
+
+// formatImage writes an image reference back out, preferring the name the author
+// used over the id they never typed.
+func formatImage(picture ContentImage) string {
+	reference := strings.TrimSpace(picture.Name)
+	if reference == "" {
+		reference = picture.AssetID
+	}
+	line := "::image " + escapeItemField(reference)
+	if caption := strings.TrimSpace(picture.Caption); caption != "" {
+		line += " | " + escapeItemField(caption)
+	}
+	return line + "\n"
 }
 
 func formatBlock(block pptx.Block) string {

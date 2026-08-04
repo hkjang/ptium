@@ -25,7 +25,34 @@ type Slide struct {
 	LayoutID string                 `json:"layoutId"`
 	Fields   map[string][]Paragraph `json:"fields"`
 	Blocks   map[string]Block       `json:"blocks,omitempty"`
-	Notes    string                 `json:"notes,omitempty"`
+	// Pictures maps a slot to an image drawn in it, bytes and all: a rendered
+	// package has to carry the picture, not a reference to it.
+	Pictures map[string]Picture `json:"pictures,omitempty"`
+	Notes    string             `json:"notes,omitempty"`
+}
+
+// Picture is an image to place on a slide.
+type Picture struct {
+	Data        []byte
+	ContentType string
+	// Width and Height are the image's pixels, used to crop it into its frame
+	// without distorting it. Zero means unknown, and the image is stretched.
+	Width   int
+	Height  int
+	Caption string
+}
+
+// extension is the part suffix PowerPoint expects for the picture's type.
+func (p Picture) extension() string {
+	switch strings.ToLower(strings.TrimSpace(p.ContentType)) {
+	case "image/jpeg", "image/jpg":
+		return "jpeg"
+	case "image/gif":
+		return "gif"
+	case "image/svg+xml":
+		return "svg"
+	}
+	return "png"
 }
 
 // Deck is the complete input to Render.
@@ -82,8 +109,11 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 			notesIndex++
 			notesPart = fmt.Sprintf("ppt/notesSlides/notesSlide%d.xml", notesIndex)
 		}
-		pkg.SetText(slidePart, slideXML(layout, slide, language, design))
-		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart))
+		// Pictures become package parts and slide relationships before the slide
+		// itself is written, because the shape refers to them by relationship id.
+		pictures := addSlidePictures(pkg, slidePart, index+1, slide, layout)
+		pkg.SetText(slidePart, slideXML(layout, slide, language, design, pictures))
+		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures))
 		if notesPart != "" {
 			pkg.SetText(notesPart, notesSlideXML(slide.Notes, language))
 			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart))
@@ -141,10 +171,109 @@ func maxRelationshipNumber(pkg *Package, part string) int {
 	return highest
 }
 
-func slideXML(layout Layout, slide Slide, language string, design Design) string {
+// placedPicture is one image bound to a slot, with the relationship id the slide
+// refers to it by.
+type placedPicture struct {
+	Slot           string
+	RelationshipID string
+	// Part is the package part the image was written to.
+	Part    string
+	Picture Picture
+}
+
+// addSlidePictures writes each of a slide's images into the package and returns
+// them with the relationship ids the slide will use.
+func addSlidePictures(pkg *Package, slidePart string, position int, slide Slide, layout Layout) []placedPicture {
+	if len(slide.Pictures) == 0 {
+		return nil
+	}
+	// Slots in the layout's own order, with anything unknown to the layout after
+	// them in name order, so a deck renders identically twice.
+	seen := map[string]bool{}
+	slots := make([]string, 0, len(slide.Pictures))
+	for _, placeholder := range layout.Placeholders {
+		if _, ok := slide.Pictures[placeholder.Slot]; ok && !seen[placeholder.Slot] {
+			seen[placeholder.Slot] = true
+			slots = append(slots, placeholder.Slot)
+		}
+	}
+	remaining := make([]string, 0, len(slide.Pictures))
+	for slot := range slide.Pictures {
+		if !seen[slot] {
+			remaining = append(remaining, slot)
+		}
+	}
+	sort.Strings(remaining)
+	slots = append(slots, remaining...)
+
+	placed := make([]placedPicture, 0, len(slots))
+	// Slide relationship ids start after the layout and any notes slide.
+	next := 3
+	for index, slot := range slots {
+		picture := slide.Pictures[slot]
+		if len(picture.Data) == 0 {
+			continue
+		}
+		part := fmt.Sprintf("ppt/media/ptium%d-%d.%s", position, index+1, picture.extension())
+		pkg.Set(part, picture.Data)
+		placed = append(placed, placedPicture{
+			Slot: slot, RelationshipID: fmt.Sprintf("rId%d", next+index), Part: part, Picture: picture,
+		})
+	}
+	return placed
+}
+
+// pictureXML draws an image inside its slot, cropped to the frame rather than
+// stretched: a squashed logo is worse than a tight one.
+func pictureXML(shapeID int, placeholder Placeholder, placed placedPicture) string {
+	name := placeholder.Name
+	if strings.TrimSpace(name) == "" {
+		name = fmt.Sprintf("Picture %d", shapeID-1)
+	}
+	crop := ""
+	if placed.Picture.Width > 0 && placed.Picture.Height > 0 && placeholder.Width > 0 && placeholder.Height > 0 {
+		frameRatio := float64(placeholder.Width) / float64(placeholder.Height)
+		imageRatio := float64(placed.Picture.Width) / float64(placed.Picture.Height)
+		switch {
+		case imageRatio > frameRatio*1.01:
+			// Wider than the frame: trim the sides.
+			inset := int(math.Round((1 - frameRatio/imageRatio) / 2 * 100000))
+			crop = fmt.Sprintf(`<a:srcRect l="%d" r="%d"/>`, inset, inset)
+		case imageRatio < frameRatio*0.99:
+			inset := int(math.Round((1 - imageRatio/frameRatio) / 2 * 100000))
+			crop = fmt.Sprintf(`<a:srcRect t="%d" b="%d"/>`, inset, inset)
+		}
+	}
+	return `<p:pic><p:nvPicPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) + `"` +
+		descriptionAttribute(placed.Picture.Caption) + `/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr>` +
+		`<p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="` + placed.RelationshipID + `"/>` + crop +
+		`<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm><a:off x="` +
+		strconv.Itoa(placeholder.X) + `" y="` + strconv.Itoa(placeholder.Y) + `"/><a:ext cx="` +
+		strconv.Itoa(placeholder.Width) + `" cy="` + strconv.Itoa(placeholder.Height) +
+		`"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`
+}
+
+func descriptionAttribute(caption string) string {
+	if strings.TrimSpace(caption) == "" {
+		return ""
+	}
+	return ` descr="` + escapeAttribute(caption) + `"`
+}
+
+func slideXML(layout Layout, slide Slide, language string, design Design, pictures []placedPicture) string {
 	var shapes, components strings.Builder
 	shapeID := 2
+	placedBySlot := map[string]placedPicture{}
+	for _, placed := range pictures {
+		placedBySlot[placed.Slot] = placed
+	}
 	for _, placeholder := range layout.Placeholders {
+		// An image replaces whatever the slot would otherwise hold.
+		if placed, ok := placedBySlot[placeholder.Slot]; ok {
+			components.WriteString(pictureXML(shapeID, placeholder, placed))
+			shapeID++
+			continue
+		}
 		// A component replaces its placeholder rather than sitting on top of
 		// it, so the exported slide has no empty text box behind the drawing.
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
@@ -352,10 +481,14 @@ func paragraphsXML(paragraphs []Paragraph, language string) string {
 	return builder.String()
 }
 
-func slideRelationshipsXML(slidePart, layoutPart, notesPart string) string {
+func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture) string {
 	relationships := `<Relationship Id="rId1" Type="` + relationshipNamespace + `/slideLayout" Target="` + escapeAttribute(relativePath(slidePart, layoutPart)) + `"/>`
 	if notesPart != "" {
 		relationships += `<Relationship Id="rId2" Type="` + relationshipNamespace + `/notesSlide" Target="` + escapeAttribute(relativePath(slidePart, notesPart)) + `"/>`
+	}
+	for _, placed := range pictures {
+		relationships += `<Relationship Id="` + placed.RelationshipID + `" Type="` + relationshipNamespace +
+			`/image" Target="` + escapeAttribute(relativePath(slidePart, placed.Part)) + `"/>`
 	}
 	return relationshipsDocument(relationships)
 }
@@ -476,6 +609,21 @@ func contentTypesXML(pkg *Package) string {
 		"xml":  "application/xml",
 	}
 	order := []string{"rels", "xml"}
+	// A picture Ptium added needs its extension declared, or PowerPoint refuses
+	// to open the file. A template that already used the format declares it
+	// itself, and its own declaration wins below.
+	for extension, contentType := range map[string]string{
+		"png": "image/png", "jpeg": "image/jpeg", "gif": "image/gif", "svg": "image/svg+xml",
+	} {
+		if len(pkg.NamesUnder("ppt/media/ptium")) == 0 {
+			break
+		}
+		if _, exists := defaults[extension]; !exists {
+			defaults[extension] = contentType
+			order = append(order, extension)
+		}
+	}
+	sort.Strings(order[2:])
 	for _, entry := range parsed.Defaults {
 		key := strings.ToLower(entry.Extension)
 		if _, exists := defaults[key]; !exists {

@@ -525,6 +525,129 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/assets:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAssets
+      summary: List the images available to a deck
+      description: |
+        Images a deck can place on its slides, newest first. Bytes are not
+        included; fetch one image to read them.
+      tags: [Presentations]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: The caller's images.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createAsset
+      summary: Upload an image
+      description: |
+        Stores an image a deck can place with `::image <name>`. The format is
+        read from the bytes rather than the filename, and a second upload under a
+        name that already exists replaces it — so a logo is changed in one place.
+
+        PNG, JPEG, GIF and SVG are accepted, up to 16 MiB each.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+                  description: What deck source calls the image. Defaults to the filename.
+      responses:
+        '201':
+          description: The stored image.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Asset'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: The image is larger than this deployment accepts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Not an image format Ptium can place.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/assets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getAsset
+      summary: Read an image
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The image's bytes.
+          headers:
+            ETag:
+              description: The image's content hash; the bytes never change for an id.
+              schema:
+                type: string
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteAsset
+      summary: Remove an image
+      description: |
+        A deck that still references the image keeps its slide; the picture is
+        simply not drawn, and compiling its source reports the missing name.
+      tags: [Presentations]
+      responses:
+        '204':
+          description: The image has been removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/presentations:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -3081,6 +3204,46 @@ components:
               $ref: '#/components/schemas/User'
         requestId:
           $ref: '#/components/schemas/RequestID'
+
+    AssetListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Asset'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    Asset:
+      type: object
+      description: An image a deck can place on a slide.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: What deck source calls this image.
+        contentType:
+          type: string
+          enum: [image/png, image/jpeg, image/gif, image/svg+xml]
+        sizeBytes:
+          type: integer
+        width:
+          type: integer
+          description: Pixels; absent for an SVG, which is stretched to its frame.
+        height:
+          type: integer
+        checksum:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
 
     SlideContent:
       type: object

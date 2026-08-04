@@ -1,7 +1,9 @@
 package pptx
 
 import (
+	"bytes"
 	"encoding/xml"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -332,5 +334,92 @@ func TestLayoutSelectionAvoidsVerticalAndTitleOnlyLayouts(t *testing.T) {
 	}
 	if manifest.DefaultLayout != "content" {
 		t.Fatalf("default layout = %q, want content", manifest.DefaultLayout)
+	}
+}
+
+// A one-pixel PNG, enough to prove the bytes travel into the package.
+var onePixelPNG = []byte{
+	0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A,
+	0x00, 0x00, 0x00, 0x0D, 'I', 'H', 'D', 'R',
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00,
+	0x1F, 0x15, 0xC4, 0x89,
+	0x00, 0x00, 0x00, 0x0A, 'I', 'D', 'A', 'T',
+	0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
+	0x0D, 0x0A, 0x2D, 0xB4,
+	0x00, 0x00, 0x00, 0x00, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82,
+}
+
+func TestRenderPlacesAPictureInThePackage(t *testing.T) {
+	data, err := BuiltinTemplate("slate-classic")
+	if err != nil {
+		t.Fatalf("BuiltinTemplate: %v", err)
+	}
+	pkg, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatalf("AnalyzeBytes: %v", err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the built-in template should offer a content layout")
+	}
+	slot := ""
+	for _, placeholder := range layout.BodySlots() {
+		slot = placeholder.Slot
+		break
+	}
+	if slot == "" {
+		t.Fatal("the content layout should offer a body region")
+	}
+	rendered, err := Render(pkg, manifest, Deck{
+		Title: "그림", Language: "ko",
+		Slides: []Slide{{
+			LayoutID: layout.ID,
+			Fields:   map[string][]Paragraph{SlotTitle: {{Text: "브랜드"}}},
+			Pictures: map[string]Picture{slot: {Data: onePixelPNG, ContentType: "image/png",
+				Width: 1600, Height: 400, Caption: "로고"}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	result, err := Open(rendered)
+	if err != nil {
+		t.Fatalf("the rendered package does not open: %v", err)
+	}
+
+	// The bytes are in the package, once.
+	media := result.NamesUnder("ppt/media/ptium")
+	if len(media) != 1 {
+		t.Fatalf("media parts = %v", media)
+	}
+	if stored, _ := result.Part(media[0]); !bytes.Equal(stored, onePixelPNG) {
+		t.Fatal("the stored image is not the image that was given")
+	}
+	// The slide refers to it through a relationship, and the relationship points
+	// at the part that exists.
+	slide, _ := result.Text("ppt/slides/slide1.xml")
+	if !strings.Contains(slide, "<p:pic>") || !strings.Contains(slide, `descr="로고"`) {
+		t.Fatalf("the slide does not draw the picture:\n%s", slide)
+	}
+	embed := regexp.MustCompile(`r:embed="(rId\d+)"`).FindStringSubmatch(slide)
+	if embed == nil {
+		t.Fatalf("the picture has no relationship reference:\n%s", slide)
+	}
+	target, ok := result.RelationshipByID("ppt/slides/slide1.xml", embed[1])
+	if !ok || target != media[0] {
+		t.Fatalf("relationship %s resolves to %q, want %q", embed[1], target, media[0])
+	}
+	// A wide image in a narrower frame is cropped rather than squashed.
+	if !strings.Contains(slide, "<a:srcRect") {
+		t.Fatalf("a picture whose aspect differs from its frame must be cropped:\n%s", slide)
+	}
+	// PowerPoint refuses a package whose image extension is not declared.
+	types, _ := result.Text("[Content_Types].xml")
+	if !strings.Contains(types, `Extension="png"`) {
+		t.Fatalf("the png content type was not declared:\n%s", types)
+	}
+	// The slot holds the picture instead of prose, so nothing is drawn twice.
+	if strings.Count(slide, "<p:sp>") > 1 {
+		t.Fatalf("the picture's slot should hold no text shape:\n%s", slide)
 	}
 }

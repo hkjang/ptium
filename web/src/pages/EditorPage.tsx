@@ -340,7 +340,7 @@ export function EditorPage({ id }: { id: string }) {
               <div className="source-editor-head">
                 <div>
                   <strong>덱 소스</strong>
-                  <span># 제목 · @cover · &gt; 리드 · - 항목 · ::steps … ::  형식으로 씁니다. 적용하면 템플릿에 맞춰 다시 그립니다.</span>
+                  <span># 제목 · @cover · &gt; 리드 · - 항목 · ::steps … :: · ::image 이름 형식으로 씁니다. 적용하면 템플릿에 맞춰 다시 그립니다.</span>
                 </div>
                 <div className="source-editor-actions">
                   <Button variant="ghost" onClick={() => void applySource(true)} disabled={sourceBusy || !source.trim()}>검사</Button>
@@ -356,7 +356,7 @@ export function EditorPage({ id }: { id: string }) {
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 aria-label="덱 소스"
-                placeholder={'# 슬라이드 제목\n@content\n> 한 줄 리드\n- 핵심 요점\n::kpi 핵심 지표\n- 전환 대상 | 42개\n::'}
+                placeholder={'# 슬라이드 제목\n@content\n> 한 줄 리드\n- 핵심 요점\n::kpi 핵심 지표\n- 전환 대상 | 42개\n::\n::image 로고 | 브랜드 마크'}
               />
               <div className="source-editor-preview">
                 {sourcePreview ? <img src={sourcePreview.url} alt={`${sourceSlide}번 슬라이드 미리보기`} /> : <div className="source-editor-preview-empty">{sourcePreviewError || '입력을 멈추면 이 자리에 슬라이드가 그려집니다.'}</div>}

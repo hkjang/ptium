@@ -314,3 +314,93 @@ func TestParseSourceKeepsAPipeInsideAField(t *testing.T) {
 		t.Fatalf("item = %+v", item)
 	}
 }
+
+func TestCompileBindsAnImageToItsSlot(t *testing.T) {
+	manifest := testManifest()
+	// A layout with a picture region: an image belongs where the designer put one.
+	manifest.Layouts = append(manifest.Layouts, pptx.Layout{
+		ID: "picture", Name: "Picture", Role: pptx.RolePicture,
+		Placeholders: []pptx.Placeholder{
+			{Slot: pptx.SlotTitle, Kind: "text", Type: "title", Width: 8000000, Height: 900000, FontSize: 3200, MaxChars: 60, MaxLines: 2},
+			{Slot: pptx.SlotPicture, Kind: "picture", Type: "pic", X: 6000000, Y: 1500000, Width: 5000000, Height: 3500000},
+		},
+	})
+	resolved := map[string]string{"로고": "asset-1"}
+	options := CompileOptions{Language: "ko", ResolveImage: func(reference string) (ContentImage, bool) {
+		id, ok := resolved[reference]
+		return ContentImage{AssetID: id, Name: reference}, ok
+	}}
+
+	result := Compile(ParseSource("# 브랜드\n@picture\n::image 로고 | 2026 브랜드 마크\n"), manifest, options)
+	if len(result.Warnings) != 0 {
+		t.Fatalf("warnings = %v", result.Warnings)
+	}
+	content := Decode(result.Slides[0].Content)
+	placed, ok := content.Images[pptx.SlotPicture]
+	if !ok {
+		t.Fatalf("the image was not bound to the picture region: %+v", content.Images)
+	}
+	if placed.AssetID != "asset-1" || placed.Caption != "2026 브랜드 마크" {
+		t.Fatalf("image = %+v", placed)
+	}
+
+	// A name nobody uploaded is reported with its line rather than dropped.
+	missing := Compile(ParseSource("# 브랜드\n::image 없는이름\n"), manifest, options)
+	if len(missing.Warnings) == 0 || !strings.Contains(strings.Join(missing.Warnings, " "), "없는이름") {
+		t.Fatalf("a missing image must be reported: %v", missing.Warnings)
+	}
+
+	// Without a resolver the directive is reported, never silently ignored.
+	unresolved := Compile(ParseSource("# 브랜드\n::image 로고\n"), manifest, CompileOptions{})
+	if len(unresolved.Warnings) == 0 {
+		t.Fatal("an image with no way to resolve it must be reported")
+	}
+
+	// The image survives a round trip through the text, by the name it was written
+	// with rather than by an id nobody typed.
+	presentation := model.Presentation{Slides: result.Slides}
+	formatted := Format(presentation, manifest)
+	if !strings.Contains(formatted, "::image 로고 | 2026 브랜드 마크") {
+		t.Fatalf("the image was not written back out:\n%s", formatted)
+	}
+	again := Compile(ParseSource(formatted), manifest, options)
+	if len(Decode(again.Slides[0].Content).Images) != 1 {
+		t.Fatalf("the image was lost on the round trip:\n%s", formatted)
+	}
+}
+
+func TestCompileDoesNotRepeatTheLeadLine(t *testing.T) {
+	manifest := testManifest()
+	// A layout with a subtitle region and a body region: the lead belongs in one
+	// of them, and recording it as the slide's subtitle as well made the renderer
+	// write it into both.
+	result := Compile(ParseSource("# 제목\n> 한 줄 리드\n- 요점\n"), manifest, CompileOptions{Language: "ko"})
+	slide := result.Slides[0]
+	content := Decode(slide.Content)
+	if len(content.Fields[pptx.SlotSubtitle]) == 1 && slide.Subtitle == "" {
+		t.Fatal("a lead in the subtitle region should also be the slide's subtitle")
+	}
+
+	// A layout without a subtitle region: the lead goes to the body, and the slide
+	// carries no subtitle for a renderer to duplicate.
+	twoColumn := Compile(ParseSource("# 제목\n@two\n> 한 줄 리드\n- 요점\n"), manifest, CompileOptions{Language: "ko"})
+	body := Decode(twoColumn.Slides[0].Content)
+	if _, ok := body.Fields[pptx.SlotSubtitle]; ok {
+		t.Fatalf("this layout has no subtitle region: %+v", body.Fields)
+	}
+	if twoColumn.Slides[0].Subtitle != "" {
+		t.Fatalf("subtitle = %q; the lead is in the body, so nothing may repeat it", twoColumn.Slides[0].Subtitle)
+	}
+	// The text is present exactly once.
+	occurrences := 0
+	for _, paragraphs := range body.Fields {
+		for _, paragraph := range paragraphs {
+			if strings.Contains(paragraph.Text, "한 줄 리드") {
+				occurrences++
+			}
+		}
+	}
+	if occurrences != 1 {
+		t.Fatalf("the lead appears %d times: %+v", occurrences, body.Fields)
+	}
+}

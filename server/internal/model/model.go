@@ -65,6 +65,19 @@ type Template struct {
 	UpdatedAt   time.Time       `json:"updatedAt"`
 }
 
+// Asset is an image a deck can place on a slide.
+type Asset struct {
+	ID          string    `json:"id"`
+	OwnerID     string    `json:"ownerId,omitempty"`
+	Name        string    `json:"name"`
+	ContentType string    `json:"contentType"`
+	SizeBytes   int       `json:"sizeBytes"`
+	Width       int       `json:"width,omitempty"`
+	Height      int       `json:"height,omitempty"`
+	Checksum    string    `json:"checksum,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
 type Presentation struct {
 	ID                  string  `json:"id"`
 	OwnerID             string  `json:"ownerId"`

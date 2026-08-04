@@ -145,6 +145,21 @@ var migrations = []string{
 	`ALTER TABLE slides ADD COLUMN IF NOT EXISTS layout_id text NOT NULL DEFAULT ''`,
 	// Local password sign-in for the bootstrap administrator. The hash column is
 	// nullable: an account provisioned by the identity provider never has one.
+	// Images a deck places on its slides. Kept in the database like everything
+	// else, so an air-gapped deployment has no second thing to back up.
+	`CREATE TABLE IF NOT EXISTS assets(
+		id uuid PRIMARY KEY,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name text NOT NULL,
+		content_type text NOT NULL,
+		size_bytes integer NOT NULL,
+		width integer NOT NULL DEFAULT 0,
+		height integer NOT NULL DEFAULT 0,
+		checksum text NOT NULL,
+		data bytea NOT NULL,
+		created_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE INDEX IF NOT EXISTS assets_owner_created_idx ON assets(owner_id,created_at DESC)`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS assets_owner_name_idx ON assets(owner_id,lower(name))`,
 	// A deck's source is the text it was written as. Storing it makes the deck
 	// editable as text and recompilable into the same slides.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT ''`,

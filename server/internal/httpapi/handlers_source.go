@@ -87,8 +87,8 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 		return
 	}
 	profile, _ := s.store.GetProfile(request.Context(), user.ID)
-	compiled := generation.CompileSource(input.Source, presentation, profile,
-		generation.Template{ID: templateIDOf(presentation), Manifest: manifest})
+	compiled := generation.CompileSourceWithImages(input.Source, presentation, profile,
+		generation.Template{ID: templateIDOf(presentation), Manifest: manifest}, s.resolveImage(request, user.ID))
 	if len(compiled.Slides) == 0 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "empty_source",
 			"The deck source produced no slides", map[string]any{"warnings": compiled.Warnings})
@@ -152,7 +152,8 @@ func (s *Server) previewSource(writer http.ResponseWriter, request *http.Request
 		s.handleStoreError(writer, request, err, "presentation_template_unavailable")
 		return
 	}
-	compiled := deck.Compile(deck.ParseSource(input.Source), manifest, deck.CompileOptions{Language: presentation.Language})
+	compiled := deck.Compile(deck.ParseSource(input.Source), manifest, deck.CompileOptions{
+		Language: presentation.Language, ResolveImage: s.resolveImage(request, user.ID)})
 	if len(compiled.Slides) == 0 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "empty_source", "The deck source produced no slides", nil)
 		return
@@ -170,7 +171,8 @@ func (s *Server) previewSource(writer http.ResponseWriter, request *http.Request
 		ID: presentation.ID, Title: presentation.Title, Language: presentation.Language,
 		Theme: presentation.Theme, TemplateID: presentation.TemplateID, Slides: compiled.Slides,
 	}
-	svg, err := export.PreviewSVG(preview, manifest, position, previewWidth(request), templateMedia(data))
+	svg, err := export.PreviewSVG(preview, manifest, position, previewWidth(request),
+		templateMedia(data), s.imageSource(request, user.ID))
 	if err != nil {
 		writeError(writer, request, http.StatusUnprocessableEntity, "preview_failed", err.Error(), nil)
 		return

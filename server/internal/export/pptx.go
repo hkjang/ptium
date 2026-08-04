@@ -19,6 +19,9 @@ type Options struct {
 	Manifest pptx.Manifest
 	// Author is written into the document properties.
 	Author string
+	// Images resolves the pictures a deck places. Without it a deck's images are
+	// left out rather than failing the export.
+	Images deck.ImageSource
 }
 
 // PPTX renders a presentation into a PowerPoint file that reuses the
@@ -42,19 +45,20 @@ func PPTX(presentation model.Presentation, options Options) ([]byte, error) {
 			return nil, fmt.Errorf("analyze presentation template: %w", err)
 		}
 	}
-	return pptx.Render(pkg, manifest, deck.Build(presentation, manifest, options.Author))
+	return pptx.Render(pkg, manifest, deck.BuildWithImages(presentation, manifest, options.Author, options.Images))
 }
 
 // PreviewSVG renders one slide as scalable vector graphics so the workspace
 // can show the real template design without a PowerPoint engine.
-func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, position, width int, media pptx.MediaResolver) (string, error) {
+func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, position, width int,
+	media pptx.MediaResolver, images deck.ImageSource) (string, error) {
 	if position < 1 || position > len(presentation.Slides) {
 		return "", fmt.Errorf("slide %d does not exist", position)
 	}
 	if len(manifest.Layouts) == 0 {
 		return "", errors.New("the presentation template is unavailable")
 	}
-	built := deck.Build(presentation, manifest, "")
+	built := deck.BuildWithImages(presentation, manifest, "", images)
 	slide := built.Slides[position-1]
 	layout, ok := manifest.Layout(slide.LayoutID)
 	if !ok {

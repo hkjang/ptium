@@ -159,6 +159,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))
+	// Images a deck places on its slides.
+	api.Handle("GET /api/v1/assets", requireScope("presentations:read", http.HandlerFunc(s.listAssets)))
+	api.Handle("POST /api/v1/assets", requireScope("presentations:write", http.HandlerFunc(s.createAsset)))
+	api.Handle("GET /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.getAsset))))
+	api.Handle("DELETE /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deleteAsset))))
 	api.Handle("GET /api/v1/templates", requireScope("templates:read", http.HandlerFunc(s.listTemplates)))
 	api.Handle("POST /api/v1/templates", requireScope("templates:write", http.HandlerFunc(s.createTemplate)))
 	api.Handle("GET /api/v1/templates/{id}", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.getTemplate))))

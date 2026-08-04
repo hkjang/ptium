@@ -41,9 +41,18 @@ type SourceSlide struct {
 	LayoutID string
 	Bullets  []pptx.Paragraph
 	Blocks   []SourceBlock
+	Images   []SourceImage
 	Notes    string
 	// Line is where the slide began, for error reporting.
 	Line int
+}
+
+// SourceImage is an image a slide places, as written in source.
+type SourceImage struct {
+	// Reference is the image's name or id, as the author wrote it.
+	Reference string
+	Caption   string
+	Line      int
 }
 
 // SourceBlock is a component as written in source.
@@ -149,6 +158,19 @@ func ParseSource(source string) Source {
 			closeBlock()
 			begin(line)
 			kind, caption, _ := strings.Cut(strings.TrimSpace(trimmed[2:]), " ")
+			// An image is not a component: it references something stored rather
+			// than describing something to draw.
+			if strings.EqualFold(strings.TrimSpace(kind), "image") || strings.TrimSpace(kind) == "이미지" {
+				reference, label, _ := strings.Cut(caption, "|")
+				reference = unescapePayload(reference)
+				if reference == "" {
+					warn(line, "::image needs the name or id of an uploaded image")
+					continue
+				}
+				current.Images = append(current.Images, SourceImage{
+					Reference: reference, Caption: strings.TrimSpace(unescapePayload(label)), Line: line})
+				continue
+			}
 			resolved := pptx.BlockKind(kind)
 			if resolved == "" {
 				warn(line, "unknown component %q", strings.TrimSpace(kind))
@@ -229,7 +251,8 @@ func ParseSource(source string) Source {
 // empty reports whether a slide has nothing on it, which is what a stray
 // directive between slides produces.
 func (s SourceSlide) empty() bool {
-	return s.Title == "" && s.Lead == "" && len(s.Bullets) == 0 && len(s.Blocks) == 0 && s.Notes == ""
+	return s.Title == "" && s.Lead == "" && len(s.Bullets) == 0 &&
+		len(s.Blocks) == 0 && len(s.Images) == 0 && s.Notes == ""
 }
 
 // unescapePayload removes the one escape the language has: a backslash in front

@@ -252,3 +252,30 @@ func artworkTransform(piece Artwork, x, y, width, height float64) string {
 	}
 	return ` transform="` + strings.Join(parts, " ") + `"`
 }
+
+// previewSlidePicture draws an image a deck placed, cropped into its frame the
+// same way the exported file crops it.
+func previewSlidePicture(placeholder Placeholder, picture Picture, scale float64, clipID string) string {
+	uri := mediaDataURI(pictureCacheName(picture), picture.Data, previewImagePixels)
+	if uri == "" {
+		return ""
+	}
+	x := float64(placeholder.X) * scale
+	y := float64(placeholder.Y) * scale
+	width := float64(placeholder.Width) * scale
+	height := float64(placeholder.Height) * scale
+	if width <= 0.5 || height <= 0.5 {
+		return ""
+	}
+	// preserveAspectRatio="…slice" is the SVG equivalent of a centre crop, so the
+	// preview and the export show the same part of the picture.
+	return fmt.Sprintf(`<clipPath id="%s"><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f"/></clipPath>`+
+		`<g clip-path="url(#%s)"><image x="%.1f" y="%.1f" width="%.1f" height="%.1f" href="%s" preserveAspectRatio="xMidYMid slice"/></g>`,
+		clipID, x, y, width, height, clipID, x, y, width, height, escapeAttribute(uri))
+}
+
+// pictureCacheName keys the encoded-image cache by content type, since the cache
+// is otherwise keyed only by bytes and an SVG must not be re-encoded as a JPEG.
+func pictureCacheName(picture Picture) string {
+	return "slide-picture." + picture.extension()
+}

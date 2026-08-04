@@ -314,7 +314,8 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 	if profile, profileErr := s.store.GetProfile(request.Context(), user.ID); profileErr == nil && strings.TrimSpace(profile.Company) != "" {
 		author = strings.TrimSpace(profile.Company)
 	}
-	data, err := export.PPTX(presentation, export.Options{TemplateData: templateData, Manifest: manifest, Author: author})
+	data, err := export.PPTX(presentation, export.Options{TemplateData: templateData, Manifest: manifest,
+		Author: author, Images: s.imageSource(request, user.ID)})
 	if err != nil {
 		s.internalError(writer, request, "presentation_export_failed", err)
 		return
