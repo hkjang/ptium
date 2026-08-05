@@ -110,6 +110,12 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 					assembled.Caption = spec.Title
 				}
 			}
+			if block.Kind == pptx.BlockComparison {
+				// A comparison's rows are kept verbatim as well as parsed into items:
+				// "항목 | 기존 | 신규" is a matrix of as many columns as it was written
+				// with, which label/value/detail cannot hold.
+				assembled.Rows = block.Rows
+			}
 			if block.Kind == pptx.BlockTable && len(block.Rows) > 1 {
 				// The first row is the header; the rest are the body.
 				assembled.Columns = block.Rows[0]
@@ -121,11 +127,33 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			}
 			sanitized, usable := pptx.SanitizeBlock(assembled, placeholder)
 			if !usable {
+				// A chart whose values are not numbers — "Q3 | 1시간" — cannot be
+				// plotted, but the rows are still a set of labelled figures. Drawing
+				// them as indicators keeps the author's intent; prose throws it away.
+				if fallback, kind := chartFallback(assembled); kind != "" {
+					if retried, ok := pptx.SanitizeBlock(fallback, placeholder); ok {
+						result.Warnings = append(result.Warnings,
+							fmt.Sprintf("%s: %s had no numeric values and was drawn as %s",
+								blockWhere(where, block), block.Kind, kind))
+						content.SetBlock(placeholder.Slot, retried)
+						claimed[placeholder.Slot] = true
+						continue
+					}
+				}
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("%s: %s did not have enough room and was written as text",
 						blockWhere(where, block), block.Kind))
 				slide.Bullets = append(slide.Bullets, blockAsBullets(block)...)
 				continue
+			}
+			// A component that reads across the page should have the page. One
+			// comparison matrix or chart squeezed into one column of a two-column
+			// layout leaves the other column empty, which looks like a mistake.
+			if len(slide.Blocks) == 1 && len(slide.Images) == 0 && len(slide.Bullets) == 0 {
+				if sibling, ok := twinSlot(layout, placeholder, claimed); ok && spansWell(sanitized) {
+					sanitized.Span = []string{placeholder.Slot, sibling.Slot}
+					claimed[sibling.Slot] = true
+				}
 			}
 			content.SetBlock(placeholder.Slot, sanitized)
 			claimed[placeholder.Slot] = true
@@ -220,7 +248,7 @@ func (c Content) WithNotes(notes string) Content {
 // request, then the role it declares, then the role its position implies.
 func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total int) (pptx.Layout, string) {
 	if id := strings.TrimSpace(slide.LayoutID); id != "" {
-		if layout, ok := manifest.Layout(id); ok {
+		if layout, ok := manifest.LayoutByReference(id); ok {
 			return layout, ""
 		}
 		if layout, ok := manifest.LayoutForRole(sourcePositionRole(index, total)); ok {
@@ -272,6 +300,61 @@ func blockSlot(layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, b
 		}
 	}
 	return best, found
+}
+
+// chartFallback is the component a chart becomes when its values are not
+// numbers: labelled figures if every row has a value, otherwise nothing.
+func chartFallback(block pptx.Block) (pptx.Block, string) {
+	switch block.Kind {
+	case pptx.BlockLine, pptx.BlockColumns, pptx.BlockBars, pptx.BlockShare, pptx.BlockMeter:
+	default:
+		return pptx.Block{}, ""
+	}
+	if len(block.Items) < 2 {
+		return pptx.Block{}, ""
+	}
+	for _, item := range block.Items {
+		if strings.TrimSpace(item.Label) == "" || strings.TrimSpace(item.Display(block.Unit)) == "" {
+			return pptx.Block{}, ""
+		}
+	}
+	fallback := block
+	fallback.Kind = pptx.BlockKPI
+	fallback.Series, fallback.Labels = nil, nil
+	if len(fallback.Items) > 4 {
+		fallback.Kind = pptx.BlockTimeline
+	}
+	return fallback, fallback.Kind
+}
+
+// spansWell reports whether a component reads better across the whole body than
+// in one column of it. A matrix, a table and a chart do; a card row already
+// divides its own frame into columns and gains nothing.
+func spansWell(block pptx.Block) bool {
+	switch block.Kind {
+	case pptx.BlockTable, pptx.BlockLine, pptx.BlockColumns, pptx.BlockBars, pptx.BlockGrid:
+		return true
+	case pptx.BlockComparison:
+		// Only the matrix shape, not the two-or-three-card shape.
+		return pptx.IsComparisonMatrix(block)
+	}
+	return false
+}
+
+// twinSlot is the body region beside another one: same top, same height, free.
+// Two regions like that are one region a layout divided, so a component may take
+// them back.
+func twinSlot(layout pptx.Layout, placeholder pptx.Placeholder, claimed map[string]bool) (pptx.Placeholder, bool) {
+	for _, other := range layout.BodySlots() {
+		if other.Slot == placeholder.Slot || claimed[other.Slot] || !other.AcceptsText() {
+			continue
+		}
+		if other.Y != placeholder.Y || other.Height != placeholder.Height {
+			continue
+		}
+		return other, true
+	}
+	return pptx.Placeholder{}, false
 }
 
 // imageSlot is where a picture goes: the layout's own picture region first,

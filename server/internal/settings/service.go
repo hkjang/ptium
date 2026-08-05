@@ -20,6 +20,11 @@ type Service struct {
 	aead  cipher.AEAD
 }
 
+// ErrUnreadable reports a sensitive setting whose stored value cannot be
+// decrypted, almost always because the encryption key changed. Callers treat it
+// as "not configured" rather than as a server fault.
+var ErrUnreadable = errors.New("the stored value could not be decrypted; enter it again in the admin settings")
+
 type sealedValue struct {
 	Version    int    `json:"version"`
 	Ciphertext string `json:"ciphertext"`
@@ -54,7 +59,13 @@ func (s *Service) ListForAdmin(ctx context.Context) ([]model.Setting, error) {
 		if result[i].Sensitive {
 			plain, openErr := s.open(result[i].Value)
 			if openErr != nil {
-				return nil, fmt.Errorf("decrypt setting %q: %w", result[i].Key, openErr)
+				// One key the server cannot decrypt must not take the settings
+				// page down with it: that is precisely the moment an operator
+				// needs the page in order to type the key in again.
+				result[i].Unreadable = true
+				result[i].Configured = false
+				result[i].Value = nil
+				continue
 			}
 			result[i].Configured = configuredValue(plain)
 			result[i].Value = nil
@@ -123,7 +134,7 @@ func (s *Service) Get(ctx context.Context, key string, target any) error {
 	if setting.Sensitive {
 		value, err = s.open(value)
 		if err != nil {
-			return fmt.Errorf("decrypt setting %q: %w", key, err)
+			return fmt.Errorf("setting %q: %w", key, ErrUnreadable)
 		}
 	}
 	if err := json.Unmarshal(value, target); err != nil {

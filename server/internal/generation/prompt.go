@@ -94,6 +94,25 @@ Writing craft:
 - Notes are two or three sentences of what to say, not a repeat of the bullets.
 - Write in the requested language and tone. No markdown, asterisks or emoji.
 
+Every slide begins with a line starting "# ". A component's rows go between its
+::kind line and its closing :: line, never after. Here is a complete two-slide
+deck, in full:
+
+# 전환은 지금 결정해야 합니다
+@cover
+> 2026년 하반기 · 임원 보고
+!notes 결론부터 말하고, 근거를 두 가지로 좁혀 설명합니다.
+
+# 전환 대상과 규모
+@content
+> 42개 시스템을 세 묶음으로 나눴습니다.
+::kpi 규모
+- 전환 대상 | 42개
+- 1차 범위 | 12개
+- 예상 절감 | 18%
+::
+!notes 1차 범위만 승인받으면 나머지는 실적으로 설득합니다.
+
 Components — a body region may hold one instead of prose, and the better deck
 usually does:
 - kpi: two to four headline numbers.            rows: label | value
@@ -116,7 +135,9 @@ Rules for components:
   steps, timeline, comparison, table, callout or prose, which carry structure
   without fabricating data.
 - One component per slide. Prose is still right for argument and nuance.
-- Component labels are two or three words, never a sentence.`
+- Component labels are two or three words, never a sentence.
+- In Korean, never put a space between a number and its unit: "7월", "2026년",
+  "200%", not "7 월", "2026 년", "200 %".`
 
 // planSystemPrompt's second pass used to be JSON; the plan itself stays JSON
 // because it is consumed by the writer, not by a person.

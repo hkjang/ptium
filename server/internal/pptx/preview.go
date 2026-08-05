@@ -66,14 +66,19 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 				float64(decoration.X)*scale, float64(decoration.Y)*scale, width, height, radius, decoration.Fill)
 		}
 	}
+	spanned := slide.spannedSlots()
 	for _, placeholder := range layout.Placeholders {
+		if spanned[placeholder.Slot] {
+			// Covered by a component placed in another region.
+			continue
+		}
 		// An image occupies its slot the same way it does in the exported file.
 		if picture, ok := slide.Pictures[placeholder.Slot]; ok && len(picture.Data) > 0 {
 			builder.WriteString(previewSlidePicture(placeholder, picture, scale, gradients.clipID()))
 			continue
 		}
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
-			frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+			frame := blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
 				builder.WriteString(component.SVG(scale))
 				continue

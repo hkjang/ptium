@@ -262,6 +262,27 @@ func (m Manifest) Layout(id string) (Layout, bool) {
 	return Layout{}, false
 }
 
+// LayoutByReference finds a layout the way someone refers to one: by its id, by
+// the name it has in PowerPoint, or by either written loosely. A model copies a
+// layout's name out of the catalogue as often as its id — "콘텐츠 2개" for
+// "콘텐츠-2개" — and refusing that costs the deck the layout its author chose.
+func (m Manifest) LayoutByReference(reference string) (Layout, bool) {
+	reference = strings.TrimSpace(reference)
+	if reference == "" {
+		return Layout{}, false
+	}
+	if layout, ok := m.Layout(reference); ok {
+		return layout, true
+	}
+	wanted := slug(reference)
+	for _, layout := range m.Layouts {
+		if layout.ID == wanted || strings.EqualFold(layout.Name, reference) || slug(layout.Name) == wanted {
+			return layout, true
+		}
+	}
+	return Layout{}, false
+}
+
 // LayoutForRole returns the best layout for a narrative role, falling back to
 // the default content layout when the template has nothing more specific.
 func (m Manifest) LayoutForRole(role string) (Layout, bool) {

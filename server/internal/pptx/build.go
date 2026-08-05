@@ -31,6 +31,61 @@ type Slide struct {
 	Notes    string             `json:"notes,omitempty"`
 }
 
+// spannedSlots is every region covered by a component placed elsewhere.
+func (s Slide) spannedSlots() map[string]bool {
+	spanned := map[string]bool{}
+	for slot, block := range s.Blocks {
+		for _, other := range block.Span {
+			if other != slot {
+				spanned[other] = true
+			}
+		}
+	}
+	return spanned
+}
+
+// blockFrame is the area a component draws in: its own region, plus the regions
+// it spans.
+func blockFrame(layout Layout, placeholder Placeholder, block Block) Frame {
+	frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+	for _, slot := range block.Span {
+		other, ok := layout.Slot(slot)
+		if !ok || other.Slot == placeholder.Slot {
+			continue
+		}
+		right := max(frame.X+frame.Width, other.X+other.Width)
+		bottom := max(frame.Y+frame.Height, other.Y+other.Height)
+		frame.X = min(frame.X, other.X)
+		frame.Y = min(frame.Y, other.Y)
+		frame.Width = right - frame.X
+		frame.Height = bottom - frame.Y
+	}
+	return frame
+}
+
+// Carries reports whether the slide already shows this sentence, in any region
+// or as a component's heading. A lead line is recorded in more than one place, so
+// writing it again without checking puts it on the slide twice.
+func (s Slide) Carries(text string) bool {
+	wanted := strings.TrimSpace(text)
+	if wanted == "" {
+		return true
+	}
+	for _, paragraphs := range s.Fields {
+		for _, paragraph := range paragraphs {
+			if strings.TrimSpace(paragraph.Text) == wanted {
+				return true
+			}
+		}
+	}
+	for _, block := range s.Blocks {
+		if strings.TrimSpace(block.Heading) == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 // Picture is an image to place on a slide.
 type Picture struct {
 	Data        []byte
@@ -267,7 +322,12 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 	for _, placed := range pictures {
 		placedBySlot[placed.Slot] = placed
 	}
+	spanned := slide.spannedSlots()
 	for _, placeholder := range layout.Placeholders {
+		if spanned[placeholder.Slot] {
+			// A component placed elsewhere covers this region.
+			continue
+		}
 		// An image replaces whatever the slot would otherwise hold.
 		if placed, ok := placedBySlot[placeholder.Slot]; ok {
 			components.WriteString(pictureXML(shapeID, placeholder, placed))
@@ -277,7 +337,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		// A component replaces its placeholder rather than sitting on top of
 		// it, so the exported slide has no empty text box behind the drawing.
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
-			frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+			frame := blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
 				markup, next := component.DrawingML(shapeID)
 				components.WriteString(markup)

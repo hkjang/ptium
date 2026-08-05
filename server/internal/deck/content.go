@@ -5,6 +5,7 @@ package deck
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -191,14 +192,40 @@ func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 			}
 		}
 	}
-	// A subtitle written into a layout without one should not be lost.
-	if _, ok := layout.Slot(pptx.SlotSubtitle); !ok && strings.TrimSpace(slide.Subtitle) != "" {
-		if target, exists := firstBodySlot(layout); exists {
-			existing := rendered.Fields[target]
-			rendered.Fields[target] = append([]pptx.Paragraph{{Text: slide.Subtitle}}, existing...)
+	// A subtitle written into a layout without one should not be lost — but it must
+	// not be written twice either, and it must not be dropped on top of a
+	// component. A lead line is stored both in the slide's subtitle column and in
+	// whichever region compilation gave it, so this only has work to do when that
+	// region is gone.
+	if _, ok := layout.Slot(pptx.SlotSubtitle); !ok {
+		if subtitle := strings.TrimSpace(slide.Subtitle); subtitle != "" && !rendered.Carries(subtitle) {
+			if target, exists := freeBodySlot(layout, rendered); exists {
+				existing := rendered.Fields[target]
+				rendered.Fields[target] = append([]pptx.Paragraph{{Text: subtitle}}, existing...)
+			} else if slot, block, exists := headlessBlock(rendered); exists {
+				// Every region is drawn: the lead belongs above the component as its
+				// heading, which is where the compiler would have put it.
+				block.Heading = subtitle
+				rendered.Blocks[slot] = block
+			}
 		}
 	}
 	return rendered
+}
+
+// headlessBlock is a component on the slide that has no heading of its own.
+func headlessBlock(rendered pptx.Slide) (string, pptx.Block, bool) {
+	slots := make([]string, 0, len(rendered.Blocks))
+	for slot := range rendered.Blocks {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		if strings.TrimSpace(rendered.Blocks[slot].Heading) == "" {
+			return slot, rendered.Blocks[slot], true
+		}
+	}
+	return "", pptx.Block{}, false
 }
 
 // Build converts a whole presentation into renderer input.
@@ -249,7 +276,7 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 // layout id and otherwise inferring one from the slide's narrative role.
 func resolveLayout(manifest pptx.Manifest, slide model.Slide, index, total int) pptx.Layout {
 	if slide.LayoutID != "" {
-		if layout, ok := manifest.Layout(slide.LayoutID); ok {
+		if layout, ok := manifest.LayoutByReference(slide.LayoutID); ok {
 			return layout
 		}
 	}
@@ -284,6 +311,28 @@ func RoleForLegacyLayout(label string, index, total int) string {
 		return pptx.RoleClosing
 	}
 	return pptx.RoleContent
+}
+
+// freeBodySlot is the roomiest body region nothing has been drawn into yet.
+// Writing text into a region that already holds a component or a picture puts
+// two things in one place, which is a collision, not a layout.
+func freeBodySlot(layout pptx.Layout, rendered pptx.Slide) (string, bool) {
+	best, found := pptx.Placeholder{}, false
+	for _, placeholder := range layout.BodySlots() {
+		if _, taken := rendered.Blocks[placeholder.Slot]; taken {
+			continue
+		}
+		if _, taken := rendered.Pictures[placeholder.Slot]; taken {
+			continue
+		}
+		if !found || placeholder.Width*placeholder.Height > best.Width*best.Height {
+			best, found = placeholder, true
+		}
+	}
+	if found {
+		return best.Slot, true
+	}
+	return "", false
 }
 
 func hasBody(fields map[string][]pptx.Paragraph) bool {

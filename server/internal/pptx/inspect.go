@@ -112,8 +112,15 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 		placeholder Placeholder
 	}
 	var regions []region
+	spanned := slide.spannedSlots()
 	for _, placeholder := range layout.Placeholders {
+		if spanned[placeholder.Slot] {
+			continue
+		}
 		frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+		if block, ok := slide.Blocks[placeholder.Slot]; ok {
+			frame = blockFrame(layout, placeholder, block)
+		}
 		switch {
 		case len(slide.Pictures[placeholder.Slot].Data) > 0:
 			regions = append(regions, region{placeholder.Slot, frame, "picture", placeholder})
@@ -137,7 +144,7 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 			findings = append(findings, inspectLineBreaks(current.placeholder, slide.Fields[current.slot])...)
 			findings = append(findings, inspectDensity(current.placeholder, slide.Fields[current.slot])...)
 		case "component":
-			findings = append(findings, inspectComponent(current.placeholder, slide.Blocks[current.slot], design, slideWidth, slideHeight)...)
+			findings = append(findings, inspectComponent(current.placeholder, current.frame, slide.Blocks[current.slot], design, slideWidth, slideHeight)...)
 		}
 		// A composed region carries its own colours, so its readability is Ptium's
 		// responsibility rather than the template's.
@@ -326,18 +333,33 @@ func inspectLineBreaks(placeholder Placeholder, paragraphs []Paragraph) []Findin
 }
 
 // inspectComponent reports a drawing that escapes its own frame or the slide.
-func inspectComponent(placeholder Placeholder, block Block, design Design, slideWidth, slideHeight int) []Finding {
-	frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
+func inspectComponent(placeholder Placeholder, frame Frame, block Block, design Design, slideWidth, slideHeight int) []Finding {
 	component := RenderBlock(design, frame, block)
 	if len(component.Primitives) == 0 {
-		return nil
+		// The region was meant to hold a drawing and holds nothing at all, which is
+		// worse than a cramped one: the slide has a hole in it.
+		return []Finding{{Slot: placeholder.Slot, Kind: FindingOverflow,
+			Detail: fmt.Sprintf("%s had too little room to draw anything", block.Kind)}}
 	}
 	tolerance := slideWidth / 200
 	worstFrame, worstSlide := 0, 0
+	// A drawn line of text is as tall as the lines it wraps into, not as tall as
+	// the box it was given. Measuring the box is how a component whose heading
+	// covered its own first row passed inspection.
+	var drawn []Frame
+	overflow, overflowText := 0, ""
 	for _, primitive := range component.Primitives {
 		bounds := primitive.bounds()
 		if bounds.Width <= 0 && bounds.Height <= 0 {
 			continue
+		}
+		if primitive.Kind == shapeText {
+			height, text := drawnTextHeight(primitive)
+			if height > bounds.Height && height-bounds.Height > overflow {
+				overflow, overflowText = height-bounds.Height, text
+			}
+			bounds.Height = max(bounds.Height, height)
+			drawn = append(drawn, bounds)
 		}
 		if beyond := outsideBy(bounds, slideWidth, slideHeight); beyond > worstSlide {
 			worstSlide = beyond
@@ -347,6 +369,26 @@ func inspectComponent(placeholder Placeholder, block Block, design Design, slide
 		}
 	}
 	var findings []Finding
+	if overflow > tolerance {
+		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingOverflow,
+			Detail: fmt.Sprintf("%s draws %q %.2fcm taller than the room it reserved",
+				block.Kind, shorten(overflowText, 28), emuToCm(overflow))})
+	}
+	// Two lines of a component's own text may not land on each other.
+	for i := 0; i < len(drawn); i++ {
+		for j := i + 1; j < len(drawn); j++ {
+			if area := overlapArea(drawn[i], drawn[j]); area > 0 {
+				height := min(drawn[i].Height, drawn[j].Height)
+				width := min(drawn[i].Width, drawn[j].Width)
+				if height > 0 && width > 0 && area*100/(height*width) > 12 {
+					findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingCollision,
+						Detail: fmt.Sprintf("two lines of the %s overlap", block.Kind)})
+					i = len(drawn)
+					break
+				}
+			}
+		}
+	}
 	if worstSlide > tolerance {
 		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingOutside,
 			Detail: fmt.Sprintf("%s draws %.2fcm past the slide edge", block.Kind, emuToCm(worstSlide))})
@@ -356,6 +398,45 @@ func inspectComponent(placeholder Placeholder, block Block, design Design, slide
 			Detail: fmt.Sprintf("%s draws %.2fcm outside its region", block.Kind, emuToCm(worstFrame))})
 	}
 	return findings
+}
+
+// shorten keeps a quoted excerpt short enough to read in a finding.
+func shorten(value string, limit int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit]) + "…"
+}
+
+// drawnTextHeight is how tall a text primitive really is once its lines wrap,
+// with the text that needed the most room.
+func drawnTextHeight(primitive Primitive) (int, string) {
+	if primitive.FontSize <= 0 {
+		return 0, ""
+	}
+	total, worst, worstLines := 0, "", 0
+	for _, paragraph := range primitive.Lines {
+		lines := 1
+		if primitive.Wrap {
+			lines = cellLines(paragraph.Text, primitive.FontSize, primitive.Frame.Width)
+		}
+		if lines > worstLines {
+			worst, worstLines = paragraph.Text, lines
+		}
+		total += lineHeightFor(primitive.FontSize) * lines
+	}
+	return total, worst
+}
+
+// overlapArea is the area two frames share.
+func overlapArea(a, b Frame) int {
+	width := min(a.X+a.Width, b.X+b.Width) - max(a.X, b.X)
+	height := min(a.Y+a.Height, b.Y+b.Height) - max(a.Y, b.Y)
+	if width <= 0 || height <= 0 {
+		return 0
+	}
+	return width * height
 }
 
 // outsideBy is how far a frame reaches past the slide, in EMU.

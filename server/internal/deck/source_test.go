@@ -1,6 +1,7 @@
 package deck
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -487,5 +488,128 @@ func TestCompileDrawsAGridFromItsDefinition(t *testing.T) {
 	again := Compile(ParseSource(formatted), manifest, CompileOptions{Language: "ko"})
 	if block := Decode(again.Slides[0].Content).Blocks[pptx.SlotBody]; block.Grid == nil || len(block.Rows) != 2 {
 		t.Fatalf("the grid was lost on the round trip:\n%s", formatted)
+	}
+}
+
+func TestCompileAcceptsALayoutNamedLoosely(t *testing.T) {
+	manifest := testManifest()
+	manifest.Layouts[2].Name = "콘텐츠 2개"
+	manifest.Layouts[2].ID = "콘텐츠-2개"
+	// A model copies a layout's name out of the catalogue as often as its id, and
+	// spells it as it reads: "콘텐츠 2개" for "콘텐츠-2개".
+	for _, reference := range []string{"콘텐츠-2개", "콘텐츠 2개", "콘텐츠  2개"} {
+		source := "# 비교\n@layout " + reference + "\n- 첫째\n- 둘째\n"
+		result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+		if got := result.Slides[0].LayoutID; got != "콘텐츠-2개" {
+			t.Fatalf("@layout %q resolved to %q", reference, got)
+		}
+		if len(result.Warnings) != 0 {
+			t.Fatalf("@layout %q warned: %v", reference, result.Warnings)
+		}
+	}
+	// A name that matches nothing is still reported rather than guessed at.
+	result := Compile(ParseSource("# 비교\n@layout 없는 레이아웃\n- 첫째\n"), manifest, CompileOptions{})
+	if len(result.Warnings) == 0 {
+		t.Fatal("an unknown layout must be reported")
+	}
+}
+
+func TestParseSourceReadsWhatAModelActuallyWrites(t *testing.T) {
+	// Every mistake below was made by a real 122B model on the first attempt:
+	// a title with no hash, a component closed before its rows, markdown pipes,
+	// and a space between a number and its Korean unit.
+	source := "리스크 대응 전략\n@content\n> 3 년간 관리합니다.\n::comparison\n::\n" +
+		"| 기존 방식 | 점진적 전환 |\n| 신규 방식 | 병렬 운영 |\n\n" +
+		"# 비용\n::kpi 비용\n- 기존 | 120 억 원\n- 신규 | 72 억 원\n::\n"
+	parsed := ParseSource(source)
+	if len(parsed.Slides) != 2 {
+		t.Fatalf("slides = %d: %+v", len(parsed.Slides), parsed.Slides)
+	}
+
+	// The bare line before @content was the title, not a lead.
+	first := parsed.Slides[0]
+	if first.Title != "리스크 대응 전략" || first.Lead == first.Title {
+		t.Fatalf("first slide = %+v", first)
+	}
+	// A number keeps its unit and its particle: "3 년간" is not Korean.
+	if first.Lead != "3년간 관리합니다." {
+		t.Fatalf("lead = %q", first.Lead)
+	}
+	// The rows written after :: still belong to the component, and the markdown
+	// pipes do not turn a two-column row into one nameless entry.
+	if len(first.Blocks) != 1 || len(first.Blocks[0].Items) != 2 {
+		t.Fatalf("blocks = %+v", first.Blocks)
+	}
+	if item := first.Blocks[0].Items[0]; item.Label != "기존 방식" || item.Value != "점진적 전환" {
+		t.Fatalf("first row = %+v", item)
+	}
+	if rows := first.Blocks[0].Rows; len(rows) != 2 || len(rows[0]) != 2 {
+		t.Fatalf("rows = %v", rows)
+	}
+	// The second slide's figures are tidied too.
+	if item := parsed.Slides[1].Blocks[0].Items[0]; item.Value != "120억 원" {
+		t.Fatalf("kpi value = %q", item.Value)
+	}
+}
+
+func TestParseSourcePromotesPipeRowsIntoAComponent(t *testing.T) {
+	// Asked for a comparison table, the model wrote the rows as plain bullets.
+	// Drawn as prose the pipes are noise; drawn as a component they are a table.
+	parsed := ParseSource("# 기존 방식과 신규 방식 비교\n@content\n> 아키텍처가 다릅니다.\n" +
+		"- 단일 서버 의존 | 마이크로서비스 분산\n- 수동 배포 | 자동화된 CI/CD\n- 확장성 제한 | 탄력적 자동 확장\n")
+	slide := parsed.Slides[0]
+	if len(slide.Blocks) != 1 {
+		t.Fatalf("expected a component, got blocks=%+v bullets=%+v", slide.Blocks, slide.Bullets)
+	}
+	if slide.Blocks[0].Kind != "comparison" {
+		t.Fatalf("kind = %q", slide.Blocks[0].Kind)
+	}
+	if len(slide.Blocks[0].Rows) != 3 || slide.Blocks[0].Rows[0][1] != "마이크로서비스 분산" {
+		t.Fatalf("rows = %v", slide.Blocks[0].Rows)
+	}
+	// The prose around the table stays prose.
+	if slide.Lead != "아키텍처가 다릅니다." || len(slide.Bullets) != 0 {
+		t.Fatalf("lead = %q bullets = %+v", slide.Lead, slide.Bullets)
+	}
+
+	// A markdown table, separator rule and all, is the same thing.
+	markdown := ParseSource("# 비교\n@content\n| 항목 | 결과 |\n|---|---|\n| 응답 시간 | 240ms |\n| 오류율 | 0.2% |\n")
+	if blocks := markdown.Slides[0].Blocks; len(blocks) != 1 || len(blocks[0].Rows) != 3 {
+		t.Fatalf("markdown blocks = %+v", blocks)
+	}
+
+	// Two columns of figures are indicators, which read better than a table.
+	figures := ParseSource("# 지표\n@content\n- 절감액 | 48억 원\n- 기간 | 6개월\n")
+	if blocks := figures.Slides[0].Blocks; len(blocks) != 1 || blocks[0].Kind != "kpi" {
+		t.Fatalf("figure blocks = %+v", blocks)
+	}
+
+	// One pipe on its own is a sentence, not a table.
+	prose := ParseSource("# 균형\n@content\n- 가격 | 성능의 균형이 핵심입니다\n- 그리고 속도도 중요합니다\n")
+	if len(prose.Slides[0].Blocks) != 0 || len(prose.Slides[0].Bullets) != 2 {
+		t.Fatalf("a lone pipe must stay prose: %+v", prose.Slides[0])
+	}
+
+	// Promotion produces exactly what the component would have written, so a
+	// promoted deck and an explicit one compile identically.
+	explicit := ParseSource("# 기존 방식과 신규 방식 비교\n@content\n> 아키텍처가 다릅니다.\n" +
+		"::comparison\n- 단일 서버 의존 | 마이크로서비스 분산\n- 수동 배포 | 자동화된 CI/CD\n- 확장성 제한 | 탄력적 자동 확장\n::\n")
+	if fmt.Sprint(explicit.Slides[0].Blocks[0].Rows) != fmt.Sprint(slide.Blocks[0].Rows) {
+		t.Fatalf("promoted rows differ from written rows:\n%v\n%v", slide.Blocks[0].Rows, explicit.Slides[0].Blocks[0].Rows)
+	}
+}
+
+// A model names a layout the way an API would: "@layout id=제목-및-내용". Read
+// literally that names no layout at all, and the slide quietly moves to another
+// one — the failure the compiler's own warnings caught on a real deck.
+func TestParseSourceReadsALayoutWrittenAsAnAssignment(t *testing.T) {
+	for _, written := range []string{"제목-및-내용", "id=제목-및-내용", "id: 제목-및-내용", `name="제목-및-내용"`} {
+		parsed := ParseSource("# 현황\n@layout " + written + "\n- 요점\n")
+		if got := parsed.Slides[0].LayoutID; got != "제목-및-내용" {
+			t.Fatalf("@layout %s -> %q", written, got)
+		}
+		if len(parsed.Warnings) != 0 {
+			t.Fatalf("@layout %s warned: %v", written, parsed.Warnings)
+		}
 	}
 }

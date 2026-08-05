@@ -3,6 +3,7 @@ package pptx
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -89,5 +90,103 @@ func TestWriteBlockPreviews(t *testing.T) {
 		if err := os.WriteFile(fmt.Sprintf("%s/%s.svg", directory, name), []byte(svg), 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// The inspector measured the box a component gave its text, not the text. That is
+// how a slide whose heading was drawn on top of its own first row was reported
+// clean, so the measurement is now of what is drawn.
+func TestInspectComponentMeasuresDrawnText(t *testing.T) {
+	manifest := Manifest{SlideWidth: 12192000, SlideHeight: 6858000}
+	design := NewDesign(manifest)
+	region := Placeholder{Slot: "body", X: 1000000, Y: 2000000, Width: 2200000, Height: 2600000, Kind: "text"}
+	frame := Frame{X: region.X, Y: region.Y, Width: region.Width, Height: region.Height}
+	block := Block{
+		Kind: BlockComparison,
+		// Longer than the three lines a heading is allowed to reserve.
+		Heading: "클라우드 네이티브 아키텍처로 전환하면 운영 비용과 배포 주기를 동시에 줄일 수 있으며 " +
+			"보안 대응 역량과 확장성 또한 크게 개선되어 전사적인 경쟁력 확보에 기여합니다",
+		Items: []Item{
+			{Label: "아키텍처", Value: "모놀리식", Detail: "마이크로서비스"},
+			{Label: "확장성", Value: "수직 확장", Detail: "수평 확장"},
+			{Label: "유지보수", Value: "고비용", Detail: "저비용"},
+		},
+	}
+	findings := inspectComponent(region, frame, block, design, manifest.SlideWidth, manifest.SlideHeight)
+	overflow := false
+	for _, finding := range findings {
+		if finding.Kind == FindingOverflow {
+			overflow = true
+		}
+	}
+	if !overflow {
+		t.Fatalf("a heading taller than its reserved room must be reported: %+v", findings)
+	}
+}
+
+// A component may cover more than the region it is placed in: a comparison
+// matrix squeezed into one column of a two-column layout wastes half the slide.
+func TestBlockSpanCoversBothRegions(t *testing.T) {
+	layout := Layout{ID: "two", Placeholders: []Placeholder{
+		{Slot: "body", X: 1000000, Y: 2000000, Width: 4000000, Height: 3000000, Kind: "text", MaxLines: 8},
+		{Slot: "body2", X: 6000000, Y: 2000000, Width: 4000000, Height: 3000000, Kind: "text", MaxLines: 8},
+	}}
+	block := Block{Kind: BlockComparison, Span: []string{"body", "body2"}, Items: []Item{
+		{Label: "아키텍처", Value: "모놀리식", Detail: "마이크로서비스"},
+		{Label: "확장성", Value: "수직", Detail: "수평"},
+		{Label: "비용", Value: "높음", Detail: "낮음"},
+	}}
+	frame := blockFrame(layout, layout.Placeholders[0], block)
+	if frame.X != 1000000 || frame.Width != 9000000 {
+		t.Fatalf("spanned frame = %+v", frame)
+	}
+
+	slide := Slide{LayoutID: "two", Blocks: map[string]Block{"body": block}}
+	if spanned := slide.spannedSlots(); !spanned["body2"] {
+		t.Fatalf("the covered region must not be drawn separately: %v", spanned)
+	}
+	// The covered region is not drawn a second time as an empty box.
+	svg := PreviewSVG(Manifest{SlideWidth: 12192000, SlideHeight: 6858000}, layout, slide, PreviewOptions{Width: 960})
+	if strings.Count(svg, "아키텍처") != 1 {
+		t.Fatalf("the component should be drawn once:\n%s", svg)
+	}
+}
+
+// "현재 | 목표" is a header of two column names, and it is exactly as short as the
+// figures under it — so the row is recognised by what the words are, not by
+// their length. Drawn as data it becomes the comparison's first row.
+func TestComparisonHeaderOfSideNames(t *testing.T) {
+	block := Block{Kind: BlockComparison, Rows: [][]string{
+		{"현재", "목표"}, {"4시간", "5분"}, {"수동", "자동"}, {"30%", "95%"},
+	}}
+	rows := comparisonMatrix(block)
+	if !tabularHeader(rows) {
+		t.Fatal("a row of side names is a header")
+	}
+
+	manifest := Manifest{SlideWidth: 12192000, SlideHeight: 6858000}
+	design := NewDesign(manifest)
+	frame := Frame{X: 1000000, Y: 2000000, Width: 9000000, Height: 3000000}
+	primitives := design.layoutComparison(frame, block)
+	// Both columns are sides, so both carry an accent rule and neither is drawn as
+	// a row label spanning a third of the slide.
+	rules := 0
+	for _, primitive := range primitives {
+		if primitive.Kind == shapeRectangle && primitive.Frame.Height <= design.Unit/2 {
+			rules++
+		}
+	}
+	if rules != 2 {
+		t.Fatalf("expected an accent rule under each column, got %d", rules)
+	}
+	// The figures still read in order, three rows of them.
+	texts := 0
+	for _, primitive := range primitives {
+		if primitive.Kind == shapeText {
+			texts++
+		}
+	}
+	if texts != 8 {
+		t.Fatalf("expected two titles and six cells, got %d", texts)
 	}
 }

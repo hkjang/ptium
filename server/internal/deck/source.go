@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -115,14 +116,27 @@ func ParseSource(source string) Source {
 	warn := func(line int, format string, args ...any) {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("line %d: %s", line, fmt.Sprintf(format, args...)))
 	}
+	// A component a model closed before writing its rows is kept open for the
+	// lines that follow, because that is what it meant. The rows arrive as loose
+	// prose otherwise, and the component draws nothing.
+	var hungry *SourceBlock
 	closeBlock := func() {
-		if inBlock && len(block.Items) > 0 {
-			current.Blocks = append(current.Blocks, block)
+		hungry = nil
+		if inBlock {
+			if len(block.Items) > 0 {
+				current.Blocks = append(current.Blocks, block)
+			} else {
+				empty := block
+				current.Blocks = append(current.Blocks, empty)
+				hungry = &current.Blocks[len(current.Blocks)-1]
+			}
 		}
 		inBlock, block = false, SourceBlock{}
 	}
 	flush := func() {
 		closeBlock()
+		hungry = nil
+		promoteTabularBullets(&current)
 		if started && !current.empty() {
 			result.Slides = append(result.Slides, current)
 		}
@@ -143,7 +157,7 @@ func ParseSource(source string) Source {
 		// whole paragraph.
 		if inNotes {
 			if trimmed != "" && !isDirective(trimmed) {
-				current.Notes = strings.TrimSpace(current.Notes + " " + trimmed)
+				current.Notes = tidyText(current.Notes + " " + trimmed)
 				continue
 			}
 			inNotes = false
@@ -189,11 +203,18 @@ func ParseSource(source string) Source {
 			}
 
 		case strings.HasPrefix(trimmed, "#"):
+			hungry = nil
 			flush()
 			current, started = SourceSlide{Title: unescapePayload(strings.TrimLeft(trimmed, "#")), Line: line}, true
 
 		case strings.HasPrefix(trimmed, "@"):
 			begin(line)
+			// A model routinely writes the title without its "# ". A slide kind on
+			// the line after a bare line means that line was the title, so it is
+			// promoted rather than left as a lead.
+			if current.Title == "" && current.Lead != "" && len(current.Bullets) == 0 && len(current.Blocks) == 0 {
+				current.Title, current.Lead = current.Lead, ""
+			}
 			directive := strings.TrimSpace(trimmed[1:])
 			name, value, hasValue := strings.Cut(directive, " ")
 			if strings.EqualFold(strings.TrimSpace(name), "layout") {
@@ -201,7 +222,7 @@ func ParseSource(source string) Source {
 					warn(line, "@layout needs a layout id")
 					continue
 				}
-				current.LayoutID = strings.TrimSpace(value)
+				current.LayoutID = layoutReference(value)
 				continue
 			}
 			if role, ok := roleAliases[strings.ToLower(directive)]; ok {
@@ -211,6 +232,7 @@ func ParseSource(source string) Source {
 			warn(line, "unknown slide kind %q", directive)
 
 		case strings.HasPrefix(trimmed, ">"):
+			hungry = nil
 			begin(line)
 			lead := unescapePayload(trimmed[1:])
 			if current.Lead == "" {
@@ -220,6 +242,7 @@ func ParseSource(source string) Source {
 			}
 
 		case strings.HasPrefix(trimmed, "!"):
+			hungry = nil
 			begin(line)
 			name, value, _ := strings.Cut(strings.TrimPrefix(trimmed, "!"), " ")
 			if !strings.HasPrefix(strings.ToLower(name), "note") {
@@ -237,6 +260,12 @@ func ParseSource(source string) Source {
 				block.Rows = append(block.Rows, itemFields(item))
 				continue
 			}
+			if hungry != nil {
+				// The rows of a component that was closed too early.
+				hungry.Items = append(hungry.Items, parseSourceItem(item))
+				hungry.Rows = append(hungry.Rows, itemFields(item))
+				continue
+			}
 			current.Bullets = append(current.Bullets, pptx.Paragraph{Text: unescapePayload(item), Level: bulletLevel(text)})
 
 		default:
@@ -247,15 +276,122 @@ func ParseSource(source string) Source {
 			case inBlock:
 				block.Items = append(block.Items, parseSourceItem(trimmed))
 				block.Rows = append(block.Rows, itemFields(trimmed))
-			case current.Lead == "" && len(current.Bullets) == 0:
+			case hungry != nil:
+				hungry.Items = append(hungry.Items, parseSourceItem(trimmed))
+				hungry.Rows = append(hungry.Rows, itemFields(trimmed))
+			case current.Lead == "" && len(current.Bullets) == 0 && countRowFields(trimmed) < 2:
 				current.Lead = trimmed
 			default:
-				current.Bullets = append(current.Bullets, pptx.Paragraph{Text: trimmed})
+				current.Bullets = append(current.Bullets, pptx.Paragraph{Text: tidyText(trimmed)})
 			}
 		}
 	}
 	flush()
 	return result
+}
+
+// promoteTabularBullets turns a run of pipe-separated bullets into the component
+// it plainly is. Asked for a table, a model often writes the rows as ordinary
+// bullets — "- 단일 서버 의존 | 마이크로서비스 분산" — or as a markdown table,
+// and drawn as prose those pipes are just noise on the slide. A run of two or
+// more rows with the same column count is a table; nothing else is touched.
+func promoteTabularBullets(slide *SourceSlide) {
+	if len(slide.Bullets) < 2 {
+		return
+	}
+	start, end, columns := -1, -1, 0
+	for index := 0; index <= len(slide.Bullets); index++ {
+		count := 0
+		if index < len(slide.Bullets) {
+			count = countRowFields(slide.Bullets[index].Text)
+		}
+		if count >= 2 && (start < 0 || count == columns) {
+			if start < 0 {
+				start, columns = index, count
+			}
+			continue
+		}
+		if start >= 0 && index-start >= 2 {
+			end = index
+			break
+		}
+		start, columns = -1, 0
+		if count >= 2 {
+			start, columns = index, count
+		}
+	}
+	if end < 0 {
+		return
+	}
+
+	rows := make([][]string, 0, end-start)
+	items := make([]pptx.Item, 0, end-start)
+	for _, bullet := range slide.Bullets[start:end] {
+		if isTableRule(bullet.Text) {
+			continue
+		}
+		rows = append(rows, itemFields(bullet.Text))
+		items = append(items, parseSourceItem(bullet.Text))
+	}
+	if len(rows) < 2 {
+		return
+	}
+	kind := "table"
+	if columns == 2 {
+		// Two columns of words are a comparison; two columns where the second is
+		// a figure are indicators. Both read far better than a table of two.
+		kind = "comparison"
+		if allNumeric(rows, 1) {
+			kind = "kpi"
+		}
+	}
+	slide.Blocks = append(slide.Blocks, SourceBlock{Kind: kind, Items: items, Rows: rows, Line: slide.Line})
+	slide.Bullets = append(slide.Bullets[:start:start], slide.Bullets[end:]...)
+}
+
+// countRowFields is how many columns a row really has: a markdown row's
+// surrounding pipes are punctuation, not empty first and last columns.
+func countRowFields(text string) int {
+	return len(trimTableRow(splitItemFields(text)))
+}
+
+// isTableRule matches the "|---|---|" line markdown puts under a header row.
+func isTableRule(text string) bool {
+	fields := trimTableRow(splitItemFields(text))
+	for _, field := range fields {
+		trimmed := strings.TrimSpace(field)
+		if trimmed == "" || strings.Trim(trimmed, "-:") != "" {
+			return false
+		}
+	}
+	return len(fields) > 0
+}
+
+// allNumeric reports whether every row carries a figure in the given column.
+func allNumeric(rows [][]string, column int) bool {
+	for _, row := range rows {
+		if column >= len(row) {
+			return false
+		}
+		if _, ok := parseNumber(row[column]); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// layoutReference is the layout a model meant. It writes the name plainly more
+// often than not, but it also writes "id=제목-및-내용" or a quoted name, and a
+// reference the parser does not recognise silently moves the slide to another
+// layout.
+func layoutReference(value string) string {
+	reference := strings.TrimSpace(value)
+	for _, prefix := range []string{"id=", "id:", "name=", "name:", "layout=", "layout:"} {
+		if len(reference) > len(prefix) && strings.EqualFold(reference[:len(prefix)], prefix) {
+			reference = strings.TrimSpace(reference[len(prefix):])
+		}
+	}
+	return strings.Trim(reference, `"'`)
 }
 
 // empty reports whether a slide has nothing on it, which is what a stray
@@ -265,23 +401,52 @@ func (s SourceSlide) empty() bool {
 		len(s.Blocks) == 0 && len(s.Images) == 0 && s.Notes == ""
 }
 
+// koreanUnitSpace matches a number separated from its Korean unit by a space,
+// which a model produces constantly and a reader never writes.
+var koreanUnitSpace = regexp.MustCompile(`(\d)[ \t]+(년|월|일|주|분기|개월|시간|분|초|개|건|명|장|억|만|천|원|퍼센트|배|%|단계|차|회|위|인|곳|층|주차|일차|페이지|배수)`)
+
+// koreanParticleSpace matches a unit separated from the particle that follows it,
+// which is the same mistake one syllable later: "15% 씩", "3년 간".
+var koreanParticleSpace = regexp.MustCompile(`(%|년|월|일|개|건|명|억|만|원|배|시간)[ \t]+(씩|간|째|당|여|분의|이내|이상|이하)`)
+
+// tidyText fixes the typography a model gets wrong in Korean. It only removes a
+// space that should not be there; nothing else about the wording is touched.
+func tidyText(value string) string {
+	tidied := koreanUnitSpace.ReplaceAllString(strings.TrimSpace(value), "$1$2")
+	return koreanParticleSpace.ReplaceAllString(tidied, "$1$2")
+}
+
 // unescapePayload removes the one escape the language has: a backslash in front
 // of text that would otherwise be read as markup. It is applied to what a
 // directive carries, not to the directive itself.
 func unescapePayload(value string) string {
 	value = strings.TrimSpace(value)
 	if strings.HasPrefix(value, `\`) {
-		return strings.TrimSpace(value[1:])
+		value = strings.TrimSpace(value[1:])
 	}
-	return value
+	return tidyText(value)
 }
 
 // itemFields is a row's fields, trimmed and unescaped.
 func itemFields(text string) []string {
-	parts := splitItemFields(text)
+	parts := trimTableRow(splitItemFields(text))
 	fields := make([]string, 0, len(parts))
 	for _, part := range parts {
-		fields = append(fields, strings.TrimSpace(part))
+		fields = append(fields, tidyText(part))
+	}
+	return fields
+}
+
+// trimTableRow drops the empty fields a markdown-style row leaves at its ends.
+// A model writes "| 기존 방식 | 신규 방식 |" as often as "기존 방식 | 신규 방식",
+// and splitting the first produces a blank first and last column, which collapses
+// a two-column row into one nameless entry.
+func trimTableRow(fields []string) []string {
+	for len(fields) > 1 && strings.TrimSpace(fields[0]) == "" {
+		fields = fields[1:]
+	}
+	for len(fields) > 1 && strings.TrimSpace(fields[len(fields)-1]) == "" {
+		fields = fields[:len(fields)-1]
 	}
 	return fields
 }
@@ -345,17 +510,17 @@ func bulletLevel(text string) int {
 // omitted. A value that looks like a number is kept as one so components can
 // draw it to scale.
 func parseSourceItem(text string) pptx.Item {
-	parts := splitItemFields(text)
-	item := pptx.Item{Label: strings.TrimSpace(parts[0])}
+	parts := trimTableRow(splitItemFields(text))
+	item := pptx.Item{Label: tidyText(parts[0])}
 	if len(parts) > 1 {
-		raw := strings.TrimSpace(parts[1])
+		raw := tidyText(parts[1])
 		item.Value = raw
 		if number, ok := parseNumber(raw); ok {
 			item.Number = &number
 		}
 	}
 	if len(parts) > 2 {
-		item.Detail = strings.TrimSpace(strings.Join(parts[2:], " | "))
+		item.Detail = tidyText(strings.Join(parts[2:], " | "))
 	}
 	return item
 }

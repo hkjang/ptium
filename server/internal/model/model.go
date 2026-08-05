@@ -119,13 +119,17 @@ type Slide struct {
 }
 
 type Setting struct {
-	Key         string          `json:"key"`
-	Value       json.RawMessage `json:"value,omitempty"`
-	Sensitive   bool            `json:"sensitive"`
-	Configured  bool            `json:"configured"`
-	Description string          `json:"description,omitempty"`
-	UpdatedBy   *string         `json:"updatedBy,omitempty"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	Key        string          `json:"key"`
+	Value      json.RawMessage `json:"value,omitempty"`
+	Sensitive  bool            `json:"sensitive"`
+	Configured bool            `json:"configured"`
+	// Unreadable marks a sensitive value the server can no longer decrypt,
+	// which is what a rotated encryption key leaves behind. The setting has to
+	// be entered again; saying so is more useful than failing the whole page.
+	Unreadable  bool      `json:"unreadable,omitempty"`
+	Description string    `json:"description,omitempty"`
+	UpdatedBy   *string   `json:"updatedBy,omitempty"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type APIKey struct {

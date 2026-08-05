@@ -3835,6 +3835,12 @@ components:
           type: boolean
         configured:
           type: boolean
+        unreadable:
+          type: boolean
+          description: >-
+            A sensitive value the server can no longer decrypt, which is what a
+            changed encryption key or database URL leaves behind. The setting has
+            to be entered again; the rest of the page still works.
         description:
           type: string
         updatedBy:
@@ -3940,6 +3946,35 @@ components:
         - if:
             properties:
               key:
+                const: ai.reasoning
+          then:
+            properties:
+              value:
+                type: string
+                enum: [auto, off, on]
+        - if:
+            properties:
+              key:
+                const: ai.max_output_tokens
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 500
+                maximum: 32000
+        - if:
+            properties:
+              key:
+                const: ai.timeout_seconds
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 10
+                maximum: 3600
+        - if:
+            properties:
+              key:
                 enum: [ai.model, branding.product_name, generation.default_theme, generation.default_lang, generation.default_tone, generation.default_audience]
           then:
             properties:
@@ -4041,6 +4076,21 @@ components:
           $ref: '#/components/schemas/SettingHTTPURL'
         ai.model:
           $ref: '#/components/schemas/SettingText1To200'
+        ai.reasoning:
+          type: string
+          enum: [auto, off, on]
+          description: >-
+            How to handle a reasoning model. `auto` asks the provider not to think
+            and retries without the field if it is refused, `off` always asks, `on`
+            leaves the model's own default alone.
+        ai.max_output_tokens:
+          type: integer
+          minimum: 500
+          maximum: 32000
+        ai.timeout_seconds:
+          type: integer
+          minimum: 10
+          maximum: 3600
         branding.product_name:
           $ref: '#/components/schemas/SettingText1To200'
         branding.logo_url:

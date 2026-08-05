@@ -462,10 +462,14 @@ function normalizeAdminSettingsPayload(raw: unknown) {
     return {
       values: unwrapOne<Record<string, Record<string, unknown>>>(raw, ['data']),
       configured: {} as Record<string, boolean>,
+      unreadable: {} as Record<string, boolean>,
     }
   }
   const values: Record<string, Record<string, unknown>> = {}
   const configured: Record<string, boolean> = {}
+  // A secret the server can no longer decrypt: it has to be entered again, and
+  // the page has to say so rather than look like an empty optional field.
+  const unreadable: Record<string, boolean> = {}
   for (const entry of entries) {
     const fullKey = String(entry.key || '')
     const separator = fullKey.indexOf('.')
@@ -484,8 +488,9 @@ function normalizeAdminSettingsPayload(raw: unknown) {
     // configured state separately instead of treating a redacted value as empty.
     if (value !== null && value !== undefined) values[section][key] = value
     if ('configured' in entry) configured[fullKey] = Boolean(entry.configured)
+    if (entry.unreadable) unreadable[fullKey] = true
   }
-  return { values, configured }
+  return { values, configured, unreadable }
 }
 
 export const api = {

@@ -1,7 +1,6 @@
 package pptx
 
 import (
-	"math"
 	"strings"
 )
 
@@ -52,11 +51,38 @@ func measureEm(text string) float64 {
 }
 
 // wrappedLines counts the lines a string needs at a given line width.
+//
+// Text breaks between words, so this walks the words the way a renderer does
+// rather than dividing the total width by the line width. The difference is not
+// small: four words of five ems each need four lines in a six-em column, and the
+// dividing estimate says three — one line of overflow, every time.
 func wrappedLines(text string, lineEm float64) int {
 	if lineEm <= 0 {
 		return 1
 	}
-	lines := int(math.Ceil(measureEm(text) / lineEm))
+	lines, used := 1, 0.0
+	space := advanceEm(' ')
+	for _, word := range strings.Fields(text) {
+		width := measureEm(word)
+		for width > lineEm {
+			// A single word wider than the column is broken across lines.
+			if used > 0 {
+				lines++
+				used = 0
+			}
+			lines++
+			width -= lineEm
+		}
+		switch {
+		case used == 0:
+			used = width
+		case used+space+width <= lineEm:
+			used += space + width
+		default:
+			lines++
+			used = width
+		}
+	}
 	if lines < 1 {
 		return 1
 	}

@@ -98,6 +98,11 @@ type Block struct {
 	// Grid is the definition a grid component is drawn from. It travels with the
 	// slide so a deck renders the same way after the definition changes.
 	Grid *GridSpec `json:"grid,omitempty"`
+	// Span names further regions the component covers, beside the one it is
+	// placed in. A comparison matrix or a chart in a two-column layout reads far
+	// better across the whole body than squeezed into half of it, and the regions
+	// it covers are drawn as one.
+	Span []string `json:"span,omitempty"`
 	// Text is the single statement a quote or callout carries.
 	Text      string `json:"text,omitempty"`
 	Caption   string `json:"caption,omitempty"`
@@ -134,7 +139,9 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		block.Heading = ""
 	}
 	if heading := strings.TrimSpace(block.Heading); heading != "" {
-		height := lineHeightFor(design.Heading)
+		// A heading that wraps needs the room it wraps into. Reserving one line for
+		// it and drawing two puts the second line on top of the component.
+		height := lineHeightFor(design.Heading) * min(cellLines(heading, design.Heading, body.Width), 3)
 		component.Primitives = append(component.Primitives, text(
 			Frame{X: body.X, Y: body.Y, Width: body.Width, Height: height},
 			line(heading), textOptions{Size: design.Heading, Color: design.InkPrimary, Bold: true, Font: design.Major, Wrap: true}))
@@ -145,7 +152,7 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 	if caption := strings.TrimSpace(block.Caption); caption != "" && !statementBlock {
 		// A caption labels what follows, so it sits above it. Pinned to the bottom
 		// of a frame that its content does not fill, it reads as a stray line.
-		height := lineHeightFor(design.Small)
+		height := lineHeightFor(design.Small) * min(cellLines(caption, design.Small, body.Width), 2)
 		component.Primitives = append(component.Primitives, text(
 			Frame{X: body.X, Y: body.Y, Width: body.Width, Height: height},
 			line(caption), textOptions{Size: design.Small, Color: design.InkMuted, Font: design.Minor, Wrap: true}))
@@ -529,6 +536,13 @@ func (d Design) layoutTimeline(frame Frame, block Block) []Primitive {
 // layoutComparison draws two or three cards side by side, each with a heading
 // and its own points.
 func (d Design) layoutComparison(frame Frame, block Block) []Primitive {
+	// Two shapes arrive under one name. "A versus B", each with a headline and its
+	// supporting points, is a set of cards. "For each attribute, the old way and
+	// the new way" is a matrix, and drawing that as cards puts one card per
+	// attribute with the two sides stacked inside it — which compares nothing.
+	if rows := comparisonMatrix(block); len(rows) > 0 {
+		return d.layoutComparisonMatrix(frame, block, rows)
+	}
 	items := block.items()
 	if len(items) < 2 {
 		return nil
@@ -943,6 +957,279 @@ func (d Design) layoutLine(frame Frame, block Block) []Primitive {
 // comparisonValueType picks the size a comparison card's headline is set at and
 // how many lines it needs. A figure is set as a figure; a phrase is set as text,
 // because display type at phrase length either overflows or shrinks to nothing.
+// cellLines is how many lines a cell's text needs at a size, in a width given in
+// EMU rather than em units.
+func cellLines(value string, size, width int) int {
+	if width <= 0 || size <= 0 {
+		return 1
+	}
+	return wrappedLines(value, float64(width)/(float64(size)/100*EMUPerPoint))
+}
+
+// IsComparisonMatrix reports whether a comparison block is the attribute-matrix
+// shape rather than the side-by-side card shape.
+func IsComparisonMatrix(block Block) bool {
+	return block.Kind == BlockComparison && len(comparisonMatrix(block)) > 0
+}
+
+// comparisonMatrix returns the rows to draw as an attribute matrix, or nil when
+// the block is the card kind. Three fields a row means attribute plus two sides;
+// more than three rows of two fields is a list of attributes as well, because
+// nobody compares four alternatives side by side on one slide.
+func comparisonMatrix(block Block) [][]string {
+	source := block.Rows
+	if len(source) == 0 {
+		// A deck stored before rows were kept, or one built by an API caller that
+		// fills items only: label, value and detail are the three columns.
+		for _, item := range block.items() {
+			row := []string{item.Label, item.Display(block.Unit), item.Detail}
+			if strings.TrimSpace(item.Detail) == "" && len(item.Bullets) > 0 {
+				row[2] = item.Bullets[0]
+			}
+			source = append(source, row)
+		}
+	}
+	rows := make([][]string, 0, len(source))
+	widest := 0
+	for _, row := range source {
+		trimmed := make([]string, 0, len(row))
+		for _, cell := range row {
+			trimmed = append(trimmed, strings.TrimSpace(cell))
+		}
+		for len(trimmed) > 0 && trimmed[len(trimmed)-1] == "" {
+			trimmed = trimmed[:len(trimmed)-1]
+		}
+		if len(trimmed) == 0 {
+			continue
+		}
+		widest = max(widest, len(trimmed))
+		rows = append(rows, trimmed)
+	}
+	if len(rows) < 2 {
+		return nil
+	}
+	if widest >= 3 || len(rows) > 3 {
+		return rows
+	}
+	return nil
+}
+
+// genericColumnNames are the words a header row uses for its first column. A
+// model reaches for one of these whenever it writes a comparison table.
+var genericColumnNames = map[string]bool{
+	"항목": true, "구분": true, "분류": true, "영역": true, "기준": true, "비교": true, "측면": true,
+	"item": true, "category": true, "aspect": true, "criteria": true, "dimension": true, "area": true,
+}
+
+// comparisonSideNames are the words a comparison's columns are named after. A
+// header of "현재 | 목표" is as short as the data under it, so length alone cannot
+// tell them apart — but these words are never data.
+var comparisonSideNames = map[string]bool{
+	"현재": true, "현행": true, "기존": true, "종전": true, "이전": true, "과거": true, "전": true,
+	"목표": true, "신규": true, "개선": true, "미래": true, "향후": true, "계획": true, "후": true,
+	"as-is": true, "asis": true, "to-be": true, "tobe": true, "before": true, "after": true,
+	"current": true, "target": true, "old": true, "new": true, "today": true, "future": true,
+}
+
+// namesSides reports whether every cell of a row is the name of a side rather
+// than a value.
+func namesSides(row []string) bool {
+	named := 0
+	for _, cell := range row {
+		trimmed := strings.ToLower(strings.TrimSpace(cell))
+		if trimmed == "" {
+			continue
+		}
+		if !comparisonSideNames[trimmed] && !genericColumnNames[trimmed] {
+			return false
+		}
+		named++
+	}
+	return named >= 2
+}
+
+// tabularHeader reports whether the first row names the columns rather than
+// holding data. Two independent signals agree on this in practice: a generic
+// first cell, and cells markedly shorter than the rows beneath them.
+func tabularHeader(rows [][]string) bool {
+	if len(rows) < 3 {
+		return false
+	}
+	if genericColumnNames[strings.ToLower(strings.TrimSpace(rows[0][0]))] || namesSides(rows[0]) {
+		return true
+	}
+	header, body, cells := 0, 0, 0
+	for _, cell := range rows[0] {
+		length := utf8.RuneCountInString(cell)
+		if length > 14 {
+			return false
+		}
+		header += length
+	}
+	for _, row := range rows[1:] {
+		for _, cell := range row {
+			body += utf8.RuneCountInString(cell)
+			cells++
+		}
+	}
+	if cells == 0 || len(rows[0]) == 0 {
+		return false
+	}
+	return float64(header)/float64(len(rows[0])) < 0.6*float64(body)/float64(cells)
+}
+
+// layoutComparisonMatrix draws an attribute-wise comparison: the attribute on the
+// left, each side in its own tinted column, one row per attribute. Every row is
+// drawn or the type shrinks until they all fit — a comparison that quietly loses
+// its last row is worse than a small one.
+func (d Design) layoutComparisonMatrix(frame Frame, block Block, rows [][]string) []Primitive {
+	columns := 0
+	for _, row := range rows {
+		columns = max(columns, len(row))
+	}
+	if columns > 4 {
+		columns = 4
+	}
+	var header []string
+	if tabularHeader(rows) {
+		header, rows = rows[0], rows[1:]
+	}
+	if len(rows) == 0 || columns < 2 {
+		return nil
+	}
+
+	// Two columns under a header of two names are two sides — "현재 | 목표" — with
+	// no attribute naming each row. Three or more, or two without a header, put
+	// the attribute in the first column and the sides after it.
+	labelled := columns >= 3 || len(header) == 0
+	gap := d.Unit
+	sides := columns
+	attributeWidth := 0
+	if labelled {
+		sides = columns - 1
+		attributeWidth = frame.Width * 26 / 100
+		if columns == 2 {
+			attributeWidth = frame.Width * 34 / 100
+		}
+	}
+	sideWidth := (frame.Width - attributeWidth - gap*max(sides-1, 0)) / max(sides, 1)
+	if labelled {
+		sideWidth = (frame.Width - attributeWidth - gap*sides) / max(sides, 1)
+	}
+	columnX := func(index int) int {
+		if labelled {
+			if index == 0 {
+				return frame.X
+			}
+			return frame.X + attributeWidth + gap*index + sideWidth*(index-1)
+		}
+		return frame.X + (sideWidth+gap)*index
+	}
+	columnWidth := func(index int) int {
+		if labelled && index == 0 {
+			return attributeWidth
+		}
+		return sideWidth
+	}
+	// The accent that marks a side, by column: with an attribute column the first
+	// side is series one, without one the first column is.
+	accentFor := func(index int) string {
+		if labelled {
+			return d.Series(index - 1)
+		}
+		return d.Series(index)
+	}
+	firstSide := 0
+	if labelled {
+		firstSide = 1
+	}
+
+	headerHeight := 0
+	if len(header) > 0 {
+		// The rule under a column title needs its own room; drawn inside the title's
+		// band it strikes through it.
+		headerHeight = lineHeightFor(d.Small) + d.Unit
+		for index := firstSide; index < columns && index < len(header); index++ {
+			headerHeight = max(headerHeight,
+				lineHeightFor(d.Small)*min(cellLines(header[index], d.Small, columnWidth(index)-d.Unit), 2)+d.Unit)
+		}
+	}
+	// Pick the largest body size whose rows all fit. Wrapping is measured, not
+	// assumed, so a long cell costs the height it really takes.
+	size := d.Body
+	var heights []int
+	for {
+		heights = heights[:0]
+		total := headerHeight
+		for _, row := range rows {
+			lines := 1
+			for index := 0; index < columns && index < len(row); index++ {
+				lines = max(lines, cellLines(row[index], size, columnWidth(index)-d.Unit))
+			}
+			height := lineHeightFor(size)*lines + d.Unit
+			heights = append(heights, height)
+			total += height
+		}
+		if total <= frame.Height || size <= d.Small {
+			// A short table hugging the top of a tall region reads as unfinished.
+			// Spending the spare room on the rows themselves keeps it balanced,
+			// within reason: a two-row table is not a two-band poster.
+			if spare := frame.Height - total; spare > 0 && len(heights) > 0 {
+				share := spare / len(heights)
+				for index := range heights {
+					if limit := heights[index] * 12 / 10; share > limit-heights[index] {
+						heights[index] = limit
+						continue
+					}
+					heights[index] += share
+				}
+			}
+			break
+		}
+		size = d.Small
+	}
+
+	var primitives []Primitive
+	cursor := frame.Y
+	if len(header) > 0 {
+		for index := firstSide; index < columns && index < len(header); index++ {
+			band := Frame{X: columnX(index), Y: cursor, Width: columnWidth(index), Height: headerHeight - d.Unit/2}
+			primitives = append(primitives,
+				filled(Frame{X: band.X, Y: cursor + headerHeight - d.Unit/3, Width: band.Width, Height: d.Unit / 3}, accentFor(index)),
+				text(band, line(header[index]), textOptions{Size: d.Small, Color: d.InkPrimary, Bold: true, Anchor: "b", Font: d.Minor, Wrap: true}))
+		}
+		if labelled && strings.TrimSpace(header[0]) != "" && !genericColumnNames[strings.ToLower(strings.TrimSpace(header[0]))] {
+			primitives = append(primitives, text(
+				Frame{X: columnX(0), Y: cursor, Width: columnWidth(0), Height: headerHeight - d.Unit/2},
+				line(header[0]), textOptions{Size: d.Small, Color: d.InkMuted, Bold: true, Anchor: "b", Font: d.Minor, Wrap: true}))
+		}
+		cursor += headerHeight
+	}
+	for rowIndex, row := range rows {
+		height := heights[rowIndex]
+		if cursor+height > frame.Bottom()+d.Unit/2 {
+			break
+		}
+		if rowIndex%2 == 1 {
+			primitives = append(primitives, rounded(
+				Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: height}, d.SurfaceRaised, d.Unit/2))
+		}
+		for index := 0; index < columns && index < len(row); index++ {
+			cell := Frame{X: columnX(index) + d.Unit/2, Y: cursor + d.Unit/2,
+				Width: columnWidth(index) - d.Unit, Height: height - d.Unit}
+			options := textOptions{Size: size, Color: d.InkSecondary, Anchor: "ctr", Font: d.Minor, Wrap: true}
+			if index == 0 {
+				// The first column carries the row: the attribute that names it, or,
+				// with no attribute column, the side being moved away from.
+				options.Color, options.Bold = d.InkPrimary, true
+			}
+			primitives = append(primitives, text(cell, line(row[index]), options))
+		}
+		cursor += height
+	}
+	return primitives
+}
+
 func (d Design) comparisonValueType(value string, width int) (size, lines int) {
 	size = d.Title
 	if utf8.RuneCountInString(value) > 12 {

@@ -39,7 +39,10 @@ its own marker: `- - dash` is a bullet whose text is "- dash".
 `@table` `@chart` `@closing` `@blank`, and the Korean equivalents 표지, 간지,
 본문, 비교, 인용, 마무리. A kind chooses among the template's layouts by role; to
 name one exactly, write `@layout <id>` with an id from
-`GET /api/v1/presentations/{id}/source`.
+`GET /api/v1/presentations/{id}/source`. A layout may be named by its id, its
+name, or the slug of either, and `@layout id=제목-및-내용` is read the same way —
+a model writes the assignment form often enough that reading it literally would
+move slides to the wrong layout.
 
 Without a kind, a slide takes the role its position implies: the first is a
 cover, the last of three or more is a closing, everything between is content.
@@ -79,6 +82,50 @@ than bare numbers is the time axis:
 
 When a component fills the only body region, the slide's lead line is drawn as the
 component's heading rather than being dropped.
+
+A component that reads across the page takes the page: a comparison matrix, a
+table, a grid or a chart placed in one column of a two-column layout is drawn
+across both, so the other half is not left empty.
+
+A chart whose values are not numbers — `Q3 | 1시간` — cannot be plotted, so it is
+drawn as labelled figures (or a timeline, past four rows) instead of being turned
+back into prose. The compiler says so in its warnings.
+
+### Comparisons
+
+`::comparison` covers two shapes, and which one is drawn follows the rows.
+
+Two or three rows of `name | headline | supporting point` are the alternatives
+being compared, drawn as cards. Rows of `attribute | side | side`, or a first row
+that names the columns, are an attribute matrix, drawn as a table with each side
+in its own accented column:
+
+```
+::comparison
+- 항목 | 기존 방식 | 신규 방식
+- 아키텍처 | 모놀리식 단일 구조 | 마이크로서비스 분산 구조
+- 확장성 | 수직 확장으로 비용 폭증 | 수평 확장으로 유연한 대응
+::
+```
+
+A header row is recognised by a generic first cell (항목, 구분, item, …) or by
+cells that name sides rather than hold values (현재 · 목표, 기존 · 신규, before ·
+after). Two columns under such a header are two sides with no attribute column.
+
+### Rows written as a table
+
+Asked for a table, a model often writes the rows as ordinary bullets, or as
+markdown. Both are read as the component they plainly are: a run of two or more
+bullets with the same number of `|`-separated fields becomes a comparison, a
+figure row or a table, and a markdown row's surrounding pipes and its `|---|`
+rule are punctuation rather than empty columns.
+
+```
+| 항목 | 결과 |
+|---|---|
+| 응답 시간 | 240ms |
+| 오류율 | 0.2% |
+```
 
 ### Grids
 
@@ -185,9 +232,9 @@ justifies rewriting an author's words to satisfy a measurement.
 
 | Kind | | Meaning |
 | --- | --- | --- |
-| `overflow` | defect | text that must shrink past readability, or does not fit at all |
+| `overflow` | defect | text that must shrink past readability, does not fit at all, or is drawn taller than the room a component reserved for it |
 | `outside` | defect | something drawn past the edge of its region or of the slide |
-| `collision` | defect | two regions on top of each other, or text over the template's own picture or lettering |
+| `collision` | defect | two regions on top of each other, two lines of one component's own text overlapping, or text over the template's own picture or lettering |
 | `contrast` | defect | composed text below 4.5:1 against what sits behind it |
 | `orphan` | advisory | a heading whose wrap leaves one stray word or syllable on its last line |
 | `density` | advisory | more than six points on a slide, or a region filled to its last line |
@@ -195,6 +242,10 @@ justifies rewriting an author's words to satisfy a measurement.
 
 `GET …/inspect` reports `defects` and `advisories` separately, and `clean` refers
 to the defects: a deck can be drawn perfectly and still be unfinished.
+
+A component is measured by what it draws, not by the boxes it asked for: a line of
+text is as tall as the lines it wraps into. Measuring the box is how a slide whose
+heading was drawn on top of its own first row once passed inspection.
 
 The same measurements run over every shipped design in the test suite, against a
 deck that uses a cover, prose, each component, a table, a chart and a grid. That
@@ -215,6 +266,24 @@ one differ in how good the prose is, not in how the deck is built:
   still accepted.
 - Without a provider, the deterministic writer reads the prompt for its subjects,
   timeframe and figures and writes the same language.
+
+### Talking to a self-hosted model
+
+A reasoning model behind an OpenAI-compatible endpoint answers with its thinking
+and an empty message, and it thinks for longer than any sane request timeout. So
+the first request asks it not to think (`chat_template_kwargs.enable_thinking`),
+and a provider that rejects that field is retried without it. Three settings
+control the rest:
+
+| Setting | Default | Effect |
+| --- | --- | --- |
+| `ai.reasoning` | `auto` | `auto` asks for no thinking and falls back if refused; `off` always asks; `on` leaves the model's default alone |
+| `ai.max_output_tokens` | 8000 | a deck's source runs to thousands of tokens; without a bound a reasoning model spends the context on thinking |
+| `ai.timeout_seconds` | 300 | a self-hosted 100B-class model writes ten slides in 30–40 seconds, and much slower under load |
+
+They are on the admin **AI 모델** page beside the model connection. A stored API key
+the server can no longer decrypt — the encryption key or the database URL changed —
+is reported on that page as needing re-entry instead of failing the whole page.
 
 ## API
 

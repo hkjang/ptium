@@ -416,3 +416,105 @@ func TestGenerateTrimsAModelThatOverwritesTheSlideCount(t *testing.T) {
 		t.Fatalf("source still carries the dropped slides:\n%s", generated.Source)
 	}
 }
+
+// A self-hosted reasoning model is the case a stub cannot teach you about: it
+// answers with thinking and no content, and it thinks for longer than any sane
+// timeout, so waiting to find out costs a timeout and produces nothing.
+func TestGenerateAsksTheProviderNotToThink(t *testing.T) {
+	template := testTemplate(t)
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		bodies = append(bodies, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n- 요점 둘\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	if _, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "성장", Language: "ko", RequestedSlideCount: 1},
+		model.Profile{}, template); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("expected one request, got %d", len(bodies))
+	}
+	if !strings.Contains(bodies[0], `"enable_thinking":false`) {
+		t.Fatalf("the first request must ask the provider not to think:\n%s", bodies[0])
+	}
+	// A deck's source is thousands of tokens; without a bound a reasoning model
+	// spends the whole context on thinking.
+	if !strings.Contains(bodies[0], `"max_tokens"`) {
+		t.Fatalf("the request must bound its output:\n%s", bodies[0])
+	}
+}
+
+func TestGenerateStopsAskingWhenTheProviderRefuses(t *testing.T) {
+	template := testTemplate(t)
+	var bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		bodies = append(bodies, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		// A hosted API rejects a body field it does not know.
+		if strings.Contains(string(body), "chat_template_kwargs") {
+			writer.WriteHeader(http.StatusBadRequest)
+			_, _ = writer.Write([]byte(`{"error":{"message":"Unrecognized request argument: chat_template_kwargs"}}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "gpt", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	generated, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "성장", Language: "ko", RequestedSlideCount: 1},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("a provider that refuses the field must still produce a deck: %v", err)
+	}
+	if len(generated.Slides) != 1 {
+		t.Fatalf("slides = %d", len(generated.Slides))
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("expected a retry, got %d requests", len(bodies))
+	}
+	if strings.Contains(bodies[1], "chat_template_kwargs") {
+		t.Fatalf("the retry must drop the field:\n%s", bodies[1])
+	}
+}
+
+func TestGenerateReportsAProviderThatOnlyThinks(t *testing.T) {
+	template := testTemplate(t)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		// vLLM's shape for a reasoning model: no content, thinking of its own.
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"length","message":{"role":"assistant","content":null,"reasoning":"Thinking about the deck..."}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+		"ai.reasoning": "on",
+	})
+	generator.client = server.Client()
+	_, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "성장", Language: "ko", RequestedSlideCount: 1},
+		model.Profile{}, template)
+	if err == nil {
+		t.Fatal("reasoning without an answer must be reported, not treated as a deck")
+	}
+	if !strings.Contains(err.Error(), "reasoning") {
+		t.Fatalf("the error should name the cause: %v", err)
+	}
+}

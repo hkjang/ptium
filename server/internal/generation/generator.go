@@ -25,6 +25,12 @@ type SettingReader interface {
 type Generator struct {
 	settings SettingReader
 	client   *http.Client
+	// maxOutputTokens bounds one completion. A deck's source is a few thousand
+	// tokens; without a bound a reasoning model will spend the whole context on
+	// thinking, and with too small a bound the deck arrives truncated.
+	maxOutputTokens int
+	// reasoning says whether to ask the provider not to think.
+	reasoning reasoningMode
 }
 
 // Deck is the generator's output: the outline shown in the workspace plus the
@@ -51,8 +57,22 @@ type Template struct {
 	Manifest pptx.Manifest
 }
 
+// Defaults for a self-hosted provider, which is what an air-gapped deployment
+// has. A 100B-class model on quantised hardware answers in tens of seconds, so a
+// two-minute timeout — a reasonable default for a hosted API — cuts off a deck
+// that was on its way.
+const (
+	defaultRequestTimeout = 5 * time.Minute
+	defaultOutputTokens   = 8000
+)
+
 func New(settings SettingReader) *Generator {
-	return &Generator{settings: settings, client: &http.Client{Timeout: 120 * time.Second}}
+	return &Generator{
+		settings:        settings,
+		client:          &http.Client{Timeout: defaultRequestTimeout},
+		maxOutputTokens: defaultOutputTokens,
+		reasoning:       reasoningAuto,
+	}
 }
 
 // Generate produces a deck for a presentation. It plans the narrative first
@@ -72,6 +92,7 @@ func (g *Generator) Generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "ai.base_url", &baseURL)
 	_ = g.settings.Get(ctx, "ai.model", &modelName)
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
+	g.applyProviderSettings(ctx)
 	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
 		return Fallback(presentation, profile, template), nil
 	}
@@ -94,6 +115,55 @@ func (g *Generator) Generate(ctx context.Context, presentation model.Presentatio
 		request.Plan = plan
 	}
 	return g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+}
+
+// applyProviderSettings reads the knobs a self-hosted provider needs.
+func (g *Generator) applyProviderSettings(ctx context.Context) {
+	seconds := int(defaultRequestTimeout / time.Second)
+	if _ = g.settings.Get(ctx, "ai.timeout_seconds", &seconds); seconds >= 10 && seconds <= 3600 {
+		g.client.Timeout = time.Duration(seconds) * time.Second
+	}
+	tokens := defaultOutputTokens
+	if _ = g.settings.Get(ctx, "ai.max_output_tokens", &tokens); tokens >= 500 && tokens <= 32000 {
+		g.maxOutputTokens = tokens
+	}
+	mode := string(reasoningAuto)
+	_ = g.settings.Get(ctx, "ai.reasoning", &mode)
+	switch reasoningMode(strings.ToLower(strings.TrimSpace(mode))) {
+	case reasoningOff:
+		g.reasoning = reasoningOff
+	case reasoningOn:
+		g.reasoning = reasoningOn
+	default:
+		g.reasoning = reasoningAuto
+	}
+}
+
+// completeSource asks for the deck, and asks the provider not to think.
+//
+// The order matters. Detecting a reasoning model from its answer requires the
+// answer to arrive, and a large model thinking through its whole output budget
+// takes longer than any sane timeout — so waiting to find out costs a full
+// timeout and produces nothing. Asking not to think costs, at worst, one
+// immediate rejection from a hosted API that does not know the field.
+func (g *Generator) completeSource(ctx context.Context, endpoint, modelName, apiKey, system, user string,
+	temperature float64) (string, error) {
+	quiet := g.reasoning != reasoningOn
+	raw, err := g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, nil, quiet)
+	if err == nil {
+		return raw, nil
+	}
+	if !quiet || g.reasoning != reasoningAuto {
+		return "", err
+	}
+	var rejected rejectedRequest
+	if errors.As(err, &rejected) && rejected.status >= 400 && rejected.status < 500 {
+		// The provider does not take the thinking switch. Ask again without it, and
+		// stop sending it for the rest of this run.
+		g.reasoning = reasoningOn
+		return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, nil, false)
+	}
+	return "", err
 }
 
 // plan asks the model to design the deck before writing any copy.
@@ -119,7 +189,7 @@ func (g *Generator) plan(ctx context.Context, endpoint, modelName, apiKey string
 // check it. A provider that answers with the older JSON shape is still accepted,
 // so a deployment pinned to a tuned model keeps working.
 func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (Deck, error) {
-	raw, err := g.completeText(ctx, endpoint, modelName, apiKey, sourceSystemPrompt, sourceUserPrompt(request), 0.35)
+	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey, sourceSystemPrompt, sourceUserPrompt(request), 0.35)
 	if err != nil {
 		return Deck{}, err
 	}
@@ -188,7 +258,14 @@ type completionRequest struct {
 	Model          string              `json:"model"`
 	Messages       []completionMessage `json:"messages"`
 	Temperature    float64             `json:"temperature"`
+	MaxTokens      int                 `json:"max_tokens,omitempty"`
 	ResponseFormat map[string]string   `json:"response_format,omitempty"`
+	// ChatTemplateKwargs is how a self-hosted server is told not to think. A
+	// reasoning model spends its whole output budget on reasoning and returns no
+	// content at all, so on such a provider Ptium cannot produce a deck without
+	// this. It is omitted unless asked for, because a hosted API rejects a body
+	// field it does not know.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 type completionMessage struct {
@@ -196,11 +273,29 @@ type completionMessage struct {
 	Content string `json:"content"`
 }
 
+// completionChoice covers both shapes a chat completion comes back in: content on
+// the message, and — on a reasoning model — an empty content with the thinking in
+// a field of its own.
+type completionChoice struct {
+	FinishReason string `json:"finish_reason"`
+	Message      struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+		// Reasoning is never used as the answer. It is read only to recognise a
+		// model that thought instead of answering.
+		Reasoning        string `json:"reasoning"`
+		ReasoningContent string `json:"reasoning_content"`
+	} `json:"message"`
+}
+
+func (c completionChoice) reasoned() bool {
+	return strings.TrimSpace(c.Message.Content) == "" &&
+		(strings.TrimSpace(c.Message.Reasoning) != "" || strings.TrimSpace(c.Message.ReasoningContent) != "")
+}
+
 type completionResponse struct {
-	Choices []struct {
-		Message completionMessage `json:"message"`
-	} `json:"choices"`
-	Error *struct {
+	Choices []completionChoice `json:"choices"`
+	Error   *struct {
 		Message string `json:"message"`
 	} `json:"error,omitempty"`
 }
@@ -217,21 +312,39 @@ func (g *Generator) complete(ctx context.Context, endpoint, modelName, apiKey, s
 	return g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, map[string]string{"type": "json_object"})
 }
 
-// completeText asks for prose rather than JSON. Forcing JSON mode here would make
-// the model wrap the deck in a string field, which is exactly the indirection the
-// slide language exists to avoid.
-func (g *Generator) completeText(ctx context.Context, endpoint, modelName, apiKey, system, user string, temperature float64) (string, error) {
-	return g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, nil)
-}
+// reasoningMode says whether the provider should be told not to think.
+type reasoningMode string
+
+const (
+	// reasoningAuto asks the provider not to think, and stops asking if it rejects
+	// the request for that reason.
+	reasoningAuto reasoningMode = "auto"
+	// reasoningOff always asks the provider not to think.
+	reasoningOff reasoningMode = "off"
+	// reasoningOn never asks, for a provider whose thinking is wanted or whose
+	// answer is unaffected by it.
+	reasoningOn reasoningMode = "on"
+)
 
 func (g *Generator) request(ctx context.Context, endpoint, modelName, apiKey, system, user string,
 	temperature float64, format map[string]string) (string, error) {
-	payload, err := json.Marshal(completionRequest{
+	return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, format, false)
+}
+
+// send performs one completion. quiet disables the provider's reasoning.
+func (g *Generator) send(ctx context.Context, endpoint, modelName, apiKey, system, user string,
+	temperature float64, format map[string]string, quiet bool) (string, error) {
+	request := completionRequest{
 		Model:          modelName,
 		Messages:       []completionMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
 		Temperature:    temperature,
+		MaxTokens:      g.maxOutputTokens,
 		ResponseFormat: format,
-	})
+	}
+	if quiet {
+		request.ChatTemplateKwargs = map[string]any{"enable_thinking": false}
+	}
+	payload, err := json.Marshal(request)
 	if err != nil {
 		return "", err
 	}
@@ -259,12 +372,35 @@ func (g *Generator) request(ctx context.Context, endpoint, modelName, apiKey, sy
 		if completion.Error != nil && completion.Error.Message != "" {
 			message = completion.Error.Message
 		}
-		return "", fmt.Errorf("AI provider status %d: %s", response.StatusCode, truncate(message, 300))
+		return "", rejectedRequest{status: response.StatusCode, message: truncate(message, 300)}
 	}
 	if len(completion.Choices) == 0 {
 		return "", errors.New("AI provider returned no choices")
 	}
-	return strings.TrimSpace(completion.Choices[0].Message.Content), nil
+	choice := completion.Choices[0]
+	if choice.reasoned() {
+		return "", errReasonedWithoutAnswering
+	}
+	if strings.TrimSpace(choice.Message.Content) == "" && choice.FinishReason == "length" {
+		return "", fmt.Errorf("AI provider stopped at the output limit without writing anything; raise ai.max_output_tokens")
+	}
+	return strings.TrimSpace(choice.Message.Content), nil
+}
+
+// errReasonedWithoutAnswering marks a provider that spent its output budget on
+// reasoning. It is recoverable: the same request with thinking disabled works.
+var errReasonedWithoutAnswering = errors.New("AI provider returned reasoning but no answer")
+
+// rejectedRequest is a provider refusing the request itself, as opposed to
+// failing to answer it. A hosted API rejects a body field it does not know, which
+// is how Ptium learns not to send the thinking switch again.
+type rejectedRequest struct {
+	status  int
+	message string
+}
+
+func (e rejectedRequest) Error() string {
+	return fmt.Sprintf("AI provider status %d: %s", e.status, e.message)
 }
 
 func (g *Generator) withDefaultBrand(ctx context.Context, profile model.Profile) model.Profile {
