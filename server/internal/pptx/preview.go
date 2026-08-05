@@ -187,7 +187,10 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 		}
 		for index, wrapped := range wrapLines(prefix+strings.TrimSpace(paragraph.Text), available) {
 			offset := indent
-			if index > 0 {
+			// A bullet's continuation lines hang under its text rather than under its
+			// marker. A paragraph with no marker has nothing to hang from, and
+			// indenting it made every wrapped title step to the right.
+			if index > 0 && prefix != "" {
 				offset += fontSize
 			}
 			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+float64(line)*lineHeight, escapeText(wrapped))

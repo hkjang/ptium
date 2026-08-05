@@ -3,6 +3,7 @@ package pptx
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -189,4 +190,61 @@ func TestComparisonHeaderOfSideNames(t *testing.T) {
 	if texts != 8 {
 		t.Fatalf("expected two titles and six cells, got %d", texts)
 	}
+}
+
+// A bullet's second line hangs under its text; a title's second line has no
+// marker to hang from. Indenting it anyway made the preview show a step no
+// exported slide has.
+func TestPreviewWrapsATitleWithoutIndenting(t *testing.T) {
+	layout := Layout{ID: "cover", Placeholders: []Placeholder{
+		{Slot: SlotTitle, X: 1000000, Y: 700000, Width: 9000000, Height: 1400000,
+			Kind: "text", MaxLines: 2, FontSize: 3400, LineEm: 18},
+		{Slot: "body", X: 1000000, Y: 2400000, Width: 9000000, Height: 2000000,
+			Kind: "text", MaxLines: 6, FontSize: 1500, LineEm: 40},
+	}}
+	slide := Slide{LayoutID: "cover", Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "기존 방식 대비 신규 방식은 운영 효율성을 40% 높입니다"}},
+		"body":    {{Text: "전환 이후에는 자원 사용량에 따라 과금되므로 초기 투자 비용이 크게 줄어들고 운영 인력이 반복 작업에서 벗어나 개선 과제에 집중할 수 있게 되며 장애 대응 시간도 함께 줄어듭니다"}},
+	}}
+	svg := PreviewSVG(Manifest{SlideWidth: 12192000, SlideHeight: 6858000}, layout, slide, PreviewOptions{Width: 960})
+
+	titleXs := tspanColumns(t, svg, "높입니다")
+	if len(titleXs) != 1 {
+		t.Fatalf("expected the title's last line once: %v", titleXs)
+	}
+	firstXs := tspanColumns(t, svg, "기존 방식")
+	if len(firstXs) != 1 || titleXs[0] != firstXs[0] {
+		t.Fatalf("a title's wrapped line must start where the first line does: %v vs %v", titleXs, firstXs)
+	}
+
+	// A bullet still hangs: its continuation is indented past its marker.
+	bulletFirst := tspanColumns(t, svg, "• 전환 이후")
+	bulletNext := tspanColumns(t, svg, "줄어듭니다")
+	if len(bulletFirst) != 1 || len(bulletNext) != 1 || bulletNext[0] <= bulletFirst[0] {
+		t.Fatalf("a bullet's continuation should hang: %v vs %v", bulletNext, bulletFirst)
+	}
+}
+
+// tspanColumns is the x of every tspan whose text contains a fragment.
+func tspanColumns(t *testing.T, svg, fragment string) []float64 {
+	t.Helper()
+	var found []float64
+	for _, part := range strings.Split(svg, "<tspan ")[1:] {
+		end := strings.Index(part, "</tspan>")
+		if end < 0 {
+			continue
+		}
+		element := part[:end]
+		body := element[strings.Index(element, ">")+1:]
+		if !strings.Contains(body, fragment) {
+			continue
+		}
+		attribute := element[strings.Index(element, `x="`)+3:]
+		value, err := strconv.ParseFloat(attribute[:strings.Index(attribute, `"`)], 64)
+		if err != nil {
+			t.Fatalf("x is not a number in %q", element)
+		}
+		found = append(found, value)
+	}
+	return found
 }
