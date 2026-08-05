@@ -248,3 +248,31 @@ func tspanColumns(t *testing.T, svg, fragment string) []float64 {
 	}
 	return found
 }
+
+// A card's headline gets three lines at most. Asked for a fourth it is set
+// smaller — the alternative, which shipped, was three lines of room and four
+// lines of text, with the fourth over the card's edge.
+func TestComparisonCardHeadlineFitsItsCard(t *testing.T) {
+	manifest := Manifest{SlideWidth: 12192000, SlideHeight: 6858000}
+	design := NewDesign(manifest)
+	// The pair a real model wrote, in the region a two-column layout gives it.
+	block := Block{Kind: BlockComparison, Items: []Item{
+		{Label: "1단계", Value: "검증 프로세스 표준화 및 자동화 도구 도입"},
+		{Label: "2단계", Value: "모니터링 대시보드 구축 및 정기 점검"},
+	}}
+	region := Placeholder{Slot: "body3", X: 6324600, Y: 1778508, Width: 4678680, Height: 3525012, Kind: "text"}
+	frame := Frame{X: region.X, Y: region.Y, Width: region.Width, Height: region.Height}
+	for _, finding := range inspectComponent(region, frame, block, design, manifest.SlideWidth, manifest.SlideHeight) {
+		t.Fatalf("the card should hold its own headline: %s", finding.Detail)
+	}
+
+	// The headline is still set as large as it can be: a short one is not shrunk.
+	short, shortLines := design.comparisonValueType("자동화", 4678680/2)
+	long, longLines := design.comparisonValueType("검증 프로세스 표준화 및 자동화 도구 도입", 4678680/2)
+	if short <= long || shortLines > longLines {
+		t.Fatalf("short=%d/%d long=%d/%d", short, shortLines, long, longLines)
+	}
+	if longLines > 3 {
+		t.Fatalf("a card never carries more than three lines: %d", longLines)
+	}
+}

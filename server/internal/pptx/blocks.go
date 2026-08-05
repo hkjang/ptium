@@ -1230,7 +1230,12 @@ func (d Design) layoutComparisonMatrix(frame Frame, block Block, rows [][]string
 	return primitives
 }
 
+// comparisonValueType is the size a card's headline is set at, and the lines it
+// takes at that size. Three lines is the most a card should carry, so a headline
+// that would need a fourth is set smaller rather than being given three lines and
+// drawn in four — which is how the fourth line ended up over the card's edge.
 func (d Design) comparisonValueType(value string, width int) (size, lines int) {
+	const maximumLines = 3
 	size = d.Title
 	if utf8.RuneCountInString(value) > 12 {
 		size = d.Heading
@@ -1238,8 +1243,18 @@ func (d Design) comparisonValueType(value string, width int) (size, lines int) {
 	if utf8.RuneCountInString(value) > 26 {
 		size = d.Body
 	}
-	perLine := float64(width) / (float64(size) / 100 * EMUPerPoint)
-	return size, min(max(1, int(measureEm(value)/math.Max(perLine, 1))+1), 3)
+	for {
+		lines = cellLines(value, size, width)
+		if lines <= maximumLines || size <= d.Small {
+			break
+		}
+		if next := size * 85 / 100; next < d.Small {
+			size = d.Small
+		} else {
+			size = next
+		}
+	}
+	return size, min(max(lines, 1), maximumLines)
 }
 
 // layoutShare draws a 100% stacked bar for part-to-whole, with a legend. It
