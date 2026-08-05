@@ -82,6 +82,9 @@ func (s *Server) publicSettings(writer http.ResponseWriter, request *http.Reques
 		s.internalError(writer, request, "settings_read_failed", err)
 		return
 	}
+	if s.version != "" {
+		settings["service.version"] = s.version
+	}
 	writeData(writer, request, http.StatusOK, settings)
 }
 
@@ -228,6 +231,10 @@ func (s *Server) updatePresentation(writer http.ResponseWriter, request *http.Re
 			return
 		}
 		seenIDs := map[string]struct{}{}
+		stored := map[string]json.RawMessage{}
+		for _, slide := range current.Slides {
+			stored[slide.ID] = slide.Content
+		}
 		converted := make([]model.Slide, 0, len(*input.Slides))
 		for index, incoming := range *input.Slides {
 			if incoming.ID != "" {
@@ -237,6 +244,7 @@ func (s *Server) updatePresentation(writer http.ResponseWriter, request *http.Re
 				}
 				seenIDs[incoming.ID] = struct{}{}
 			}
+			incoming.Content = preserveDrawing(incoming.Content, stored[incoming.ID])
 			slide, err := convertSlide(incoming, index)
 			if err != nil {
 				writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), map[string]any{"slide": index + 1})
@@ -459,6 +467,42 @@ func (s *Server) maximumSlides(ctx context.Context) int {
 		return 50
 	}
 	return maximum
+}
+
+// preserveDrawing keeps the components and images a slide already carries when an
+// update does not mention them.
+//
+// A client that only knows about text — the canvas editor, or any caller written
+// before components existed — sends back the fields it edited. Replacing the whole
+// content with that erases the drawings on every slide, which is what a generated
+// deck is mostly made of. Sending "blocks": {} still clears them, so deleting is
+// possible and silent destruction is not.
+func preserveDrawing(incoming, stored json.RawMessage) json.RawMessage {
+	if len(incoming) == 0 || len(stored) == 0 {
+		return incoming
+	}
+	var edited, existing map[string]json.RawMessage
+	if json.Unmarshal(incoming, &edited) != nil || json.Unmarshal(stored, &existing) != nil {
+		return incoming
+	}
+	changed := false
+	for _, key := range []string{"blocks", "images"} {
+		if _, mentioned := edited[key]; mentioned {
+			continue
+		}
+		if value, ok := existing[key]; ok && len(value) > 0 {
+			edited[key] = value
+			changed = true
+		}
+	}
+	if !changed {
+		return incoming
+	}
+	merged, err := json.Marshal(edited)
+	if err != nil {
+		return incoming
+	}
+	return merged
 }
 
 func convertSlide(input slideRequest, index int) (model.Slide, error) {

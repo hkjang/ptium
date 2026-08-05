@@ -157,7 +157,7 @@ func main() {
 		BootstrapAdminEmails: applicationConfig.BootstrapAdminEmails, BootstrapAdminSubjects: applicationConfig.BootstrapAdminSubjects,
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
 		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
-		PasswordLoginEnabled: passwordLoginEnabled,
+		PasswordLoginEnabled: passwordLoginEnabled, Version: version,
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)

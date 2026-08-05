@@ -7,6 +7,8 @@ import type {
   ProfilePreferences,
   ServerError,
   Slide,
+  SlideBlock,
+  SlideImage,
   SlideParagraph,
   Template,
   TemplateLayout,
@@ -285,6 +287,14 @@ function normalizeStatus(status: unknown): Presentation['status'] {
   return 'draft'
 }
 
+/** asRecord keeps a stored object as it is, or undefined when there is none. */
+function asRecord<T>(value: unknown): Record<string, T> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const entries = Object.entries(value as Record<string, unknown>).filter(([, item]) => item && typeof item === 'object')
+  if (entries.length === 0) return undefined
+  return Object.fromEntries(entries) as Record<string, T>
+}
+
 /** Slots that hold body copy, in the order the template exposes them. */
 export function bodySlots(fields: Record<string, SlideParagraph[]> | undefined) {
   if (!fields) return []
@@ -434,6 +444,10 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
       body: bullets.join('\n') || String(slide.body || content.body || content.text || '') || undefined,
       bullets,
       fields,
+      // Components and images travel with the slide so that editing its text
+      // cannot delete the drawings the generator made.
+      blocks: asRecord<SlideBlock>(content.blocks),
+      images: asRecord<SlideImage>(content.images),
       speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
       imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
       accent: String(slide.accent || content.accent || '') || undefined,

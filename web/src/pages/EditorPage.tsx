@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, FileText, LoaderCircle, MonitorPlay, Plus, Trash2, X,
+  Copy, Download, FileText, Image, LayoutPanelTop, LoaderCircle, MonitorPlay, Plus, Trash2, X,
 } from 'lucide-react'
-import { api, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
+import { api, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary } from '../components/AssetLibrary'
 import { GridLibrary } from '../components/GridLibrary'
@@ -23,7 +23,62 @@ const defaultSlide = (order: number, layoutId?: string): Slide => ({
 })
 
 const slideBody = (slide?: Slide) => slide?.body || slide?.bullets?.join('\n') || ''
+/** What a slide holds besides prose, named in the workspace's language. */
+interface SlideHolding { slot: string; kind: 'block' | 'image'; label: string; detail: string }
+
+function slideHoldings(slide?: Slide): SlideHolding[] {
+  if (!slide) return []
+  const holdings: SlideHolding[] = Object.entries(slide.blocks || {}).map(([slot, block]) => ({
+    slot, kind: 'block', label: blockLabel(String(block.kind)),
+    detail: String(block.caption || block.heading || '') || `${(block.items?.length ?? block.rows?.length ?? 0)}개 항목`,
+  }))
+  for (const [slot, image] of Object.entries(slide.images || {})) {
+    holdings.push({ slot, kind: 'image', label: '이미지', detail: String(image.name || image.caption || slot) })
+  }
+  return holdings.sort((a, b) => a.slot.localeCompare(b.slot))
+}
+
+/** blockLabel names a component the way the source language does. */
+function blockLabel(kind: string) {
+  switch (kind) {
+    case 'kpi': return '핵심 지표'
+    case 'hero': return '대표 숫자'
+    case 'steps': return '단계'
+    case 'timeline': return '타임라인'
+    case 'comparison': return '비교'
+    case 'columnChart': return '세로 막대 차트'
+    case 'barChart': return '가로 막대 차트'
+    case 'lineChart': return '추이 차트'
+    case 'shareBar': return '비중 바'
+    case 'meter': return '달성률'
+    case 'table': return '표'
+    case 'quote': return '인용'
+    case 'callout': return '강조'
+    case 'grid': return '격자'
+    case 'bullets': return '목록'
+  }
+  return kind
+}
 const slideBodyLines = (slide?: Slide) => slideBody(slide).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+
+/** The slots a component or an image occupies. A slot holds one thing. */
+function drawnSlots(slide: Slide) {
+  return new Set([...Object.keys(slide.blocks || {}), ...Object.keys(slide.images || {})])
+}
+
+/**
+ * proseSlot is the slot the body textarea writes to: the first body slot no
+ * drawing occupies. Writing prose into a component's slot would put two things in
+ * one place, and the server keeps whichever it decides — silently losing one.
+ */
+function proseSlot(slide: Slide, layout?: TemplateLayout) {
+  const drawn = drawnSlots(slide)
+  const free = bodySlots(slide.fields).filter((slot) => !drawn.has(slot))
+  if (free.length > 0) return free[0]
+  const fromLayout = layout?.placeholders.find((placeholder) =>
+    placeholder.kind === 'text' && placeholder.slot !== 'title' && placeholder.slot !== 'subtitle' && !drawn.has(placeholder.slot))
+  return fromLayout?.slot || primaryBodySlot(slide, layout)
+}
 
 /**
  * Rebuilds the template fields for a slide from the edited title and body,
@@ -31,7 +86,7 @@ const slideBodyLines = (slide?: Slide) => slideBody(slide).split(/\r?\n/).map((l
  */
 function slideFields(slide: Slide, layout?: TemplateLayout) {
   const fields: Record<string, { text: string; level?: number }[]> = { ...(slide.fields || {}) }
-  const bodySlot = primaryBodySlot(slide, layout)
+  const bodySlot = proseSlot(slide, layout)
   if (slide.title.trim()) fields.title = [{ text: slide.title.trim() }]
   else delete fields.title
   if (slide.subtitle?.trim() && (fields.subtitle || layout?.placeholders.some((placeholder) => placeholder.slot === 'subtitle'))) {
@@ -64,6 +119,10 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         type: 'template',
         layoutId: slide.layoutId || '',
         fields: slideFields(slide, layout),
+        // The drawings the generator made are the deck's design. They travel with
+        // every save; a save that only carried text used to delete them.
+        blocks: slide.blocks || {},
+        images: slide.images || {},
         bullets: slideBodyLines(slide),
         accent: slide.accent,
       },
@@ -96,6 +155,12 @@ export function EditorPage({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [lastSaved, setLastSaved] = useState<Date | null>(null)
+  // Rendered slides come from the server, so they are only worth refetching when
+  // the server's copy changed. Every save and every applied source bumps this.
+  const [railVersion, setRailVersion] = useState(0)
+  const [savedSlideCount, setSavedSlideCount] = useState(0)
+  const [deckFindings, setDeckFindings] = useState<DeckFinding[] | null>(null)
+  const [findingsOpen, setFindingsOpen] = useState(false)
   const [panel, setPanel] = useState<'design' | 'notes' | 'images' | 'grids'>('design')
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
   // The deck as text. It is the same deck the canvas shows: applying it
@@ -124,11 +189,49 @@ export function EditorPage({ id }: { id: string }) {
   const { showToast } = useToast()
   const markEdited = () => { revision.current += 1; setEditVersion((value) => value + 1) }
 
+  // A presenter's hands are on the arrow keys, not on the footer buttons.
+  useEffect(() => {
+    if (!presenting) return
+    const onKey = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'ArrowRight': case 'PageDown': case ' ': case 'Enter':
+          event.preventDefault()
+          setPresentIndex((value) => Math.min(slides.length - 1, value + 1))
+          break
+        case 'ArrowLeft': case 'PageUp':
+          event.preventDefault()
+          setPresentIndex((value) => Math.max(0, value - 1))
+          break
+        case 'Home': setPresentIndex(0); break
+        case 'End': setPresentIndex(Math.max(0, slides.length - 1)); break
+        case 'Escape': setPresenting(false); break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [presenting, slides.length])
+
+  // The measurement follows the saved deck, not the keystrokes.
+  useEffect(() => {
+    if (railVersion === 0 || savedSlideCount === 0) return
+    let active = true
+    api.inspectPresentation(id)
+      .then((result) => { if (active) setDeckFindings(result.findings) })
+      .catch(() => { if (active) setDeckFindings(null) })
+    return () => { active = false }
+  }, [id, railVersion, savedSlideCount])
+
   const load = useCallback(async () => {
     setLoading(true); setError('')
     try {
       const data = await api.presentation(id)
       setPresentation(data); setSlides(data.slides || []); setActiveId(data.slides?.[0]?.id || '')
+      setSavedSlideCount((data.slides || []).length)
+      // What the deck looks like once drawn, so a finished deck says whether it is
+      // actually finished rather than only that generation ended.
+      if ((data.slides || []).length > 0) {
+        api.inspectPresentation(id).then((result) => setDeckFindings(result.findings)).catch(() => setDeckFindings(null))
+      }
       if (data.templateId) {
         api.template(data.templateId).then(setTemplate).catch(() => setTemplate(null))
       }
@@ -171,6 +274,8 @@ export function EditorPage({ id }: { id: string }) {
           setActiveId((current) => updatedSlides.some((slide) => slide.id === current) ? current : updatedSlides[0]?.id || '')
           setDirty(false)
           setLastSaved(new Date())
+          setSavedSlideCount(updatedSlides.length)
+          setRailVersion((value) => value + 1)
         }
         return true
       } finally {
@@ -206,6 +311,9 @@ export function EditorPage({ id }: { id: string }) {
 
   const activeIndex = Math.max(0, slides.findIndex((slide) => slide.id === activeId))
   const active = slides[activeIndex]
+  const activeHoldings = useMemo(() => slideHoldings(active), [active])
+  const defects = (deckFindings || []).filter((finding) => !finding.advisory)
+  const advisories = (deckFindings || []).filter((finding) => finding.advisory)
   const updateActive = (updates: Partial<Slide>) => {
     if (!active) return
     markEdited()
@@ -308,6 +416,8 @@ export function EditorPage({ id }: { id: string }) {
         setActiveId(compiled[0]?.id || '')
         setDirty(false)
         setLastSaved(new Date())
+        setSavedSlideCount(compiled.length)
+        setRailVersion((value) => value + 1)
       }
       showToast('코드를 적용했습니다.')
       setCanvasMode('preview')
@@ -370,14 +480,42 @@ export function EditorPage({ id }: { id: string }) {
     <main className="editor-page">
       <header className="editor-header">
         <div className="editor-header-left"><button className="icon-button" aria-label="저장하고 프레젠테이션 목록으로 이동" onClick={() => void leaveEditor()}><ArrowLeft size={18} /></button><span className="editor-brand"><BrandMark size="tiny" /></span><span className="header-divider" /><input className="deck-title-input" maxLength={200} value={presentation.title} onChange={(event) => { markEdited(); setPresentation({ ...presentation, title: event.target.value }); setDirty(true) }} aria-label="프레젠테이션 제목" /></div>
-        <div className="editor-history"><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
+        <div className="editor-history"><button
+            className={`deck-state ${defects.length > 0 ? 'has-defects' : advisories.length > 0 ? 'has-advisories' : 'clean'}`}
+            onClick={() => setFindingsOpen(true)}
+            disabled={deckFindings === null}
+            title="그려진 슬라이드를 측정한 결과입니다"
+          >{deckFindings === null
+            ? <><LoaderCircle className="spin" size={13} /> 측정 중</>
+            : defects.length > 0
+              ? <><CircleAlert size={13} /> 결함 {defects.length}</>
+              : advisories.length > 0
+                ? <><AlertTriangle size={13} /> 다듬을 곳 {advisories.length}</>
+                : <><Check size={13} /> 결함 없음</>}
+          </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
         <div className="editor-actions"><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       <div className="editor-workspace">
         <aside className="slide-rail">
           <div className="slide-rail-head"><strong>슬라이드</strong><span>{slides.length} / {MAX_SLIDES}</span></div>
-          <div className="slide-list">{slides.map((slide, index) => <button key={slide.id} className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}`} onClick={() => setActiveId(slide.id)}><span className="slide-number">{index + 1}</span><div className={`slide-thumbnail theme-${presentation.theme || 'aurora'}`}><span>{slide.title || '제목 없음'}</span><i style={{ background: slide.accent || undefined }} /><small>{slideBodyLines(slide)[0] || slide.subtitle || ''}</small></div></button>)}</div>
+          <div className="slide-list">{slides.map((slide, index) => {
+            const holdings = slideHoldings(slide)
+            const drawn = !slide.id.startsWith('new-') && index < savedSlideCount
+            return <button key={slide.id} className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}`} onClick={() => setActiveId(slide.id)}>
+              <span className="slide-number">{index + 1}</span>
+              <div className="slide-thumbnail">
+                {/* The template's own drawing, not an approximation of it. */}
+                {drawn
+                  ? <SlidePreview cacheKey={`${id}-rail-${index}-${railVersion}`} alt={`${index + 1}번 슬라이드`} load={() => api.slidePreview(id, index + 1, 260)} />
+                  : <div className="slide-thumbnail-pending"><span>{slide.title || '제목 없음'}</span><small>저장하면 그려집니다</small></div>}
+              </div>
+              <span className="slide-thumbnail-meta">
+                <strong>{slide.title || '제목 없음'}</strong>
+                {holdings.length > 0 && <em>{holdings.map((holding) => holding.label).join(' · ')}</em>}
+              </span>
+            </button>
+          })}</div>
           <button className="add-slide-button" disabled={slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} onClick={addSlide}><Plus size={15} /> {slides.length >= MAX_SLIDES ? '최대 슬라이드 수 도달' : '슬라이드 추가'}</button>
         </aside>
 
@@ -388,11 +526,34 @@ export function EditorPage({ id }: { id: string }) {
             <button className={canvasMode === 'source' ? 'active' : ''} onClick={() => void openSource()}><Code2 size={13} /> 코드</button>
           </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
           {active ? <div className="canvas-stage">
-            {canvasMode === 'edit' ? <div className={`slide-canvas layout-${active.layout} theme-${presentation.theme || 'aurora'}`}>
-              <span className="slide-canvas-kicker">{active.subtitle || `SLIDE ${activeIndex + 1}`}</span>
-              <input value={active.title} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} className="slide-title-editor" aria-label="슬라이드 제목" placeholder="슬라이드 제목" />
-              <Textarea value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." />
-              <span className="slide-decoration" style={{ background: active.accent || undefined }} /><span className="slide-page-number">{String(activeIndex + 1).padStart(2, '0')}</span>
+            {canvasMode === 'edit' ? <div className="slide-edit-pane">
+              <div className="slide-edit-fields">
+                <label className="slide-edit-field">
+                  <span>제목</span>
+                  <input value={active.title} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} className="slide-title-editor" aria-label="슬라이드 제목" placeholder="슬라이드 제목" />
+                </label>
+                <label className="slide-edit-field">
+                  <span>리드 문장</span>
+                  <input value={active.subtitle || ''} maxLength={300} onChange={(event) => updateActive({ subtitle: event.target.value })} aria-label="리드 문장" placeholder="제목 아래 한 줄" />
+                </label>
+                <label className="slide-edit-field grow">
+                  <span>본문 {activeHoldings.length > 0 ? '(컴포넌트 옆 영역)' : ''}</span>
+                  <Textarea value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." />
+                </label>
+                {activeHoldings.length > 0 && <div className="slide-holdings">
+                  <strong>이 슬라이드가 담고 있는 것</strong>
+                  <ul>{activeHoldings.map((holding) => <li key={holding.slot}>
+                    {holding.kind === 'image' ? <Image size={13} /> : <LayoutPanelTop size={13} />}
+                    <span>{holding.label}</span><small>{holding.detail}</small>
+                  </li>)}</ul>
+                  <p>컴포넌트와 이미지는 텍스트로 고칠 수 없습니다. 내용을 바꾸려면 <button type="button" onClick={() => void openSource()}>코드</button>에서 편집하세요. 여기서 글을 고쳐도 지워지지 않습니다.</p>
+                </div>}
+              </div>
+              <div className="slide-edit-render">
+                {/* The saved slide as the template draws it, so editing is not blind. */}
+                <SlidePreview cacheKey={`${id}-edit-${activeIndex}-${railVersion}`} alt={`${activeIndex + 1}번 슬라이드`} load={() => api.slidePreview(id, activeIndex + 1, 900)} />
+                <small>{dirty ? '저장 후 이 그림에 반영됩니다.' : '실제 템플릿으로 그린 현재 상태입니다.'}</small>
+              </div>
             </div> : canvasMode === 'source' ? <div className="source-editor">
               <div className="source-editor-head">
                 <div>
@@ -494,7 +655,42 @@ export function EditorPage({ id }: { id: string }) {
         </aside>
       </div>
 
-      {presenting && <div className="presentation-mode" role="dialog" aria-modal="true"><header><span>{presentation.title}</span><button onClick={() => setPresenting(false)}><X size={20} /> 닫기</button></header><div className={`present-slide layout-${slides[presentIndex]?.layout || 'content'} theme-${presentation.theme || 'aurora'}`}><span>{slides[presentIndex]?.subtitle || `SLIDE ${presentIndex + 1}`}</span><h1>{slides[presentIndex]?.title}</h1><div className="present-body">{slideBodyLines(slides[presentIndex]).map((line, index) => <p key={index}>{line}</p>)}</div><i style={{ background: slides[presentIndex]?.accent || undefined }} /></div><footer><button disabled={presentIndex === 0} onClick={() => setPresentIndex((value) => value - 1)}><ChevronLeft size={22} /></button><span>{presentIndex + 1} / {slides.length}</span><button disabled={presentIndex === slides.length - 1} onClick={() => setPresentIndex((value) => value + 1)}><ChevronRight size={22} /></button></footer></div>}
+      {presenting && <div className="presentation-mode" role="dialog" aria-modal="true">
+        <header><span>{presentation.title}</span><button onClick={() => setPresenting(false)}><X size={20} /> 닫기</button></header>
+        {/* The slide as it will be shown, drawn by the same renderer as the export. */}
+        <div className="present-render">
+          <SlidePreview
+            cacheKey={`${id}-present-${presentIndex}-${railVersion}`}
+            alt={`${presentIndex + 1}번 슬라이드`}
+            load={() => api.slidePreview(id, presentIndex + 1, 1600)}
+          />
+        </div>
+        {slides[presentIndex]?.speakerNotes && <div className="present-notes"><strong>발표 노트</strong><p>{slides[presentIndex]?.speakerNotes}</p></div>}
+        <footer>
+          <button disabled={presentIndex === 0} onClick={() => setPresentIndex((value) => value - 1)}><ChevronLeft size={22} /></button>
+          <span>{presentIndex + 1} / {slides.length}<small>← → 로 이동 · ESC 로 종료</small></span>
+          <button disabled={presentIndex === slides.length - 1} onClick={() => setPresentIndex((value) => value + 1)}><ChevronRight size={22} /></button>
+        </footer>
+      </div>}
+      <Modal
+        open={findingsOpen}
+        onClose={() => setFindingsOpen(false)}
+        title="그려진 슬라이드 측정 결과"
+        description="결함은 잘못 그려진 것, 다듬을 곳은 제대로 그려졌지만 더 좋아질 수 있는 것입니다."
+        footer={<Button variant="secondary" onClick={() => setFindingsOpen(false)}>닫기</Button>}
+      >
+        {(deckFindings || []).length === 0
+          ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
+          : <ul className="deck-findings">{(deckFindings || []).map((finding) => (
+              <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className={finding.advisory ? 'advisory' : 'defect'}>
+                <button type="button" onClick={() => { const target = slides[finding.slide - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
+                  <strong>{finding.slide}번 슬라이드</strong>
+                  <span>{findingLabel(finding.kind)}</span>
+                  <small>{finding.detail}</small>
+                </button>
+              </li>
+            ))}</ul>}
+      </Modal>
       <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="프레젠테이션 내보내기" description="사용할 형식을 선택하세요." footer={<Button variant="secondary" onClick={() => setExportOpen(false)}>취소</Button>}><div className="export-options"><button disabled={exporting} onClick={() => void exportDeck('pptx')}><span className="export-icon ppt"><FileText size={22} /></span><div><strong>PowerPoint (.pptx)</strong><p>Microsoft PowerPoint와 호환되는 편집 가능한 파일</p></div><Download size={18} /></button><button disabled title="추후 제공 예정"><span className="export-icon pdf"><FileText size={22} /></span><div><strong>PDF 문서 (.pdf) · 곧 제공</strong><p>읽기 전용 PDF 내보내기는 준비 중입니다.</p></div></button></div>{exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}</Modal>
     </main>
   )

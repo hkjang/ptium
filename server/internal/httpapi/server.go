@@ -38,12 +38,15 @@ type AuthPublicConfig struct {
 }
 
 type Options struct {
-	Store                  *store.Store
-	Settings               *settings.Service
-	Keys                   *keys.Manager
-	Worker                 *generation.Worker
-	Authenticator          auth.Authenticator
-	AuthPublic             AuthPublicConfig
+	Store         *store.Store
+	Settings      *settings.Service
+	Keys          *keys.Manager
+	Worker        *generation.Worker
+	Authenticator auth.Authenticator
+	AuthPublic    AuthPublicConfig
+	// Version is the build the workspace is running, shown in the account menu so
+	// a bug report and a release can be matched up.
+	Version                string
 	AdminRoles             []string
 	BootstrapAdminEmails   []string
 	BootstrapAdminSubjects []string
@@ -70,6 +73,7 @@ type Server struct {
 	worker                 *generation.Worker
 	authenticator          auth.Authenticator
 	authPublic             AuthPublicConfig
+	version                string
 	adminRoles             []string
 	bootstrapAdminEmails   []string
 	bootstrapAdminSubjects []string
@@ -107,6 +111,7 @@ func New(options Options) (*Server, error) {
 	return &Server{
 		store: options.Store, settings: options.Settings, keys: options.Keys, worker: options.Worker,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
+		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,
 		webHandler:      options.WebHandler,

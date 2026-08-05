@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -27,5 +28,59 @@ func TestExistingPresentationEditRetainsAbsoluteMaximum(t *testing.T) {
 	}
 	if message := validatePresentationEditInput(input); !strings.Contains(message, "between 1 and 50") {
 		t.Fatalf("absolute edit limit was not enforced: %q", message)
+	}
+}
+
+// A generated deck is mostly components. The canvas editor knows about text and
+// sends back the fields it edited, so replacing content wholesale erased every
+// KPI row, timeline and image on the first keystroke.
+func TestUpdateKeepsDrawingsAnEditDoesNotMention(t *testing.T) {
+	stored := json.RawMessage(`{"type":"template","fields":{"title":[{"text":"현황"}]},` +
+		`"blocks":{"body2":{"kind":"kpi","items":[{"label":"전환 대상","value":"42개"}]}},` +
+		`"images":{"body3":{"assetId":"a1","name":"로고"}}}`)
+	edited := json.RawMessage(`{"type":"template","fields":{"title":[{"text":"현황 정리"}]},"bullets":["요점"]}`)
+
+	merged := preserveDrawing(edited, stored)
+	var content struct {
+		Fields map[string][]struct{ Text string } `json:"fields"`
+		Blocks map[string]struct {
+			Kind  string `json:"kind"`
+			Items []struct {
+				Label string `json:"label"`
+				Value string `json:"value"`
+			} `json:"items"`
+		} `json:"blocks"`
+		Images map[string]struct {
+			AssetID string `json:"assetId"`
+		} `json:"images"`
+	}
+	if err := json.Unmarshal(merged, &content); err != nil {
+		t.Fatalf("merged content is not valid JSON: %v", err)
+	}
+	// The edit is kept.
+	if len(content.Fields["title"]) != 1 || content.Fields["title"][0].Text != "현황 정리" {
+		t.Fatalf("the edited title should win: %s", merged)
+	}
+	// The drawings survive it.
+	block, ok := content.Blocks["body2"]
+	if !ok || block.Kind != "kpi" || len(block.Items) != 1 || block.Items[0].Value != "42개" {
+		t.Fatalf("the component should survive an edit that ignores it: %s", merged)
+	}
+	if content.Images["body3"].AssetID != "a1" {
+		t.Fatalf("the image should survive too: %s", merged)
+	}
+}
+
+// Deleting has to stay possible: an explicit empty object clears the slot.
+func TestUpdateClearsDrawingsWhenAskedExplicitly(t *testing.T) {
+	stored := json.RawMessage(`{"blocks":{"body":{"kind":"kpi"}},"images":{"body2":{"assetId":"a1"}}}`)
+	for _, edited := range []string{
+		`{"fields":{},"blocks":{},"images":{}}`,
+		`{"fields":{},"blocks":null,"images":null}`,
+	} {
+		merged := preserveDrawing(json.RawMessage(edited), stored)
+		if strings.Contains(string(merged), "kpi") || strings.Contains(string(merged), "a1") {
+			t.Fatalf("%s should clear the drawings, got %s", edited, merged)
+		}
 	}
 }

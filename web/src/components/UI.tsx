@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { AlertTriangle, Inbox, LoaderCircle, RefreshCw } from 'lucide-react'
 
@@ -60,6 +61,14 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
 export function Modal({ open, title, description, children, footer, onClose }: {
   open: boolean; title: string; description?: string; children: ReactNode; footer?: ReactNode; onClose: () => void
 }) {
+  // Escape closes a dialog. Every other overlay in the workspace does, and one
+  // that does not reads as stuck.
+  useEffect(() => {
+    if (!open) return
+    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [open, onClose])
   if (!open) return null
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>

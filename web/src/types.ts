@@ -59,6 +59,27 @@ export interface SlideParagraph {
   level?: number
 }
 
+/**
+ * A drawn component in a template slot — a KPI row, a timeline, a comparison
+ * table. The editor does not edit its insides; it carries it so that editing the
+ * text around it cannot destroy it.
+ */
+export interface SlideBlock {
+  kind: string
+  heading?: string
+  caption?: string
+  items?: Array<Record<string, unknown>>
+  rows?: string[][]
+  [key: string]: unknown
+}
+
+/** An image placed in a slot, by reference to the asset store. */
+export interface SlideImage {
+  assetId: string
+  name?: string
+  caption?: string
+}
+
 export interface Slide {
   id: string
   order: number
@@ -70,6 +91,10 @@ export interface Slide {
   bullets?: string[]
   /** Template slot name to its paragraphs, as stored by the server. */
   fields?: Record<string, SlideParagraph[]>
+  /** Slot name to the component drawn in it. A slot holds text or a component, never both. */
+  blocks?: Record<string, SlideBlock>
+  /** Slot name to the image drawn in it. */
+  images?: Record<string, SlideImage>
   speakerNotes?: string
   imageUrl?: string
   accent?: string

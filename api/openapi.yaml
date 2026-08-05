@@ -509,7 +509,10 @@ paths:
     get:
       operationId: getPublicSettings
       summary: Get public branding and generation settings
-      description: Returns only non-sensitive `branding.*` and `generation.*` settings. Authentication is not required.
+      description: >-
+        Returns only non-sensitive `branding.*` and `generation.*` settings, plus
+        `service.version` — the build the server is running. Authentication is not
+        required.
       tags: [Settings]
       security: []
       responses:
@@ -2842,7 +2845,7 @@ components:
         data:
           type: object
           propertyNames:
-            pattern: '^(branding|generation)\.'
+            pattern: '^(branding|generation|service)\.'
           additionalProperties:
             $ref: '#/components/schemas/JSONValue'
           example:
@@ -2852,6 +2855,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
+            service.version: 0.13.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -3502,6 +3506,11 @@ components:
         `blocks` maps a slot to a visual component drawn in it. A slot holds
         either paragraphs or a component, never both. Unknown keys are ignored,
         so clients may round-trip content they do not understand.
+
+        Updating a slide without mentioning `blocks` or `images` keeps whatever
+        the slide already carries: a client that only edits text cannot delete the
+        components and pictures a generated deck is largely made of. Send
+        `"blocks": {}` to clear them.
       properties:
         type:
           type: string

@@ -5,9 +5,11 @@ interface BrandState {
   productName: string
   logoUrl: string
   brandColor: string
+  /** The build the server is running, as it reports itself. Empty until it answers. */
+  version: string
 }
 
-const fallbackBrand: BrandState = { productName: 'Ptium', logoUrl: '', brandColor: '#725BD6' }
+const fallbackBrand: BrandState = { productName: 'Ptium', logoUrl: '', brandColor: '#725BD6', version: '' }
 const BrandContext = createContext<BrandState>(fallbackBrand)
 
 export function BrandProvider({ children }: { children: ReactNode }) {
@@ -23,6 +25,7 @@ export function BrandProvider({ children }: { children: ReactNode }) {
           productName: String(settings['branding.product_name'] || fallbackBrand.productName).trim() || fallbackBrand.productName,
           logoUrl: String(settings['branding.logo_url'] || '').trim(),
           brandColor,
+          version: String(settings['service.version'] || '').trim(),
         })
       }).catch(() => { /* The built-in brand remains available while the API starts. */ })
     void load()

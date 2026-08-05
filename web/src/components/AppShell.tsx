@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
-  Activity, BookOpen, ChevronDown, CircleUserRound, Gauge, KeyRound, LayoutDashboard,
+  Activity, BookOpen, ChevronDown, CircleUserRound, Gauge, Info, KeyRound, LayoutDashboard,
   LayoutTemplate, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
@@ -29,6 +29,16 @@ const adminNav: NavItem[] = [
   { label: '오류 · 인시던트', to: '/admin/errors', icon: <Activity size={18} />, admin: true },
 ]
 
+/**
+ * versionLabel reads the build the way a person would say it. A build made
+ * outside a release reports itself as "dev", and "vdev" is not a version.
+ */
+function versionLabel(version: string) {
+  if (!version) return '버전 확인 중…'
+  if (version === 'dev') return '개발 빌드'
+  return /^\d/.test(version) ? `v${version}` : version
+}
+
 function PtiumLogo({ compact = false }: { compact?: boolean }) {
   const { productName } = useBrand()
   return (
@@ -52,6 +62,7 @@ function NavLink({ item, collapsed, onClick }: { item: NavItem; collapsed: boole
 
 export function AppShell({ children, title, eyebrow, actions }: { children: ReactNode; title?: string; eyebrow?: string; actions?: ReactNode }) {
   const { user, signOut } = useAuth()
+  const { productName, version } = useBrand()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('ptium.nav_collapsed') === 'true')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
@@ -142,6 +153,15 @@ export function AppShell({ children, title, eyebrow, actions }: { children: Reac
                 <div className="account-menu-head"><strong>{user?.name}</strong><span>{user?.email}</span></div>
                 <Link to="/profile"><CircleUserRound size={16} /> 내 프로필</Link>
                 <button onClick={() => void logout()}><LogOut size={16} /> 로그아웃</button>
+                {/* The build, so a report and a release can be matched up. */}
+                <div className="account-menu-foot">
+                  <span><Info size={13} /> {productName} {versionLabel(version)}</span>
+                  <button
+                    type="button"
+                    className="account-menu-copy"
+                    onClick={() => { void navigator.clipboard?.writeText(`${productName} ${versionLabel(version)}`); setAccountOpen(false) }}
+                  >복사</button>
+                </div>
               </div>}
             </div>
           </div>
