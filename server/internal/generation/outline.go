@@ -102,6 +102,9 @@ var periodPattern = regexp.MustCompile(
 // "400M KRW" is an amount rather than the letter M.
 var figurePattern = regexp.MustCompile(`(?i)(\d[\d,.]*)\s*(%|퍼센트|억원|만원|개월|시간|주일|억|만|천|배|개|건|명|일|주|년|원|달러|` +
 	`[kmb]n?\s*(?:KRW|USD|EUR|JPY|GBP)|KRW|USD|EUR|JPY|GBP|` +
+	// The same units as the Korean ones, in the characters Japanese and Chinese
+	// write them with: without these a brief's figures became slide titles.
+	`億円|亿元|万円|万元|千円|か月|ヶ月|カ月|个月|小時|小时|時間|パーセント|億|亿|万|千|倍|割|円|元|人|名|件|個|个|日|天|週|周|月|年|` +
 	`months?|weeks?|quarters?|years?|days?|hours?|minutes?|` +
 	`people|users?|customers?|accounts?|systems?|teams?|sites?|stores?|cases?|` +
 	`percentage points?|pp|x)\b?`)
@@ -110,7 +113,7 @@ var figurePattern = regexp.MustCompile(`(?i)(\d[\d,.]*)\s*(%|퍼센트|억원|�
 // and list punctuation both appear constantly.
 // A topic never spans a full stop: two sentences are two thoughts, and joining
 // them produces a "topic" that reads like a paragraph of the brief.
-var topicSplitter = regexp.MustCompile(`\s*(?:[.!?。]+\s|[.!?。]+$|,|·|/|、|;|:|：|및|그리고|와\s|과\s|\band\b|\bplus\b|\+)\s*`)
+var topicSplitter = regexp.MustCompile(`\s*(?:[。！？]+|[.!?]+\s|[.!?]+$|,|·|/|、|，|;|；|:|：|및|그리고|와\s|과\s|\band\b|\bplus\b|\+)\s*`)
 
 // outlinePrompt reads a prompt into the structure of a deck.
 func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
@@ -208,6 +211,9 @@ func topicPhrase(name string) string {
 	const limit = 20
 	if latinPhrase(name) {
 		return latinHeadPhrase(name, 48)
+	}
+	if spacelessScript(name) {
+		return cjkTailPhrase(name, limit)
 	}
 	words := make([]string, 0, 8)
 	for _, word := range strings.Fields(strings.TrimSpace(name)) {
@@ -339,8 +345,29 @@ func figureLabel(prompt, match string) string {
 	// A label is the words immediately before the number, and it never reaches
 	// back past punctuation: "…도입 효과: 개발 속도 32%" labels the 32%, not the
 	// sentence it sits in.
-	if cut := strings.LastIndexAny(before, ",:·、;：/"); cut >= 0 {
-		before = strings.TrimSpace(before[cut+len(string(before[cut])):])
+	if cut := strings.LastIndexAny(before, ",:·、，;；：/"); cut >= 0 {
+		// LastIndexAny reports a byte offset, and "、" is three bytes: stepping
+		// over it as though it were one left a stray byte at the front of the
+		// label, which is how a figure came out labelled "\ufffd予算".
+		_, size := utf8.DecodeRuneInString(before[cut:])
+		before = strings.TrimSpace(before[cut+size:])
+	}
+	if spacelessScript(before) {
+		// Nothing to split on, so the label is what sits immediately before the
+		// number, back to the particle or punctuation that separates it from the
+		// rest of the sentence: "…冗長化する計画。目標可用性99.95%" labels 99.95%
+		// with 目標可用性, not with the sentence before it.
+		runes := []rune(before)
+		const reach = 8
+		for index := len(runes) - 1; index >= 0 && len(runes)-index <= reach; index-- {
+			if phraseBreaks[runes[index]] {
+				return strings.TrimSpace(string(runes[index+1:]))
+			}
+		}
+		if len(runes) > reach {
+			runes = runes[len(runes)-reach:]
+		}
+		return strings.TrimSpace(string(runes))
 	}
 	fields := strings.Fields(before)
 	if len(fields) == 0 {
@@ -430,6 +457,11 @@ func (outline promptOutline) subjectPhrase() string {
 	// As with the title: a phrase that had to give up its opening words is not
 	// what the deck is about, and the first subject is.
 	if phrase, shortened := titlePhrase(outline.Subject); phrase != "" && !shortened {
+		// A title has a line to itself; a sentence built around the subject does
+		// not, so prose takes the shorter form of the same phrase.
+		if within := phraseWithin(phrase, 30); within != "" {
+			return within
+		}
 		return phrase
 	}
 	if len(outline.Topics) > 0 && strings.TrimSpace(outline.Topics[0].Name) != "" {
@@ -450,8 +482,14 @@ func titlePhrase(subject string) (string, bool) {
 	if latinPhrase(subject) {
 		// Latin script puts the head noun first, so an over-long phrase gives way
 		// at the end rather than at the front.
-		phrase := latinHeadPhrase(subject, 48)
-		return phrase, phrase != cleanTopic(strings.TrimSpace(subject))
+		// The head is what the deck is about, so a phrase that gave up its tail
+		// has not given up its subject: nothing to report.
+		return latinHeadPhrase(subject, 48), false
+	}
+	if spacelessScript(subject) {
+		// No spaces to trim words at, so the cut is made where a clause ends —
+		// and, as with Latin, the opening is kept, so nothing is reported.
+		return cjkHeadPhrase(subject, limit), false
 	}
 	words := strings.Fields(strings.TrimSpace(subject))
 	// Everything from the audience onward is the request, not the subject.
@@ -652,6 +690,9 @@ func phraseWithin(name string, limit int) string {
 	if latinPhrase(name) {
 		return latinHeadPhrase(name, limit)
 	}
+	if spacelessScript(name) {
+		return cjkTailPhrase(name, limit)
+	}
 	words := strings.Fields(strings.TrimSpace(name))
 	for start := 0; start < len(words); start++ {
 		candidate := cleanTopic(strings.Join(words[start:], " "))
@@ -677,3 +718,82 @@ func capitalized(value string) string {
 	runes[0] = unicode.ToUpper(runes[0])
 	return string(runes)
 }
+
+// --- phrases in a script that has no spaces ----------------------------------
+
+// spacelessScript reports whether a phrase is written without spaces between
+// its words, as Japanese and Chinese are.
+//
+// Every rule above works on words, and strings.Fields on a Japanese sentence
+// returns the sentence. So a phrase in one of those scripts was never trimmed
+// at all: "予算4億" arrived as a slide title instead of as a figure, and a cut
+// to length landed in the middle of a word — "二つの" became "つの".
+func spacelessScript(value string) bool {
+	letters, spaceless := 0, 0
+	for _, symbol := range value {
+		if !unicode.IsLetter(symbol) {
+			continue
+		}
+		letters++
+		// Korean is written with spaces, so Hangul is not counted here.
+		if unicode.Is(unicode.Han, symbol) || unicode.Is(unicode.Hiragana, symbol) ||
+			unicode.Is(unicode.Katakana, symbol) {
+			spaceless++
+		}
+	}
+	return letters > 0 && spaceless*2 >= letters
+}
+
+// phraseBreaks are where a Japanese or Chinese phrase can be cut without
+// landing inside a word: the particles that join clauses, and punctuation.
+var phraseBreaks = map[rune]bool{
+	// Japanese case particles.
+	'を': true, 'は': true, 'が': true, 'に': true, 'で': true, 'へ': true, 'と': true,
+	'も': true, 'や': true, 'ら': true, 'り': true,
+	// Chinese function words that end a modifier.
+	'的': true, '和': true, '与': true, '及': true, '在': true, '对': true, '为': true,
+	'把': true, '从': true, '到': true, '让': true, '向': true,
+	// Punctuation, in both. Only the full-width forms: a full stop between two
+	// digits is a decimal point, and cutting a phrase at it splits a number.
+	'、': true, '。': true, '，': true, '；': true, '：': true, '・': true, '「': true, '」': true,
+	'（': true, '）': true, '！': true, '？': true,
+}
+
+// cjkTailPhrase keeps the tail of a space-less phrase — where these scripts,
+// like Korean, put the head noun — cutting where a clause ends rather than
+// inside a word.
+func cjkTailPhrase(name string, limit int) string {
+	runes := []rune(strings.Trim(strings.TrimSpace(name), " 、。，・"))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	for start := len(runes) - limit; start < len(runes); start++ {
+		if start == 0 || phraseBreaks[runes[start-1]] {
+			return strings.Trim(string(runes[start:]), " 、。，・")
+		}
+	}
+	return strings.Trim(string(runes[len(runes)-limit:]), " 、。，・")
+}
+
+// cjkHeadPhrase keeps the opening of a space-less phrase, for a cover title:
+// the words a brief drops last are the ones that say what it is about.
+func cjkHeadPhrase(name string, limit int) string {
+	runes := []rune(strings.Trim(strings.TrimSpace(name), " 、。，・"))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	// A brief's first sentence is its subject, so the cut is made there when one
+	// ends within reach. Otherwise it is made where a clause ends — a comma
+	// before the sentence's own end would keep half a thought.
+	for _, breaks := range []map[rune]bool{sentenceEnds, phraseBreaks} {
+		for end := limit; end > 0; end-- {
+			if breaks[runes[end]] || breaks[runes[end-1]] {
+				return strings.Trim(string(runes[:end]), " 、。，・")
+			}
+		}
+	}
+	return strings.Trim(string(runes[:limit]), " 、。，・")
+}
+
+// sentenceEnds are where one thought finishes and the next begins.
+var sentenceEnds = map[rune]bool{'。': true, '！': true, '？': true}

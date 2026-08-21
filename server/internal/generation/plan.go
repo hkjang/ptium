@@ -140,7 +140,10 @@ type sectionPlan struct {
 // newDeckPlan builds the wording for a deck from its outline.
 func newDeckPlan(outline promptOutline, presentation model.Presentation, phrases languageCopy, audience, presenter string) deckPlanCopy {
 	joiner := ", "
-	if languageOf(presentation.Language) == "ko" {
+	switch languageOf(presentation.Language) {
+	case "ko", "ja", "zh":
+		// A comma inside a Japanese or Chinese title reads as punctuation of the
+		// sentence it was lifted from; the interpunct reads as a join.
 		joiner = " · "
 	}
 	title := outline.deckTitle(presentation.Title, presentation.Prompt, joiner)

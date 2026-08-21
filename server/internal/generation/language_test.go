@@ -3,6 +3,7 @@ package generation
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -113,5 +114,81 @@ func TestLatinTitlesAreCapitalized(t *testing.T) {
 		if first := []rune(title)[0]; first >= 'a' && first <= 'z' {
 			t.Errorf("the slide is titled %q:\n%s", title, generated.Source)
 		}
+	}
+}
+
+// Japanese and Chinese are written without spaces, so every word-based rule
+// above was a no-op on them: a phrase was cut mid-word and a brief's figures
+// became slide titles.
+func TestASpacelessBriefIsReadAsPhrases(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		language string
+		prompt   string
+		title    string
+		figures  []string
+	}{
+		{"ja", "決済プラットフォームを二つのリージョンに冗長化する計画。目標可用性99.95%、予算4億、3段階で移行。",
+			"決済プラットフォームを二つのリージョンに冗長化する計画", []string{"目標可用性 | 99.95%", "予算 | 4億"}},
+		{"zh", "将支付平台在两个区域实现冗余的计划。目标可用性99.95%，预算4亿元，分三个阶段迁移。",
+			"将支付平台在两个区域实现冗余的计划", []string{"目标可用性 | 99.95%", "预算 | 4亿元"}},
+	}
+	for _, test := range cases {
+		generated := Fallback(model.Presentation{Language: test.language, RequestedSlideCount: 8, Prompt: test.prompt},
+			model.Profile{}, Template{ID: "t", Manifest: manifest})
+		if !strings.HasPrefix(generated.Source, "# "+test.title+"\n") {
+			t.Errorf("%s: the deck is titled %q, want %q", test.language,
+				strings.SplitN(generated.Source, "\n", 2)[0], "# "+test.title)
+		}
+		for _, figure := range test.figures {
+			if !strings.Contains(generated.Source, "- "+figure) {
+				t.Errorf("%s: the figures do not include %q:\n%s", test.language, figure, generated.Source)
+			}
+		}
+		// A figure the brief gave is a number on a slide, never the slide's title.
+		for _, line := range strings.Split(generated.Source, "\n") {
+			if !strings.HasPrefix(line, "# ") {
+				continue
+			}
+			for _, unwanted := range []string{"99.95", "4億", "4亿"} {
+				if strings.Contains(line, unwanted) {
+					t.Errorf("%s: a figure became the title %q", test.language, line)
+				}
+			}
+		}
+		// And a lead never opens on the particle its subject left behind.
+		for _, line := range strings.Split(generated.Source, "\n") {
+			if !strings.HasPrefix(line, "> ") {
+				continue
+			}
+			// Japanese case particles and punctuation. A Chinese lead may open on
+			// 从 or 把 — those are words there, not leftovers.
+			leftovers := map[rune]bool{'の': true, 'を': true, 'は': true, 'が': true, 'に': true,
+				'で': true, 'と': true, 'も': true, '、': true, '。': true, '，': true, '的': true}
+			if first := []rune(strings.TrimSpace(line[2:]))[0]; leftovers[first] {
+				t.Errorf("%s: a lead opens on a particle: %q", test.language, line)
+			}
+		}
+	}
+}
+
+// A label is read back from the characters before the number, and stepping over
+// a three-byte "、" as though it were one byte left a stray byte in front of it.
+func TestASpacelessFigureLabelIsWholeCharacters(t *testing.T) {
+	outline := outlinePrompt("計画。目標可用性99.95%、予算4億", "", japaneseCopy)
+	for _, figure := range outline.Figures {
+		if !utf8.ValidString(figure.Label) {
+			t.Errorf("the label %q is not valid UTF-8", figure.Label)
+		}
+	}
+	if len(outline.Figures) != 2 || outline.Figures[1].Label != "予算" {
+		t.Fatalf("figures = %#v", outline.Figures)
 	}
 }

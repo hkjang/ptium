@@ -172,7 +172,10 @@ func withoutSubject(lead, title, topic string) string {
 		if subject == "" || !strings.HasPrefix(title, subject) || !strings.HasPrefix(lead, subject) {
 			continue
 		}
-		rest := strings.TrimLeft(strings.TrimPrefix(lead, subject), "은는이가을를의에서도")
+		// The particle the subject was carrying goes with it. Japanese and
+		// Chinese leave one behind too — "…の現在地を整理します" — and a lead that
+		// opens on a particle is not a sentence in any of these languages.
+		rest := strings.TrimLeft(strings.TrimPrefix(lead, subject), "은는이가을를의에서도のをはがにでとも的和与及")
 		rest = strings.TrimSpace(rest)
 		// Only when what is left is still a sentence rather than a fragment.
 		if utf8.RuneCountInString(rest) >= 6 {
