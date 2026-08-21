@@ -276,3 +276,47 @@ func TestComparisonCardHeadlineFitsItsCard(t *testing.T) {
 		t.Fatalf("a card never carries more than three lines: %d", longLines)
 	}
 }
+
+// A live model wrote "목표 가용성" into a three-card indicator row in half a
+// slide's width. The label wrapped, the card had reserved one line for it, and
+// the second line was drawn straight through the number.
+func TestIndicatorCardsMakeRoomForALabelThatWraps(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	design := NewDesign(manifest)
+	frame := Frame{X: 800000, Y: 1900000, Width: 4600000, Height: 2400000}
+	placeholder := Placeholder{Slot: SlotBody, Kind: "text", X: frame.X, Y: frame.Y,
+		Width: frame.Width, Height: frame.Height, MaxLines: 8, FontSize: 1800}
+	block := Block{Kind: BlockKPI, Caption: "핵심 지표", Heading: "전체 추진 흐름과 의사결정 사항", Items: []Item{
+		{Label: "목표 가용성", Value: "99.95%", Number: kpiNumber(99.95)},
+		{Label: "총 예산", Value: "4억 원", Number: kpiNumber(4)},
+		{Label: "이행 기간", Value: "8개월", Number: kpiNumber(8)},
+	}}
+	findings := inspectComponent(placeholder, frame, block, design, 12192000, 6858000)
+	for _, finding := range findings {
+		if finding.Kind == FindingCollision || finding.Kind == FindingOverflow {
+			t.Fatalf("%s: %s", finding.Kind, finding.Detail)
+		}
+	}
+	// The number is still the loudest thing on the card.
+	component := RenderBlock(design, frame, block)
+	var labelSize, valueSize int
+	for _, primitive := range component.Primitives {
+		if primitive.Kind != shapeText || len(primitive.Lines) == 0 {
+			continue
+		}
+		switch primitive.Lines[0].Text {
+		case "목표 가용성":
+			labelSize = primitive.FontSize
+		case "99.95%":
+			valueSize = primitive.FontSize
+		}
+	}
+	if labelSize == 0 || valueSize == 0 {
+		t.Fatalf("the card lost its label or its figure: label=%d value=%d", labelSize, valueSize)
+	}
+	if valueSize <= labelSize {
+		t.Fatalf("the figure (%d) is no larger than its label (%d)", valueSize, labelSize)
+	}
+}
+
+func kpiNumber(value float64) *float64 { return &value }

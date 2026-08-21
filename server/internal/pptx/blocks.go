@@ -268,14 +268,34 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 	if len(items) > 2 {
 		valueSize = d.Title
 	}
+	// A label as long as "목표 가용성" wraps inside a narrow card, and a card that
+	// reserved one line for it drew the second line straight through the number.
+	// The tile is sized for the label it actually has.
+	cardWidth := (frame.Width - d.Unit*2*(len(items)-1)) / max(len(items), 1)
+	labelLines := 1
+	for _, item := range items {
+		labelLines = max(labelLines, min(cellLines(item.Label, d.Small, cardWidth-d.Unit*4), 2))
+	}
 	// A tile is as tall as what it holds; stretching it to the placeholder
 	// leaves a bank of empty boxes down the slide.
-	tileHeight := d.Unit*4 + lineHeightFor(d.Small) + d.Unit/2 + lineHeightFor(valueSize)
+	tileHeight := d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(valueSize)
 	if hasDetail(items) {
 		tileHeight += d.Unit/2 + lineHeightFor(d.Small)
 	}
+	// If the room will not take the taller card, the number gives way rather than
+	// the label: a wrapped label with a smaller figure still reads, and a figure
+	// with a label through it does not.
 	if tileHeight > frame.Height {
-		tileHeight = frame.Height
+		if labelLines > 1 && valueSize > d.Heading {
+			valueSize = d.Heading
+			tileHeight = d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(valueSize)
+			if hasDetail(items) {
+				tileHeight += d.Unit/2 + lineHeightFor(d.Small)
+			}
+		}
+		if tileHeight > frame.Height {
+			tileHeight = frame.Height
+		}
 	}
 	row := Frame{X: frame.X, Y: frame.Y, Width: frame.Width, Height: tileHeight}
 	var primitives []Primitive
@@ -285,7 +305,7 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 		primitives = append(primitives, rounded(tile, d.SurfaceRaised, d.Unit))
 		primitives = append(primitives, filled(Frame{X: tile.X, Y: tile.Y, Width: d.Unit / 2, Height: tile.Height}, d.Series(index)))
 		cursor := inner.Y
-		labelHeight := lineHeightFor(d.Small)
+		labelHeight := lineHeightFor(d.Small) * labelLines
 		primitives = append(primitives, text(
 			Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: labelHeight},
 			line(item.Label), textOptions{Size: d.Small, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
