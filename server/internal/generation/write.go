@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
 
 // writeSource turns an outline into deck source.
@@ -58,16 +59,25 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 	// to be built rather than summarised.
 	shares := shareSlides(len(outline.Topics), slots)
 	position := 0
+	// Two slides in a row arguing the same way read as one slide printed twice —
+	// especially once a lead drops the subject the title already carries, which is
+	// what makes two different subjects sound identical.
+	previousFrame := ""
 	for index, topic := range outline.Topics {
 		share := shares[index]
 		for part := 0; part < share; part++ {
 			// A second slide about the same topic argues a different aspect of it;
 			// repeating the first one is worse than not having it.
-			section := plan.Section(promptTopic{Name: topic.Name, Frame: framePart(topic.Frame, part)}, part, share)
+			frame := framePart(topic.Frame, part)
+			if frame == previousFrame {
+				frame = framePart(topic.Frame, part+1)
+			}
+			previousFrame = frame
+			section := plan.Section(promptTopic{Name: topic.Name, Frame: frame}, part, share)
 			// A deck whose title is its only subject would open with that title
 			// twice. The second one says which part of the subject the slide is.
 			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
-				if aspect := frameTitleSuffix[plan.Language][framePart(topic.Frame, part)]; aspect != "" {
+				if aspect := frameTitleSuffix[plan.Language][frame]; aspect != "" {
 					section.Title = aspect
 				}
 			}
@@ -75,8 +85,11 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 			if section.Role != "" {
 				write("@%s", section.Role)
 			}
-			if section.Lead != "" {
-				write("> %s", section.Lead)
+			// A lead that opens with the words already in the title says the same
+			// thing twice on one slide — the measurement calls that out, and a
+			// reader sees it before the measurement does.
+			if lead := withoutSubject(section.Lead, section.Title, topic.Name); lead != "" {
+				write("> %s", lead)
 			}
 			switch {
 			case section.Block != "" && len(section.Items) > 0:
@@ -129,6 +142,33 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 		write("!notes %s", plan.ClosingNotes)
 	}
 	return strings.TrimRight(builder.String(), "\n") + "\n"
+}
+
+// withoutSubject drops the subject from a lead when the title already carries it.
+//
+// The plan writes "결제 시스템 이중화 계획을 순서대로 나눠 봅니다" so the sentence
+// stands on its own; under a title that already says 결제 시스템 이중화 계획 it is
+// the same words twice. Korean drops a known subject without any repair — the
+// remainder is a sentence.
+func withoutSubject(lead, title, topic string) string {
+	lead = strings.TrimSpace(lead)
+	title = strings.TrimSpace(title)
+	if lead == "" || title == "" {
+		return lead
+	}
+	for _, subject := range []string{topic, title} {
+		subject = strings.TrimSpace(subject)
+		if subject == "" || !strings.HasPrefix(title, subject) || !strings.HasPrefix(lead, subject) {
+			continue
+		}
+		rest := strings.TrimLeft(strings.TrimPrefix(lead, subject), "은는이가을를의에서도")
+		rest = strings.TrimSpace(rest)
+		// Only when what is left is still a sentence rather than a fragment.
+		if utf8.RuneCountInString(rest) >= 6 {
+			return rest
+		}
+	}
+	return lead
 }
 
 // framePart varies how a topic is argued across the slides it gets. A roadmap

@@ -243,6 +243,39 @@ func TestAudienceKeysBecomeWords(t *testing.T) {
 	}
 }
 
+// Three subjects that all default to the same angle produced three slides with
+// the same lead and the same shape, and a lead that opens with the words already
+// in the title says everything twice.
+func TestSlidesDoNotRepeatTheirTitlesOrEachOther(t *testing.T) {
+	prompt := "국내 결제 인프라 이중화와 재해복구 체계 구축, 그리고 운영 조직 재편을 경영진에게 보고하는 자료"
+	outline := outlinePrompt(prompt, "", koreanCopy)
+	if len(outline.Topics) != 3 {
+		t.Fatalf("topics = %+v, want three", outline.Topics)
+	}
+	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 9, Prompt: prompt}
+	plan := newDeckPlan(outline, presentation, koreanCopy, audienceName("executive", koreanCopy), "")
+	parsed := deck.ParseSource(writeSource(outline, plan, 9))
+
+	leads := map[string]int{}
+	for _, slide := range parsed.Slides {
+		lead := strings.TrimSpace(slide.Lead)
+		if lead == "" {
+			continue
+		}
+		if strings.HasPrefix(lead, strings.TrimSpace(slide.Title)) {
+			t.Fatalf("the lead of %q repeats its own title: %q", slide.Title, lead)
+		}
+		leads[lead]++
+		if leads[lead] > 1 {
+			t.Fatalf("two slides open with the same line: %q", lead)
+		}
+	}
+	// A cover title is the subject, not the tail of the brief.
+	if !strings.HasPrefix(parsed.Slides[0].Title, "국내 결제 인프라") {
+		t.Fatalf("the cover lost the words that say what the deck is about: %q", parsed.Slides[0].Title)
+	}
+}
+
 func TestWriteSourceShortDeckHasNoClosingSlide(t *testing.T) {
 	outline := outlinePrompt("클라우드 전환 로드맵과 투자 타당성", "", koreanCopy)
 	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 3}

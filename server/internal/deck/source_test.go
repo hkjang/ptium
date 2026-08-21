@@ -208,6 +208,47 @@ func TestAClosingSlideKeepsItsPoints(t *testing.T) {
 	}
 }
 
+// A template without a layout for a role falls back to a neighbouring one, and a
+// neighbour designed for something else can read badly: Microsoft's own Section
+// Header puts its title below its body, which turns a closing slide with three
+// requests upside down. A slide that carries points goes to a content layout.
+func TestAMissingRoleSendsPointsToAContentLayout(t *testing.T) {
+	manifest := testManifest()
+	// A template like the Office default: a section header, no closing layout.
+	sectionHeader := pptx.Layout{ID: "section-header", Name: "Section Header", Role: pptx.RoleSection,
+		Placeholders: []pptx.Placeholder{
+			{Slot: pptx.SlotTitle, Kind: "text", Type: "title", X: 800000, Y: 3400000, Width: 8000000, Height: 1200000, MaxChars: 40, MaxLines: 2},
+			{Slot: pptx.SlotBody, Kind: "text", Type: "body", X: 800000, Y: 1400000, Width: 8000000, Height: 1800000, MaxChars: 60, MaxLines: 4},
+		}}
+	kept := make([]pptx.Layout, 0, len(manifest.Layouts)+1)
+	kept = append(kept, sectionHeader)
+	for _, layout := range manifest.Layouts {
+		if layout.Role != pptx.RoleClosing {
+			kept = append(kept, layout)
+		}
+	}
+	manifest.Layouts = kept
+
+	source := "# 표지\n@cover\n> 여는 줄\n\n# 본문\n- 한 줄\n\n# 다음 단계\n@closing\n- 오늘 요청하는 결정\n- 30일 안에 진행할 일\n- 다음 보고 시점\n"
+	compiled := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	last := compiled.Slides[len(compiled.Slides)-1]
+	if last.LayoutID == sectionHeader.ID {
+		t.Fatalf("the closing slide landed on the section header, whose title sits under its body")
+	}
+	if layout, ok := manifest.Layout(last.LayoutID); !ok || layout.Role != pptx.RoleContent {
+		t.Fatalf("the closing slide landed on %q", last.LayoutID)
+	}
+	if len(Decode(last.Content).Fields[pptx.SlotBody]) != 3 {
+		t.Fatalf("the closing slide lost its points: %+v", Decode(last.Content).Fields)
+	}
+	// A closing slide with nothing but a line keeps the design's own page.
+	statement := Compile(ParseSource("# 표지\n@cover\n> 여는 줄\n\n# 본문\n- 한 줄\n\n# 감사합니다\n@closing\n> 질문 받겠습니다\n"),
+		manifest, CompileOptions{Language: "ko"})
+	if final := statement.Slides[len(statement.Slides)-1]; final.LayoutID != sectionHeader.ID {
+		t.Fatalf("a closing slide with no points should keep the design's page, got %q", final.LayoutID)
+	}
+}
+
 func TestCompileReportsAMissingLayoutInsteadOfFailing(t *testing.T) {
 	manifest := testManifest()
 	result := Compile(ParseSource("# 제목\n@layout nonexistent\n- 내용\n"), manifest, CompileOptions{})

@@ -139,7 +139,14 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		if name == "" || utf8.RuneCountInString(name) < 2 {
 			continue
 		}
-		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frameFor(name)})
+		frame := frameFor(name)
+		if frame == frameSituation {
+			// Nothing in the words says how to argue this one. Three subjects that
+			// all default to the same frame produce three slides with the same lead
+			// and the same shape, so each takes a different angle instead.
+			frame = defaultFrames[len(outline.Topics)%len(defaultFrames)]
+		}
+		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame})
 	}
 	// A subject that does not split is still one topic.
 	if len(outline.Topics) == 0 {
@@ -285,6 +292,11 @@ func cleanTopic(value string) string {
 }
 
 // frameFor decides how a topic wants to be argued.
+// defaultFrames are the angles a subject is taken from when its own words do not
+// say which one it wants, in the order a report reads best: where it stands,
+// what it costs, what could go wrong.
+var defaultFrames = []string{frameSituation, frameCase, frameRisk}
+
 func frameFor(topic string) string {
 	lowered := strings.ToLower(topic)
 	for _, entry := range frameMarkers {
@@ -352,7 +364,13 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	}
 	// The subject as written comes first: it still has the words that say what
 	// the deck is about, which the per-sentence trimming gives up.
-	if whole := titlePhrase(outline.Subject); whole != "" {
+	//
+	// It has to be the subject whole, though. A brief naming three subjects makes
+	// a phrase too long for a cover, and cutting it from the front — where Korean
+	// keeps the words that say what this is — leaves "이중화와 재해복구 체계 구축,
+	// 그리고 운영 조직 재편" for a deck about payment infrastructure. When the
+	// whole thing will not fit, the first subject is the honest title.
+	if whole := titlePhrase(outline.Subject); whole != "" && !truncatedFront(whole, outline.Subject) {
 		return whole
 	}
 	names := make([]string, 0, len(outline.Topics))
@@ -387,8 +405,13 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 // 자료" — and every sentence the plan builds from it inherits that. The title
 // already knows how to cut a subject down; the prose uses the same cut.
 func (outline promptOutline) subjectPhrase() string {
-	if phrase := titlePhrase(outline.Subject); phrase != "" {
+	// As with the title: a phrase that had to give up its opening words is not
+	// what the deck is about, and the first subject is.
+	if phrase := titlePhrase(outline.Subject); phrase != "" && !truncatedFront(phrase, outline.Subject) {
 		return phrase
+	}
+	if len(outline.Topics) > 0 && strings.TrimSpace(outline.Topics[0].Name) != "" {
+		return outline.Topics[0].Name
 	}
 	return outline.Subject
 }
@@ -427,6 +450,13 @@ func titlePhrase(subject string) string {
 		}
 	}
 	return ""
+}
+
+// truncatedFront reports whether a phrase had to give up its opening words.
+func truncatedFront(phrase, subject string) bool {
+	subject = strings.TrimSpace(subject)
+	phrase = strings.TrimSpace(phrase)
+	return phrase != "" && subject != "" && !strings.HasPrefix(subject, phrase)
 }
 
 // addressMarker reports whether a word names who the deck is for.

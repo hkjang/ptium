@@ -309,6 +309,17 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 		// slide nobody can afford to lose: "다음 단계" with three requests set as a
 		// stray line under the title is the most important slide of the deck being
 		// dropped on the floor.
+		// A template with no layout for this role falls back to a neighbouring one,
+		// and a neighbour designed for something else can read badly: an Office
+		// section header puts its title below its body, which turns a closing slide
+		// with three requests upside down. When the role is missing entirely, a
+		// slide that carries points is better off on a content layout.
+		if structuralRole(role) && layout.Role != role &&
+			(len(slide.Bullets) > 0 || len(slide.Blocks) > 0) {
+			if content, ok := manifest.LayoutForRole(pptx.RoleContent); ok && content.Role == pptx.RoleContent {
+				return content, fmt.Sprintf("this template has no %s layout; used %q, which has room for the points", role, content.Name)
+			}
+		}
 		if structuralRole(role) && !layoutHoldsBody(layout, slide) {
 			// Another layout of the same kind, if the template has one. The deck's
 			// shape is not negotiable — a closing slide stays a closing slide — but
@@ -369,6 +380,11 @@ func bestFittingLayout(manifest pptx.Manifest, slide SourceSlide, role, previous
 			continue
 		}
 		score := layoutFitScore(layout, slide, role)
+		// A layout nobody would pick on purpose does not win on capacity. A
+		// vertical-text layout holds the most lines of any layout in an Office
+		// template, and a Korean bullet slide set vertically reads as a fault in
+		// the product rather than as a choice.
+		score -= float64(layout.PreferenceRank()) * 5
 		// Two slides running on the same layout is a rhythm; five is a rut. The
 		// nudge is small enough that it never beats a real difference in fit.
 		if layout.ID == previous {

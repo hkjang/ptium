@@ -468,6 +468,12 @@ func (m *Manifest) finalize() {
 	m.AspectRatio = aspectRatio(m.SlideWidth, m.SlideHeight)
 }
 
+// PreferenceRank is how awkward a layout is to choose automatically: zero is an
+// ordinary layout, and anything higher is one a person would only pick on
+// purpose. It is exported because choosing by fit alone lands a Korean bullet
+// slide in a vertical-text layout — it holds the most lines, after all.
+func (l Layout) PreferenceRank() int { return preferenceRank(l) }
+
 // preferenceRank orders layouts that share a role, so automatic selection
 // reaches for the conventional one first. Vertical-text layouts exist for
 // traditional CJK typesetting and read as a mistake when a deck's ordinary
