@@ -75,7 +75,10 @@ var frameMarkers = []struct {
 var instructionPattern = regexp.MustCompile(
 	`(?i)(\d{1,3}\s*(장|매|쪽|페이지|slides?|pages?)(짜리|정도|이내|분량)?(로|으로|의)?)|` +
 		// "임원 보고용으로", "고객 발표용", "for the board": who it is for is a
-		// setting, not part of the subject.
+		// setting, not part of the subject. The address itself goes with it —
+		// stripping "에게 보고" out of "임원에게 보고" leaves a stray "임원" that then
+		// travels into the deck's title.
+		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?)|` +
 		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)\s*(용|자료)?(으로|로|에)?)|` +
 		`(자료(로|를)?\s*(만들|작성|정리))|` +
 		`(만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
@@ -213,6 +216,7 @@ func topicPhrase(name string) string {
 	for len(words) > 1 && strandedAuxiliary(words[len(words)-1]) {
 		words = words[:len(words)-1]
 	}
+	words = trimStrandedNouns(words)
 	// A word that ends in a marker — "임원에게", "현장에서" — names who is being
 	// addressed rather than the subject, at either end of what is left.
 	for len(words) > 1 && endsWithMarker(words[len(words)-1]) {
@@ -370,7 +374,7 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	// keeps the words that say what this is — leaves "이중화와 재해복구 체계 구축,
 	// 그리고 운영 조직 재편" for a deck about payment infrastructure. When the
 	// whole thing will not fit, the first subject is the honest title.
-	if whole := titlePhrase(outline.Subject); whole != "" && !truncatedFront(whole, outline.Subject) {
+	if whole, shortened := titlePhrase(outline.Subject); whole != "" && !shortened {
 		return whole
 	}
 	names := make([]string, 0, len(outline.Topics))
@@ -407,7 +411,7 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 func (outline promptOutline) subjectPhrase() string {
 	// As with the title: a phrase that had to give up its opening words is not
 	// what the deck is about, and the first subject is.
-	if phrase := titlePhrase(outline.Subject); phrase != "" && !truncatedFront(phrase, outline.Subject) {
+	if phrase, shortened := titlePhrase(outline.Subject); phrase != "" && !shortened {
 		return phrase
 	}
 	if len(outline.Topics) > 0 && strings.TrimSpace(outline.Topics[0].Name) != "" {
@@ -423,7 +427,7 @@ func (outline promptOutline) subjectPhrase() string {
 // that is the wrong trade: the words dropped from the front are the ones that
 // say what the deck is about. So a title keeps the leading noun phrase and cuts
 // at the audience instead ("…을 실무진에게 …" → "결제 시스템 이중화 계획").
-func titlePhrase(subject string) string {
+func titlePhrase(subject string) (string, bool) {
 	const limit = 30
 	words := strings.Fields(strings.TrimSpace(subject))
 	// Everything from the audience onward is the request, not the subject.
@@ -438,25 +442,57 @@ func titlePhrase(subject string) string {
 	for len(words) > 0 && strandedAuxiliary(words[len(words)-1]) {
 		words = words[:len(words)-1]
 	}
+	words = trimStrandedNouns(words)
 	if len(words) == 0 {
-		return ""
+		return "", false
 	}
 	// Korean puts the head noun last, so an over-long phrase gives way at the
-	// front — but only as far as it must.
+	// front — but only as far as it must, and giving way is worth reporting: a
+	// title that had to drop its opening words is not what the deck is about.
 	for start := 0; start < len(words); start++ {
 		candidate := cleanTopic(strings.Join(words[start:], " "))
 		if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
-			return candidate
+			return candidate, start > 0
 		}
 	}
-	return ""
+	return "", true
 }
 
-// truncatedFront reports whether a phrase had to give up its opening words.
-func truncatedFront(phrase, subject string) bool {
-	subject = strings.TrimSpace(subject)
-	phrase = strings.TrimSpace(phrase)
-	return phrase != "" && subject != "" && !strings.HasPrefix(subject, phrase)
+// trimStrandedNouns drops what is left dangling when the words between two
+// nouns are removed.
+//
+// "…계획을 실무진에게 설명하는 자료" loses its middle to the instruction pattern
+// and leaves "계획을 자료" — an object particle with no verb and a document noun
+// with nothing to attach to. Both ends are cleaned: a trailing document noun that
+// follows an object, and a leading verb form whose subject went with the address.
+func trimStrandedNouns(words []string) []string {
+	documents := map[string]bool{"자료": true, "덱": true, "문서": true, "보고서": true, "발표자료": true, "장표": true}
+	for len(words) > 1 && documents[strings.Trim(words[len(words)-1], " .,·")] {
+		previous := words[len(words)-2]
+		if !strings.HasSuffix(previous, "을") && !strings.HasSuffix(previous, "를") {
+			break
+		}
+		words = words[:len(words)-1]
+	}
+	for len(words) > 1 && modifierForm(words[0]) {
+		words = words[1:]
+	}
+	return words
+}
+
+// modifierForm reports whether a word is a verb modifying what follows — the
+// half of "고객에게 전달할" that stays when the address is taken away.
+func modifierForm(word string) bool {
+	trimmed := strings.Trim(word, " .,·")
+	if utf8.RuneCountInString(trimmed) < 2 {
+		return false
+	}
+	for _, ending := range []string{"할", "한", "하는", "될", "된", "되는", "드릴", "드리는"} {
+		if strings.HasSuffix(trimmed, ending) {
+			return true
+		}
+	}
+	return false
 }
 
 // addressMarker reports whether a word names who the deck is for.

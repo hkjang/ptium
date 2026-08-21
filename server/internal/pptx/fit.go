@@ -218,8 +218,16 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 	switch kind {
 	case BlockBullets:
 		return Block{}, false
-	case BlockKPI, BlockMeter, BlockColumns, BlockBars:
+	case BlockKPI:
 		if len(block.Items) == 0 {
+			return Block{}, false
+		}
+	case BlockMeter, BlockColumns, BlockBars:
+		// A chart is drawn from numbers. Items that carry only words — "현재 조직 |
+		// 개발/운영 분리" — plot nothing, and a bar chart of nothing is an empty
+		// rectangle where the argument should be. The caller turns it into
+		// something that can hold words instead.
+		if len(block.Items) == 0 || !block.hasPlottableValues() {
 			return Block{}, false
 		}
 	case BlockHero:
@@ -254,6 +262,16 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 		return Block{}, false
 	}
 	return block, true
+}
+
+// hasPlottableValues reports whether any item carries a number to draw.
+func (b Block) hasPlottableValues() bool {
+	for _, item := range b.Items {
+		if item.number() != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func knownBlockKind(kind string) bool {

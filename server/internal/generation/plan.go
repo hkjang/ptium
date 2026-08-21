@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -46,6 +47,24 @@ var frameTitleSuffix = map[string]map[string]string{
 		frameOptions: "選択肢の比較", frameRisk: "リスクと対応", frameOutcome: "期待効果"},
 	"zh": {frameSituation: "现状", frameSequence: "执行顺序", frameCase: "成本与收益",
 		frameOptions: "方案比较", frameRisk: "风险与应对", frameOutcome: "预期效果"},
+}
+
+// deckMonth writes the month a deck was made, in its own language. A zero time
+// is a deck that has not been stored yet, and dating that would be inventing a
+// fact.
+func deckMonth(at time.Time, language string) string {
+	if at.IsZero() {
+		return ""
+	}
+	switch language {
+	case "ko":
+		return fmt.Sprintf("%d년 %d월", at.Year(), int(at.Month()))
+	case "ja":
+		return fmt.Sprintf("%d年%d月", at.Year(), int(at.Month()))
+	case "zh":
+		return fmt.Sprintf("%d年%d月", at.Year(), int(at.Month()))
+	}
+	return at.Format("January 2006")
 }
 
 // coverLine assembles the line under a deck's title: when, who is presenting,
@@ -99,6 +118,12 @@ func newDeckPlan(outline promptOutline, presentation model.Presentation, phrases
 		joiner = " · "
 	}
 	title := outline.deckTitle(presentation.Title, presentation.Prompt, joiner)
+	// A cover carries when as well as who. The brief usually says ("2026년 하반기"),
+	// and when it does not, the deck's own date does — real covers are dated, and
+	// a line reading only "경영진 보고" looks like a draft.
+	if strings.TrimSpace(outline.Period) == "" {
+		outline.Period = deckMonth(presentation.CreatedAt, languageOf(presentation.Language))
+	}
 
 	switch languageOf(presentation.Language) {
 	case "ko":

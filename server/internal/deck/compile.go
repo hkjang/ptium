@@ -8,6 +8,7 @@ import (
 
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
+	"unicode/utf8"
 )
 
 // CompileOptions controls how source is bound to a template.
@@ -609,7 +610,30 @@ func chartFallback(block pptx.Block) (pptx.Block, string) {
 	if len(fallback.Items) > 4 {
 		fallback.Kind = pptx.BlockTimeline
 	}
+	// Values that are phrases rather than figures are a table of two columns: a
+	// KPI row sets "개발/운영 분리" in the size of a headline number and it wraps
+	// out of its card.
+	if wordy(block) {
+		fallback.Kind = pptx.BlockTable
+		fallback.Columns = []string{"", ""}
+		fallback.Rows = nil
+		for _, item := range block.Items {
+			fallback.Rows = append(fallback.Rows, []string{item.Label, item.Display(block.Unit)})
+		}
+		fallback.Items = nil
+	}
 	return fallback, fallback.Kind
+}
+
+// wordy reports whether a component's values are phrases rather than figures.
+// Anything past a few characters is a phrase; "18%" and "4억" are not.
+func wordy(block pptx.Block) bool {
+	for _, item := range block.Items {
+		if utf8.RuneCountInString(strings.TrimSpace(item.Display(block.Unit))) > 6 {
+			return true
+		}
+	}
+	return false
 }
 
 // spansWell reports whether a component reads better across the whole body than

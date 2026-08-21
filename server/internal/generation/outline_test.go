@@ -111,6 +111,22 @@ func TestTopicsDropTheAudienceAndWhatAStrippedVerbLeaves(t *testing.T) {
 	}
 }
 
+// Removing the words between two nouns leaves both ends dangling: "…계획을
+// 실무진에게 설명하는 자료" loses its middle to the instruction pattern and comes
+// back as "계획을 자료", and "고객에게 전달할 …" keeps a verb whose subject left.
+func TestATrimmedSubjectReadsAsAPhrase(t *testing.T) {
+	cases := []struct{ prompt, want string }{
+		{"결제 시스템 이중화 계획을 실무진에게 설명하는 6장짜리 자료", "결제 시스템 이중화 계획"},
+		{"2026년 하반기 클라우드 전환 로드맵을 임원에게 보고", "2026년 하반기 클라우드 전환 로드맵"},
+		{"고객에게 전달할 신규 요금제 안내 자료", "신규 요금제 안내 자료"},
+	}
+	for _, testCase := range cases {
+		if got := TitleFor(testCase.prompt, "", "ko"); got != testCase.want {
+			t.Errorf("TitleFor(%q) = %q, want %q", testCase.prompt, got, testCase.want)
+		}
+	}
+}
+
 func TestWriteSourceHonoursTheSlideCountAndVariesRepeatedTopics(t *testing.T) {
 	outline := outlinePrompt("결제 시스템 도입 방안을 6장으로", "", koreanCopy)
 	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 6, Audience: "임원"}
