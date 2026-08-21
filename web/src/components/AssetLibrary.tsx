@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ImagePlus, Loader as LoaderIcon, Trash2, Type } from 'lucide-react'
+import { ImagePlus, Loader as LoaderIcon, Plus, Trash2, Type } from 'lucide-react'
 import { api } from '../api/client'
 import { Button, EmptyState } from './UI'
 import { displayError } from '../utils'
 
-interface Asset {
+export interface Asset {
   id: string
   name: string
   contentType: string
@@ -18,8 +18,9 @@ interface Asset {
  * source are two halves of one action, so the panel hands the name straight to
  * the editor rather than making anyone retype it.
  */
-export function AssetLibrary({ onInsert, notify }: {
+export function AssetLibrary({ onInsert, onPlace, notify }: {
   onInsert?: (name: string) => void
+  onPlace?: (asset: Asset) => void
   notify: (message: string, tone?: 'success' | 'error') => void
 }) {
   const [assets, setAssets] = useState<Asset[]>([])
@@ -106,6 +107,7 @@ export function AssetLibrary({ onInsert, notify }: {
                 <strong title={asset.name}>{asset.name}</strong>
                 <small>{asset.width > 0 ? `${asset.width}×${asset.height}` : asset.contentType.replace('image/', '')} · {Math.max(1, Math.round(asset.sizeBytes / 1024))}KB</small>
                 <div className="asset-actions">
+                  {onPlace && <button type="button" onClick={() => onPlace(asset)} title="현재 슬라이드에 배치"><Plus size={13} /> 슬라이드에 넣기</button>}
                   {onInsert && <button type="button" onClick={() => onInsert(asset.name)} title="코드에 ::image 넣기"><Type size={13} /> 코드에 넣기</button>}
                   <button type="button" className="danger" onClick={() => void remove(asset)} disabled={busy} title="삭제"><Trash2 size={13} /></button>
                 </div>

@@ -58,6 +58,9 @@ type sourceRequest struct {
 	// DryRun compiles and reports without storing anything, which is what a live
 	// preview needs.
 	DryRun bool `json:"dryRun"`
+	// Version protects an applied source from overwriting a newer canvas edit.
+	// It is optional for backwards compatibility with older API clients.
+	Version *int64 `json:"version"`
 }
 
 // putPresentationSource compiles hand-written source and replaces the deck.
@@ -110,9 +113,13 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 		return
 	}
 	if err := s.store.ReplaceSlidesFromSource(request.Context(), presentation.ID, user.ID,
-		input.Source, compiled.Outline, compiled.Slides); err != nil {
+		input.Source, compiled.Outline, compiled.Slides, input.Version); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(writer, request, http.StatusNotFound, "not_found", "The presentation does not exist", nil)
+			return
+		}
+		if errors.Is(err, store.ErrConflict) {
+			writeError(writer, request, http.StatusConflict, "version_conflict", "The presentation changed in another session", nil)
 			return
 		}
 		s.internalError(writer, request, "presentation_source_save_failed", err)

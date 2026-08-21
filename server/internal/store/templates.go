@@ -104,7 +104,7 @@ func (s *Store) ListTemplates(ctx context.Context, ownerID string, limit, offset
 		return nil, 0, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT `+templateColumns+`,
-		(SELECT count(*)::int FROM presentations p WHERE p.template_id=templates.id)
+		(SELECT count(*)::int FROM presentations p WHERE p.template_id=templates.id AND p.deleted_at IS NULL)
 		FROM templates WHERE `+visible+`
 		ORDER BY kind='builtin', (owner_id=$1) DESC, updated_at DESC LIMIT $2 OFFSET $3`, ownerID, limit, offset)
 	if err != nil {

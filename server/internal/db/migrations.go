@@ -176,6 +176,24 @@ var migrations = []string{
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT ''`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash bytea`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz`,
+	// Safe iteration: soft deletion makes an accidental delete recoverable, a
+	// monotonic version prevents stale editors from overwriting newer work, and
+	// compact snapshots make meaningful earlier states restorable.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1`,
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS deleted_at timestamptz`,
+	`CREATE INDEX IF NOT EXISTS presentations_owner_deleted_idx ON presentations(owner_id,deleted_at,updated_at DESC)`,
+	`CREATE TABLE IF NOT EXISTS presentation_revisions(
+		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+		presentation_id uuid NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		version bigint NOT NULL,
+		reason text NOT NULL DEFAULT 'edit',
+		title text NOT NULL,
+		slide_count integer NOT NULL DEFAULT 0,
+		snapshot jsonb NOT NULL,
+		created_at timestamptz NOT NULL DEFAULT now(),
+		UNIQUE(presentation_id,version))`,
+	`CREATE INDEX IF NOT EXISTS presentation_revisions_deck_idx ON presentation_revisions(presentation_id,created_at DESC)`,
 }
 
 var defaultSettings = map[string]struct {

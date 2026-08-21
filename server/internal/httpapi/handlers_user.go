@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/hkjang/ptium/server/internal/auth"
+	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/model"
@@ -99,6 +100,7 @@ type presentationRequest struct {
 	RequestedSlideCount *int            `json:"requestedSlideCount"`
 	SlideCount          *int            `json:"slideCount"`
 	Slides              *[]slideRequest `json:"slides"`
+	Version             *int64          `json:"version"`
 }
 
 type slideRequest struct {
@@ -115,7 +117,15 @@ type slideRequest struct {
 func (s *Server) listPresentations(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	limit, offset := pagination(request)
-	items, total, err := s.store.ListPresentations(request.Context(), user.ID, false, limit, offset)
+	deleted := request.URL.Query().Get("deleted") == "true" || request.URL.Query().Get("deleted") == "1"
+	var items []model.Presentation
+	var total int
+	var err error
+	if deleted {
+		items, total, err = s.store.ListDeletedPresentations(request.Context(), user.ID, false, limit, offset)
+	} else {
+		items, total, err = s.store.ListPresentations(request.Context(), user.ID, false, limit, offset)
+	}
 	if err != nil {
 		s.internalError(writer, request, "presentations_read_failed", err)
 		return
@@ -254,7 +264,7 @@ func (s *Server) updatePresentation(writer http.ResponseWriter, request *http.Re
 		}
 		slides = &converted
 	}
-	updated, err := s.store.UpdatePresentationWithSlides(request.Context(), current.ID, user.ID, false, storeInput, slides)
+	updated, err := s.store.UpdatePresentationWithSlides(request.Context(), current.ID, user.ID, false, storeInput, slides, input.Version)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "presentation_update_failed")
 		return
@@ -270,8 +280,78 @@ func (s *Server) deletePresentation(writer http.ResponseWriter, request *http.Re
 		s.handleStoreError(writer, request, err, "presentation_delete_failed")
 		return
 	}
-	s.store.Audit(request.Context(), &user.ID, "presentation.delete", "presentation", id, nil)
+	s.store.Audit(request.Context(), &user.ID, "presentation.trash", "presentation", id, nil)
 	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) duplicatePresentation(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	original, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	titleRunes := []rune(strings.TrimSpace(original.Title))
+	suffix := []rune(" 복사본")
+	if len(titleRunes)+len(suffix) > 200 {
+		titleRunes = titleRunes[:200-len(suffix)]
+	}
+	copied, err := s.store.DuplicatePresentation(request.Context(), original.ID, user.ID, string(titleRunes)+string(suffix))
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_duplicate_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.duplicate", "presentation", copied.ID, map[string]any{"sourceId": original.ID})
+	writeData(writer, request, http.StatusCreated, copied)
+}
+
+func (s *Server) restoreDeletedPresentation(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	restored, err := s.store.RestoreDeletedPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_restore_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.restore_from_trash", "presentation", restored.ID, nil)
+	writeData(writer, request, http.StatusOK, restored)
+}
+
+func (s *Server) permanentlyDeletePresentation(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	id := request.PathValue("id")
+	if err := s.store.PermanentlyDeletePresentation(request.Context(), id, user.ID, false); err != nil {
+		s.handleStoreError(writer, request, err, "presentation_permanent_delete_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.delete_permanently", "presentation", id, nil)
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) listPresentationRevisions(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	limit, offset := pagination(request)
+	items, total, err := s.store.ListPresentationRevisions(request.Context(), request.PathValue("id"), user.ID, limit, offset)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_revisions_read_failed")
+		return
+	}
+	writeList(writer, request, items, total, limit, offset)
+}
+
+func (s *Server) restorePresentationRevision(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	revisionID := request.PathValue("revisionId")
+	if _, err := uuid.Parse(revisionID); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "invalid_path", "revisionId must be a UUID", nil)
+		return
+	}
+	restored, err := s.store.RestorePresentationRevision(request.Context(), request.PathValue("id"), revisionID, user.ID)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_revision_restore_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.revision_restore", "presentation", restored.ID, map[string]any{"revisionId": revisionID})
+	writeData(writer, request, http.StatusOK, restored)
 }
 
 func (s *Server) generatePresentation(writer http.ResponseWriter, request *http.Request) {
@@ -469,7 +549,7 @@ func (s *Server) maximumSlides(ctx context.Context) int {
 	return maximum
 }
 
-// preserveDrawing keeps the components and images a slide already carries when an
+// preserveDrawing keeps the components, images and freeform elements a slide already carries when an
 // update does not mention them.
 //
 // A client that only knows about text — the canvas editor, or any caller written
@@ -486,7 +566,7 @@ func preserveDrawing(incoming, stored json.RawMessage) json.RawMessage {
 		return incoming
 	}
 	changed := false
-	for _, key := range []string{"blocks", "images"} {
+	for _, key := range []string{"blocks", "images", "elements"} {
 		if _, mentioned := edited[key]; mentioned {
 			continue
 		}
@@ -515,6 +595,9 @@ func convertSlide(input slideRequest, index int) (model.Slide, error) {
 		SpeakerNotes string `json:"speaker_notes"`
 	}
 	_ = json.Unmarshal(input.Content, &contentFields)
+	if err := deck.ValidateFreeformElements(deck.Decode(input.Content).Elements); err != nil {
+		return model.Slide{}, err
+	}
 	if input.Title == "" {
 		input.Title = contentFields.Title
 	}
@@ -551,6 +634,10 @@ func convertSlide(input slideRequest, index int) (model.Slide, error) {
 func (s *Server) handleStoreError(writer http.ResponseWriter, request *http.Request, err error, code string) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(writer, request, http.StatusNotFound, "not_found", "The requested resource was not found", nil)
+		return
+	}
+	if errors.Is(err, store.ErrConflict) {
+		writeError(writer, request, http.StatusConflict, "version_conflict", "The presentation changed in another session", nil)
 		return
 	}
 	s.internalError(writer, request, code, err)

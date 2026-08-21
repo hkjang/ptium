@@ -28,7 +28,10 @@ type Slide struct {
 	// Pictures maps a slot to an image drawn in it, bytes and all: a rendered
 	// package has to carry the picture, not a reference to it.
 	Pictures map[string]Picture `json:"pictures,omitempty"`
-	Notes    string             `json:"notes,omitempty"`
+	// Elements are freely positioned editable objects layered above the
+	// template-bound content.
+	Elements []Element `json:"elements,omitempty"`
+	Notes    string    `json:"notes,omitempty"`
 }
 
 // spannedSlots is every region covered by a component placed elsewhere.
@@ -230,6 +233,7 @@ func maxRelationshipNumber(pkg *Package, part string) int {
 // refers to it by.
 type placedPicture struct {
 	Slot           string
+	ElementID      string
 	RelationshipID string
 	// Part is the package part the image was written to.
 	Part    string
@@ -239,7 +243,7 @@ type placedPicture struct {
 // addSlidePictures writes each of a slide's images into the package and returns
 // them with the relationship ids the slide will use.
 func addSlidePictures(pkg *Package, slidePart string, position int, slide Slide, layout Layout) []placedPicture {
-	if len(slide.Pictures) == 0 {
+	if len(slide.Pictures) == 0 && len(slide.Elements) == 0 {
 		return nil
 	}
 	// Slots in the layout's own order, with anything unknown to the layout after
@@ -261,18 +265,32 @@ func addSlidePictures(pkg *Package, slidePart string, position int, slide Slide,
 	sort.Strings(remaining)
 	slots = append(slots, remaining...)
 
-	placed := make([]placedPicture, 0, len(slots))
+	placed := make([]placedPicture, 0, len(slots)+len(slide.Elements))
 	// Slide relationship ids start after the layout and any notes slide.
 	next := 3
-	for index, slot := range slots {
+	mediaIndex := 0
+	for _, slot := range slots {
 		picture := slide.Pictures[slot]
 		if len(picture.Data) == 0 {
 			continue
 		}
-		part := fmt.Sprintf("ppt/media/ptium%d-%d.%s", position, index+1, picture.extension())
+		mediaIndex++
+		part := fmt.Sprintf("ppt/media/ptium%d-%d.%s", position, mediaIndex, picture.extension())
 		pkg.Set(part, picture.Data)
 		placed = append(placed, placedPicture{
-			Slot: slot, RelationshipID: fmt.Sprintf("rId%d", next+index), Part: part, Picture: picture,
+			Slot: slot, RelationshipID: fmt.Sprintf("rId%d", next+len(placed)), Part: part, Picture: picture,
+		})
+	}
+	for _, element := range slide.Elements {
+		if element.Kind != "image" || element.Picture == nil || len(element.Picture.Data) == 0 {
+			continue
+		}
+		mediaIndex++
+		picture := *element.Picture
+		part := fmt.Sprintf("ppt/media/ptium%d-%d.%s", position, mediaIndex, picture.extension())
+		pkg.Set(part, picture.Data)
+		placed = append(placed, placedPicture{
+			ElementID: element.ID, RelationshipID: fmt.Sprintf("rId%d", next+len(placed)), Part: part, Picture: picture,
 		})
 	}
 	return placed
@@ -315,12 +333,74 @@ func descriptionAttribute(caption string) string {
 	return ` descr="` + escapeAttribute(caption) + `"`
 }
 
+// freeformPictureXML draws a freely positioned picture. The image remains a
+// normal PowerPoint picture so it can still be cropped or replaced after export.
+func freeformPictureXML(shapeID int, element Element, placed placedPicture) string {
+	frame := element.Frame
+	crop := ""
+	if placed.Picture.Width > 0 && placed.Picture.Height > 0 && frame.Width > 0 && frame.Height > 0 {
+		frameRatio := float64(frame.Width) / float64(frame.Height)
+		imageRatio := float64(placed.Picture.Width) / float64(placed.Picture.Height)
+		switch strings.ToLower(element.Fit) {
+		case "contain":
+			if imageRatio > frameRatio {
+				height := int(math.Round(float64(frame.Width) / imageRatio))
+				frame.Y += (frame.Height - height) / 2
+				frame.Height = height
+			} else {
+				width := int(math.Round(float64(frame.Height) * imageRatio))
+				frame.X += (frame.Width - width) / 2
+				frame.Width = width
+			}
+		case "fill":
+			// Stretching is deliberate for this explicit mode.
+		default:
+			switch {
+			case imageRatio > frameRatio*1.01:
+				inset := int(math.Round((1 - frameRatio/imageRatio) / 2 * 100000))
+				crop = fmt.Sprintf(`<a:srcRect l="%d" r="%d"/>`, inset, inset)
+			case imageRatio < frameRatio*0.99:
+				inset := int(math.Round((1 - imageRatio/frameRatio) / 2 * 100000))
+				crop = fmt.Sprintf(`<a:srcRect t="%d" b="%d"/>`, inset, inset)
+			}
+		}
+	}
+	name := strings.TrimSpace(element.ID)
+	if name == "" {
+		name = fmt.Sprintf("Picture %d", shapeID-1)
+	}
+	rotation := ""
+	if math.Abs(element.Rotation) >= .005 {
+		rotation = ` rot="` + strconv.Itoa(int(math.Round(element.Rotation*60000))) + `"`
+	}
+	alpha := ""
+	if element.opacity() < 100 {
+		alpha = `<a:alphaModFix amt="` + strconv.Itoa(element.opacity()*1000) + `"/>`
+	}
+	locks := `<a:picLocks noChangeAspect="1"`
+	if element.Locked {
+		locks += ` noMove="1" noResize="1" noRot="1"`
+	}
+	locks += `/>`
+	return `<p:pic><p:nvPicPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) + `"` +
+		descriptionAttribute(element.Caption) + `/><p:cNvPicPr>` + locks + `</p:cNvPicPr><p:nvPr/></p:nvPicPr>` +
+		`<p:blipFill><a:blip r:embed="` + placed.RelationshipID + `">` + alpha + `</a:blip>` + crop +
+		`<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr><a:xfrm` + rotation + `><a:off x="` +
+		strconv.Itoa(frame.X) + `" y="` + strconv.Itoa(frame.Y) + `"/><a:ext cx="` + strconv.Itoa(max(frame.Width, 1)) +
+		`" cy="` + strconv.Itoa(max(frame.Height, 1)) + `"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`
+}
+
 func slideXML(layout Layout, slide Slide, language string, design Design, pictures []placedPicture) string {
-	var shapes, components strings.Builder
+	var shapes, components, freeform strings.Builder
 	shapeID := 2
 	placedBySlot := map[string]placedPicture{}
+	placedByElement := map[string]placedPicture{}
 	for _, placed := range pictures {
-		placedBySlot[placed.Slot] = placed
+		if placed.ElementID != "" {
+			placedByElement[placed.ElementID] = placed
+		} else {
+			placedBySlot[placed.Slot] = placed
+		}
 	}
 	spanned := slide.spannedSlots()
 	for _, placeholder := range layout.Placeholders {
@@ -352,8 +432,19 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language))
 		shapeID++
 	}
+	for _, element := range slide.Elements {
+		if element.Kind == "image" {
+			if placed, ok := placedByElement[element.ID]; ok {
+				freeform.WriteString(freeformPictureXML(shapeID, element, placed))
+				shapeID++
+			}
+			continue
+		}
+		freeform.WriteString(element.drawingML(shapeID))
+		shapeID++
+	}
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
-		shapes.String() + components.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+		shapes.String() + components.String() + freeform.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 
 func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string) string {

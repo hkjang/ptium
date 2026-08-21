@@ -14,6 +14,7 @@ import (
 
 var ErrNotFound = errors.New("not found")
 var ErrGenerationLimit = errors.New("presentation exceeds the configured generation slide limit")
+var ErrConflict = errors.New("resource version conflict")
 
 type Store struct {
 	Pool *pgxpool.Pool

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -294,6 +295,14 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 	position, _ := strconv.Atoi(request.URL.Query().Get("slide"))
 	if position < 1 {
 		position = 1
+	}
+	// The canvas asks for the template-bound layer without freeform objects and
+	// draws its unsaved local objects above it. Other previews include everything.
+	if request.URL.Query().Get("freeform") == "false" && position <= len(presentation.Slides) {
+		presentation.Slides = append([]model.Slide(nil), presentation.Slides...)
+		content := deck.Decode(presentation.Slides[position-1].Content)
+		content.Elements = nil
+		presentation.Slides[position-1].Content = content.Encode()
 	}
 	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request),
 		templateMedia(data), s.imageSource(request, user.ID))

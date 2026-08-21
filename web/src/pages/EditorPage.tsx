@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, FileText, Image, LayoutPanelTop, LoaderCircle, MonitorPlay, Plus, Trash2, X,
+  Copy, Download, FileText, History, Image, LayoutPanelTop, LoaderCircle, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
 } from 'lucide-react'
-import { api, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
+import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
-import { AssetLibrary } from '../components/AssetLibrary'
+import { AssetLibrary, type Asset } from '../components/AssetLibrary'
+import { FreeformCanvas } from '../components/FreeformCanvas'
 import { GridLibrary } from '../components/GridLibrary'
 import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
-import type { Presentation, Slide, Template, TemplateLayout } from '../types'
-import { displayError } from '../utils'
+import type { Presentation, PresentationRevision, Slide, SlideElement, Template, TemplateLayout } from '../types'
+import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 const MAX_SLIDES = 50
@@ -20,11 +21,12 @@ const defaultSlide = (order: number, layoutId?: string): Slide => ({
   id: `new-${crypto.randomUUID()}`, order, layout: 'content', layoutId,
   title: '새로운 슬라이드', body: '핵심 메시지를 입력하세요.', bullets: ['핵심 메시지를 입력하세요.'],
   fields: { title: [{ text: '새로운 슬라이드' }], body: [{ text: '핵심 메시지를 입력하세요.' }] },
+  elements: [],
 })
 
 const slideBody = (slide?: Slide) => slide?.body || slide?.bullets?.join('\n') || ''
 /** What a slide holds besides prose, named in the workspace's language. */
-interface SlideHolding { slot: string; kind: 'block' | 'image'; label: string; detail: string }
+interface SlideHolding { slot: string; kind: 'block' | 'image' | 'element'; label: string; detail: string }
 
 function slideHoldings(slide?: Slide): SlideHolding[] {
   if (!slide) return []
@@ -34,6 +36,9 @@ function slideHoldings(slide?: Slide): SlideHolding[] {
   }))
   for (const [slot, image] of Object.entries(slide.images || {})) {
     holdings.push({ slot, kind: 'image', label: '이미지', detail: String(image.name || image.caption || slot) })
+  }
+  if ((slide.elements || []).length > 0) {
+    holdings.push({ slot: 'freeform', kind: 'element', label: '자유 배치 개체', detail: `${slide.elements!.length}개` })
   }
   return holdings.sort((a, b) => a.slot.localeCompare(b.slot))
 }
@@ -123,6 +128,7 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         // every save; a save that only carried text used to delete them.
         blocks: slide.blocks || {},
         images: slide.images || {},
+        elements: slide.elements || [],
         bullets: slideBodyLines(slide),
         accent: slide.accent,
       },
@@ -144,6 +150,16 @@ function findingLabel(kind: string) {
   return kind
 }
 
+function revisionReason(reason: string) {
+  switch (reason) {
+    case 'edit': return '자동 편집 체크포인트'
+    case 'source': return '코드 적용 전'
+    case 'generation': return '재생성 전'
+    case 'restore': return '버전 복원 전'
+  }
+  return reason
+}
+
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
   const [slides, setSlides] = useState<Slide[]>([])
@@ -161,7 +177,13 @@ export function EditorPage({ id }: { id: string }) {
   const [savedSlideCount, setSavedSlideCount] = useState(0)
   const [deckFindings, setDeckFindings] = useState<DeckFinding[] | null>(null)
   const [findingsOpen, setFindingsOpen] = useState(false)
-  const [panel, setPanel] = useState<'design' | 'notes' | 'images' | 'grids'>('design')
+	const [historyOpen, setHistoryOpen] = useState(false)
+	const [historyLoading, setHistoryLoading] = useState(false)
+	const [history, setHistory] = useState<PresentationRevision[]>([])
+	const [restoringRevision, setRestoringRevision] = useState('')
+	const [conflictOpen, setConflictOpen] = useState(false)
+	const [conflictKind, setConflictKind] = useState<'canvas' | 'source'>('canvas')
+  const [panel, setPanel] = useState<'content' | 'design' | 'notes' | 'images' | 'grids'>('content')
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
   // The deck as text. It is the same deck the canvas shows: applying it
   // recompiles the slides, and opening it reads them back out.
@@ -187,7 +209,7 @@ export function EditorPage({ id }: { id: string }) {
   const layoutsRef = useRef<TemplateLayout[]>([])
   layoutsRef.current = template?.layouts || []
   const { showToast } = useToast()
-  const markEdited = () => { revision.current += 1; setEditVersion((value) => value + 1) }
+  const markEdited = () => { revision.current += 1; setEditVersion((value) => value + 1); setSourceLoaded(false) }
 
   // A presenter's hands are on the arrow keys, not on the footer buttons.
   useEffect(() => {
@@ -226,6 +248,8 @@ export function EditorPage({ id }: { id: string }) {
     try {
       const data = await api.presentation(id)
       setPresentation(data); setSlides(data.slides || []); setActiveId(data.slides?.[0]?.id || '')
+			setDirty(false)
+			setSourceLoaded(false)
       setSavedSlideCount((data.slides || []).length)
       // What the deck looks like once drawn, so a finished deck says whether it is
       // actually finished rather than only that generation ended.
@@ -263,9 +287,21 @@ export function EditorPage({ id }: { id: string }) {
             title: snapshotPresentation.title,
             theme: snapshotPresentation.theme,
             templateId: snapshotPresentation.templateId,
+						version: snapshotPresentation.version,
             ...(snapshot.slides.length > 0 ? { slides: toApiSlides(snapshot.slides, layoutsRef.current) } : {}),
           })
-          if (snapshotRevision !== revision.current) continue
+						if (snapshotRevision !== revision.current) {
+							// A keystroke landed while this request was in flight. The server
+							// accepted the older snapshot, so carry its new version forward while
+							// keeping the newer local slides for the next loop iteration.
+							const current = editorState.current
+							if (current.presentation) {
+								const rebased = { ...current.presentation, version: updated.version, updatedAt: updated.updatedAt }
+								editorState.current = { ...current, presentation: rebased }
+								setPresentation(rebased)
+							}
+							continue
+						}
           const updatedSlides = updated.slides?.length ? updated.slides : snapshot.slides
           const merged = { ...snapshotPresentation, ...updated, slides: updatedSlides }
           editorState.current = { presentation: merged, slides: updatedSlides, dirty: false }
@@ -277,7 +313,13 @@ export function EditorPage({ id }: { id: string }) {
           setSavedSlideCount(updatedSlides.length)
           setRailVersion((value) => value + 1)
         }
-        return true
+				return true
+			} catch (err) {
+				if (err instanceof ApiError && err.status === 409) {
+					setConflictKind('canvas')
+					setConflictOpen(true)
+				}
+				throw err
       } finally {
         setSaving(false)
         savePromise.current = null
@@ -324,7 +366,24 @@ export function EditorPage({ id }: { id: string }) {
     return (layouts.find((layout) => layout.role === 'content') || layouts[0])?.id
   }, [template])
   const addSlide = () => { if (slides.length >= MAX_SLIDES) return; markEdited(); const next = defaultSlide(slides.length + 1, contentLayoutId); setSlides((current) => [...current, next]); setActiveId(next.id); setDirty(true) }
-  const duplicateSlide = () => { if (!active || slides.length >= MAX_SLIDES) return; markEdited(); const next = { ...active, id: `new-${crypto.randomUUID()}`, order: slides.length + 1, title: `${active.title} 복사본` }; setSlides((current) => [...current, next]); setActiveId(next.id); setDirty(true) }
+  const duplicateSlide = () => {
+    if (!active || slides.length >= MAX_SLIDES) return
+    markEdited()
+    const groups = new Map<string, string>()
+    const elements = (active.elements || []).map((element) => {
+      let groupId = element.groupId
+      if (groupId) {
+        if (!groups.has(groupId)) groups.set(groupId, `group-${crypto.randomUUID()}`)
+        groupId = groups.get(groupId)
+      }
+      return { ...element, id: `element-${crypto.randomUUID()}`, groupId }
+    })
+    const next = {
+      ...active, id: `new-${crypto.randomUUID()}`, order: slides.length + 1, title: `${active.title} 복사본`,
+      fields: structuredClone(active.fields || {}), blocks: structuredClone(active.blocks || {}), images: structuredClone(active.images || {}), elements,
+    }
+    setSlides((current) => [...current, next]); setActiveId(next.id); setDirty(true)
+  }
   const removeSlide = () => { if (!active || slides.length <= 1) return; markEdited(); const next = slides.filter((slide) => slide.id !== active.id).map((slide, index) => ({ ...slide, order: index + 1 })); setSlides(next); setActiveId(next[Math.min(activeIndex, next.length - 1)]?.id || ''); setDirty(true) }
   const openSource = async () => {
     setCanvasMode('source')
@@ -393,7 +452,7 @@ export function EditorPage({ id }: { id: string }) {
   const applySource = async (dryRun: boolean) => {
     setSourceBusy(true)
     try {
-      const result = await api.applyPresentationSource(id, source, dryRun)
+      const result = await api.applyPresentationSource(id, source, dryRun, presentation?.version)
       setSourceWarnings(result.warnings)
       setSourceFindings(result.findings)
       if (dryRun) {
@@ -412,19 +471,166 @@ export function EditorPage({ id }: { id: string }) {
       if (result.presentation) {
         setPresentation(result.presentation)
         const compiled = result.presentation.slides || []
+			editorState.current = { presentation: result.presentation, slides: compiled, dirty: false }
         setSlides(compiled)
         setActiveId(compiled[0]?.id || '')
         setDirty(false)
         setLastSaved(new Date())
         setSavedSlideCount(compiled.length)
         setRailVersion((value) => value + 1)
+			setSourceLoaded(true)
       }
       showToast('코드를 적용했습니다.')
       setCanvasMode('preview')
-    } catch (err) { showToast(displayError(err), 'error') } finally { setSourceBusy(false) }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setConflictKind('source')
+        setConflictOpen(true)
+      }
+      showToast(displayError(err), 'error')
+    } finally { setSourceBusy(false) }
   }
 
   const moveSlide = (direction: -1 | 1) => { const nextIndex = activeIndex + direction; if (nextIndex < 0 || nextIndex >= slides.length) return; markEdited(); const next = [...slides]; [next[activeIndex], next[nextIndex]] = [next[nextIndex], next[activeIndex]]; setSlides(next.map((slide, index) => ({ ...slide, order: index + 1 }))); setDirty(true) }
+
+	const canSafelyFix = (finding: DeckFinding) => {
+		if (finding.kind === 'notes') return Boolean(slides[finding.slide - 1])
+		if (finding.kind !== 'density' && finding.kind !== 'overflow') return false
+		return slides.length < MAX_SLIDES && slideBodyLines(slides[finding.slide - 1]).length >= 4
+	}
+
+	// Safe fixes never discard content: missing notes receive a draft, while a
+	// crowded prose slide is split and every line moves to one of the two slides.
+	const safelyFixFinding = (finding: DeckFinding) => {
+		const index = finding.slide - 1
+		const target = slides[index]
+		if (!target || !canSafelyFix(finding)) return
+		markEdited()
+		if (finding.kind === 'notes') {
+			const lead = target.subtitle || slideBodyLines(target)[0] || target.title
+			setSlides((current) => current.map((slide, slideIndex) => slideIndex === index
+				? { ...slide, speakerNotes: `${slide.title}: ${lead}`.slice(0, 4000) }
+				: slide))
+			setActiveId(target.id)
+			setDirty(true)
+			setFindingsOpen(false)
+			showToast('발표 노트 초안을 추가했습니다.')
+			return
+		}
+		const lines = slideBodyLines(target)
+		const splitAt = Math.ceil(lines.length / 2)
+		const firstLines = lines.slice(0, splitAt)
+		const secondLines = lines.slice(splitAt)
+		const continuation: Slide = {
+			...target,
+			id: `new-${crypto.randomUUID()}`,
+			order: index + 2,
+			title: `${target.title} (계속)`.slice(0, 200),
+			body: secondLines.join('\n'),
+			bullets: secondLines,
+			fields: {},
+			blocks: {},
+			images: {},
+			elements: [],
+			speakerNotes: target.speakerNotes ? `${target.speakerNotes} (계속)` : undefined,
+		}
+		const next = [
+			...slides.slice(0, index),
+			{ ...target, body: firstLines.join('\n'), bullets: firstLines },
+			continuation,
+			...slides.slice(index + 1),
+		].map((slide, slideIndex) => ({ ...slide, order: slideIndex + 1 }))
+		setSlides(next)
+		setActiveId(continuation.id)
+		setDirty(true)
+		setFindingsOpen(false)
+		showToast('내용을 버리지 않고 두 슬라이드로 나눴습니다.')
+	}
+
+	const openHistory = async () => {
+		setHistoryOpen(true)
+		setHistoryLoading(true)
+		try {
+			await save()
+			setHistory(await api.presentationRevisions(id))
+		} catch (err) { showToast(displayError(err), 'error') } finally { setHistoryLoading(false) }
+	}
+
+	const restoreRevision = async (checkpoint: PresentationRevision) => {
+		setRestoringRevision(checkpoint.id)
+		try {
+			const restored = await api.restorePresentationRevision(id, checkpoint.id)
+			const restoredSlides = restored.slides || []
+			editorState.current = { presentation: restored, slides: restoredSlides, dirty: false }
+			setPresentation(restored)
+			setSlides(restoredSlides)
+			setActiveId(restoredSlides[0]?.id || '')
+			setDirty(false)
+			setSourceLoaded(false)
+			setSavedSlideCount(restoredSlides.length)
+			setRailVersion((value) => value + 1)
+			setLastSaved(new Date())
+			setHistory(await api.presentationRevisions(id))
+			if (restored.templateId) api.template(restored.templateId).then(setTemplate).catch(() => setTemplate(null))
+			api.inspectPresentation(id).then((result) => setDeckFindings(result.findings)).catch(() => setDeckFindings(null))
+			showToast(`버전 ${checkpoint.version}의 내용으로 복원했습니다.`)
+		} catch (err) { showToast(displayError(err), 'error') } finally { setRestoringRevision('') }
+	}
+
+	const useServerVersion = async () => {
+		setConflictOpen(false)
+		setDirty(false)
+		editorState.current = { ...editorState.current, dirty: false }
+		if (conflictKind === 'source') {
+			setCanvasMode('edit')
+			setSourceLoaded(false)
+		}
+		await load()
+		setConflictKind('canvas')
+		showToast('서버에 저장된 최신 버전을 불러왔습니다.')
+	}
+
+	const keepLocalVersion = async () => {
+		const kind = conflictKind
+		if (kind === 'source') setSourceBusy(true)
+		try {
+			const latest = await api.presentation(id)
+			if (kind === 'source') {
+				const result = await api.applyPresentationSource(id, source, false, latest.version)
+				if (!result.presentation) throw new Error('코드를 적용한 프레젠테이션을 받지 못했습니다.')
+				const retained = result.presentation
+				const retainedSlides = retained.slides || []
+				setSourceWarnings(result.warnings)
+				setSourceFindings(result.findings)
+				editorState.current = { presentation: retained, slides: retainedSlides, dirty: false }
+				setPresentation(retained)
+				setSlides(retainedSlides)
+				setActiveId(retainedSlides[0]?.id || '')
+				setDirty(false)
+				setSourceLoaded(true)
+				setSavedSlideCount(retainedSlides.length)
+				setRailVersion((value) => value + 1)
+				setLastSaved(new Date())
+				setCanvasMode('preview')
+				if (retained.templateId) api.template(retained.templateId).then(setTemplate).catch(() => setTemplate(null))
+				setConflictOpen(false)
+				setConflictKind('canvas')
+				showToast('내 코드를 최신 버전 위에 적용했습니다.')
+				return
+			}
+			const local = editorState.current.presentation
+			if (!local) return
+			const rebased = { ...local, version: latest.version }
+			editorState.current = { presentation: rebased, slides: editorState.current.slides, dirty: true }
+			setPresentation(rebased)
+			setDirty(true)
+			markEdited()
+			setConflictOpen(false)
+			showToast('내 변경을 최신 버전 위에 다시 저장합니다.')
+		} catch (err) { showToast(displayError(err), 'error') } finally {
+			if (kind === 'source') setSourceBusy(false)
+		}
+	}
   // Switching template keeps each slide's narrative role and rebinds it to the
   // equivalent layout in the new design, so content survives the change.
   const chooseTemplate = async (next: Template) => {
@@ -446,6 +652,22 @@ export function EditorPage({ id }: { id: string }) {
   }
 
   const chooseLayout = (layout: TemplateLayout) => updateActive({ layoutId: layout.id, layout: String(layout.role) })
+
+  const placeImage = (asset: Asset) => {
+    if (!active) return
+    const ratio = asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 16 / 9
+    const width = 30
+    const height = Math.min(45, Math.max(8, width * (16 / 9) / ratio))
+    const highest = Math.max(0, ...(active.elements || []).map((element) => element.zIndex || 0))
+    const image: SlideElement = {
+      id: `element-${crypto.randomUUID()}`, kind: 'image', assetId: asset.id, name: asset.name,
+      caption: asset.name, x: 35, y: Math.max(5, (100 - height) / 2), width, height, zIndex: highest + 1,
+      rotation: 0, opacity: 100, fit: 'cover',
+    }
+    updateActive({ elements: [...(active.elements || []), image] })
+    setCanvasMode('edit')
+    showToast(`${asset.name}을 현재 슬라이드에 배치했습니다.`)
+  }
 
   const exportDeck = async (format: 'pptx' | 'pdf') => {
     setExporting(true)
@@ -493,7 +715,7 @@ export function EditorPage({ id }: { id: string }) {
                 ? <><AlertTriangle size={13} /> 다듬을 곳 {advisories.length}</>
                 : <><Check size={13} /> 결함 없음</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
-        <div className="editor-actions"><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
+		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       <div className="editor-workspace">
@@ -525,36 +747,14 @@ export function EditorPage({ id }: { id: string }) {
             <button className={canvasMode === 'preview' ? 'active' : ''} onClick={() => { if (dirty) void save().catch(() => { /* the preview falls back to the saved state */ }); setCanvasMode('preview') }}>템플릿 미리보기</button>
             <button className={canvasMode === 'source' ? 'active' : ''} onClick={() => void openSource()}><Code2 size={13} /> 코드</button>
           </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
-          {active ? <div className="canvas-stage">
-            {canvasMode === 'edit' ? <div className="slide-edit-pane">
-              <div className="slide-edit-fields">
-                <label className="slide-edit-field">
-                  <span>제목</span>
-                  <input value={active.title} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} className="slide-title-editor" aria-label="슬라이드 제목" placeholder="슬라이드 제목" />
-                </label>
-                <label className="slide-edit-field">
-                  <span>리드 문장</span>
-                  <input value={active.subtitle || ''} maxLength={300} onChange={(event) => updateActive({ subtitle: event.target.value })} aria-label="리드 문장" placeholder="제목 아래 한 줄" />
-                </label>
-                <label className="slide-edit-field grow">
-                  <span>본문 {activeHoldings.length > 0 ? '(컴포넌트 옆 영역)' : ''}</span>
-                  <Textarea value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." />
-                </label>
-                {activeHoldings.length > 0 && <div className="slide-holdings">
-                  <strong>이 슬라이드가 담고 있는 것</strong>
-                  <ul>{activeHoldings.map((holding) => <li key={holding.slot}>
-                    {holding.kind === 'image' ? <Image size={13} /> : <LayoutPanelTop size={13} />}
-                    <span>{holding.label}</span><small>{holding.detail}</small>
-                  </li>)}</ul>
-                  <p>컴포넌트와 이미지는 텍스트로 고칠 수 없습니다. 내용을 바꾸려면 <button type="button" onClick={() => void openSource()}>코드</button>에서 편집하세요. 여기서 글을 고쳐도 지워지지 않습니다.</p>
-                </div>}
-              </div>
-              <div className="slide-edit-render">
-                {/* The saved slide as the template draws it, so editing is not blind. */}
-                <SlidePreview cacheKey={`${id}-edit-${activeIndex}-${railVersion}`} alt={`${activeIndex + 1}번 슬라이드`} load={() => api.slidePreview(id, activeIndex + 1, 900)} />
-                <small>{dirty ? '저장 후 이 그림에 반영됩니다.' : '실제 템플릿으로 그린 현재 상태입니다.'}</small>
-              </div>
-            </div> : canvasMode === 'source' ? <div className="source-editor">
+          {active ? <div className={`canvas-stage ${canvasMode === 'edit' ? 'detail-mode' : ''}`}>
+            {canvasMode === 'edit' ? <FreeformCanvas
+              slideId={active.id}
+              elements={active.elements || []}
+              cacheKey={`${id}-edit-base-${activeIndex}-${railVersion}`}
+              loadBase={() => api.slidePreview(id, activeIndex + 1, 1200, false)}
+              onChange={(elements) => updateActive({ elements })}
+            /> : canvasMode === 'source' ? <div className="source-editor">
               <div className="source-editor-head">
                 <div>
                   <strong>덱 소스</strong>
@@ -606,8 +806,17 @@ export function EditorPage({ id }: { id: string }) {
         </section>
 
         <aside className="inspector-panel">
-          <div className="inspector-tabs"><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>발표 노트</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button><button className={panel === 'grids' ? 'active' : ''} onClick={() => setPanel('grids')}>격자</button></div>
-          {panel === 'design' ? <div className="inspector-content">
+          <div className="inspector-tabs"><button className={panel === 'content' ? 'active' : ''} onClick={() => setPanel('content')}>내용</button><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>노트</button><button className={panel === 'grids' ? 'active' : ''} onClick={() => setPanel('grids')}>격자</button></div>
+          {panel === 'content' ? <div className="inspector-content">
+            <section className="template-text-fields">
+              <div className="inspector-section-head"><strong>템플릿 텍스트</strong><span className="inspector-hint">배경 레이어</span></div>
+              <p className="inspector-help">템플릿 슬롯의 글을 편집합니다. 캔버스 위 텍스트 상자는 자유롭게 이동·회전할 수 있습니다.</p>
+              <label className="slide-edit-field"><span>제목</span><input disabled={!active} value={active?.title || ''} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} aria-label="슬라이드 제목" placeholder="슬라이드 제목" /></label>
+              <label className="slide-edit-field"><span>리드 문장</span><input disabled={!active} value={active?.subtitle || ''} maxLength={300} onChange={(event) => updateActive({ subtitle: event.target.value })} aria-label="리드 문장" placeholder="제목 아래 한 줄" /></label>
+              <label className="slide-edit-field grow"><span>본문 {activeHoldings.some((holding) => holding.kind !== 'element') ? '(컴포넌트 옆 영역)' : ''}</span><Textarea disabled={!active} value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." /></label>
+              {activeHoldings.length > 0 && <div className="slide-holdings"><strong>슬라이드 개체</strong><ul>{activeHoldings.map((holding) => <li key={holding.slot}>{holding.kind === 'image' ? <Image size={13} /> : <LayoutPanelTop size={13} />}<span>{holding.label}</span><small>{holding.detail}</small></li>)}</ul></div>}
+            </section>
+          </div> : panel === 'design' ? <div className="inspector-content">
             <section>
               <div className="inspector-section-head"><strong>템플릿</strong>{template && <span className="inspector-hint">{template.layoutCount}개 레이아웃</span>}</div>
               <Select
@@ -648,8 +857,8 @@ export function EditorPage({ id }: { id: string }) {
           </div> : panel === 'images' ? <div className="inspector-content">
             <section>
               <strong>이미지</strong>
-              <p className="inspector-help">올린 이미지는 코드에서 <code>::image 이름</code>으로 불러 씁니다. 레이아웃의 그림 영역, 없으면 가장 넓은 본문 영역에 들어갑니다.</p>
-              <AssetLibrary onInsert={insertImageReference} notify={showToast} />
+              <p className="inspector-help">현재 슬라이드에 자유 배치하거나, 코드의 <code>::image 이름</code>으로 템플릿 슬롯에 넣을 수 있습니다.</p>
+              <AssetLibrary onPlace={placeImage} onInsert={insertImageReference} notify={showToast} />
             </section>
           </div> : <div className="inspector-content"><section><strong>발표자 노트</strong><p className="inspector-help">{active ? '슬라이드와 별도로 저장되는 내부 발표 메모입니다.' : '노트를 작성하려면 슬라이드를 먼저 추가하세요.'}</p><Textarea className="notes-editor" disabled={!active} maxLength={4000} value={active?.speakerNotes || ''} onChange={(event) => updateActive({ speakerNotes: event.target.value })} placeholder="이 슬라이드에서 전달할 포인트, 참고할 숫자 등을 기록하세요." /></section></div>}
         </aside>
@@ -682,15 +891,41 @@ export function EditorPage({ id }: { id: string }) {
         {(deckFindings || []).length === 0
           ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
           : <ul className="deck-findings">{(deckFindings || []).map((finding) => (
-              <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className={finding.advisory ? 'advisory' : 'defect'}>
-                <button type="button" onClick={() => { const target = slides[finding.slide - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
-                  <strong>{finding.slide}번 슬라이드</strong>
-                  <span>{findingLabel(finding.kind)}</span>
-                  <small>{finding.detail}</small>
-                </button>
-              </li>
-            ))}</ul>}
+			  <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className={finding.advisory ? 'advisory' : 'defect'}>
+				<button type="button" className="finding-target" onClick={() => { const target = slides[finding.slide - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
+				  <strong>{finding.slide}번 슬라이드</strong>
+				  <span>{findingLabel(finding.kind)}</span>
+				  <small>{finding.detail}</small>
+				</button>
+				{canSafelyFix(finding) && <button type="button" className="finding-safe-fix" onClick={() => safelyFixFinding(finding)}><WandSparkles size={13} /> 안전 수정</button>}
+			  </li>
+			))}</ul>}
       </Modal>
+		<Modal
+			open={historyOpen}
+			onClose={() => { if (!restoringRevision) setHistoryOpen(false) }}
+			title="버전 이력"
+			description="자동 편집은 5분 단위로 묶고, 코드 적용·재생성·복원 전에는 별도 체크포인트를 남깁니다. 복원 직전 상태도 다시 기록됩니다."
+			footer={<Button variant="secondary" disabled={Boolean(restoringRevision)} onClick={() => setHistoryOpen(false)}>닫기</Button>}
+		>
+			{historyLoading ? <LoadingState compact label="버전 이력을 불러오는 중…" /> : history.length === 0 ? <EmptyState icon={<History size={24} />} title="아직 이전 버전이 없습니다" description="첫 변경을 저장하면 복원 가능한 체크포인트가 만들어집니다." /> : <ol className="revision-list">
+				<li className="revision-current"><span><Check size={14} /></span><div><strong>현재 버전 {presentation.version}</strong><small>지금 편집 중인 내용</small></div></li>
+				{history.map((checkpoint) => <li key={checkpoint.id}>
+					<span><History size={14} /></span>
+					<div><strong>버전 {checkpoint.version} · {revisionReason(checkpoint.reason)}</strong><small>{checkpoint.slideCount}장 · {relativeDate(checkpoint.createdAt)}</small></div>
+					<Button variant="secondary" size="small" disabled={Boolean(restoringRevision)} onClick={() => void restoreRevision(checkpoint)}>{restoringRevision === checkpoint.id ? <LoaderCircle className="spin" size={13} /> : <RotateCcw size={13} />} 복원</Button>
+				</li>)}
+			</ol>}
+		</Modal>
+		<Modal
+			open={conflictOpen}
+			onClose={() => setConflictOpen(false)}
+			title="다른 창에서 변경된 내용이 있습니다"
+			description={conflictKind === 'source' ? '코드를 조용히 덮어쓰지 않았습니다. 서버의 최신 덱을 불러오거나, 내 코드를 최신 버전 위에 적용할 수 있습니다.' : '현재 편집 내용을 조용히 덮어쓰지 않았습니다. 서버의 최신 내용을 불러오거나, 내 변경을 최신 버전 위에 다시 저장할 수 있습니다.'}
+			footer={<><Button variant="secondary" disabled={sourceBusy} onClick={() => void useServerVersion()}>서버 버전 불러오기</Button><Button disabled={sourceBusy} onClick={() => void keepLocalVersion()}>{conflictKind === 'source' ? '내 코드 적용' : '내 변경 유지'}</Button></>}
+		>
+			<p className="modal-note">두 버전을 모두 보존하려면 먼저 내 변경을 유지한 뒤 버전 이력에서 이전 체크포인트를 확인할 수 있습니다.</p>
+		</Modal>
       <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="프레젠테이션 내보내기" description="사용할 형식을 선택하세요." footer={<Button variant="secondary" onClick={() => setExportOpen(false)}>취소</Button>}><div className="export-options"><button disabled={exporting} onClick={() => void exportDeck('pptx')}><span className="export-icon ppt"><FileText size={22} /></span><div><strong>PowerPoint (.pptx)</strong><p>Microsoft PowerPoint와 호환되는 편집 가능한 파일</p></div><Download size={18} /></button><button disabled title="추후 제공 예정"><span className="export-icon pdf"><FileText size={22} /></span><div><strong>PDF 문서 (.pdf) · 곧 제공</strong><p>읽기 전용 PDF 내보내기는 준비 중입니다.</p></div></button></div>{exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}</Modal>
     </main>
   )

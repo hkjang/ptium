@@ -98,6 +98,9 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 		}
 		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale))
 	}
+	for _, element := range slide.Elements {
+		builder.WriteString(element.SVG(scale))
+	}
 	builder.WriteString(gradients.defs())
 	builder.WriteString(`</svg>`)
 	return builder.String()

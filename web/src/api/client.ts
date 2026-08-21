@@ -4,10 +4,12 @@ import type {
   AuthConfig,
   Incident,
   Presentation,
+	PresentationRevision,
   ProfilePreferences,
   ServerError,
   Slide,
   SlideBlock,
+  SlideElement,
   SlideImage,
   SlideParagraph,
   Template,
@@ -424,6 +426,50 @@ function normalizeFields(raw: unknown): Record<string, SlideParagraph[]> {
   return result
 }
 
+function normalizeElements(raw: unknown): SlideElement[] {
+  if (!Array.isArray(raw)) return []
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const value = entry as Record<string, unknown>
+    const kind = String(value.kind || '')
+    if (!['text', 'shape', 'line', 'image', 'table'].includes(kind)) return []
+    return [{
+      id: String(value.id || `element-${crypto.randomUUID()}`),
+      kind: kind as SlideElement['kind'],
+      shape: String(value.shape || '') || undefined,
+      x: Number(value.x) || 0,
+      y: Number(value.y) || 0,
+      width: Math.max(.1, Number(value.width) || 10),
+      height: Math.max(.1, Number(value.height) || 10),
+      rotation: Number(value.rotation) || 0,
+      zIndex: Number(value.zIndex) || 0,
+      text: String(value.text || '') || undefined,
+      cells: Array.isArray(value.cells) ? value.cells.map((row) => Array.isArray(row) ? row.map(String) : []) : undefined,
+      headerRows: Number(value.headerRows) || undefined,
+      headerColumns: Number(value.headerColumns) || undefined,
+      fontFamily: String(value.fontFamily || '') || undefined,
+      fontSize: Number(value.fontSize) || undefined,
+      textColor: String(value.textColor || '') || undefined,
+      bold: Boolean(value.bold), italic: Boolean(value.italic), underline: Boolean(value.underline),
+      align: String(value.align || '') || undefined,
+      verticalAlign: String(value.verticalAlign || '') || undefined,
+      fill: String(value.fill || '') || undefined,
+      stroke: String(value.stroke || '') || undefined,
+      strokeWidth: Number(value.strokeWidth) || undefined,
+      startArrow: String(value.startArrow || '') || undefined,
+      endArrow: String(value.endArrow || '') || undefined,
+      dash: String(value.dash || '') || undefined,
+      opacity: Number(value.opacity) || undefined,
+      assetId: String(value.assetId || '') || undefined,
+      name: String(value.name || '') || undefined,
+      caption: String(value.caption || '') || undefined,
+      fit: String(value.fit || '') || undefined,
+      groupId: String(value.groupId || '') || undefined,
+      locked: Boolean(value.locked), hidden: Boolean(value.hidden),
+    }]
+  })
+}
+
 function normalizePresentation(value: Presentation & Record<string, unknown>): Presentation {
   const rawSlides = Array.isArray(value.slides) ? value.slides as unknown as Array<Record<string, unknown>> : []
   const slides = rawSlides.map((slide, index) => {
@@ -448,6 +494,7 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
       // cannot delete the drawings the generator made.
       blocks: asRecord<SlideBlock>(content.blocks),
       images: asRecord<SlideImage>(content.images),
+      elements: normalizeElements(content.elements),
       speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
       imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
       accent: String(slide.accent || content.accent || '') || undefined,
@@ -463,6 +510,8 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
     status: normalizeStatus(value.status),
     createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
     updatedAt: String(value.updatedAt || value.updated_at || value.createdAt || value.created_at || new Date().toISOString()),
+		version: Number(value.version || 1),
+		deletedAt: String(value.deletedAt || value.deleted_at || '') || undefined,
     thumbnailUrl: String(value.thumbnailUrl || value.thumbnail_url || '') || undefined,
     errorMessage: String(value.errorMessage || value.error_message || '') || undefined,
     slideCount: slides.length > 0 ? slides.length : Number.isFinite(reportedSlideCount) ? reportedSlideCount : 0,
@@ -648,8 +697,9 @@ export const api = {
       throw error
     }
   },
-  async presentations() {
-    return (await requestAllPages<Presentation & Record<string, unknown>>('/presentations', ['presentations', 'items', 'data'])).map(normalizePresentation)
+  async presentations(deleted = false) {
+		const path = deleted ? '/presentations?deleted=true' : '/presentations'
+    return (await requestAllPages<Presentation & Record<string, unknown>>(path, ['presentations', 'items', 'data'])).map(normalizePresentation)
   },
   async presentation(id: string) {
     return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}`), ['presentation', 'data']))
@@ -694,9 +744,9 @@ export const api = {
    * Compiles deck source. With dryRun the deck is left alone and only the
    * result is reported, which is how the editor checks before applying.
    */
-  async applyPresentationSource(id: string, source: string, dryRun = false) {
+  async applyPresentationSource(id: string, source: string, dryRun = false, version?: number) {
     const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/source`, {
-      method: 'PUT', body: JSON.stringify({ source, dryRun }),
+      method: 'PUT', body: JSON.stringify({ source, dryRun, version }),
     })
     const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
     return {
@@ -737,6 +787,37 @@ export const api = {
     }), ['presentation', 'data']))
   },
   deletePresentation: (id: string) => request<void>(`/presentations/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+	async duplicatePresentation(id: string) {
+		return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}/duplicate`, {
+			method: 'POST',
+		}), ['presentation', 'data']))
+	},
+	async restoreDeletedPresentation(id: string) {
+		return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}/restore`, {
+			method: 'POST',
+		}), ['presentation', 'data']))
+	},
+	permanentlyDeletePresentation: (id: string) => request<void>(`/presentations/${encodeURIComponent(id)}/permanent`, { method: 'DELETE' }),
+	async presentationRevisions(id: string) {
+		const items = await requestAllPages<PresentationRevision & Record<string, unknown>>(
+			`/presentations/${encodeURIComponent(id)}/revisions`, ['revisions', 'items', 'data'],
+		)
+		return items.map((value) => ({
+			...value,
+			id: String(value.id),
+			presentationId: String(value.presentationId || value.presentation_id || id),
+			version: Number(value.version || 0),
+			reason: String(value.reason || 'edit'),
+			title: String(value.title || ''),
+			slideCount: Number(value.slideCount ?? value.slide_count ?? 0),
+			createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
+		})) as PresentationRevision[]
+	},
+	async restorePresentationRevision(id: string, revisionId: string) {
+		return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(
+			`/presentations/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`, { method: 'POST' },
+		), ['presentation', 'data']))
+	},
   async exportPresentation(id: string, format: 'pptx' | 'pdf' = 'pptx') {
     const headers = new Headers({ Accept: format === 'pptx' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/pdf' })
     const token = session.token(); const secret = session.secret()
@@ -777,8 +858,8 @@ export const api = {
       : `/templates/${encodeURIComponent(id)}/preview.svg`
     return fetchImage(`${path}?width=${width}`)
   },
-  slidePreview(presentationId: string, slide: number, width = 960) {
-    return fetchImage(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?slide=${slide}&width=${width}`)
+  slidePreview(presentationId: string, slide: number, width = 960, includeFreeform = true) {
+    return fetchImage(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?slide=${slide}&width=${width}&freeform=${includeFreeform}`)
   },
 
   async profile() {

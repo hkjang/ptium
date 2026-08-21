@@ -5,8 +5,11 @@ package deck
 
 import (
 	"encoding/json"
+	"fmt"
+	"math"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -27,11 +30,152 @@ type Content struct {
 	Blocks map[string]pptx.Block `json:"blocks,omitempty"`
 	// Images maps a slot to a stored image drawn in it. A slot holds text, a
 	// component or an image — never two of them.
-	Images  map[string]ContentImage `json:"images,omitempty"`
-	Bullets []string                `json:"bullets,omitempty"`
-	Body    string                  `json:"body,omitempty"`
-	Accent  string                  `json:"accent,omitempty"`
-	Notes   string                  `json:"notes,omitempty"`
+	Images map[string]ContentImage `json:"images,omitempty"`
+	// Elements are freely positioned objects layered over the template. Their
+	// geometry uses slide percentages, so the same payload works with every
+	// aspect ratio and can be mapped losslessly to browser CSS and PPTX EMUs.
+	Elements []FreeformElement `json:"elements,omitempty"`
+	Bullets  []string          `json:"bullets,omitempty"`
+	Body     string            `json:"body,omitempty"`
+	Accent   string            `json:"accent,omitempty"`
+	Notes    string            `json:"notes,omitempty"`
+}
+
+const MaxFreeformElements = 200
+
+// FreeformElement is one Google-Slides-style object on top of a template:
+// text, an editable shape, a line, or an image from the owner's asset library.
+// X/Y/Width/Height are percentages of the slide canvas. Opacity is 1..100;
+// zero is treated as the backwards-compatible default of fully opaque.
+type FreeformElement struct {
+	ID            string     `json:"id"`
+	Kind          string     `json:"kind"`
+	Shape         string     `json:"shape,omitempty"`
+	X             float64    `json:"x"`
+	Y             float64    `json:"y"`
+	Width         float64    `json:"width"`
+	Height        float64    `json:"height"`
+	Rotation      float64    `json:"rotation,omitempty"`
+	ZIndex        int        `json:"zIndex,omitempty"`
+	Text          string     `json:"text,omitempty"`
+	Cells         [][]string `json:"cells,omitempty"`
+	HeaderRows    int        `json:"headerRows,omitempty"`
+	HeaderColumns int        `json:"headerColumns,omitempty"`
+	FontFamily    string     `json:"fontFamily,omitempty"`
+	FontSize      float64    `json:"fontSize,omitempty"`
+	TextColor     string     `json:"textColor,omitempty"`
+	Bold          bool       `json:"bold,omitempty"`
+	Italic        bool       `json:"italic,omitempty"`
+	Underline     bool       `json:"underline,omitempty"`
+	Align         string     `json:"align,omitempty"`
+	VerticalAlign string     `json:"verticalAlign,omitempty"`
+	Fill          string     `json:"fill,omitempty"`
+	Stroke        string     `json:"stroke,omitempty"`
+	StrokeWidth   float64    `json:"strokeWidth,omitempty"`
+	StartArrow    string     `json:"startArrow,omitempty"`
+	EndArrow      string     `json:"endArrow,omitempty"`
+	Dash          string     `json:"dash,omitempty"`
+	Opacity       int        `json:"opacity,omitempty"`
+	AssetID       string     `json:"assetId,omitempty"`
+	Name          string     `json:"name,omitempty"`
+	Caption       string     `json:"caption,omitempty"`
+	Fit           string     `json:"fit,omitempty"`
+	GroupID       string     `json:"groupId,omitempty"`
+	Locked        bool       `json:"locked,omitempty"`
+	Hidden        bool       `json:"hidden,omitempty"`
+}
+
+// ValidateFreeformElements bounds stored canvas data before it reaches either
+// renderer. Rendering always escapes text, but limits still prevent a single
+// slide from becoming an unbounded document inside a document.
+func ValidateFreeformElements(elements []FreeformElement) error {
+	if len(elements) > MaxFreeformElements {
+		return fmt.Errorf("a slide may contain at most %d freeform elements", MaxFreeformElements)
+	}
+	seen := make(map[string]bool, len(elements))
+	for index, element := range elements {
+		position := index + 1
+		if strings.TrimSpace(element.ID) == "" || utf8.RuneCountInString(element.ID) > 100 {
+			return fmt.Errorf("freeform element %d has an invalid id", position)
+		}
+		if seen[element.ID] {
+			return fmt.Errorf("freeform element %d repeats id %q", position, element.ID)
+		}
+		seen[element.ID] = true
+		switch element.Kind {
+		case "text", "shape", "line", "image", "table":
+		default:
+			return fmt.Errorf("freeform element %d has unsupported kind %q", position, element.Kind)
+		}
+		for _, value := range []float64{element.X, element.Y, element.Width, element.Height, element.Rotation, element.FontSize, element.StrokeWidth} {
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				return fmt.Errorf("freeform element %d contains a non-finite number", position)
+			}
+		}
+		if element.X < -100 || element.X > 200 || element.Y < -100 || element.Y > 200 ||
+			element.Width < 0.1 || element.Width > 300 || element.Height < 0.1 || element.Height > 300 {
+			return fmt.Errorf("freeform element %d geometry is outside the supported canvas range", position)
+		}
+		if element.Rotation < -3600 || element.Rotation > 3600 || element.ZIndex < -10000 || element.ZIndex > 10000 {
+			return fmt.Errorf("freeform element %d transform is outside the supported range", position)
+		}
+		if utf8.RuneCountInString(element.Text) > 20000 || utf8.RuneCountInString(element.Caption) > 1000 ||
+			utf8.RuneCountInString(element.FontFamily) > 200 || utf8.RuneCountInString(element.GroupID) > 100 ||
+			utf8.RuneCountInString(element.Name) > 300 {
+			return fmt.Errorf("freeform element %d text exceeds its allowed length", position)
+		}
+		if element.Kind == "table" {
+			if len(element.Cells) == 0 || len(element.Cells) > 50 {
+				return fmt.Errorf("freeform table %d must contain between 1 and 50 rows", position)
+			}
+			columns := len(element.Cells[0])
+			if columns == 0 || columns > 20 {
+				return fmt.Errorf("freeform table %d must contain between 1 and 20 columns", position)
+			}
+			totalText := 0
+			for rowIndex, row := range element.Cells {
+				if len(row) != columns {
+					return fmt.Errorf("freeform table %d row %d has a different column count", position, rowIndex+1)
+				}
+				for _, cell := range row {
+					length := utf8.RuneCountInString(cell)
+					if length > 1000 {
+						return fmt.Errorf("freeform table %d contains a cell longer than 1000 characters", position)
+					}
+					totalText += length
+				}
+			}
+			if totalText > 20000 || element.HeaderRows < 0 || element.HeaderRows > len(element.Cells) ||
+				element.HeaderColumns < 0 || element.HeaderColumns > columns {
+				return fmt.Errorf("freeform table %d structure is outside the supported range", position)
+			}
+		}
+		if element.FontSize < 0 || element.FontSize > 400 || element.StrokeWidth < 0 || element.StrokeWidth > 50 ||
+			element.Opacity < 0 || element.Opacity > 100 {
+			return fmt.Errorf("freeform element %d style is outside the supported range", position)
+		}
+		if len(element.Fill) > 32 || len(element.Stroke) > 32 || len(element.TextColor) > 32 {
+			return fmt.Errorf("freeform element %d has an invalid colour", position)
+		}
+		if element.Kind == "image" && strings.TrimSpace(element.AssetID) == "" {
+			return fmt.Errorf("freeform image %d does not reference an asset", position)
+		}
+		if !oneOf(element.StartArrow, "", "none", "triangle", "stealth", "diamond", "oval") ||
+			!oneOf(element.EndArrow, "", "none", "triangle", "stealth", "diamond", "oval") ||
+			!oneOf(element.Dash, "", "solid", "dash", "dot", "dashDot") {
+			return fmt.Errorf("freeform element %d has an unsupported line style", position)
+		}
+	}
+	return nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 // ContentImage is an image placed on a slide, by reference. The bytes stay in
@@ -245,11 +389,16 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 		Author:   author,
 		Language: presentation.Language,
 	}
+	slideWidth, slideHeight := manifest.SlideWidth, manifest.SlideHeight
+	if slideWidth <= 0 || slideHeight <= 0 {
+		slideWidth, slideHeight = 12192000, 6858000
+	}
 	for index, slide := range presentation.Slides {
 		layout := resolveLayout(manifest, slide, index, len(presentation.Slides))
 		rendered := RenderSlide(slide, layout)
+		content := Decode(slide.Content)
 		if images != nil {
-			for slot, placed := range Decode(slide.Content).Images {
+			for slot, placed := range content.Images {
 				if _, ok := layout.Slot(slot); !ok {
 					continue
 				}
@@ -265,6 +414,51 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 				// The slot holds the picture, not text left over from an earlier edit.
 				delete(rendered.Fields, slot)
 				delete(rendered.Blocks, slot)
+			}
+		}
+		if len(content.Elements) > 0 {
+			type orderedElement struct {
+				position int
+				element  FreeformElement
+			}
+			ordered := make([]orderedElement, 0, len(content.Elements))
+			for position, element := range content.Elements {
+				if !element.Hidden {
+					ordered = append(ordered, orderedElement{position: position, element: element})
+				}
+			}
+			sort.SliceStable(ordered, func(i, j int) bool {
+				if ordered[i].element.ZIndex == ordered[j].element.ZIndex {
+					return ordered[i].position < ordered[j].position
+				}
+				return ordered[i].element.ZIndex < ordered[j].element.ZIndex
+			})
+			for _, item := range ordered {
+				element := item.element
+				built := pptx.Element{
+					ID: element.ID, Kind: element.Kind, Shape: element.Shape,
+					Frame: pptx.Frame{
+						X:      int(math.Round(element.X / 100 * float64(slideWidth))),
+						Y:      int(math.Round(element.Y / 100 * float64(slideHeight))),
+						Width:  int(math.Round(element.Width / 100 * float64(slideWidth))),
+						Height: int(math.Round(element.Height / 100 * float64(slideHeight))),
+					},
+					Rotation: element.Rotation, ZIndex: element.ZIndex, Text: element.Text,
+					Cells: element.Cells, HeaderRows: element.HeaderRows, HeaderColumns: element.HeaderColumns,
+					FontFamily: element.FontFamily, FontSize: int(math.Round(element.FontSize * 100)),
+					TextColor: element.TextColor, Bold: element.Bold, Italic: element.Italic, Underline: element.Underline,
+					Align: element.Align, VerticalAlign: element.VerticalAlign, Fill: element.Fill, Stroke: element.Stroke,
+					StrokeWidth: int(math.Round(element.StrokeWidth * float64(pptx.EMUPerPoint))), Opacity: element.Opacity,
+					StartArrow: element.StartArrow, EndArrow: element.EndArrow, Dash: element.Dash,
+					Fit: element.Fit, Caption: element.Caption, Locked: element.Locked,
+				}
+				if element.Kind == "image" && images != nil {
+					if picture, found := images(element.AssetID); found {
+						picture.Caption = element.Caption
+						built.Picture = &picture
+					}
+				}
+				rendered.Elements = append(rendered.Elements, built)
 			}
 		}
 		result.Slides = append(result.Slides, rendered)

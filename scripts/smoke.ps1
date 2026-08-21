@@ -105,6 +105,7 @@ $Created = Invoke-PtiumJson -Method POST -Path "/api/v1/presentations" -Body @{
 }
 $PresentationId = [string]$Created.data.id
 Assert-True (-not [string]::IsNullOrWhiteSpace($PresentationId)) "presentation creation"
+Assert-True ($Created.data.version -eq 1) "presentation starts at resource version 1"
 
 $null = Invoke-PtiumJson -Method POST -Path "/api/v1/presentations/$PresentationId/generate"
 $Generated = Wait-ForPresentation -Id $PresentationId -Statuses @("completed", "failed")
@@ -112,7 +113,8 @@ Assert-True ($Generated.status -eq "completed") "fallback generation completed"
 Assert-True ($Generated.slides.Count -eq 6) "requested slide count was generated"
 Assert-True ($Generated.slideCount -eq 6) "presentation detail reports the actual slide count"
 Assert-True ($Generated.slides[0].content.accent -eq "#8068E8") "profile brand color is applied to generated content"
-Assert-True (($Generated.slides[1].content | ConvertTo-Json -Depth 20).Contains("Automated end-to-end verification")) "profile context is applied to generated content"
+$GeneratedContext = $Generated.slides | ConvertTo-Json -Depth 20
+Assert-True ($GeneratedContext.Contains("Integration Tester")) "non-sensitive profile company and role context is applied to generated content"
 
 $UpdatedSlides = @($Generated.slides | ForEach-Object {
     @{
@@ -126,11 +128,42 @@ $UpdatedSlides = @($Generated.slides | ForEach-Object {
     }
 })
 $UpdatedSlides[0].title = "Ptium 검증 완료"
+$UpdatedSlides[0].content | Add-Member -NotePropertyName elements -NotePropertyValue @(
+    @{ id = "smoke-text"; kind = "text"; x = 12; y = 18; width = 30; height = 12; zIndex = 1; text = "직접 편집 텍스트"; fontSize = 24; textColor = "20242D" },
+    @{ id = "smoke-shape"; kind = "shape"; shape = "ellipse"; x = 52; y = 22; width = 20; height = 24; zIndex = 2; fill = "725BD6"; stroke = "4C3AA0"; strokeWidth = 1 },
+    @{ id = "smoke-line"; kind = "line"; shape = "line"; x = 28; y = 58; width = 30; height = 8; zIndex = 3; stroke = "4C3AA0"; strokeWidth = 2; endArrow = "triangle"; dash = "dash" },
+    @{ id = "smoke-table"; kind = "table"; x = 50; y = 58; width = 38; height = 22; zIndex = 4; cells = @(@("항목", "상태"), @("검증", "완료")); headerRows = 1; fill = "725BD6"; stroke = "D9D6E1"; strokeWidth = 1; fontSize = 14 }
+) -Force
 $Updated = Invoke-PtiumJson -Method PATCH -Path "/api/v1/presentations/$PresentationId" -Body @{
     title = "Ptium 통합 검증"
+    version = $Generated.version
     slides = $UpdatedSlides
 }
 Assert-True ($Updated.data.slides[0].title -eq "Ptium 검증 완료") "slide editing round trip"
+Assert-True (@($Updated.data.slides[0].content.elements).Count -eq 4) "freeform canvas elements round trip"
+Assert-True ($Updated.data.version -gt $Generated.version) "editing advances the resource version"
+
+$StaleEditBody = @{
+    title = "이 변경은 거절되어야 함"
+    version = $Generated.version
+} | ConvertTo-Json -Compress
+$StaleEdit = Invoke-WebRequest -Method PATCH -Uri "$BaseUrl/api/v1/presentations/$PresentationId" -Headers $DevHeaders -ContentType "application/json" -Body $StaleEditBody -SkipHttpErrorCheck
+Assert-True ($StaleEdit.StatusCode -eq 409) "stale editors cannot overwrite a newer version"
+
+$Revisions = Invoke-PtiumJson -Method GET -Path "/api/v1/presentations/$PresentationId/revisions"
+Assert-True ($Revisions.meta.total -ge 1) "editing creates a restorable checkpoint"
+
+$Duplicated = Invoke-PtiumJson -Method POST -Path "/api/v1/presentations/$PresentationId/duplicate"
+$DuplicatedId = [string]$Duplicated.data.id
+Assert-True ($DuplicatedId -ne $PresentationId) "duplicating creates an independent deck"
+Assert-True ($Duplicated.data.slides[0].id -ne $Updated.data.slides[0].id) "duplicating regenerates slide identifiers"
+$null = Invoke-PtiumJson -Method DELETE -Path "/api/v1/presentations/$DuplicatedId"
+$RecycleBin = Invoke-PtiumJson -Method GET -Path "/api/v1/presentations?deleted=true"
+Assert-True (@($RecycleBin.data | Where-Object { $_.id -eq $DuplicatedId }).Count -eq 1) "deleted deck appears in the recycle bin"
+$RestoredCopy = Invoke-PtiumJson -Method POST -Path "/api/v1/presentations/$DuplicatedId/restore"
+Assert-True ($null -eq $RestoredCopy.data.deletedAt) "deck can be restored from the recycle bin"
+$null = Invoke-PtiumJson -Method DELETE -Path "/api/v1/presentations/$DuplicatedId"
+$null = Invoke-PtiumJson -Method DELETE -Path "/api/v1/presentations/$DuplicatedId/permanent"
 
 $PptxPath = Join-Path ([System.IO.Path]::GetTempPath()) "ptium-smoke-$PresentationId.pptx"
 try {
@@ -138,6 +171,19 @@ try {
     $PptxBytes = [System.IO.File]::ReadAllBytes($PptxPath)
     Assert-True ($PptxBytes.Length -gt 1000) "PPTX payload is non-empty"
     Assert-True ($PptxBytes[0] -eq 0x50 -and $PptxBytes[1] -eq 0x4b) "PPTX is a ZIP/OOXML package"
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $PptxArchive = [System.IO.Compression.ZipFile]::OpenRead($PptxPath)
+    try {
+        $SlideEntry = $PptxArchive.GetEntry("ppt/slides/slide1.xml")
+        $SlideReader = [System.IO.StreamReader]::new($SlideEntry.Open())
+        try { $SlideXml = $SlideReader.ReadToEnd() } finally { $SlideReader.Dispose() }
+        Assert-True ($SlideXml.Contains("직접 편집 텍스트")) "freeform text exports as editable DrawingML"
+        Assert-True ($SlideXml.Contains('prst="ellipse"')) "freeform shape exports as an editable PowerPoint shape"
+        Assert-True ($SlideXml.Contains('prst="line"')) "freeform line exports as an editable PowerPoint line"
+        Assert-True ($SlideXml.Contains('<a:tailEnd type="triangle"')) "freeform line arrow exports to PowerPoint"
+        Assert-True ($SlideXml.Contains('<a:prstDash val="dash"')) "freeform dashed line exports to PowerPoint"
+        Assert-True ($SlideXml.Contains('<a:tbl>') -and $SlideXml.Contains('검증')) "freeform table exports as a native PowerPoint table"
+    } finally { $PptxArchive.Dispose() }
 } finally {
     if (Test-Path -LiteralPath $PptxPath) { Remove-Item -LiteralPath $PptxPath -Force }
 }

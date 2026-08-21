@@ -102,6 +102,23 @@ type Presentation struct {
 	UpdatedAt           time.Time       `json:"updatedAt"`
 	GenerationStartedAt *time.Time      `json:"generationStartedAt,omitempty"`
 	GenerationEndedAt   *time.Time      `json:"generationEndedAt,omitempty"`
+	// Version is incremented for every stored mutation. Editors send the version
+	// they started from so a second tab cannot silently overwrite newer work.
+	Version   int64      `json:"version"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty"`
+}
+
+// PresentationRevision is a restorable checkpoint. The full snapshot remains
+// private to the store; list responses only need enough metadata for a person
+// to choose the point they want to restore.
+type PresentationRevision struct {
+	ID             string    `json:"id"`
+	PresentationID string    `json:"presentationId"`
+	Version        int64     `json:"version"`
+	Reason         string    `json:"reason"`
+	Title          string    `json:"title"`
+	SlideCount     int       `json:"slideCount"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type Slide struct {

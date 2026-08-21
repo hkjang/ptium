@@ -49,8 +49,20 @@ export interface Presentation {
   thumbnailUrl?: string
   createdAt: string
   updatedAt: string
+	version: number
+	deletedAt?: string
   slides?: Slide[]
   errorMessage?: string
+}
+
+export interface PresentationRevision {
+	id: string
+	presentationId: string
+	version: number
+	reason: 'edit' | 'source' | 'generation' | 'restore' | string
+	title: string
+	slideCount: number
+	createdAt: string
 }
 
 /** One line of text inside a template placeholder. */
@@ -80,6 +92,46 @@ export interface SlideImage {
   caption?: string
 }
 
+/** A freely positioned, editable object layered over the template. */
+export interface SlideElement {
+  id: string
+  kind: 'text' | 'shape' | 'line' | 'image' | 'table'
+  shape?: 'rect' | 'roundRect' | 'ellipse' | 'triangle' | 'diamond' | 'rightArrow' | 'star5' | 'hexagon' | 'line' | string
+  /** Geometry is stored as a percentage of the slide. */
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation?: number
+  zIndex?: number
+  text?: string
+  cells?: string[][]
+  headerRows?: number
+  headerColumns?: number
+  fontFamily?: string
+  fontSize?: number
+  textColor?: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  align?: 'left' | 'center' | 'right' | 'justify' | string
+  verticalAlign?: 'top' | 'middle' | 'bottom' | string
+  fill?: string
+  stroke?: string
+  strokeWidth?: number
+  startArrow?: 'none' | 'triangle' | 'stealth' | 'diamond' | 'oval' | string
+  endArrow?: 'none' | 'triangle' | 'stealth' | 'diamond' | 'oval' | string
+  dash?: 'solid' | 'dash' | 'dot' | 'dashDot' | string
+  opacity?: number
+  assetId?: string
+  name?: string
+  caption?: string
+  fit?: 'cover' | 'contain' | 'fill' | string
+  groupId?: string
+  locked?: boolean
+  hidden?: boolean
+}
+
 export interface Slide {
   id: string
   order: number
@@ -95,6 +147,8 @@ export interface Slide {
   blocks?: Record<string, SlideBlock>
   /** Slot name to the image drawn in it. */
   images?: Record<string, SlideImage>
+  /** Freely positioned objects layered above the template. */
+  elements?: SlideElement[]
   speakerNotes?: string
   imageUrl?: string
   accent?: string

@@ -781,6 +781,10 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
+        - name: deleted
+          in: query
+          schema: { type: boolean, default: false }
+          description: When true, return only presentations in the recycle bin.
       responses:
         '200':
           description: Owner-scoped presentations ordered by most recently updated.
@@ -927,6 +931,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
@@ -961,18 +967,20 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
         '500':
           $ref: '#/components/responses/InternalError'
     delete:
       operationId: deletePresentation
-      summary: Delete a presentation
+      summary: Move a presentation to the recycle bin
       tags: [Presentations]
       x-ptium-api-key-scopes: [presentations:write]
       responses:
         '204':
-          description: Presentation deleted. The response has no body.
+          description: Presentation moved to the recycle bin. The response has no body.
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestID'
@@ -986,6 +994,130 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    post:
+      operationId: duplicatePresentation
+      summary: Duplicate a presentation
+      description: Creates an independent copy with new presentation and slide identifiers.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '201':
+          description: Independent copy created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/restore:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    post:
+      operationId: restoreDeletedPresentation
+      summary: Restore a presentation from the recycle bin
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '200':
+          description: Restored presentation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/permanent:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    delete:
+      operationId: permanentlyDeletePresentation
+      summary: Permanently delete a presentation from the recycle bin
+      description: The operation succeeds only after the presentation has been moved to the recycle bin.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '204':
+          description: Presentation and its revision history permanently deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/revisions:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: listPresentationRevisions
+      summary: List restorable presentation checkpoints
+      description: Ordinary autosaves are coalesced into five-minute checkpoints; source, generation and restore transitions create explicit checkpoints.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Checkpoints ordered newest first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationRevisionListEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/revisions/{revisionId}/restore:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - name: revisionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: restorePresentationRevision
+      summary: Restore a presentation checkpoint
+      description: The current state is checkpointed first, making the restore itself reversible.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '200':
+          description: Presentation restored to the selected checkpoint with a new current version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /api/v1/presentations/{id}/generate:
     parameters:
@@ -1104,6 +1236,11 @@ paths:
                 dryRun:
                   type: boolean
                   default: false
+                version:
+                  type: integer
+                  format: int64
+                  minimum: 1
+                  description: Optional expected version when applying. Ignored for a dry run.
       responses:
         '200':
           description: The compiled deck, applied unless this was a dry run.
@@ -1135,6 +1272,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '422':
           description: The source produced no slides, more than the limit, or is not text.
           content:
@@ -1319,6 +1458,13 @@ paths:
             type: integer
             minimum: 1
             default: 1
+        - name: freeform
+          in: query
+          required: false
+          description: Set to `false` to render only the template-bound base layer for a direct-manipulation canvas.
+          schema:
+            type: boolean
+            default: true
         - $ref: '#/components/parameters/PreviewWidth'
       responses:
         '200':
@@ -2879,6 +3025,7 @@ components:
         - requestedSlideCount
         - createdAt
         - updatedAt
+        - version
       properties:
         id:
           type: string
@@ -2947,6 +3094,15 @@ components:
         updatedAt:
           type: string
           format: date-time
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Monotonic resource version used to reject stale writes.
+        deletedAt:
+          type: string
+          format: date-time
+          description: Present only for a deck in the recycle bin.
         generationStartedAt:
           type: string
           format: date-time
@@ -3020,9 +3176,8 @@ components:
           type: string
           maxLength: 12000
         templateId:
-          type: string
+          type: [string, 'null']
           format: uuid
-          nullable: true
           description: |
             Switch the deck to another template. Slides keep their content; each
             one rebinds to the layout of the same role in the new design.
@@ -3053,6 +3208,11 @@ components:
           maxItems: 50
           items:
             $ref: '#/components/schemas/SlideWrite'
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Optional expected version. A stale value returns HTTP 409.
 
     SlideWrite:
       type: object
@@ -3154,9 +3314,8 @@ components:
           type: string
           format: uuid
         ownerId:
-          type: string
+          type: [string, 'null']
           format: uuid
-          nullable: true
           description: Absent for built-in designs.
         name:
           type: string
@@ -3507,14 +3666,26 @@ components:
         either paragraphs or a component, never both. Unknown keys are ignored,
         so clients may round-trip content they do not understand.
 
-        Updating a slide without mentioning `blocks` or `images` keeps whatever
+        Updating a slide without mentioning `blocks`, `images`, or `elements` keeps whatever
         the slide already carries: a client that only edits text cannot delete the
         components and pictures a generated deck is largely made of. Send
-        `"blocks": {}` to clear them.
+        `"blocks": {}`, `"images": {}`, or `"elements": []` to clear them.
       properties:
         type:
           type: string
           enum: [template]
+        title:
+          type: string
+          description: Legacy title field accepted from simple clients; template-aware clients should use `fields.title`.
+        subtitle:
+          type: string
+          description: Legacy subtitle field accepted from simple clients.
+        body:
+          type: string
+          description: Legacy prose field accepted from simple clients.
+        speaker_notes:
+          type: string
+          description: Legacy notes field accepted from simple clients.
         layoutId:
           type: string
           description: Template layout the slide is bound to.
@@ -3530,6 +3701,17 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/SlideBlock'
           description: Slot name to the component drawn in that slot.
+        images:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SlideContentImage'
+          description: Slot name to the asset drawn in that template slot.
+        elements:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/SlideElement'
+          description: Freely positioned objects layered above the template, in z-index order.
         bullets:
           type: array
           items:
@@ -3550,6 +3732,133 @@ components:
           minimum: 0
           maximum: 4
           description: Outline depth; 1 and deeper are sub-bullets.
+
+    SlideContentImage:
+      type: object
+      required: [assetId]
+      properties:
+        assetId:
+          type: string
+        name:
+          type: string
+        caption:
+          type: string
+
+    SlideElement:
+      type: object
+      required: [id, kind, x, y, width, height]
+      description: |
+        An editable object layered over the template. Geometry is expressed as
+        percentages of the slide, then converted to DrawingML EMUs for PPTX.
+      properties:
+        id:
+          type: string
+          maxLength: 100
+        kind:
+          type: string
+          enum: [text, shape, line, image, table]
+        shape:
+          type: string
+          enum: [rect, roundRect, ellipse, triangle, diamond, rightArrow, star5, hexagon, line]
+        x:
+          type: number
+          minimum: -100
+          maximum: 200
+        y:
+          type: number
+          minimum: -100
+          maximum: 200
+        width:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 300
+        height:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 300
+        rotation:
+          type: number
+          minimum: -3600
+          maximum: 3600
+        zIndex:
+          type: integer
+          minimum: -10000
+          maximum: 10000
+        text:
+          type: string
+          maxLength: 20000
+        cells:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: array
+            minItems: 1
+            maxItems: 20
+            items:
+              type: string
+              maxLength: 1000
+          description: Rectangular cell matrix required when `kind` is `table`.
+        headerRows:
+          type: integer
+          minimum: 0
+          maximum: 50
+        headerColumns:
+          type: integer
+          minimum: 0
+          maximum: 20
+        fontFamily:
+          type: string
+          maxLength: 200
+        fontSize:
+          type: number
+          minimum: 0
+          maximum: 400
+        textColor:
+          type: string
+        bold: { type: boolean }
+        italic: { type: boolean }
+        underline: { type: boolean }
+        align:
+          type: string
+          enum: [left, center, right, justify]
+        verticalAlign:
+          type: string
+          enum: [top, middle, bottom]
+        fill: { type: string }
+        stroke: { type: string }
+        strokeWidth:
+          type: number
+          minimum: 0
+          maximum: 50
+        startArrow:
+          type: string
+          enum: [none, triangle, stealth, diamond, oval]
+        endArrow:
+          type: string
+          enum: [none, triangle, stealth, diamond, oval]
+        dash:
+          type: string
+          enum: [solid, dash, dot, dashDot]
+        opacity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        assetId:
+          type: string
+          description: Required when `kind` is `image`.
+        name: { type: string }
+        caption:
+          type: string
+          maxLength: 1000
+        fit:
+          type: string
+          enum: [cover, contain, fill]
+        groupId:
+          type: string
+          maxLength: 100
+        locked: { type: boolean }
+        hidden: { type: boolean }
 
     SlideBlock:
       type: object
@@ -3657,6 +3966,33 @@ components:
           items:
             type: string
 
+    PresentationRevision:
+      type: object
+      additionalProperties: false
+      required: [id, presentationId, version, reason, title, slideCount, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        presentationId:
+          type: string
+          format: uuid
+        version:
+          type: integer
+          format: int64
+          minimum: 1
+        reason:
+          type: string
+          enum: [edit, source, generation, restore]
+        title:
+          type: string
+        slideCount:
+          type: integer
+          minimum: 0
+        createdAt:
+          type: string
+          format: date-time
+
     PresentationEnvelope:
       type: object
       additionalProperties: false
@@ -3677,6 +4013,20 @@ components:
           description: List records omit `slides`; use each record's `slideCount` for the exact persisted count.
           items:
             $ref: '#/components/schemas/Presentation'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+        requestId:
+          $ref: '#/components/schemas/RequestID'
+
+    PresentationRevisionListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta, requestId]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PresentationRevision'
         meta:
           $ref: '#/components/schemas/PaginationMeta'
         requestId:

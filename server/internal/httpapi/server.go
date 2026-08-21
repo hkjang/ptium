@@ -152,6 +152,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PUT /api/v1/presentations/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.updatePresentation))))
 	api.Handle("PATCH /api/v1/presentations/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.updatePresentation))))
 	api.Handle("DELETE /api/v1/presentations/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deletePresentation))))
+	api.Handle("POST /api/v1/presentations/{id}/duplicate", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.duplicatePresentation))))
+	api.Handle("POST /api/v1/presentations/{id}/restore", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.restoreDeletedPresentation))))
+	api.Handle("DELETE /api/v1/presentations/{id}/permanent", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.permanentlyDeletePresentation))))
+	api.Handle("GET /api/v1/presentations/{id}/revisions", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listPresentationRevisions))))
+	api.Handle("POST /api/v1/presentations/{id}/revisions/{revisionId}/restore", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.restorePresentationRevision))))
 	api.Handle("POST /api/v1/presentations/{id}/generate", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.generatePresentation))))
 	// A deck is editable as text: the source compiles to exactly the slides that
 	// are stored, so the two are the same deck in two forms.

@@ -167,3 +167,6 @@ img { max-width: 100%; display: block; }
 /* Standalone states */
 .app-bootstrap,.standalone-state,.editor-loading { min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;background:var(--bg); }.app-bootstrap .login-brand { margin-bottom:25px;color:var(--ink); }.app-bootstrap p,.standalone-state p,.editor-loading p { color:var(--muted);font-size:13px; }.standalone-state h1,.editor-loading h1 { font-size:25px;letter-spacing:-.7px; }.standalone-icon { width:58px;height:58px;display:flex;align-items:center;justify-content:center;border-radius:17px;color:var(--red);background:#fce9e7; }.notfound-number { font-size:80px;line-height:1;font-weight:700;letter-spacing:-5px;color:#ded9ef; }
 .card-menu-wrap.open .card-menu { display:block; }
+.presentation-card.trashed .deck-preview{filter:saturate(.45);opacity:.72}
+.presentation-card.trashed .card-title-row>div:first-child>strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600}
+.filter-tabs button{display:inline-flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}

@@ -31,9 +31,9 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 	var result Overview
 	err := s.Pool.QueryRow(ctx, `SELECT
 		(SELECT count(*) FROM users),
-		(SELECT count(*) FROM presentations),
-		(SELECT count(*) FROM presentations WHERE status='completed'),
-		(SELECT count(*) FROM presentations WHERE status IN ('queued','generating')),
+		(SELECT count(*) FROM presentations WHERE deleted_at IS NULL),
+		(SELECT count(*) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
+		(SELECT count(*) FROM presentations WHERE status IN ('queued','generating') AND deleted_at IS NULL),
 		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged')),
 		(SELECT count(*) FROM api_keys WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND (rotated_to_id IS NULL OR grace_until>now()))`).Scan(
 		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys)
@@ -118,7 +118,7 @@ func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int)
 	rows, err := s.Pool.Query(ctx, `SELECT u.id::text,COALESCE(u.subject,''),u.email,u.name,u.roles,u.is_admin,u.disabled,
 		COALESCE(u.last_login,u.created_at),u.created_at,u.updated_at,(u.password_hash IS NOT NULL),u.password_updated_at,
 		COALESCE(p.presentation_count,0)
-		FROM users u LEFT JOIN (SELECT owner_id,count(*)::int AS presentation_count FROM presentations GROUP BY owner_id) p ON p.owner_id=u.id
+		FROM users u LEFT JOIN (SELECT owner_id,count(*)::int AS presentation_count FROM presentations WHERE deleted_at IS NULL GROUP BY owner_id) p ON p.owner_id=u.id
 		WHERE $1='' OR u.email ILIKE $2 OR u.name ILIKE $2 ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, search, pattern, limit, offset)
 	if err != nil {
 		return nil, 0, err
