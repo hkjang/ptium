@@ -241,7 +241,7 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 		return Deck{}, err
 	}
 	writing := time.Since(started)
-	source := cleanModelSource(raw)
+	source := cleanModelSource(raw, request.Presentation.Language)
 	if strings.HasPrefix(source, "{") {
 		var written writtenDeck
 		if json.Unmarshal([]byte(source), &written) == nil && len(written.Slides) > 0 {
@@ -277,7 +277,7 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 
 // cleanModelSource strips what a model wraps around an answer even when told not
 // to: a fenced code block, a leading label.
-func cleanModelSource(raw string) string {
+func cleanModelSource(raw, language string) string {
 	source := strings.TrimSpace(raw)
 	if strings.HasPrefix(source, "```") {
 		if _, rest, found := strings.Cut(source, "\n"); found {
@@ -287,7 +287,8 @@ func cleanModelSource(raw string) string {
 			source = source[:index]
 		}
 	}
-	return strings.TrimSpace(source)
+	// What the model wrote, in the spacing a Korean writer would use.
+	return tidyModelKorean(strings.TrimSpace(source), language)
 }
 
 // trimSourceSlides keeps the first count slides of a source document.

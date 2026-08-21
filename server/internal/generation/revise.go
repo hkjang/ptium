@@ -86,7 +86,7 @@ func (g *Generator) ReviseSlide(ctx context.Context, revision Revision) (string,
 	if err != nil {
 		return "", err
 	}
-	source := cleanModelSource(raw)
+	source := cleanModelSource(raw, revision.Presentation.Language)
 	if !strings.Contains(source, "#") {
 		return "", errors.New("the AI provider did not return a slide")
 	}

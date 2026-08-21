@@ -833,3 +833,22 @@ func TestCompileDropsAPointThatOnlyRepeatsTheLead(t *testing.T) {
 		t.Fatalf("the echo of the lead and the duplicate point should both go: %+v", content.Fields)
 	}
 }
+
+// A model writing Korean leaves a space between a figure and its unit and
+// between a foreign word and its particle. The slides were already tidied as
+// they were parsed — except the speaker notes, which are the one line the tidy
+// never reached.
+func TestSpeakerNotesAreTidiedToo(t *testing.T) {
+	parsed := ParseSource("# 1 단계 및 2 단계\n> 2026 년 상반기\n- 현재 4 시간 지연\n" +
+		"!notes 1 단계는 4 시간입니다. deliverables 를 94% 의 정확도로 확인합니다.\n")
+	if len(parsed.Slides) != 1 {
+		t.Fatalf("parsed %d slides", len(parsed.Slides))
+	}
+	slide := parsed.Slides[0]
+	if slide.Notes != "1단계는 4시간입니다. deliverables를 94%의 정확도로 확인합니다." {
+		t.Errorf("the notes were not tidied: %q", slide.Notes)
+	}
+	if slide.Title != "1단계 및 2단계" || slide.Lead != "2026년 상반기" {
+		t.Errorf("title = %q, lead = %q", slide.Title, slide.Lead)
+	}
+}

@@ -249,7 +249,7 @@ func ParseSource(source string) Source {
 				warn(line, "unknown directive %q", name)
 				continue
 			}
-			current.Notes = strings.TrimSpace(current.Notes + " " + strings.TrimSpace(value))
+			current.Notes = tidyText(current.Notes + " " + strings.TrimSpace(value))
 			inNotes = true
 
 		case strings.HasPrefix(trimmed, "-"), strings.HasPrefix(trimmed, "*"):
@@ -403,17 +403,40 @@ func (s SourceSlide) empty() bool {
 
 // koreanUnitSpace matches a number separated from its Korean unit by a space,
 // which a model produces constantly and a reader never writes.
-var koreanUnitSpace = regexp.MustCompile(`(\d)[ \t]+(년|월|일|주|분기|개월|시간|분|초|개|건|명|장|억|만|천|원|퍼센트|배|%|단계|차|회|위|인|곳|층|주차|일차|페이지|배수)`)
+var koreanUnitSpace = regexp.MustCompile(
+	`([0-9%）\)\]])[ \t]+(개월|시간|주일|퍼센트|포인트|분기|단계|가지|주차|일차|페이지|배수|년|월|일|시|분|초|주|억|만|천|원|개|건|명|장|배|회|위|인|곳|층|쪽|권|편|톤|칸|줄|%)`)
 
-// koreanParticleSpace matches a unit separated from the particle that follows it,
-// which is the same mistake one syllable later: "15% 씩", "3년 간".
-var koreanParticleSpace = regexp.MustCompile(`(%|년|월|일|개|건|명|억|만|원|배|시간)[ \t]+(씩|간|째|당|여|분의|이내|이상|이하)`)
+// koreanTrailingSpace matches a unit separated from the particle or suffix that
+// follows it, which is the same mistake one syllable later: "15% 씩", "3년 간".
+var koreanTrailingSpace = regexp.MustCompile(`(%|년|월|일|개|건|명|억|만|원|배|시간)[ \t]+(씩|간|째|당|여|분의|이내|이상|이하)`)
+
+// koreanForeignParticle matches a particle written apart from a word that is not
+// itself Korean — "deliverables 를", "94% 의", "Q4 와" — which is where a model
+// writing Korean leaves a space no Korean writer would. Two Korean words are
+// left alone: a space between them usually belongs, and the ones that do not are
+// a matter of judgement rather than of rule.
+var koreanForeignParticle = regexp.MustCompile(
+	`([0-9A-Za-z%）\)\]])[ \t]+(이라는|에게서|으로서|으로써|에서는|에서도|까지는|부터는|이라고|라는|에서|에게|으로|까지|부터|보다|처럼|이며|이고|와의|과의|을|를|은|는|이|가|의|에|로|와|과|도|만)([ \t\n,.;:!?)\]}]|$)`)
 
 // tidyText fixes the typography a model gets wrong in Korean. It only removes a
 // space that should not be there; nothing else about the wording is touched.
 func tidyText(value string) string {
-	tidied := koreanUnitSpace.ReplaceAllString(strings.TrimSpace(value), "$1$2")
-	return koreanParticleSpace.ReplaceAllString(tidied, "$1$2")
+	return TidyKorean(strings.TrimSpace(value))
+}
+
+// TidyKorean closes the gaps a model leaves in Korean text. It is exported for
+// the generation pipeline, which runs it over what the model wrote so that the
+// deck's own text — the source the workspace shows — reads the way the slides do.
+func TidyKorean(value string) string {
+	for {
+		tidied := koreanUnitSpace.ReplaceAllString(value, "$1$2")
+		tidied = koreanTrailingSpace.ReplaceAllString(tidied, "$1$2")
+		tidied = koreanForeignParticle.ReplaceAllString(tidied, "$1$2$3")
+		if tidied == value {
+			return value
+		}
+		value = tidied
+	}
 }
 
 // unescapePayload removes the one escape the language has: a backslash in front

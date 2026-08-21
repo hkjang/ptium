@@ -1,0 +1,57 @@
+package generation
+
+import (
+	"testing"
+
+	"github.com/hkjang/ptium/server/internal/deck"
+)
+
+// A model writing Korean puts a space between a figure and its unit, and
+// between a foreign word and the particle after it. Every one of those reads as
+// machine output to a Korean reader.
+func TestKoreanSpacingIsClosedWhereItShouldBe(t *testing.T) {
+	cases := map[string]string{
+		"배치 지연을 4 시간에서 15 분으로 단축":      "배치 지연을 4시간에서 15분으로 단축",
+		"12 억 예산으로 투자 효율성을 극대화합니다":     "12억 예산으로 투자 효율성을 극대화합니다",
+		"2026 년 하반기 · 3 단계 이행":         "2026년 하반기 · 3단계 이행",
+		"각 단계는 명확한 deliverables 를 가지며": "각 단계는 명확한 deliverables를 가지며",
+		"15 분으로 줄여 94% 의 개선을 달성합니다":    "15분으로 줄여 94%의 개선을 달성합니다",
+		"@layout 콘텐츠 2 개":              "@layout 콘텐츠 2개",
+		"총 12 억 원의 예산":                 "총 12억 원의 예산",
+	}
+	for written, wanted := range cases {
+		if got := deck.TidyKorean(written); got != wanted {
+			t.Errorf("deck.TidyKorean(%q) = %q, want %q", written, got, wanted)
+		}
+	}
+}
+
+// And nowhere else. A space between two Korean words is a matter of judgement,
+// and a rule that guessed at it would rewrite what the author meant.
+func TestKoreanSpacingLeavesTheRestAlone(t *testing.T) {
+	for _, line := range []string{
+		"전체 처리 시간을 94% 단축하여 속도를 확보합니다",
+		"운영 비용이 20% 절감되어",
+		"1 대 1 면담",
+		"은 메달 하나",
+		"이 프로젝트는 지금 결정이 필요합니다",
+		"차 한 대, 금 서 돈",
+		"The plan moves 3 systems to a single region",
+	} {
+		if got := deck.TidyKorean(line); got != line {
+			t.Errorf("deck.TidyKorean(%q) = %q, want it untouched", line, got)
+		}
+	}
+}
+
+// It runs on what the model wrote, for a deck written in Korean, and on nothing
+// else: a deck in another language keeps the spacing that language uses.
+func TestOnlyAKoreanDeckIsTidied(t *testing.T) {
+	written := "# 3 단계 이행\n- 4 시간에서 15 분으로\n"
+	if got := cleanModelSource(written, "ko"); got != "# 3단계 이행\n- 4시간에서 15분으로" {
+		t.Errorf("a Korean deck was not tidied: %q", got)
+	}
+	if got := cleanModelSource(written, "en"); got != "# 3 단계 이행\n- 4 시간에서 15 분으로" {
+		t.Errorf("a deck in another language was tidied: %q", got)
+	}
+}
