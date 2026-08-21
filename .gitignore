@@ -34,3 +34,6 @@ tmp/
 data/
 dist/
 *.log
+
+# Screenshots the end-to-end sweeps write where they are run.
+/*.png
