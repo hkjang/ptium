@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/docs"
 	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -100,6 +101,24 @@ type templateMetadata struct {
 // or a raw request body with metadata in the query string (what a script or an
 // MCP client finds convenient).
 func (s *Server) readTemplateUpload(writer http.ResponseWriter, request *http.Request, limit int64) ([]byte, templateMetadata, bool) {
+	return s.readUpload(writer, request, limit, "Only .pptx and .potx templates are supported",
+		func(name string) bool {
+			return strings.HasSuffix(name, ".pptx") || strings.HasSuffix(name, ".potx")
+		})
+}
+
+// readImportUpload reads what someone brings in to make a deck from: a
+// presentation, or the material one would be written from.
+func (s *Server) readImportUpload(writer http.ResponseWriter, request *http.Request, limit int64) ([]byte, templateMetadata, bool) {
+	return s.readUpload(writer, request, limit,
+		"Ptium reads .pptx presentations and .xlsx, .csv, .docx and .md documents",
+		func(name string) bool {
+			return strings.HasSuffix(name, ".pptx") || strings.HasSuffix(name, ".potx") || docs.Reads(name)
+		})
+}
+
+func (s *Server) readUpload(writer http.ResponseWriter, request *http.Request, limit int64,
+	refusal string, accepted func(string) bool) ([]byte, templateMetadata, bool) {
 	meta := templateMetadata{
 		Name:        strings.TrimSpace(request.URL.Query().Get("name")),
 		Description: strings.TrimSpace(request.URL.Query().Get("description")),
@@ -156,10 +175,12 @@ func (s *Server) readTemplateUpload(writer http.ResponseWriter, request *http.Re
 		writeError(writer, request, http.StatusBadRequest, "invalid_upload", "The uploaded template is empty", nil)
 		return nil, meta, false
 	}
-	if extension := strings.ToLower(meta.Filename); extension != "" &&
-		!strings.HasSuffix(extension, ".pptx") && !strings.HasSuffix(extension, ".potx") {
+	// A template must be a PowerPoint file. An import may also be the material
+	// for a deck — a spreadsheet, a report, a page of notes — and the endpoint
+	// that reads those says so by allowing them here.
+	if extension := strings.ToLower(meta.Filename); extension != "" && !accepted(extension) {
 		writeError(writer, request, http.StatusUnprocessableEntity, "template_invalid",
-			"Only .pptx and .potx templates are supported", map[string]any{"filename": meta.Filename})
+			refusal, map[string]any{"filename": meta.Filename})
 		return nil, meta, false
 	}
 	if utf8.RuneCountInString(meta.Name) > 120 || utf8.RuneCountInString(meta.Description) > 1000 {

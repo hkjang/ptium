@@ -850,9 +850,25 @@ paths:
       - $ref: '#/components/parameters/XRequestID'
     post:
       operationId: importPresentation
-      summary: Read a PowerPoint file into a new deck
+      summary: Read a presentation or a document into a new deck
       description: |
-        Turns a deck someone already has into a Ptium deck. Titles, points (at the
+        Turns what someone already has into a Ptium deck: a presentation, or the
+        material one would be written from.
+
+        A `.pptx` or `.potx` is read as a deck.
+
+        A `.xlsx`, `.csv`, `.tsv`, `.docx`, `.md` or `.txt` is read as material.
+        A sheet becomes one slide — a chart when it is one column of labels and
+        one of figures, a table otherwise — and a report's headings become
+        slides with their sentences as points. Every slide a document produces
+        cites the file and the place in it, as a `!source` line, because the
+        first question asked of a figure is where it came from and retyping is
+        where that answer is usually lost.
+
+        A `.pdf` is refused: extracting its text needs a parser this deployment
+        does not carry.
+
+        For a presentation: turns a deck someone already has into a Ptium deck. Titles, points (at the
         depth they were written), speaker notes and tables come across, along with
         the kind of each slide; the text is then compiled into the chosen template,
         so an old deck can be redrawn in a new design.

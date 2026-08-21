@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/docs"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -33,14 +34,15 @@ import (
 func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	limit := s.maximumTemplateBytes(request.Context())
-	data, meta, ok := s.readTemplateUpload(writer, request, limit)
+	data, meta, ok := s.readImportUpload(writer, request, limit)
 	if !ok {
 		return
 	}
 	pkg, err := pptx.Open(data)
 	if err != nil {
-		writeError(writer, request, http.StatusUnprocessableEntity, "not_a_presentation",
-			"This file is not a PowerPoint presentation Ptium can read", nil)
+		// Not a presentation. It may still be the material for one: the report,
+		// the spreadsheet or the notes the deck would have been written from.
+		s.importDocument(writer, request, user, meta, data)
 		return
 	}
 	imported := pptx.ReadDeck(pkg)
@@ -96,15 +98,22 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	if title == "" {
 		title = "가져온 프레젠테이션"
 	}
+	s.storeImportedSource(writer, request, user, meta, title,
+		fmt.Sprintf("%s에서 가져온 덱", firstNonEmpty(meta.Filename, title)), source, warnings)
+}
+
+// storeImportedSource compiles imported deck source against the chosen template
+// and stores it as a new presentation. Both halves of importing — a deck from a
+// .pptx and a deck from a document — end here, because from this point they are
+// the same thing: deck source looking for a design.
+func (s *Server) storeImportedSource(writer http.ResponseWriter, request *http.Request,
+	user model.User, meta templateMetadata, title, prompt, source string, warnings []string) {
 	profile, _ := s.store.GetProfile(request.Context(), user.ID)
 	language := strings.TrimSpace(request.FormValue("language"))
 	if language == "" {
 		language = "ko"
 	}
-	presentation := model.Presentation{
-		OwnerID: user.ID, Title: title, Language: language,
-		Prompt: fmt.Sprintf("%s에서 가져온 덱", firstNonEmpty(meta.Filename, title)),
-	}
+	presentation := model.Presentation{OwnerID: user.ID, Title: title, Language: language, Prompt: prompt}
 	if templateID := strings.TrimSpace(request.FormValue("templateId")); templateID != "" {
 		presentation.TemplateID = &templateID
 	}
@@ -133,8 +142,6 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	// someone who just wanted their deck back is noise in a language they did not
 	// choose.
 	if warnings == nil {
-		// An empty list, not a null: a client should not have to handle both to
-		// find out that nothing went wrong.
 		warnings = []string{}
 	}
 	technical := compiled.Warnings
@@ -171,6 +178,36 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 		"presentation": stored, "warnings": warnings, "notes": technical,
 		"slides": len(compiled.Slides),
 	})
+}
+
+// importDocument reads a file that is not a presentation — a spreadsheet, a
+// report, a page of notes — into a deck.
+//
+// The material for a deck usually exists before the deck does. Asking someone
+// to retype it into a brief is asking for the work twice, and what they retype
+// loses the one thing a company asks about first: where each figure came from.
+// So every slide a document produces cites the file and the place in it.
+func (s *Server) importDocument(writer http.ResponseWriter, request *http.Request,
+	user model.User, meta templateMetadata, data []byte) {
+	filename := strings.TrimSpace(meta.Filename)
+	if !docs.Reads(filename) {
+		writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_document",
+			"Ptium reads .pptx presentations and .xlsx, .csv, .docx and .md documents", map[string]any{
+				"filename": filename, "reads": docs.Extensions,
+			})
+		return
+	}
+	document, err := docs.Read(filename, data)
+	if err != nil {
+		writeError(writer, request, http.StatusUnprocessableEntity, "unreadable_document", err.Error(),
+			map[string]any{"filename": filename})
+		return
+	}
+	title := firstNonEmpty(meta.Name, document.Title, filename, "가져온 문서")
+	warnings := append([]string{}, document.Warnings...)
+	warnings = append(warnings, fmt.Sprintf("%s의 내용을 슬라이드로 옮기고 각 장에 출처를 달았습니다", filename))
+	s.storeImportedSource(writer, request, user, meta, title,
+		fmt.Sprintf("%s에서 가져온 자료", filename), document.Source, warnings)
 }
 
 // pictureKey identifies the same picture wherever it appears.

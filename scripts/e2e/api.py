@@ -167,6 +167,22 @@ if not (regions or {}).get("regions"):
     failures.append("slide 2 reports no editable regions")
 call("GET", f"/presentations/{deck_id}/slides/99/regions", expect=404)
 
+print("── documents become decks ──")
+sheet = "분기,매출\n1분기,1180\n2분기,1240\n3분기,1390\n"
+imported = data_of(call("POST", "/presentations/import",
+                        files={"file": (f"매출-{RUN}.csv", sheet, "text/csv")}, expect=201)) or {}
+if (imported.get("slides") or 0) < 2:
+    failures.append(f"a spreadsheet imported as {imported.get('slides')!r} slides")
+document_id = ((imported.get("presentation") or {}).get("id")) or ""
+if document_id:
+    written = (data_of(call("GET", f"/presentations/{document_id}/source", expect=200)) or {}).get("source", "")
+    for wanted in ["::columns", "- 1분기 | 1180", f"!source 매출-{RUN}.csv"]:
+        if wanted not in written:
+            failures.append(f"the imported spreadsheet lost {wanted!r}")
+    print(f"   spreadsheet -> {imported.get('slides')} slides, cited")
+call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
+     note="a file nothing here can read must say so")
+
 print("── quality score ──")
 measured = data_of(call("GET", f"/presentations/{deck_id}/inspect", expect=200)) or {}
 score = measured.get("score") or {}
