@@ -60,9 +60,14 @@ type Template struct {
 	Manifest    json.RawMessage `json:"manifest,omitempty"`
 	LayoutCount int             `json:"layoutCount"`
 	AspectRatio string          `json:"aspectRatio,omitempty"`
-	UsageCount  int             `json:"usageCount,omitempty"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	// Tags and Dark describe a template in the terms someone choosing one thinks
+	// in. They are derived when a template is read, not stored: they follow the
+	// design, and the design can change with a release.
+	Tags       []string  `json:"tags,omitempty"`
+	Dark       bool      `json:"dark,omitempty"`
+	UsageCount int       `json:"usageCount,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 // Asset is an image a deck can place on a slide.

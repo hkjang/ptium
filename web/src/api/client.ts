@@ -252,6 +252,8 @@ function normalizeTemplate(value: Template & Record<string, unknown>): Template 
     paletteKey: String(value.paletteKey || value.palette_key || '') || undefined,
     sizeBytes: Number(value.sizeBytes ?? value.size_bytes ?? 0),
     layoutCount: Number(value.layoutCount ?? value.layout_count ?? layouts.length),
+    tags: Array.isArray(value.tags) ? value.tags.map(String) : undefined,
+    dark: Boolean(value.dark),
     aspectRatio: String(value.aspectRatio || value.aspect_ratio || '') || undefined,
     usageCount: Number(value.usageCount ?? value.usage_count ?? 0),
     ownerId: String(value.ownerId || value.owner_id || '') || undefined,

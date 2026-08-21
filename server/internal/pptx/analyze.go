@@ -243,7 +243,8 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 			Prompt:   shape.sampleText(),
 		}
 		placeholder.FontSize = layoutFontSize(shape, placeholder.Type, inherited, parent)
-		placeholder.Color, placeholder.Bold, placeholder.Font = textStyle(shape, placeholder.Type, inherited, parent, theme)
+		placeholder.Color, placeholder.Bold, placeholder.Font, placeholder.Italic, placeholder.Align =
+			textStyle(shape, placeholder.Type, inherited, parent, theme)
 		switch placeholder.Type {
 		case "title", "ctrTitle":
 			placeholder.Slot = SlotTitle
@@ -412,7 +413,7 @@ func layoutFontSize(shape rawShape, phType string, inherited rawPlaceholder, par
 // textStyle resolves the effective color, weight and typeface of a
 // placeholder's first outline level by walking layout, master placeholder and
 // master text-style overrides in that order.
-func textStyle(shape rawShape, phType string, inherited rawPlaceholder, parent master, theme Theme) (color string, bold bool, font string) {
+func textStyle(shape rawShape, phType string, inherited rawPlaceholder, parent master, theme Theme) (color string, bold bool, font string, italic bool, align string) {
 	candidates := []rawLevelStyle{shape.overrideStyle(1), inherited.Style}
 	switch phType {
 	case "title", "ctrTitle":
@@ -435,11 +436,17 @@ func textStyle(shape rawShape, phType string, inherited rawPlaceholder, parent m
 		if typeface == "" {
 			typeface = strings.TrimSpace(candidate.DefRPr.Latin.Typeface)
 		}
+		if !italic {
+			italic = candidate.italic()
+		}
+		if align == "" {
+			align = candidate.align()
+		}
 	}
 	if color == "" {
 		color = resolveColorReference("tx1", parent.ColorMap, theme)
 	}
-	return color, bold, resolveTypeface(typeface, phType, theme)
+	return color, bold, resolveTypeface(typeface, phType, theme), italic, align
 }
 
 func resolveTypeface(typeface, phType string, theme Theme) string {

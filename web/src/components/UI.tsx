@@ -58,8 +58,11 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
   )
 }
 
-export function Modal({ open, title, description, children, footer, onClose }: {
-  open: boolean; title: string; description?: string; children: ReactNode; footer?: ReactNode; onClose: () => void
+export function Modal({ open, title, description, children, footer, onClose, wide }: {
+  open: boolean; title: string; description?: string; children: ReactNode; footer?: ReactNode
+  onClose: () => void
+  /** A dialog that holds a gallery rather than a form needs the width. */
+  wide?: boolean
 }) {
   // Escape closes a dialog. Every other overlay in the workspace does, and one
   // that does not reads as stuck.
@@ -72,7 +75,7 @@ export function Modal({ open, title, description, children, footer, onClose }: {
   if (!open) return null
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
-      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <section className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div className="modal-header"><div><h2 id="modal-title">{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="닫기">×</button></div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}

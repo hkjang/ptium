@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Check, Download, Globe, LayoutTemplate, Lock, Plus, Shapes, Trash2, Upload,
+  Check, Download, Globe, LayoutTemplate, Lock, Plus, Search, Shapes, Trash2, Upload, X,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
+import { TemplateFilterChips, filterTemplates, orderTemplates, templateTagGroups } from '../components/TemplateChooser'
 import { SlidePreview } from '../components/SlidePreview'
 import { Badge, Button, EmptyState, ErrorState, Field, Input, LoadingState, Modal, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
@@ -44,6 +45,9 @@ export function TemplatesPage() {
   const [error, setError] = useState('')
   const [detail, setDetail] = useState<Template | null>(null)
   const [uploadOpen, setUploadOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeTags, setActiveTags] = useState<string[]>([])
+  const [shown, setShown] = useState(12)
   const { showToast } = useToast()
 
   const load = useCallback(async () => {
@@ -81,6 +85,8 @@ export function TemplatesPage() {
 
   const mine = useMemo(() => templates.filter((template) => template.kind === 'uploaded'), [templates])
   const builtin = useMemo(() => templates.filter((template) => template.kind === 'builtin'), [templates])
+  const availableTags = useMemo(() => templateTagGroups(builtin), [builtin])
+  const matching = useMemo(() => orderTemplates(filterTemplates(builtin, query, activeTags)), [builtin, query, activeTags])
 
   return (
     <AppShell
@@ -110,9 +116,34 @@ export function TemplatesPage() {
 
         <section className="template-section">
           <div className="section-head"><h2>기본 제공 디자인</h2><span>{builtin.length}개</span></div>
-          <div className="template-grid">{builtin.map((template) => (
-            <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)} />
-          ))}</div>
+          {/* Forty covers is a library, not a page. It is narrowed by what people
+              actually choose on — light or dark, how it is composed, what it is
+              for — and drawn a screenful at a time. */}
+          <div className="template-browser-bar">
+            <label className="template-search">
+              <Search size={15} />
+              <input value={query} placeholder="디자인 이름이나 용도로 검색" aria-label="디자인 검색"
+                onChange={(event) => { setQuery(event.target.value); setShown(12) }} />
+              {query && <button type="button" onClick={() => setQuery('')} aria-label="검색어 지우기"><X size={13} /></button>}
+            </label>
+          </div>
+          <TemplateFilterChips
+            groups={availableTags}
+            active={activeTags}
+            showClear={activeTags.length > 0 || Boolean(query)}
+            onClear={() => { setActiveTags([]); setQuery('') }}
+            onToggle={(tag) => { setShown(12); setActiveTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag]) }}
+          />
+          {matching.length === 0
+            ? <p className="template-browser-empty">조건에 맞는 디자인이 없습니다. 필터를 지우고 다시 찾아보세요.</p>
+            : <>
+              <div className="template-grid">{matching.slice(0, shown).map((template) => (
+                <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)} />
+              ))}</div>
+              {matching.length > shown && <button type="button" className="template-browser-more" onClick={() => setShown((value) => value + 12)}>
+                {matching.length - shown}개 더 보기
+              </button>}
+            </>}
         </section>
       </>}
 
@@ -144,6 +175,9 @@ function TemplateCard({ template, onOpen, onToggleScope, onDelete }: {
           <strong>{template.name}</strong>
           {template.kind === 'builtin' ? <Badge tone="info">기본</Badge> : template.scope === 'shared' ? <Badge tone="success">공유</Badge> : <Badge>개인</Badge>}
         </div>
+        {(template.tags || []).length > 0 && <div className="template-card-tags">
+          {(template.tags || []).map((tag) => <span key={tag}>{tag}</span>)}
+        </div>}
         {template.description && <p>{template.description}</p>}
         <ul className="template-meta">
           <li><Shapes size={13} /> 레이아웃 {template.layoutCount}개</li>

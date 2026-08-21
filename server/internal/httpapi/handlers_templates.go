@@ -30,8 +30,11 @@ func (s *Server) listTemplates(writer http.ResponseWriter, request *http.Request
 		s.internalError(writer, request, "templates_read_failed", err)
 		return
 	}
-	// The manifest is large; a listing only needs the summary fields.
+	// The manifest is large; a listing only needs the summary fields — but what a
+	// template looks like is read out of it first, so a gallery can be narrowed
+	// without downloading forty manifests.
 	for index := range items {
+		describeTemplate(&items[index])
 		items[index].Manifest = nil
 	}
 	writeList(writer, request, items, total, limit, offset)
@@ -47,6 +50,7 @@ func (s *Server) getTemplate(writer http.ResponseWriter, request *http.Request) 
 	// What a template's own palette can carry is a property of the customer's
 	// design, and they are the only ones who can change it — so it is reported
 	// rather than silently worked around.
+	describeTemplate(&template)
 	manifest, manifestErr := decodeManifest(template)
 	if manifestErr != nil || len(manifest.Layouts) == 0 {
 		writeData(writer, request, http.StatusOK, template)
@@ -386,6 +390,33 @@ func filterSlideRegions(slide model.Slide, only string, exclude []string, dropFr
 	}
 	slide.Content = content.Encode()
 	return slide
+}
+
+// describeTemplate fills in what a template looks like, for a gallery that has
+// to be narrowed rather than scrolled. A shipped design knows its own tags; an
+// uploaded one is read from its manifest, because the customer's design is the
+// only thing that can answer for it.
+func describeTemplate(template *model.Template) {
+	if template.Kind == "builtin" {
+		design := pptx.LookupBuiltinDesign(template.PaletteKey)
+		template.Dark = design.Palette.Dark
+		template.Tags = design.Tags()
+		return
+	}
+	tags := []string{"내 템플릿"}
+	if manifest, err := decodeManifest(*template); err == nil {
+		template.Dark = manifest.IsDark()
+		if template.Dark {
+			tags = append(tags, "어두운")
+		} else {
+			tags = append(tags, "밝은")
+		}
+		if face := strings.ToLower(manifest.Theme.MajorLatin); strings.Contains(face, "georgia") ||
+			strings.Contains(face, "serif") || strings.Contains(face, "times") || strings.Contains(face, "명조") {
+			tags = append(tags, "세리프")
+		}
+	}
+	template.Tags = tags
 }
 
 func writeSVG(writer http.ResponseWriter, svg string) {

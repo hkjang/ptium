@@ -6,7 +6,8 @@ import {
 import { api } from '../api/client'
 import { BrandMark, useBrand } from '../branding/BrandContext'
 import { SlidePreview } from '../components/SlidePreview'
-import { Button, Field, Input, Select, Textarea } from '../components/UI'
+import { TemplateBrowser, TemplateTile, recommendTemplates } from '../components/TemplateChooser'
+import { Button, Field, Input, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { Link, navigate } from '../router'
 import type { Template } from '../types'
@@ -29,8 +30,17 @@ export function CreatePage() {
   const [generationStage, setGenerationStage] = useState('생성 요청을 검증하고 있어요')
   const { showToast } = useToast()
   const { productName } = useBrand()
+  const [browseOpen, setBrowseOpen] = useState(false)
   const canContinue = prompt.trim().length >= 12
   const selectedTemplate = useMemo(() => templates.find((item) => item.id === templateId), [templates, templateId])
+  // Recommendations follow the brief, so they change as the brief is written.
+  const recommended = useMemo(
+    () => recommendTemplates(templates, { prompt, tone, audience }),
+    [templates, prompt, tone, audience])
+  const choose = (template: Template) => {
+    setTemplateId(template.id)
+    if (template.paletteKey) setTheme(template.paletteKey)
+  }
   const examples = useMemo(() => {
     const pitchSlides = Math.min(10, maxSlides)
     return [
@@ -76,13 +86,16 @@ export function CreatePage() {
     return () => { active = false }
   }, [])
 
-  const generate = async () => {
+  // A design may be handed in directly: the "generate now" button on the brief
+  // picks the top recommendation, and state has not settled by the time it runs.
+  const generate = async (design?: Template) => {
     if (defaultsLoading) return
     setGenerating(true); setStep(3); setGenerationStage('생성 요청을 대기열에 등록하고 있어요')
     try {
       const presentation = await api.generatePresentation({
         title: title.trim() || prompt.trim().slice(0, 42), prompt: prompt.trim(), audience,
-        slide_count: slideCount, language, theme, tone, templateId: templateId || undefined,
+        slide_count: slideCount, language, theme: design?.paletteKey || theme, tone,
+        templateId: design?.id || templateId || undefined,
       })
       setGenerationStage('생성 작업을 시작했어요')
       window.setTimeout(() => navigate(`/presentations/${presentation.id}/editor`), 250)
@@ -107,7 +120,17 @@ export function CreatePage() {
           <div className="composer-tools"><div /><span>{prompt.length.toLocaleString()} / 2,000</span></div>
         </div>
         <div className="prompt-examples"><span>이런 식으로 시작해 보세요</span>{examples.map((example) => <button key={example.text} disabled={defaultsLoading} onClick={() => { setPrompt(example.text); if (example.slideCount) setSlideCount(example.slideCount) }}><Sparkles size={14} /> {example.text}<ChevronRight size={14} /></button>)}</div>
-        <div className="create-footer"><span>{defaultsLoading ? '개인·조직 기본값을 불러오는 중…' : !canContinue && prompt.length > 0 ? '조금 더 구체적으로 설명해 주세요.' : ''}</span><Button size="large" disabled={defaultsLoading || !canContinue} onClick={() => setStep(2)}>스타일 선택하기 <ArrowRight size={17} /></Button></div>
+        <div className="create-footer">
+          <span>{defaultsLoading ? '개인·조직 기본값을 불러오는 중…' : !canContinue && prompt.length > 0 ? '조금 더 구체적으로 설명해 주세요.' : ''}</span>
+          {/* Choosing a design is optional. Someone who just wants the deck gets
+              the recommended one and can change it in the editor afterwards. */}
+          <button className="button button-secondary button-large" disabled={defaultsLoading || !canContinue || generating}
+            onClick={() => { if (recommended[0]) choose(recommended[0]); void generate(recommended[0]) }}
+            title={recommended[0] ? `${recommended[0].name} 디자인으로 바로 만듭니다` : undefined}>
+            <WandSparkles size={17} /> 추천 디자인으로 바로 생성
+          </button>
+          <Button size="large" disabled={defaultsLoading || !canContinue} onClick={() => setStep(2)}>디자인 고르기 <ArrowRight size={17} /></Button>
+        </div>
       </section> : <section className="create-content style-step">
         <button className="back-link" onClick={() => setStep(1)}><ArrowLeft size={16} /> 내용 수정하기</button>
         <div className="style-layout">
@@ -121,9 +144,11 @@ export function CreatePage() {
           </div>
           <TemplatePicker
             templates={templates}
+            recommended={recommended}
             selectedId={templateId}
             loading={defaultsLoading}
-            onSelect={(template) => { setTemplateId(template.id); if (template.paletteKey) setTheme(template.paletteKey) }}
+            onSelect={choose}
+            onBrowse={() => setBrowseOpen(true)}
           />
         </div>
         <div className="create-footer style-footer">
@@ -134,57 +159,68 @@ export function CreatePage() {
           <Button size="large" disabled={defaultsLoading || generating} onClick={() => void generate()}><WandSparkles size={18} /> 슬라이드 초안 생성</Button>
         </div>
       </section>}
+      <Modal
+        open={browseOpen}
+        onClose={() => setBrowseOpen(false)}
+        title="모든 디자인"
+        description="밝기·구성·용도로 좁혀서 고르세요. 고르면 바로 적용됩니다."
+        wide
+        footer={<Button variant="secondary" onClick={() => setBrowseOpen(false)}>닫기</Button>}
+      >
+        <TemplateBrowser templates={templates} selectedId={templateId} onSelect={(template) => { choose(template); setBrowseOpen(false) }} />
+      </Modal>
     </main>
   )
 }
 
-function TemplatePicker({ templates, selectedId, loading, onSelect }: {
+/**
+ * The design step: the chosen design, large; a few that suit the brief; and the
+ * whole library one click away. Scrolling forty covers to start writing is not a
+ * choice anyone wanted to make.
+ */
+function TemplatePicker({ templates, recommended, selectedId, loading, onSelect, onBrowse }: {
   templates: Template[]
+  recommended: Template[]
   selectedId: string
   loading: boolean
   onSelect: (template: Template) => void
+  onBrowse: () => void
 }) {
-  const mine = templates.filter((template) => template.kind === 'uploaded')
-  const builtin = templates.filter((template) => template.kind === 'builtin')
-  const groups = [
-    { label: '내 템플릿', items: mine },
-    { label: '기본 제공 디자인', items: builtin },
-  ].filter((group) => group.items.length > 0)
-
+  const selected = templates.find((template) => template.id === selectedId)
   return (
     <div className="template-picker">
       <div className="theme-picker-head">
-        <div><span className="eyebrow">TEMPLATE</span><h2>디자인 템플릿</h2></div>
+        <div><span className="eyebrow">TEMPLATE</span><h2>디자인</h2></div>
         <LayoutTemplate size={20} />
       </div>
-      {loading ? <div className="template-picker-loading"><LoaderCircle className="spin" size={18} /> 템플릿을 불러오는 중…</div> : groups.length === 0
-        ? <div className="template-picker-empty">
-            <p>사용할 수 있는 템플릿이 없습니다.</p>
-            <Link to="/templates" className="button button-secondary button-small"><Upload size={14} /> 템플릿 업로드</Link>
-          </div>
-        : <>
-          {groups.map((group) => (
-            <div key={group.label} className="template-picker-group">
-              <span className="template-picker-group-label">{group.label}</span>
-              <div className="template-picker-options">{group.items.map((template) => (
-                <button
-                  key={template.id}
-                  className={`template-option ${selectedId === template.id ? 'selected' : ''}`}
-                  onClick={() => onSelect(template)}
-                  aria-pressed={selectedId === template.id}
-                >
-                  <SlidePreview cacheKey={`pick-${template.id}`} alt={`${template.name} 표지`} load={() => api.templateLayoutPreview(template.id, '', 420)} />
-                  <div>
-                    <strong>{template.name}</strong>
-                    <span><Shapes size={12} /> 레이아웃 {template.layoutCount}개{template.aspectRatio ? ` · ${template.aspectRatio}` : ''}</span>
-                  </div>
-                  {selectedId === template.id && <em><Check size={13} /></em>}
-                </button>
+      {loading ? <div className="template-picker-loading"><LoaderCircle className="spin" size={18} /> 템플릿을 불러오는 중…</div>
+        : templates.length === 0
+          ? <div className="template-picker-empty">
+              <p>사용할 수 있는 템플릿이 없습니다.</p>
+              <Link to="/templates" className="button button-secondary button-small"><Upload size={14} /> 템플릿 업로드</Link>
+            </div>
+          : <>
+            {selected && <div className="template-chosen">
+              <SlidePreview cacheKey={`chosen-${selected.id}`} alt={`${selected.name} 표지`}
+                load={() => api.templateLayoutPreview(selected.id, '', 640)} />
+              <div>
+                <strong>{selected.name}</strong>
+                <span><Shapes size={12} /> 레이아웃 {selected.layoutCount}개{selected.aspectRatio ? ` · ${selected.aspectRatio}` : ''}</span>
+                {(selected.tags || []).length > 0 && <em>{(selected.tags || []).join(' · ')}</em>}
+              </div>
+            </div>}
+            <div className="template-picker-group">
+              <span className="template-picker-group-label">이 주제에 어울리는 디자인</span>
+              <div className="template-suggestions">{recommended.map((template) => (
+                <TemplateTile key={template.id} template={template} size={300}
+                  selected={template.id === selectedId} onSelect={() => onSelect(template)} />
               ))}</div>
             </div>
-          ))}
-          <Link to="/templates" className="template-picker-manage"><Upload size={13} /> 회사 템플릿 업로드 및 관리</Link>
-        </>}
+            <button type="button" className="template-picker-browse" onClick={onBrowse}>
+              <LayoutTemplate size={14} /> 모든 디자인 보기 ({templates.length})
+            </button>
+            <Link to="/templates" className="template-picker-manage"><Upload size={13} /> 회사 템플릿 업로드 및 관리</Link>
+          </>}
     </div>
   )
 }

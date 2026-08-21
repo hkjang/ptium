@@ -3162,7 +3162,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 0.16.0
+            service.version: 0.17.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -3490,6 +3490,17 @@ components:
         kind:
           type: string
           enum: [builtin, uploaded]
+        tags:
+          type: array
+          items:
+            type: string
+          description: |
+            What the design looks like and what it is for — light or dark, how it
+            is composed, the kind of meeting it was drawn for. Derived when the
+            template is read rather than stored, so it follows the design.
+        dark:
+          type: boolean
+          description: True when the template paints on a dark surface.
         scope:
           type: string
           enum: [private, shared]

@@ -246,6 +246,9 @@ export interface Template {
   sizeBytes: number
   layoutCount: number
   aspectRatio?: string
+  /** What the design looks like and what it is for, for narrowing a gallery. */
+  tags?: string[]
+  dark?: boolean
   usageCount?: number
   ownerId?: string
   layouts?: TemplateLayout[]

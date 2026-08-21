@@ -65,6 +65,18 @@ func (t Theme) Color(name string) string {
 	return "808080"
 }
 
+// IsDark reports whether a template paints on a dark surface, which is the
+// first thing anyone notices about a design and the first way they narrow a
+// library down.
+func (m Manifest) IsDark() bool {
+	surface := m.Theme.Color("lt1")
+	if len(m.Layouts) > 0 && m.Layouts[0].Background != "" {
+		surface = m.Layouts[0].Background
+	}
+	red, green, blue := parseHex(surface)
+	return 0.2126*toLinear(red)+0.7152*toLinear(green)+0.0722*toLinear(blue) < 0.35
+}
+
 // Placeholder is a single fillable region of a layout.
 type Placeholder struct {
 	Slot     string  `json:"slot"`

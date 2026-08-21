@@ -314,6 +314,10 @@ type rawTextStyle struct {
 }
 
 type rawLevelStyle struct {
+	// Align is the paragraph's own alignment. A template that centres its cover
+	// says so here, and a preview that ignores it draws a different slide from
+	// the one PowerPoint will.
+	Align  string `xml:"algn,attr"`
 	DefRPr struct {
 		Size      int           `xml:"sz,attr"`
 		Bold      string        `xml:"b,attr"`
@@ -343,6 +347,19 @@ func (l rawLevelStyle) color() string {
 }
 
 func (l rawLevelStyle) bold() bool { return l.DefRPr.Bold == "1" || l.DefRPr.Bold == "true" }
+
+func (l rawLevelStyle) italic() bool { return l.DefRPr.Italic == "1" || l.DefRPr.Italic == "true" }
+
+// align is the paragraph alignment, in DrawingML's own vocabulary.
+func (l rawLevelStyle) align() string {
+	switch strings.TrimSpace(l.Align) {
+	case "l", "ctr", "r", "just":
+		// "l" counts: a layout that sets its title left has to override a master
+		// that centres everything, and treating left as "unset" lets the master win.
+		return strings.TrimSpace(l.Align)
+	}
+	return ""
+}
 
 func (s rawTextStyle) levelStyle(index int) rawLevelStyle {
 	levels := []rawLevelStyle{s.Lvl1, s.Lvl2, s.Lvl3, s.Lvl4, s.Lvl5, s.Lvl6, s.Lvl7, s.Lvl8, s.Lvl9}

@@ -180,3 +180,47 @@
 .grid-value-rows label { display:inline-flex; align-items:center; gap:3px; color:var(--muted-2); font-size:9.5px; }
 .grid-value-rows button { display:inline-flex; align-items:center; justify-content:center; min-height:26px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted-2); cursor:pointer; }
 .grid-value-rows button.danger:hover { border-color:#e2a2a2; color:#9b2c2c; }
+
+/* ── Narrowing a library ──────────────────────────────────────────────────
+   A gallery of forty covers is browsed, not read. It is narrowed by the things
+   people choose on and drawn a screenful at a time. */
+.template-browser-bar{margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;gap:9px}
+.template-search{flex:0 1 260px;min-width:180px;height:32px;padding:0 9px;display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted)}
+.template-search:focus-within{border-color:var(--violet)}
+.template-search input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--ink);font-size:11px}
+.template-search button{width:18px;height:18px;display:grid;place-items:center;border:0;border-radius:50%;color:var(--muted);background:var(--surface-soft);cursor:pointer}
+.template-chips{display:flex;flex-wrap:wrap;gap:5px}
+.template-chips button{height:28px;padding:0 11px;border:1px solid var(--line);border-radius:999px;color:var(--muted);background:#fff;font-size:10px;cursor:pointer}
+.template-chips button:hover{border-color:#c9c0e8;color:var(--ink)}
+.template-chips button.active{border-color:var(--violet);color:var(--violet);background:var(--violet-soft);font-weight:700}
+.template-chips button.clear{border-style:dashed}
+.template-browser-count{margin:0 0 10px;display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px}
+.template-browser-empty{padding:24px 0;color:var(--muted);font-size:11px}
+.template-browser-more{width:100%;margin-top:14px;height:38px;border:1px dashed var(--line-strong);border-radius:10px;color:var(--violet);background:#fff;font-size:11px;font-weight:600;cursor:pointer}
+.template-browser-more:hover{border-color:var(--violet);background:var(--violet-soft)}
+.template-card-tags{display:flex;flex-wrap:wrap;gap:4px}
+.template-card-tags span{padding:2px 7px;border-radius:999px;color:var(--muted);background:var(--surface-soft);font-size:9px}
+.template-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.template-tile{padding:0;display:flex;flex-direction:column;overflow:hidden;position:relative;border:1px solid var(--line);border-radius:11px;background:#fff;text-align:left;cursor:pointer}
+.template-tile:hover{border-color:#c9c0e8;box-shadow:0 8px 20px rgba(35,31,49,.09)}
+.template-tile.selected{border-color:var(--violet);box-shadow:0 0 0 2px var(--violet-soft)}
+.template-tile .slide-preview{width:100%;aspect-ratio:16/9;object-fit:cover;border-bottom:1px solid var(--line)}
+.template-tile>div{padding:8px 10px 10px;display:flex;flex-direction:column;gap:3px;min-width:0}
+.template-tile strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.template-tile span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:9px}
+.template-tile em{position:absolute;right:8px;top:8px;width:20px;height:20px;display:grid;place-items:center;border-radius:50%;color:#fff;background:var(--violet)}
+/* The design step: what is chosen, what suits the brief, and the way to the rest. */
+.template-chosen{margin-bottom:14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}
+.template-chosen .slide-preview{width:100%;aspect-ratio:16/9;object-fit:cover;border-bottom:1px solid var(--line)}
+.template-chosen>div{padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.template-chosen strong{font-size:12px}
+.template-chosen span{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px}
+.template-chosen em{color:var(--violet);font-size:9px;font-style:normal}
+.template-suggestions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.template-suggestions .template-tile>div{padding:6px 8px 8px}
+.template-picker-browse{width:100%;margin-top:12px;height:36px;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line-strong);border-radius:9px;color:var(--ink);background:#fff;font-size:11px;font-weight:600;cursor:pointer}
+.template-picker-browse:hover{border-color:var(--violet);color:var(--violet);background:var(--violet-soft)}
+.modal.modal-wide{width:min(1060px,94vw)}
+.template-filter-group{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.template-filter-group>b{margin-right:2px;color:var(--muted);font-size:9px;font-weight:700}
+.template-filter-more{height:28px;padding:0 10px;border:1px dashed var(--line-strong);border-radius:999px;color:var(--muted);background:#fff;font-size:10px;cursor:pointer}

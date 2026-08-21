@@ -29,6 +29,9 @@ type BuiltinPalette struct {
 	MinorLatin string
 	EastAsian  string
 	Note       string
+	// Use is the kind of meeting the palette was chosen for, in two or three
+	// words. It is what someone scanning a library actually filters on.
+	Use string
 }
 
 // builtinPalettes is the validated palette library.
@@ -39,6 +42,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"2563EB", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "중립적인 밝은 배경에 선명한 블루. 사내 업무 보고에 가장 안전한 선택입니다.",
+		Use:  "사내 보고",
 	},
 	{
 		Key: "azure", Name: "Azure", Dark: false,
@@ -46,6 +50,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"0B6BCB", "EB6834", "1BAF7A", "EDA100", "E87BA4", "008300"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "차분한 블루 틴트 배경. 금융·공공 부문 보고에 어울립니다.",
+		Use:  "금융·공공",
 	},
 	{
 		Key: "crimson", Name: "Crimson", Dark: false,
@@ -53,6 +58,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"C81E33", "2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "밝은 배경에 크림슨 액센트. 리스크와 의사결정 자료에 씁니다.",
+		Use:  "리스크·의사결정",
 	},
 	{
 		Key: "coral", Name: "Coral", Dark: false,
@@ -60,6 +66,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"DE5B3B", "2A78D6", "1BAF7A", "EDA100", "E87BA4", "008300"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "부드러운 웜 배경에 코랄 액센트. 브랜드·마케팅 발표용입니다.",
+		Use:  "브랜드·마케팅",
 	},
 	{
 		Key: "ivory", Name: "Ivory", Dark: false,
@@ -67,6 +74,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"A8551E", "2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4"},
 		MajorLatin: "Georgia", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "따뜻한 아이보리와 세리프 제목. 제안서와 연차 보고서 톤입니다.",
+		Use:  "제안서",
 	},
 	{
 		Key: "sand", Name: "Sand", Dark: false,
@@ -74,6 +82,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"B26A12", "2A78D6", "EB6834", "1BAF7A", "EDA100", "E87BA4"},
 		MajorLatin: "Georgia", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "모래빛 배경과 세리프 제목. 리서치와 정책 문서에 맞습니다.",
+		Use:  "리서치·정책",
 	},
 	{
 		Key: "midnight", Name: "Midnight", Dark: true,
@@ -81,6 +90,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"5B8DEF", "D95926", "199E70", "6B7B93", "8B98AC", "AEB8C6"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "깊은 네이비 다크 테마. 대형 화면 발표와 임원 브리핑에 강한 인상을 줍니다.",
+		Use:  "임원 브리핑",
 	},
 	{
 		Key: "graphite", Name: "Graphite", Dark: true,
@@ -88,6 +98,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"C98500", "3987E5", "D95926", "199E70", "9085E9", "E66767"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "중립 그레이 다크 테마에 앰버 액센트. 기술 리뷰와 아키텍처 설명용입니다.",
+		Use:  "기술 리뷰",
 	},
 	{
 		Key: "forest", Name: "Forest", Dark: true,
@@ -95,6 +106,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"17A574", "3987E5", "D95926", "9085E9", "E66767", "B05FC4"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "딥 그린 다크 테마. 지속가능성, ESG, 인프라 주제에 씁니다.",
+		Use:  "ESG·인프라",
 	},
 	{
 		Key: "plum", Name: "Plum", Dark: true,
@@ -102,6 +114,7 @@ var builtinPalettes = []BuiltinPalette{
 		Accents:    [6]string{"8B5CF6", "D95926", "199E70", "9085E9", "E66767", "B05FC4"},
 		MajorLatin: "Aptos Display", MinorLatin: "Aptos", EastAsian: "맑은 고딕",
 		Note: "딥 퍼플 다크 테마. 제품 출시와 비전 발표에 어울립니다.",
+		Use:  "제품 출시",
 	},
 }
 
@@ -111,6 +124,8 @@ type layoutFamily struct {
 	Key  string
 	Name string
 	Note string
+	// Label is the one or two words a person browsing the library reads.
+	Label string
 
 	Margin     int
 	TitleSize  int
@@ -128,7 +143,34 @@ type layoutFamily struct {
 	Panel bool
 	// Eyebrow reserves a small line above the title for a section label.
 	Eyebrow bool
+	// Cover is how the opening slide is composed. Recolouring one composition ten
+	// times produces ten templates that look like the same template, so the
+	// families differ in where the title sits before they differ in hue.
+	Cover string
+	// Body is how a content slide divides its page.
+	Body string
+	// Serif sets the display face in a serif whatever the palette prefers.
+	Serif bool
+	// Footer draws a quiet rule along the bottom margin.
+	Footer bool
 }
+
+// Cover compositions.
+const (
+	coverStack  = ""       // an accent bar over the title, the library's default
+	coverPanel  = "panel"  // a full-height accent panel carrying the title
+	coverBand   = "band"   // an accent band filling the lower half
+	coverPlate  = "plate"  // a centred plate the title sits inside
+	coverCorner = "corner" // a large accent block in the upper corner
+	coverColumn = "column" // the title and the subtitle in facing columns
+)
+
+// Body compositions.
+const (
+	bodyWide   = ""        // one column across the page
+	bodyIndent = "indent"  // the title in a narrow left column, the body beside it
+	bodySide   = "sidebar" // a tinted column carries the title, the body sits right
+)
 
 const (
 	slideWidth  = 12192000
@@ -137,34 +179,64 @@ const (
 
 var layoutFamilies = []layoutFamily{
 	{
-		Key: "classic", Name: "Classic", Note: "제목 위 액센트 룰, 좌측 정렬, 넉넉한 본문",
+		Key: "classic", Name: "Classic", Label: "기본", Note: "제목 위 액센트 룰, 좌측 정렬, 넉넉한 본문",
 		Margin: 838200, TitleSize: 4000, BodySize: 1800, CoverSize: 5400,
 		TitleAlign: "l", CoverAlign: "l", Rule: true,
 	},
 	{
-		Key: "rail", Name: "Rail", Note: "좌측 액센트 레일이 모든 슬라이드를 묶어 주는 구성",
+		Key: "rail", Name: "Rail", Label: "레일", Note: "좌측 액센트 레일이 모든 슬라이드를 묶어 주는 구성",
 		Margin: 1097280, TitleSize: 3800, BodySize: 1800, CoverSize: 5000,
 		TitleAlign: "l", CoverAlign: "l", Rail: 182880,
 	},
 	{
-		Key: "centered", Name: "Centered", Note: "표지와 구역을 중앙 정렬한 키노트형 구성",
+		Key: "centered", Name: "Centered", Label: "중앙", Note: "표지와 구역을 중앙 정렬한 키노트형 구성",
 		Margin: 1143000, TitleSize: 3800, BodySize: 1800, CoverSize: 5000,
 		TitleAlign: "l", CoverAlign: "ctr",
 	},
 	{
-		Key: "panel", Name: "Panel", Note: "제목이 상단 색 패널에 놓이는 강한 위계",
+		Key: "panel", Name: "Panel", Label: "패널", Note: "제목이 상단 색 패널에 놓이는 강한 위계",
 		Margin: 838200, TitleSize: 3400, BodySize: 1800, CoverSize: 5000,
 		TitleAlign: "l", CoverAlign: "l", Panel: true,
 	},
 	{
-		Key: "editorial", Name: "Editorial", Note: "얇은 헤어라인과 아이브로우를 쓰는 편집 디자인",
+		Key: "editorial", Name: "Editorial", Label: "편집", Note: "얇은 헤어라인과 아이브로우를 쓰는 편집 디자인",
 		Margin: 1188720, TitleSize: 3400, BodySize: 1700, CoverSize: 4800,
 		TitleAlign: "l", CoverAlign: "l", Hairline: true, Eyebrow: true,
 	},
 	{
-		Key: "minimal", Name: "Minimal", Note: "장식을 걷어내고 여백과 타이포만 남긴 구성",
+		Key: "minimal", Name: "Minimal", Label: "미니멀", Note: "장식을 걷어내고 여백과 타이포만 남긴 구성",
 		Margin: 1371600, TitleSize: 3200, BodySize: 1700, CoverSize: 4400,
 		TitleAlign: "l", CoverAlign: "l",
+	},
+	{
+		Key: "column", Name: "Column", Label: "2단", Note: "제목은 왼쪽 단, 본문은 오른쪽 단에 두는 보고서 구성",
+		Margin: 914400, TitleSize: 2800, BodySize: 1700, CoverSize: 4000,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverColumn, Body: bodyIndent, Serif: true, Footer: true,
+	},
+	{
+		Key: "sidebar", Name: "Sidebar", Label: "사이드바", Note: "제목이 왼쪽 색 기둥에 서고 본문이 그 옆에 오는 구성",
+		Margin: 685800, TitleSize: 2800, BodySize: 1700, CoverSize: 4000,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverPanel, Body: bodySide,
+	},
+	{
+		Key: "split", Name: "Split", Label: "분할", Note: "표지를 세로로 가르는 액센트 패널, 본문은 헤어라인",
+		Margin: 838200, TitleSize: 3600, BodySize: 1800, CoverSize: 4000,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverPanel, Hairline: true,
+	},
+	{
+		Key: "band", Name: "Band", Label: "밴드", Note: "표지 아래를 가득 채우는 액센트 띠와 아이브로우",
+		Margin: 914400, TitleSize: 3600, BodySize: 1800, CoverSize: 4400,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverBand, Eyebrow: true,
+	},
+	{
+		Key: "plate", Name: "Plate", Label: "플레이트", Note: "표지 제목을 가운데 판 위에 얹은 초대장 같은 구성",
+		Margin: 1143000, TitleSize: 3200, BodySize: 1800, CoverSize: 4000,
+		TitleAlign: "ctr", CoverAlign: "ctr", Cover: coverPlate, Serif: true,
+	},
+	{
+		Key: "corner", Name: "Corner", Label: "코너", Note: "위쪽 모서리 색 블록과 아래에 앉은 제목",
+		Margin: 838200, TitleSize: 3600, BodySize: 1800, CoverSize: 4600,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverCorner, Rule: true, Footer: true,
 	},
 }
 
@@ -176,25 +248,58 @@ type BuiltinDesign struct {
 	Family  layoutFamily
 }
 
+// MajorLatin is the display face this design sets titles in. A family that asks
+// for a serif gets one whatever the palette prefers, because a serif title and a
+// grotesque title are two different designs even in the same colours.
+func (d BuiltinDesign) MajorLatin() string {
+	if d.Family.Serif {
+		return "Georgia"
+	}
+	return d.Palette.MajorLatin
+}
+
+// Tags describe a design in the terms someone choosing one thinks in: how dark
+// it is, how it is composed, what it was drawn for. A library is browsable when
+// it can be narrowed, and these are what it narrows by.
+func (d BuiltinDesign) Tags() []string {
+	tags := make([]string, 0, 4)
+	if d.Palette.Dark {
+		tags = append(tags, "어두운")
+	} else {
+		tags = append(tags, "밝은")
+	}
+	if label := strings.TrimSpace(d.Family.Label); label != "" {
+		tags = append(tags, label)
+	}
+	if d.MajorLatin() == "Georgia" {
+		tags = append(tags, "세리프")
+	}
+	if use := strings.TrimSpace(d.Palette.Use); use != "" {
+		tags = append(tags, use)
+	}
+	return tags
+}
+
 // Description is the sentence shown in the template library.
 func (d BuiltinDesign) Description() string {
 	return fmt.Sprintf("%s · %s. %s", d.Family.Name, d.Family.Note, d.Palette.Note)
 }
 
-// builtinPairs assigns three layout families to every palette, so the library
-// covers each family five times and each palette three times without repeating
-// a combination.
-var builtinPairs = map[string][3]string{
-	"slate":    {"classic", "panel", "minimal"},
-	"azure":    {"classic", "rail", "centered"},
-	"crimson":  {"classic", "editorial", "panel"},
-	"coral":    {"rail", "centered", "editorial"},
-	"ivory":    {"editorial", "centered", "classic"},
-	"sand":     {"editorial", "minimal", "panel"},
-	"midnight": {"panel", "rail", "minimal"},
-	"graphite": {"minimal", "classic", "rail"},
-	"forest":   {"panel", "centered", "minimal"},
-	"plum":     {"rail", "centered", "editorial"},
+// builtinPairs assigns four layout families to every palette. The first three of
+// each row are the pairings the library shipped with, so a deck built on one
+// keeps its design; the fourth is a structurally different composition, because
+// what makes a library feel varied is where the title sits, not its hue.
+var builtinPairs = map[string][4]string{
+	"slate":    {"classic", "panel", "minimal", "column"},
+	"azure":    {"classic", "rail", "centered", "sidebar"},
+	"crimson":  {"classic", "editorial", "panel", "corner"},
+	"coral":    {"rail", "centered", "editorial", "band"},
+	"ivory":    {"editorial", "centered", "classic", "plate"},
+	"sand":     {"editorial", "minimal", "panel", "column"},
+	"midnight": {"panel", "rail", "minimal", "band"},
+	"graphite": {"minimal", "classic", "rail", "sidebar"},
+	"forest":   {"panel", "centered", "minimal", "split"},
+	"plum":     {"rail", "centered", "editorial", "corner"},
 }
 
 // BuiltinDesigns returns the shipped library in a stable order.
@@ -203,7 +308,7 @@ func BuiltinDesigns() []BuiltinDesign {
 	for _, family := range layoutFamilies {
 		families[family.Key] = family
 	}
-	result := make([]BuiltinDesign, 0, len(builtinPalettes)*3)
+	result := make([]BuiltinDesign, 0, len(builtinPalettes)*4)
 	for _, palette := range builtinPalettes {
 		for _, familyKey := range builtinPairs[palette.Key] {
 			family, ok := families[familyKey]
@@ -355,7 +460,7 @@ func builtinTheme(design BuiltinDesign) string {
 		`<a:accent5><a:srgbClr val="` + accent(4) + `"/></a:accent5><a:accent6><a:srgbClr val="` + accent(5) + `"/></a:accent6>` +
 		`<a:hlink><a:srgbClr val="` + accent(1) + `"/></a:hlink><a:folHlink><a:srgbClr val="` + accent(2) + `"/></a:folHlink></a:clrScheme>` +
 		`<a:fontScheme name="` + escapeAttribute(name) + `">` +
-		`<a:majorFont><a:latin typeface="` + escapeAttribute(palette.MajorLatin) + `"/><a:ea typeface="` + escapeAttribute(palette.EastAsian) + `"/><a:cs typeface=""/></a:majorFont>` +
+		`<a:majorFont><a:latin typeface="` + escapeAttribute(design.MajorLatin()) + `"/><a:ea typeface="` + escapeAttribute(palette.EastAsian) + `"/><a:cs typeface=""/></a:majorFont>` +
 		`<a:minorFont><a:latin typeface="` + escapeAttribute(palette.MinorLatin) + `"/><a:ea typeface="` + escapeAttribute(palette.EastAsian) + `"/><a:cs typeface=""/></a:minorFont></a:fontScheme>` +
 		`<a:fmtScheme name="` + escapeAttribute(name) + `">` +
 		`<a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="phClr"><a:tint val="80000"/></a:schemeClr></a:solidFill><a:solidFill><a:schemeClr val="phClr"><a:shade val="90000"/></a:schemeClr></a:solidFill></a:fillStyleLst>` +
@@ -385,6 +490,50 @@ func (f layoutFamily) titleTop() int {
 }
 
 func (f layoutFamily) titleHeight() int { return lineHeightFor(f.TitleSize) + 91440 }
+
+// sidebarWidth is the tinted column a sidebar family stands its titles in.
+func (f layoutFamily) sidebarWidth() int { return slideWidth * 30 / 100 }
+
+// titleFrame and bodyFrame divide a content slide. Most families run both across
+// the page; a column family sets the title in a narrow measure with the body
+// beside it, and a sidebar family stands the title in a tinted column.
+func (f layoutFamily) titleFrame() Frame {
+	area := f.contentArea()
+	switch f.Body {
+	case bodyIndent:
+		return Frame{X: area.X, Y: f.titleTop(), Width: area.Width * 34 / 100, Height: f.titleHeight() * 3}
+	case bodySide:
+		return Frame{X: f.Margin, Y: f.titleTop(), Width: f.sidebarWidth() - f.Margin*2, Height: f.titleHeight() * 3}
+	}
+	return Frame{X: area.X, Y: f.titleTop(), Width: area.Width, Height: f.titleHeight()}
+}
+
+func (f layoutFamily) bodyFrame() Frame {
+	area := f.contentArea()
+	switch f.Body {
+	case bodyIndent:
+		column := area.Width * 34 / 100
+		gap := 457200
+		return Frame{X: area.X + column + gap, Y: f.titleTop(), Width: area.Width - column - gap,
+			Height: slideHeight - f.titleTop() - 914400}
+	case bodySide:
+		left := f.sidebarWidth() + f.Margin
+		return Frame{X: left, Y: f.titleTop(), Width: slideWidth - left - f.Margin,
+			Height: slideHeight - f.titleTop() - 914400}
+	}
+	return Frame{X: area.X, Y: f.bodyTop(), Width: area.Width, Height: f.bodyHeight()}
+}
+
+// columnFill is the tint a sidebar column is painted in: a neutral lift off the
+// page, never a wash of the brand hue. An amber accent at sixteen percent over a
+// dark grey is mud, and it covers a third of the slide — the colour belongs in
+// the stripe at the column's edge, where a little of it goes a long way.
+func (f layoutFamily) columnFill(palette BuiltinPalette) string {
+	// The blend is in linear light, where a little goes much further than an sRGB
+	// average would suggest: twelve percent of near-white over near-black is a
+	// mid grey, not a lift.
+	return mixColor(palette.Surface, palette.Ink, ifElse(palette.Dark, 0.03, 0.06))
+}
 
 // bodyTop is where a content slide's body begins, leaving room for whatever
 // mark the family draws between title and body.
@@ -527,55 +676,162 @@ func (f layoutFamily) titleFurniture(id int, palette BuiltinPalette, area Frame)
 	return ""
 }
 
+// ifInt is the integer companion of ifElse, for geometry that is present in one
+// composition and absent in another.
+func ifInt(condition bool, whenTrue, whenFalse int) int {
+	if condition {
+		return whenTrue
+	}
+	return whenFalse
+}
+
 // panelInk is the text colour a title panel needs to stay readable.
 func panelInk(palette BuiltinPalette) string {
 	return readableInk(palette.Accents[0], palette.Surface, palette.Ink)
 }
 
+// coverShapes composes the opening slide. This is the picture a gallery shows
+// and the first thing an audience sees, so it is where the families differ
+// most: the same palette on two covers should not look like the same template.
+func (f layoutFamily) coverShapes(palette BuiltinPalette, area Frame) string {
+	subtitleInk := mixColor(palette.Ink, palette.Surface, 0.42)
+	switch f.Cover {
+	case coverPanel:
+		// A full-height panel down the left, with the title standing on it. A
+		// sidebar family tints the panel instead of filling it, so its cover and
+		// its content slides are recognisably the same design.
+		panelWidth := slideWidth * 42 / 100
+		fill := palette.Accents[0]
+		ink := readableInk(fill, palette.Surface, palette.Ink)
+		if f.Body == bodySide {
+			panelWidth = f.sidebarWidth() + slideWidth*8/100
+			fill, ink = f.columnFill(palette), palette.Ink
+		}
+		inset := 731520
+		return shapeRect(8, "Cover Panel", 0, 0, panelWidth, slideHeight, fill) +
+			shapeRect(9, "Cover Panel Edge", 0, 0, ifInt(f.Body == bodySide, 68580, 0), slideHeight, palette.Accents[0]) +
+			placeholderShape(2, "Title 1", "ctrTitle", -1, inset, 2011680, panelWidth-inset*2, 2011680,
+				textBody("l", "b", f.CoverSize, true, ink, "프레젠테이션 제목")) +
+			placeholderShape(3, "Subtitle 2", "subTitle", 1, panelWidth+inset, 2011680,
+				slideWidth-panelWidth-inset-f.Margin, 2011680,
+				textBody("l", "b", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	case coverBand:
+		// An accent band across the lower half, the title reversed out of it.
+		bandTop := slideHeight * 47 / 100
+		ink := readableInk(palette.Accents[0], palette.Surface, palette.Ink)
+		return shapeRect(8, "Cover Band", 0, bandTop, slideWidth, slideHeight-bandTop, palette.Accents[0]) +
+			placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, bandTop+594360, area.Width, 1554480,
+				textBody("l", "t", f.CoverSize, true, ink, "프레젠테이션 제목")) +
+			placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, bandTop-822960, area.Width, 640080,
+				textBody("l", "b", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	case coverPlate:
+		// A plate the title sits inside, centred on the page.
+		plateX, plateY := slideWidth*12/100, slideHeight*24/100
+		plateWidth, plateHeight := slideWidth-plateX*2, slideHeight*52/100
+		inset := 594360
+		ruleX := plateX + inset
+		if f.CoverAlign == "ctr" {
+			ruleX = plateX + plateWidth/2 - 342900
+		}
+		return shapeRect(8, "Cover Plate", plateX, plateY, plateWidth, plateHeight,
+			mixColor(palette.Surface, palette.Accents[0], ifElse(palette.Dark, 0.20, 0.10))) +
+			shapeRect(9, "Plate Rule", ruleX, plateY+inset, 685800, 45720, palette.Accents[0]) +
+			placeholderShape(2, "Title 1", "ctrTitle", -1, plateX+inset, plateY+inset+320040,
+				plateWidth-inset*2, 1600200,
+				textBody(f.CoverAlign, "b", f.CoverSize, true, palette.Ink, "프레젠테이션 제목")) +
+			placeholderShape(3, "Subtitle 2", "subTitle", 1, plateX+inset, plateY+plateHeight-inset-457200,
+				plateWidth-inset*2, 457200,
+				textBody(f.CoverAlign, "b", 1800, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	case coverColumn:
+		// The title and the subtitle in facing columns, divided by a hairline —
+		// the same two-column measure the content slides are set in.
+		column := slideWidth*34/100 - area.X
+		gap := 457200
+		rightX := area.X + column + gap
+		return shapeRect(8, "Cover Rule", area.X, slideHeight*30/100, column, 45720, palette.Accents[0]) +
+			shapeRect(9, "Cover Divider", rightX-gap/2, slideHeight*30/100, 9525, slideHeight*40/100,
+				mixColor(palette.Surface, palette.Ink, ifElse(palette.Dark, 0.26, 0.16))) +
+			placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, slideHeight*30/100+320040, column, 2377440,
+				textBody("l", "t", f.CoverSize, true, palette.Ink, "프레젠테이션 제목")) +
+			placeholderShape(3, "Subtitle 2", "subTitle", 1, rightX, slideHeight*30/100+320040,
+				slideWidth-rightX-f.Margin, 1828800,
+				textBody("l", "t", 1800, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	case coverCorner:
+		// A block in the upper corner, the title sitting under it.
+		blockWidth, blockHeight := slideWidth*34/100, slideHeight*46/100
+		return shapeRect(8, "Cover Block", slideWidth-blockWidth, 0, blockWidth, blockHeight, palette.Accents[0]) +
+			shapeRect(9, "Cover Rule", area.X, slideHeight*58/100, 1371600, 68580, palette.Accents[0]) +
+			placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, slideHeight*58/100+274320,
+				area.Width-blockWidth/2, 1600200,
+				textBody("l", "t", f.CoverSize, true, palette.Ink, "프레젠테이션 제목")) +
+			placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, slideHeight*58/100+1965960,
+				area.Width-blockWidth/2, 685800,
+				textBody("l", "t", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	}
+	// The library's default: an accent bar, the title, the subtitle under it.
+	coverTop := 2560320
+	accentWidth := 1600200
+	accentX := area.X
+	if f.CoverAlign == "ctr" {
+		accentX = (slideWidth - accentWidth) / 2
+	}
+	return shapeRect(8, "Cover Accent", accentX, coverTop-274320, accentWidth, 68580, palette.Accents[0]) +
+		placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, coverTop, area.Width, 1600200,
+			textBody(f.CoverAlign, "b", f.CoverSize, true, palette.Ink, "프레젠테이션 제목")) +
+		placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, coverTop+1737360, area.Width, 914400,
+			textBody(f.CoverAlign, "t", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+}
+
 func builtinLayouts(design BuiltinDesign) []builtinLayout {
 	family := design.Family
 	area := family.contentArea()
-	titleTop, titleHeight := family.titleTop(), family.titleHeight()
-	bodyTop, bodyHeight := family.bodyTop(), family.bodyHeight()
-	halfWidth := (area.Width - 457200) / 2
-	rightX := area.X + halfWidth + 457200
+	titleTop := family.titleTop()
+	title, body := family.titleFrame(), family.bodyFrame()
+	// Two-column layouts divide whatever the family gives the body, so a column or
+	// sidebar family splits its own measure rather than the whole page.
+	halfWidth := (body.Width - 457200) / 2
+	rightX := body.X + halfWidth + 457200
 
 	// A content slide's title and body, shared by most layouts.
 	contentTitle := func(design BuiltinDesign) string {
 		palette := design.Palette
 		color := palette.Ink
-		top, height := titleTop, titleHeight
+		frame := title
 		if family.Panel {
-			color, top, height = panelInk(palette), 640080, lineHeightFor(family.TitleSize)+91440
+			color = panelInk(palette)
+			frame = Frame{X: area.X, Y: 640080, Width: area.Width, Height: lineHeightFor(family.TitleSize) + 91440}
 		}
 		furniture := family.titleFurniture(8, palette, area)
+		// A sidebar family paints its column instead of drawing furniture; the
+		// column is the mark that ties the deck together.
+		if family.Body == bodySide {
+			furniture = shapeRect(8, "Sidebar", 0, 0, family.sidebarWidth(), slideHeight, family.columnFill(palette)) +
+				shapeRect(9, "Sidebar Accent", 0, 0, 68580, slideHeight, palette.Accents[0])
+		}
+		if family.Footer {
+			furniture += shapeRect(10, "Footer Rule", area.X, slideHeight-548640, area.Width, 9525,
+				mixColor(palette.Surface, palette.Ink, ifElse(palette.Dark, 0.22, 0.12)))
+		}
 		eyebrow := ""
 		if family.Eyebrow {
-			eyebrow = placeholderShape(7, "Text Placeholder 6", "body", 9, area.X, titleTop-320040, area.Width, 274320,
+			eyebrow = placeholderShape(7, "Text Placeholder 6", "body", 9, frame.X, titleTop-320040, frame.Width, 274320,
 				textBody(family.TitleAlign, "b", 1100, true, palette.Accents[0], "구역 이름"))
 		}
+		anchor := "b"
+		if family.Body == bodyIndent || family.Body == bodySide {
+			// A title set in its own column reads from the top of the column, not
+			// from the baseline the body happens to start at.
+			anchor = "t"
+		}
 		return furniture + eyebrow +
-			placeholderShape(2, "Title 1", "title", -1, area.X, top, area.Width, height,
-				textBody(family.TitleAlign, "b", family.TitleSize, true, color, "제목을 입력하세요"))
+			placeholderShape(2, "Title 1", "title", -1, frame.X, frame.Y, frame.Width, frame.Height,
+				textBody(family.TitleAlign, anchor, family.TitleSize, true, color, "제목을 입력하세요"))
 	}
 
 	return []builtinLayout{
 		{
-			Name: "제목 슬라이드", Type: "title", ShowMaster: family.Rail > 0,
-			Shapes: func(d BuiltinDesign) string {
-				palette := d.Palette
-				coverTop := 2560320
-				accentWidth := 1600200
-				accentX := area.X
-				if family.CoverAlign == "ctr" {
-					accentX = (slideWidth - accentWidth) / 2
-				}
-				return shapeRect(8, "Cover Accent", accentX, coverTop-274320, accentWidth, 68580, palette.Accents[0]) +
-					placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, coverTop, area.Width, 1600200,
-						textBody(family.CoverAlign, "b", family.CoverSize, true, palette.Ink, "프레젠테이션 제목")) +
-					placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, coverTop+1737360, area.Width, 914400,
-						textBody(family.CoverAlign, "t", 2000, false, mixColor(palette.Ink, palette.Surface, 0.42), "부제목 또는 한 줄 요약"))
-			},
+			Name: "제목 슬라이드", Type: "title", ShowMaster: family.Rail > 0 && family.Cover == coverStack,
+			Shapes: func(d BuiltinDesign) string { return family.coverShapes(d.Palette, area) },
 		},
 		{
 			Name: "구역 머리글", Type: "secHead", ShowMaster: family.Rail > 0,
@@ -593,7 +849,7 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Name: "제목 및 내용", Type: "obj", ShowMaster: true,
 			Shapes: func(d BuiltinDesign) string {
 				return contentTitle(d) +
-					placeholderShape(3, "Content Placeholder 2", "body", 1, area.X, bodyTop, area.Width, bodyHeight,
+					placeholderShape(3, "Content Placeholder 2", "body", 1, body.X, body.Y, body.Width, body.Height,
 						bulletBody(family.BodySize, d.Palette.Ink))
 			},
 		},
@@ -601,9 +857,9 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Name: "콘텐츠 2개", Type: "twoObj", ShowMaster: true,
 			Shapes: func(d BuiltinDesign) string {
 				return contentTitle(d) +
-					placeholderShape(3, "Content Placeholder 2", "body", 1, area.X, bodyTop, halfWidth, bodyHeight,
+					placeholderShape(3, "Content Placeholder 2", "body", 1, body.X, body.Y, halfWidth, body.Height,
 						bulletBody(family.BodySize-100, d.Palette.Ink)) +
-					placeholderShape(4, "Content Placeholder 3", "body", 2, rightX, bodyTop, halfWidth, bodyHeight,
+					placeholderShape(4, "Content Placeholder 3", "body", 2, rightX, body.Y, halfWidth, body.Height,
 						bulletBody(family.BodySize-100, d.Palette.Ink))
 			},
 		},
@@ -612,14 +868,14 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Shapes: func(d BuiltinDesign) string {
 				palette := d.Palette
 				const headerHeight = 502920
-				subBodyTop := bodyTop + headerHeight + 137160
-				subBodyHeight := bodyHeight - headerHeight - 137160
+				subBodyTop := body.Y + headerHeight + 137160
+				subBodyHeight := body.Height - headerHeight - 137160
 				return contentTitle(d) +
-					placeholderShape(3, "Text Placeholder 2", "body", 1, area.X, bodyTop, halfWidth, headerHeight,
+					placeholderShape(3, "Text Placeholder 2", "body", 1, body.X, body.Y, halfWidth, headerHeight,
 						textBody("l", "ctr", 2000, true, palette.Accents[0], "왼쪽 항목")) +
-					placeholderShape(4, "Content Placeholder 3", "body", 2, area.X, subBodyTop, halfWidth, subBodyHeight,
+					placeholderShape(4, "Content Placeholder 3", "body", 2, body.X, subBodyTop, halfWidth, subBodyHeight,
 						bulletBody(family.BodySize-200, palette.Ink)) +
-					placeholderShape(5, "Text Placeholder 4", "body", 3, rightX, bodyTop, halfWidth, headerHeight,
+					placeholderShape(5, "Text Placeholder 4", "body", 3, rightX, body.Y, halfWidth, headerHeight,
 						textBody("l", "ctr", 2000, true, palette.Accents[1], "오른쪽 항목")) +
 					placeholderShape(6, "Content Placeholder 5", "body", 4, rightX, subBodyTop, halfWidth, subBodyHeight,
 						bulletBody(family.BodySize-200, palette.Ink))
@@ -639,13 +895,13 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 		{
 			Name: "캡션 있는 그림", Type: "picTx", ShowMaster: true,
 			Shapes: func(d BuiltinDesign) string {
-				pictureWidth := area.Width*3/5 - 228600
-				captionX := area.X + pictureWidth + 457200
-				captionWidth := area.Width - pictureWidth - 457200
+				pictureWidth := body.Width*3/5 - 228600
+				captionX := body.X + pictureWidth + 457200
+				captionWidth := body.Width - pictureWidth - 457200
 				return contentTitle(d) +
-					placeholderShape(3, "Picture Placeholder 2", "pic", 1, area.X, bodyTop, pictureWidth, bodyHeight,
+					placeholderShape(3, "Picture Placeholder 2", "pic", 1, body.X, body.Y, pictureWidth, body.Height,
 						`<a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p>`) +
-					placeholderShape(4, "Text Placeholder 3", "body", 2, captionX, bodyTop, captionWidth, bodyHeight,
+					placeholderShape(4, "Text Placeholder 3", "body", 2, captionX, body.Y, captionWidth, body.Height,
 						bulletBody(family.BodySize-200, d.Palette.Ink))
 			},
 		},
