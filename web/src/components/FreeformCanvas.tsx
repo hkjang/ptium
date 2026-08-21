@@ -1241,7 +1241,11 @@ export function FreeformCanvas({
                 onChange={(event) => setRegionDraft(event.target.value)}
                 onBlur={commitRegionEdit}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') { event.preventDefault(); setRegionEditing(''); return }
+                  // Escape ends the edit and keeps what was typed. Every editor
+                  // people come from behaves that way, and throwing away a
+                  // sentence someone just wrote — silently — is not a shortcut.
+                  // Ctrl+Z is how a change is taken back.
+                  if (event.key === 'Escape') { event.preventDefault(); commitRegionEdit(); return }
                   if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); commitRegionEdit() }
                 }}
               />}

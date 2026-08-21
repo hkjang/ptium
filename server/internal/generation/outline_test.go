@@ -74,6 +74,43 @@ func TestDeckTitleIgnoresATitleSlicedFromThePrompt(t *testing.T) {
 	}
 }
 
+// A cover title is the most read string the product writes. It must keep the
+// words that say what the deck is about, and never keep the auxiliary a removed
+// verb left behind.
+func TestDeckTitleKeepsTheSubjectAndDropsTheRequest(t *testing.T) {
+	cases := []struct{ prompt, want string }{
+		{"결제 시스템 이중화 계획을 실무진에게 설명하는 6장짜리 자료. 목표 가용성 99.95%", "결제 시스템 이중화 계획"},
+		{"사내 개발팀의 AI 코딩 도구 도입 성과를 경영진에게 보고하는 8장짜리 덱", "사내 개발팀의 AI 코딩 도구 도입 성과"},
+	}
+	for _, testCase := range cases {
+		got := TitleFor(testCase.prompt, testCase.prompt, "ko")
+		if got != testCase.want {
+			t.Errorf("TitleFor(%q) = %q, want %q", testCase.prompt, got, testCase.want)
+		}
+		if strings.Contains(got, "하는") || strings.Contains(got, "에게") {
+			t.Errorf("the title carries the request rather than the subject: %q", got)
+		}
+	}
+}
+
+// A topic is written into headings and leads, so it must be the subject and not
+// the request that produced it.
+func TestTopicsDropTheAudienceAndWhatAStrippedVerbLeaves(t *testing.T) {
+	outline := outlinePrompt("결제 시스템 이중화 계획을 실무진에게 설명하는 6장짜리 자료", "", koreanCopy)
+	if len(outline.Topics) == 0 {
+		t.Fatal("no topics")
+	}
+	first := outline.Topics[0].Name
+	if first != "결제 시스템 이중화 계획" {
+		t.Fatalf("topic = %q, want the subject with its leading words", first)
+	}
+	for _, topic := range outline.Topics {
+		if strings.Contains(topic.Name, "에게") || strings.Contains(topic.Name, "하는") {
+			t.Fatalf("a topic carries the request: %q", topic.Name)
+		}
+	}
+}
+
 func TestWriteSourceHonoursTheSlideCountAndVariesRepeatedTopics(t *testing.T) {
 	outline := outlinePrompt("결제 시스템 도입 방안을 6장으로", "", koreanCopy)
 	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 6, Audience: "임원"}

@@ -438,6 +438,14 @@ docker compose config
 docker build -t ptium:dev .
 ```
 
+실행 중인 서버를 상대로 하는 전수 점검은 [`scripts/e2e`](scripts/e2e/README.md)에 있습니다.
+REST 전 구간, 한계값(50장·16MiB·동시 편집), 모든 화면, 생성부터 발표·내보내기까지의 여정,
+그리고 MCP·템플릿 왕복·발표자 창·키보드 접근성을 각각 확인합니다.
+
+```bash
+PTIUM_URL=http://localhost:8080 python3 scripts/e2e/api.py
+```
+
 처음 쓰는 사람을 위한 안내는 [사용 가이드](docs/user-guide.md)에 있고, 같은 내용을 제품
 안에서도 **사용 가이드**(`/guide`) 화면으로 볼 수 있습니다.
 

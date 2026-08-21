@@ -745,8 +745,15 @@ export function EditorPage({ id }: { id: string }) {
           .catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))
         return
       }
+      // F5 presents even while typing. In a deck editor that is what the key
+      // means, and reloading the page in the middle of a sentence is the worse
+      // outcome by far.
+      if (event.key === 'F5' && !control) {
+        event.preventDefault()
+        if (slides.length > 0) { (document.activeElement as HTMLElement | null)?.blur?.(); setPresentIndex(activeIndex); setPresenting(true) }
+        return
+      }
       if (typing) return
-      if (event.key === 'F5' && !control) { event.preventDefault(); if (slides.length > 0) { setPresentIndex(activeIndex); setPresenting(true) } return }
       if (control && event.key === 'Enter') { event.preventDefault(); addSlide(); return }
       if (event.altKey && !control) {
         if (event.key === 'ArrowUp') { event.preventDefault(); moveSlide(-1); return }
@@ -1367,7 +1374,7 @@ export function EditorPage({ id }: { id: string }) {
 		>
 			<p className="modal-note">두 버전을 모두 보존하려면 먼저 내 변경을 유지한 뒤 버전 이력에서 이전 체크포인트를 확인할 수 있습니다.</p>
 		</Modal>
-      <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="프레젠테이션 내보내기" description="사용할 형식을 선택하세요." footer={<Button variant="secondary" onClick={() => setExportOpen(false)}>취소</Button>}><div className="export-options"><button disabled={exporting} onClick={() => void exportDeck('pptx')}><span className="export-icon ppt"><FileText size={22} /></span><div><strong>PowerPoint (.pptx)</strong><p>Microsoft PowerPoint와 호환되는 편집 가능한 파일</p></div><Download size={18} /></button><button disabled title="추후 제공 예정"><span className="export-icon pdf"><FileText size={22} /></span><div><strong>PDF 문서 (.pdf) · 곧 제공</strong><p>읽기 전용 PDF 내보내기는 준비 중입니다.</p></div></button></div>{exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}</Modal>
+      <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="프레젠테이션 내보내기" description="사용할 형식을 선택하세요." footer={<Button variant="secondary" onClick={() => setExportOpen(false)}>취소</Button>}><div className="export-options"><button disabled={exporting} onClick={() => void exportDeck('pptx')}><span className="export-icon ppt"><FileText size={22} /></span><div><strong>PowerPoint (.pptx)</strong><p>Microsoft PowerPoint와 호환되는 편집 가능한 파일</p></div><Download size={18} /></button><button disabled title="받은 PPTX를 PowerPoint·LibreOffice에서 PDF로 저장하세요"><span className="export-icon pdf"><FileText size={22} /></span><div><strong>PDF 문서 (.pdf)</strong><p>아직 제공하지 않습니다. 받은 PPTX를 PowerPoint나 LibreOffice에서 PDF로 저장하면 글꼴이 정확합니다.</p></div></button></div>{exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}</Modal>
     </main>
   )
 }

@@ -159,6 +159,19 @@ func topicPhrase(name string) string {
 		}
 		words = append(words, word)
 	}
+	// Everything from the audience onward is the request: "…을 실무진에게 하는
+	// 자료" is a subject followed by an instruction, and only the subject belongs
+	// in a heading.
+	for index, word := range words {
+		if index > 0 && addressMarker(word) {
+			words = words[:index]
+			break
+		}
+	}
+	// And what a stripped verb left behind belongs to nobody.
+	for len(words) > 1 && strandedAuxiliary(words[len(words)-1]) {
+		words = words[:len(words)-1]
+	}
 	// A word that ends in a marker — "임원에게", "현장에서" — names who is being
 	// addressed rather than the subject, at either end of what is left.
 	for len(words) > 1 && endsWithMarker(words[len(words)-1]) {
@@ -303,6 +316,11 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	if given != "" && !sliced {
 		return given
 	}
+	// The subject as written comes first: it still has the words that say what
+	// the deck is about, which the per-sentence trimming gives up.
+	if whole := titlePhrase(outline.Subject); whole != "" {
+		return whole
+	}
 	names := make([]string, 0, len(outline.Topics))
 	for _, topic := range outline.Topics {
 		if name := strings.TrimSpace(topic.Name); name != "" {
@@ -327,6 +345,62 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 		return given
 	}
 	return candidate
+}
+
+// titlePhrase is the prompt's own subject, kept whole, for the cover.
+//
+// A topic written into a sentence is cut down to its head noun — "결제 시스템
+// 이중화 계획" becomes "이중화 계획", which reads well mid-sentence. On the cover
+// that is the wrong trade: the words dropped from the front are the ones that
+// say what the deck is about. So a title keeps the leading noun phrase and cuts
+// at the audience instead ("…을 실무진에게 …" → "결제 시스템 이중화 계획").
+func titlePhrase(subject string) string {
+	const limit = 30
+	words := strings.Fields(strings.TrimSpace(subject))
+	// Everything from the audience onward is the request, not the subject.
+	for index, word := range words {
+		if index > 0 && addressMarker(word) {
+			words = words[:index]
+			break
+		}
+	}
+	// Stripping the instruction can leave the auxiliary behind: "설명하는" with
+	// 설명 removed is a bare "하는", which belongs to nobody.
+	for len(words) > 0 && strandedAuxiliary(words[len(words)-1]) {
+		words = words[:len(words)-1]
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	// Korean puts the head noun last, so an over-long phrase gives way at the
+	// front — but only as far as it must.
+	for start := 0; start < len(words); start++ {
+		candidate := cleanTopic(strings.Join(words[start:], " "))
+		if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// addressMarker reports whether a word names who the deck is for.
+func addressMarker(word string) bool {
+	trimmed := strings.Trim(word, " .,·!?")
+	for _, ending := range []string{"에게", "께", "한테", "대상으로", "용으로", "용", "위해", "위한"} {
+		if strings.HasSuffix(trimmed, ending) && utf8.RuneCountInString(trimmed) > utf8.RuneCountInString(ending) {
+			return true
+		}
+	}
+	return false
+}
+
+// strandedAuxiliary reports whether a word is what a removed verb left behind.
+func strandedAuxiliary(word string) bool {
+	switch strings.Trim(word, " .,·!?") {
+	case "하는", "한", "할", "하기", "하기로", "된", "되는", "드리는", "주는", "위한", "위해":
+		return true
+	}
+	return false
 }
 
 // TitleFor is the deck title a prompt implies. It is exported so a deck is named

@@ -9,12 +9,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 var ErrNotFound = errors.New("not found")
 var ErrGenerationLimit = errors.New("presentation exceeds the configured generation slide limit")
 var ErrConflict = errors.New("resource version conflict")
+
+// ErrValidation marks what the caller sent being wrong, as opposed to the server
+// failing. Everything wrapping it is answered as a 422 rather than filed as an
+// incident.
+var ErrValidation = errors.New("invalid input")
 
 type Store struct {
 	Pool *pgxpool.Pool
@@ -34,6 +40,14 @@ func (s *Store) WithBlobs(blobs BlobStore) *Store {
 
 func mapNotFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	// An id that is not a UUID cannot name a row. The router checks the ids in a
+	// path, but ids also arrive in request bodies, and "invalid input syntax for
+	// type uuid" reaching a caller as a five hundred blames the server for what
+	// the caller sent.
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
 		return ErrNotFound
 	}
 	return err

@@ -42,12 +42,27 @@ function audienceLabel(value: string) {
   return audienceNames[key] || value
 }
 
+/**
+ * The length someone wrote into the brief.
+ *
+ * "6장짜리 자료"는 길이를 말한 것입니다. 슬라이더에 손대지 않은 사람에게는 그것이 유일하게
+ * 밝힌 의도이므로, 그대로 따릅니다.
+ */
+export function slideCountInBrief(prompt: string) {
+  const match = prompt.match(/(\d{1,2})\s*(장|페이지|쪽|슬라이드|slides?|pages?)/i)
+  if (!match) return 0
+  const count = Number(match[1])
+  return count >= 1 && count <= 50 ? count : 0
+}
+
 export function CreatePage() {
   const [step, setStep] = useState(1)
   const [prompt, setPrompt] = useState('')
   const [title, setTitle] = useState('')
   const [audience, setAudience] = useState('경영진과 의사결정자')
   const [slideCount, setSlideCount] = useState(10)
+  // Once the slider is moved, that is the answer; the brief stops overriding it.
+  const [countChosen, setCountChosen] = useState(false)
   const [maxSlides, setMaxSlides] = useState(50)
   const [language, setLanguage] = useState('ko')
   const [theme, setTheme] = useState('aurora')
@@ -84,6 +99,12 @@ export function CreatePage() {
     .sort((first, second) => Number(Boolean(second.favorite)) - Number(Boolean(first.favorite))
       || (second.usageCount || 0) - (first.usageCount || 0))
     .slice(0, 4), [templates])
+  // A length written into the brief is followed until someone says otherwise.
+  const briefCount = useMemo(() => slideCountInBrief(prompt), [prompt])
+  useEffect(() => {
+    if (!countChosen && briefCount > 0 && briefCount <= maxSlides) setSlideCount(briefCount)
+  }, [briefCount, countChosen, maxSlides])
+
   const examples = useMemo(() => {
     const pitchSlides = Math.min(10, maxSlides)
     return [
@@ -164,7 +185,9 @@ export function CreatePage() {
         </div>
         <div className="prompt-examples"><span>이런 식으로 시작해 보세요</span>{examples.map((example) => <button key={example.text} disabled={defaultsLoading} onClick={() => { setPrompt(example.text); if (example.slideCount) setSlideCount(example.slideCount) }}><Sparkles size={14} /> {example.text}<ChevronRight size={14} /></button>)}</div>
         <div className="create-footer">
-          <span>{defaultsLoading ? '개인·조직 기본값을 불러오는 중…' : !canContinue && prompt.length > 0 ? '조금 더 구체적으로 설명해 주세요.' : ''}</span>
+          <span>{defaultsLoading ? '개인·조직 기본값을 불러오는 중…'
+            : !canContinue && prompt.length > 0 ? '조금 더 구체적으로 설명해 주세요.'
+            : canContinue ? `${briefCount > 0 ? briefCount : slideCount}장으로 만듭니다. 다음 단계에서 바꿀 수 있어요.` : ''}</span>
           {/* Choosing a design is optional. Someone who just wants the deck gets
               the recommended one and can change it in the editor afterwards. */}
           <button className="button button-secondary button-large" disabled={defaultsLoading || !canContinue || generating}
@@ -182,7 +205,7 @@ export function CreatePage() {
             <div className="form-card">
               <Field label="프레젠테이션 제목" hint="비워두면 입력한 주제의 앞부분을 제목으로 사용합니다."><Input maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="주제에서 제목 만들기" /></Field>
               <div className="form-grid two"><Field label="청중" hint="누구에게 말하는지에 따라 문장의 높이와 근거의 종류가 달라집니다."><Input maxLength={300} value={audience} onChange={(event) => setAudience(event.target.value)} list="audience-options" placeholder="예: 경영진과 의사결정자" /><datalist id="audience-options">{audiences.map((item) => <option key={item} value={item} />)}</datalist><div className="chip-row">{audiences.slice(0, 4).map((item) => <button type="button" key={item} className={audience === item ? 'active' : ''} onClick={() => setAudience(item)}>{item}</button>)}</div></Field><Field label="발표 톤"><Select value={tone} onChange={(event) => setTone(event.target.value)}><option value="professional">전문적</option><option value="persuasive">설득력 있는</option><option value="friendly">친근한</option><option value="inspiring">영감을 주는</option><option value="academic">학술적인</option></Select></Field></div>
-              <div className="form-grid two"><Field label="슬라이드 수"><div className="range-field"><input type="range" min="1" max={maxSlides} value={slideCount} onChange={(event) => setSlideCount(Number(event.target.value))} /><strong>{slideCount}장</strong></div></Field><Field label="언어"><Select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="ko">한국어</option><option value="en">English</option><option value="ja">日本語</option><option value="zh">中文</option></Select></Field></div>
+              <div className="form-grid two"><Field label="슬라이드 수" hint={!countChosen && briefCount > 0 ? `브리프에 적은 ${briefCount}장을 그대로 씁니다.` : undefined}><div className="range-field"><input type="range" min="1" max={maxSlides} value={slideCount} onChange={(event) => { setCountChosen(true); setSlideCount(Number(event.target.value)) }} /><strong>{slideCount}장</strong></div></Field><Field label="언어"><Select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="ko">한국어</option><option value="en">English</option><option value="ja">日本語</option><option value="zh">中文</option></Select></Field></div>
             </div>
           </div>
           <TemplatePicker

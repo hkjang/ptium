@@ -46,10 +46,10 @@ type AssetInput struct {
 func (s *Store) CreateAsset(ctx context.Context, ownerID string, in AssetInput) (model.Asset, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
-		return model.Asset{}, errors.New("an image needs a name")
+		return model.Asset{}, fmt.Errorf("%w: an image needs a name", ErrValidation)
 	}
 	if len(in.Data) == 0 {
-		return model.Asset{}, errors.New("the image is empty")
+		return model.Asset{}, fmt.Errorf("%w: the file is empty", ErrValidation)
 	}
 	if len(in.Data) > MaximumAssetBytes {
 		return model.Asset{}, fmt.Errorf("%w: larger than %d bytes", ErrAssetUnsupported, MaximumAssetBytes)
@@ -267,10 +267,10 @@ func (s *Store) UpdateAsset(ctx context.Context, id, ownerID string, patch Asset
 	if patch.Name != nil {
 		name := strings.TrimSpace(*patch.Name)
 		if name == "" {
-			return model.Asset{}, errors.New("an image needs a name")
+			return model.Asset{}, fmt.Errorf("%w: an image needs a name", ErrValidation)
 		}
 		if len([]rune(name)) > 160 {
-			return model.Asset{}, errors.New("that name is too long for an image")
+			return model.Asset{}, fmt.Errorf("%w: that name is too long for an image", ErrValidation)
 		}
 		args = append(args, name)
 		sets = append(sets, fmt.Sprintf("name=$%d", len(args)))

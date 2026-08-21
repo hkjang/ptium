@@ -77,6 +77,11 @@ func (s *Server) createSnippet(writer http.ResponseWriter, request *http.Request
 	if source == "" {
 		// Saved from the editor: the deck knows how to write itself down, and one
 		// slide of that text is the snippet.
+		if strings.TrimSpace(input.PresentationID) == "" || input.Slide < 1 {
+			writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
+				"Send either the slide's source, or the deck and the slide to save", nil)
+			return
+		}
 		written, slideRole, err := s.slideAsSource(request, user.ID, input.PresentationID, input.Slide)
 		if err != nil {
 			s.handleStoreError(writer, request, err, "presentation_read_failed")

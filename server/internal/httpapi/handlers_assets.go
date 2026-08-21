@@ -111,6 +111,15 @@ func (s *Server) createAsset(writer http.ResponseWriter, request *http.Request) 
 	user, _ := UserFromContext(request.Context())
 	request.Body = http.MaxBytesReader(writer, request.Body, store.MaximumAssetBytes+(1<<20))
 	if err := request.ParseMultipartForm(8 << 20); err != nil {
+		// Reading the body is where an oversized upload is noticed, and "send it as
+		// multipart" is a useless thing to tell someone whose file is simply too
+		// big. The two cases are answered separately.
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(writer, request, http.StatusRequestEntityTooLarge, "asset_too_large",
+				fmt.Sprintf("An image must be %d MiB or smaller", store.MaximumAssetBytes>>20), nil)
+			return
+		}
 		writeError(writer, request, http.StatusBadRequest, "invalid_upload",
 			"Send the image as multipart/form-data with a file field", nil)
 		return
@@ -151,6 +160,12 @@ func (s *Server) createAsset(writer http.ResponseWriter, request *http.Request) 
 		if errors.Is(err, store.ErrAssetUnsupported) {
 			writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_image",
 				"Ptium places PNG, JPEG, GIF and SVG images", nil)
+			return
+		}
+		if errors.Is(err, store.ErrValidation) {
+			// An empty file, or one with no name. Saying so is the whole answer; a
+			// five hundred would also file an incident against the server for it.
+			writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
 			return
 		}
 		s.internalError(writer, request, "asset_create_failed", err)
