@@ -705,7 +705,14 @@ export const api = {
     if (name && name.trim()) form.append('name', name.trim())
     const raw = await request<unknown>('/assets', { method: 'POST', body: form })
     const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
-    return { id: String(data.id ?? ''), name: String(data.name ?? '') }
+    // The pixel size comes back with the upload, and placing an image without it
+    // would guess the aspect ratio of something already measured.
+    return {
+      id: String(data.id ?? ''), name: String(data.name ?? ''),
+      contentType: String(data.contentType ?? data.content_type ?? ''),
+      sizeBytes: Number(data.sizeBytes ?? data.size_bytes ?? 0),
+      width: Number(data.width ?? 0), height: Number(data.height ?? 0),
+    }
   },
   async deleteAsset(id: string) {
     await request<void>(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })

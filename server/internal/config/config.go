@@ -42,9 +42,14 @@ type Config struct {
 	DevAuthRoles                []string
 	DevAuthAllowRemote          bool
 	KeyEncryptionSecret         string
-	LogLevel                    string
-	ShutdownTimeout             time.Duration
-	WorkerPollInterval          time.Duration
+	// AssetStorage decides where uploaded images are kept: "database" (the
+	// default, nothing to mount) or "filesystem" (a directory, which in
+	// Kubernetes is a PersistentVolumeClaim).
+	AssetStorage       string
+	AssetDir           string
+	LogLevel           string
+	ShutdownTimeout    time.Duration
+	WorkerPollInterval time.Duration
 }
 
 func Load() (Config, error) {
@@ -73,6 +78,8 @@ func Load() (Config, error) {
 		DevAuthRoles:                splitCSV(os.Getenv("DEV_AUTH_ROLES")),
 		DevAuthAllowRemote:          envBool("DEV_AUTH_ALLOW_REMOTE", false),
 		KeyEncryptionSecret:         os.Getenv("KEY_ENCRYPTION_SECRET"),
+		AssetStorage:                strings.ToLower(envDefault("ASSET_STORAGE", "database")),
+		AssetDir:                    strings.TrimSpace(envDefault("ASSET_DIR", "/var/lib/ptium/assets")),
 		LogLevel:                    envDefault("LOG_LEVEL", "info"),
 		ShutdownTimeout:             envDuration("SHUTDOWN_TIMEOUT", 15*time.Second),
 		WorkerPollInterval:          envDuration("WORKER_POLL_INTERVAL", 2*time.Second),
@@ -86,6 +93,17 @@ func Load() (Config, error) {
 	}
 	if c.OIDCIssuerURL != "" && c.OIDCClientID == "" {
 		return Config{}, errors.New("OIDC_CLIENT_ID is required when OIDC_ISSUER_URL is set")
+	}
+	switch c.AssetStorage {
+	case "database", "filesystem":
+	case "volume", "pvc", "file", "disk":
+		// The names an operator reaches for first mean the same thing.
+		c.AssetStorage = "filesystem"
+	default:
+		return Config{}, errors.New(`ASSET_STORAGE must be "database" or "filesystem"`)
+	}
+	if c.AssetStorage == "filesystem" && c.AssetDir == "" {
+		return Config{}, errors.New("ASSET_DIR is required when ASSET_STORAGE=filesystem")
 	}
 	return c, nil
 }

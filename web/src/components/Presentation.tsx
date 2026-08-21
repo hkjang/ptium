@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  ChevronLeft, ChevronRight, Grid3X3, LoaderCircle, Maximize2, Minimize2, MonitorPlay, Pointer, Square, X,
+  ChevronLeft, ChevronRight, Grid3X3, Keyboard, LoaderCircle, Maximize2, Minimize2, MonitorPlay, Pointer, Square, X,
 } from 'lucide-react'
 import { api } from '../api/client'
+import { ShortcutSheet, presentationShortcuts, useShortcutSheet } from './Shortcuts'
 import type { Slide } from '../types'
 
 /**
@@ -108,6 +109,7 @@ export function PresentationView({ presentationId, title, slides, version, start
   const [blackout, setBlackout] = useState<Blackout>('none')
   const [overview, setOverview] = useState(false)
   const [laser, setLaser] = useState(false)
+  const shortcuts = useShortcutSheet()
   const [pointer, setPointer] = useState({ x: -100, y: -100 })
   const [idle, setIdle] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
@@ -210,6 +212,7 @@ export function PresentationView({ presentationId, title, slides, version, start
         case 'f': case 'F': toggleFullscreen(); break
         case 'p': case 'P': openPresenter(); break
         case 'Escape':
+          if (shortcuts.open) { shortcuts.close(); return }
           if (overview) { setOverview(false); return }
           if (jump) { setJump(''); return }
           if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined)
@@ -220,7 +223,7 @@ export function PresentationView({ presentationId, title, slides, version, start
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [step, total, overview, jump, onClose, post, toggleFullscreen, openPresenter])
+  }, [step, total, overview, jump, onClose, post, toggleFullscreen, openPresenter, shortcuts])
 
   const image = images[index]
   return <div
@@ -262,8 +265,11 @@ export function PresentationView({ presentationId, title, slides, version, start
       <button type="button" className={laser ? 'active' : ''} onClick={() => setLaser((value) => !value)} title="레이저 포인터 (L)"><Pointer size={17} /></button>
       <button type="button" className={presenterOpen ? 'active' : ''} onClick={openPresenter} title="발표자 보기 (P)"><MonitorPlay size={17} /></button>
       <button type="button" onClick={toggleFullscreen} title="전체 화면 (F)">{fullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}</button>
+      <button type="button" className={shortcuts.open ? 'active' : ''} onClick={() => shortcuts.setOpen((value) => !value)} title="단축키 (?)"><Keyboard size={17} /></button>
       <button type="button" onClick={() => { post({ type: 'exit' }); onClose() }} title="종료 (ESC)"><X size={18} /></button>
     </div>
+
+    <ShortcutSheet open={shortcuts.open} onClose={shortcuts.close} groups={presentationShortcuts} title="발표 중 단축키" />
   </div>
 }
 

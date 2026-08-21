@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowRight, BookOpen, CircleUserRound, Clock3, Plus, Sparkles, WandSparkles } from 'lucide-react'
+import { ArrowRight, BookOpen, CircleUserRound, Clock3, LifeBuoy, Plus, Sparkles, WandSparkles } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useBrand } from '../branding/BrandContext'
@@ -38,6 +38,7 @@ export function DashboardPage() {
         <button onClick={() => navigate('/create')} className="quick-action primary"><span><Sparkles size={21} /></span><div><strong>새 초안 만들기</strong><p>주제와 옵션으로 편집 가능한 덱을 구성해요</p></div><ArrowRight size={18} /></button>
         <button onClick={() => navigate('/presentations')} className="quick-action"><span><BookOpen size={21} /></span><div><strong>내 작업 이어가기</strong><p>저장된 덱을 열어 편집하고 내보내요</p></div><ArrowRight size={18} /></button>
         <button onClick={() => navigate('/profile')} className="quick-action"><span><CircleUserRound size={21} /></span><div><strong>개인화 설정</strong><p>직무와 청중 맥락을 생성에 반영해요</p></div><ArrowRight size={18} /></button>
+        <button onClick={() => navigate('/guide')} className="quick-action"><span><LifeBuoy size={21} /></span><div><strong>사용 가이드</strong><p>브리프 쓰는 법부터 발표·단축키까지</p></div><ArrowRight size={18} /></button>
       </section>
 
       <section className="section-block">
@@ -47,7 +48,7 @@ export function DashboardPage() {
 
       <section className="dashboard-lower-grid">
         <article className="usage-card"><div className="card-eyebrow"><Clock3 size={15} /> 워크스페이스 현황</div><div className="usage-content"><div><strong>{items.length}</strong><span>전체 프레젠테이션</span></div><div><strong>{slides}</strong><span>저장된 슬라이드</span></div><div><strong>{ready}</strong><span>내보내기 준비 완료</span></div></div></article>
-        <article className="tip-card"><span className="tip-icon"><Sparkles size={18} /></span><div><span className="eyebrow">PTIUM TIP</span><h3>더 좋은 결과를 위한 한 문장</h3><p>청중, 발표 목적, 원하는 분위기를 함께 적으면 훨씬 정확한 자료가 만들어져요.</p><Link to="/create">프롬프트 작성해 보기 <ArrowRight size={14} /></Link></div></article>
+        <article className="tip-card"><span className="tip-icon"><Sparkles size={18} /></span><div><span className="eyebrow">PTIUM TIP</span><h3>더 좋은 결과를 위한 한 문장</h3><p>청중, 발표 목적, 원하는 분위기를 함께 적으면 훨씬 정확한 자료가 만들어져요.</p><Link to="/create">프롬프트 작성해 보기 <ArrowRight size={14} /></Link><Link to="/guide">사용 가이드 읽기 <ArrowRight size={14} /></Link></div></article>
       </section>
     </AppShell>
   )

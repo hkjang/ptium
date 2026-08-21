@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, FileText, History, Image, LayoutPanelTop, LoaderCircle, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
+  Copy, Download, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
 } from 'lucide-react'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
@@ -10,6 +10,7 @@ import { FreeformCanvas } from '../components/FreeformCanvas'
 import { GridLibrary } from '../components/GridLibrary'
 import { PresentationView } from '../components/Presentation'
 import { SlidePreview } from '../components/SlidePreview'
+import { ShortcutSheet, editorShortcuts, useShortcutSheet } from '../components/Shortcuts'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
@@ -272,6 +273,7 @@ export function EditorPage({ id }: { id: string }) {
   const [sourcePreview, setSourcePreview] = useState<{ url: string; slide: number; count: number } | null>(null)
   const [sourcePreviewError, setSourcePreviewError] = useState('')
   const [presenting, setPresenting] = useState(false)
+  const shortcuts = useShortcutSheet()
   const [presentIndex, setPresentIndex] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -722,6 +724,39 @@ export function EditorPage({ id }: { id: string }) {
   }
 
   const moveSlide = (direction: -1 | 1) => { const nextIndex = activeIndex + direction; if (nextIndex < 0 || nextIndex >= slides.length) return; markEdited(); const next = [...slides]; [next[activeIndex], next[nextIndex]] = [next[nextIndex], next[activeIndex]]; setSlides(next.map((slide, index) => ({ ...slide, order: index + 1 }))); setDirty(true) }
+  const selectSlide = (direction: -1 | 1) => {
+    const next = slides[activeIndex + direction]
+    if (next) setActiveId(next.id)
+  }
+
+  // The keys a deck is worked on with. Everything the canvas answers to is left
+  // to the canvas — this is what belongs to the deck rather than to a drawing:
+  // save, add, reorder, present. Typing is never interrupted, and the browser's
+  // own Ctrl+S and F5 have to be taken deliberately or the page reloads.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const typing = Boolean(target?.matches?.('input, textarea, select, [contenteditable="true"]'))
+      const control = event.ctrlKey || event.metaKey
+      if (control && !event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        void save().then((saved) => showToast(saved ? '저장했습니다.' : '변경할 내용이 없습니다.'))
+          .catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))
+        return
+      }
+      if (typing) return
+      if (event.key === 'F5' && !control) { event.preventDefault(); if (slides.length > 0) { setPresentIndex(activeIndex); setPresenting(true) } return }
+      if (control && event.key === 'Enter') { event.preventDefault(); addSlide(); return }
+      if (event.altKey && !control) {
+        if (event.key === 'ArrowUp') { event.preventDefault(); moveSlide(-1); return }
+        if (event.key === 'ArrowDown') { event.preventDefault(); moveSlide(1); return }
+        if (event.key === 'PageUp') { event.preventDefault(); selectSlide(-1); return }
+        if (event.key === 'PageDown') { event.preventDefault(); selectSlide(1); return }
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
 
 	const canSafelyFix = (finding: DeckFinding) => {
 		if (finding.kind === 'notes') return Boolean(slides[finding.slide - 1])
@@ -940,7 +975,51 @@ export function EditorPage({ id }: { id: string }) {
     showToast('이미지를 고르면 선택한 영역에 넣습니다.')
   }
 
-  const placeImage = (asset: Asset) => {
+  /**
+   * An image that came from outside the workspace: pasted from the clipboard or
+   * dropped onto the slide. It is uploaded like any other — it joins the image
+   * library under its file name — and then placed where it was dropped.
+   */
+  const importImages = async (files: File[], at?: { x: number; y: number }) => {
+    if (!active || files.length === 0) return
+    showToast(files.length === 1 ? '이미지를 올리는 중…' : `이미지 ${files.length}장을 올리는 중…`)
+    try {
+      const uploaded: Asset[] = []
+      for (const file of files) {
+        // A pasted screenshot arrives as "image.png" every time, which would make
+        // each one replace the last. Anything with a real file name keeps it.
+        const pasted = !file.name || file.name.toLowerCase() === 'image.png'
+        const name = pasted ? `붙여넣은 이미지 ${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}` : file.name
+        const asset = await api.uploadAsset(file, name)
+        uploaded.push({ ...asset, contentType: asset.contentType || file.type, sizeBytes: asset.sizeBytes || file.size })
+      }
+      // Placed in one edit: several separate ones would each start from the same
+      // slide and only the last would survive.
+      if (imageTarget || uploaded.length === 1) { placeImage(uploaded[0], at); return }
+      const highest = Math.max(0, ...(active.elements || []).map((element) => element.zIndex || 0))
+      const placed = uploaded.map((asset, index) => imageElement(asset, at && { x: at.x + index * 3, y: at.y + index * 3 }, highest + 1 + index))
+      updateActive({ elements: [...(active.elements || []), ...placed] })
+      setCanvasMode('edit')
+      showToast(`이미지 ${placed.length}장을 배치했습니다.`)
+    } catch (err) { showToast(displayError(err), 'error') }
+  }
+
+  /** One image as a floating object, sized from its own pixels. */
+  const imageElement = (asset: Asset, at: { x: number; y: number } | undefined, zIndex: number): SlideElement => {
+    const ratio = asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 16 / 9
+    const width = 30
+    const height = Math.min(45, Math.max(8, width * (16 / 9) / ratio))
+    // Dropped where the pointer was — centred on it, because that is where a
+    // person aimed — and never hanging off the slide.
+    const x = at ? Math.min(100 - width, Math.max(0, at.x - width / 2)) : 35
+    const y = at ? Math.min(100 - height, Math.max(0, at.y - height / 2)) : Math.max(5, (100 - height) / 2)
+    return {
+      id: `element-${crypto.randomUUID()}`, kind: 'image', assetId: asset.id, name: asset.name,
+      caption: asset.name, x, y, width, height, zIndex, rotation: 0, opacity: 100, fit: 'cover',
+    }
+  }
+
+  const placeImage = (asset: Asset, at?: { x: number; y: number }) => {
     if (!active) return
     if (imageTarget) {
       checkpoint(`image:${imageTarget}`)
@@ -954,15 +1033,8 @@ export function EditorPage({ id }: { id: string }) {
       showToast(`${asset.name}을 ${imageTarget} 영역에 넣었습니다.`)
       return
     }
-    const ratio = asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 16 / 9
-    const width = 30
-    const height = Math.min(45, Math.max(8, width * (16 / 9) / ratio))
     const highest = Math.max(0, ...(active.elements || []).map((element) => element.zIndex || 0))
-    const image: SlideElement = {
-      id: `element-${crypto.randomUUID()}`, kind: 'image', assetId: asset.id, name: asset.name,
-      caption: asset.name, x: 35, y: Math.max(5, (100 - height) / 2), width, height, zIndex: highest + 1,
-      rotation: 0, opacity: 100, fit: 'cover',
-    }
+    const image = imageElement(asset, at, highest + 1)
     updateActive({ elements: [...(active.elements || []), image] })
     setCanvasMode('edit')
     showToast(`${asset.name}을 현재 슬라이드에 배치했습니다.`)
@@ -1016,7 +1088,7 @@ export function EditorPage({ id }: { id: string }) {
                 ? <><AlertTriangle size={13} /> 다듬을 곳 {advisories.length}</>
                 : <><Check size={13} /> 결함 없음</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
-		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
+		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       <div className="editor-workspace">
@@ -1063,6 +1135,7 @@ export function EditorPage({ id }: { id: string }) {
               onRegionFrames={writeRegionFrames}
               onRegionStyle={writeRegionStyle}
               onPickImage={pickImageFor}
+              onImageFiles={(files, at) => { void importImages(files, at) }}
               onRegionClear={clearRegion}
               onCheckpoint={checkpoint}
               onUndo={undoCanvas}
@@ -1184,6 +1257,7 @@ export function EditorPage({ id }: { id: string }) {
 
       {/* The audience screen. Notes, the next slide and the clock live in the
           presenter's own window, which this one drives. */}
+      <ShortcutSheet open={shortcuts.open} onClose={shortcuts.close} groups={editorShortcuts} title="편집기 단축키" />
       {presenting && <PresentationView
         presentationId={id}
         title={presentation.title}

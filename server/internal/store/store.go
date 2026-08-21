@@ -18,9 +18,19 @@ var ErrConflict = errors.New("resource version conflict")
 
 type Store struct {
 	Pool *pgxpool.Pool
+	// Blobs holds uploaded image bytes when a deployment gives Ptium a volume
+	// for them. Nil keeps them in the assets row, which is the default and needs
+	// nothing mounted.
+	Blobs BlobStore
 }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{Pool: pool} }
+
+// WithBlobs points the store at a place to keep uploaded image bytes.
+func (s *Store) WithBlobs(blobs BlobStore) *Store {
+	s.Blobs = blobs
+	return s
+}
 
 func mapNotFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {

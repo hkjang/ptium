@@ -13,6 +13,35 @@ import { Link, navigate } from '../router'
 import type { Template } from '../types'
 import { displayError } from '../utils'
 
+/**
+ * audiences are the ones people actually pick, and the labels a stored setting
+ * gets shown as.
+ *
+ * The admin default is stored as a key — "general" — and a form that puts that
+ * key in a Korean text field looks broken. Anything an administrator or a person
+ * typed themselves is left exactly as written.
+ */
+const audiences = ['경영진과 의사결정자', '실무 담당자', '고객사·파트너', '투자자', '사내 전체 구성원', '학생·교육생']
+const audienceNames: Record<string, string> = {
+  general: '일반 청중',
+  executive: '경영진과 의사결정자',
+  executives: '경영진과 의사결정자',
+  practitioner: '실무 담당자',
+  practitioners: '실무 담당자',
+  technical: '기술 담당자',
+  customer: '고객사·파트너',
+  customers: '고객사·파트너',
+  investor: '투자자',
+  investors: '투자자',
+  student: '학생·교육생',
+  students: '학생·교육생',
+  internal: '사내 전체 구성원',
+}
+function audienceLabel(value: string) {
+  const key = value.trim().toLowerCase()
+  return audienceNames[key] || value
+}
+
 export function CreatePage() {
   const [step, setStep] = useState(1)
   const [prompt, setPrompt] = useState('')
@@ -81,7 +110,7 @@ export function CreatePage() {
       const configuredAudience = profile?.defaultAudience || settings['generation.default_audience']
       if (configuredLanguage) setLanguage(String(configuredLanguage))
       if (configuredTone) setTone(String(configuredTone))
-      if (configuredAudience) setAudience(String(configuredAudience))
+      if (configuredAudience) setAudience(audienceLabel(String(configuredAudience)))
     }).catch(() => { /* Built-in defaults keep creation available. */ }).finally(() => { if (active) setDefaultsLoading(false) })
     return () => { active = false }
   }, [])
@@ -138,7 +167,7 @@ export function CreatePage() {
             <div className="create-title compact"><span className="step-icon"><Palette size={22} /></span><span className="eyebrow">STEP 02 · STYLE</span><h1>발표에 어울리는<br />분위기를 선택하세요.</h1><p>나중에 편집기에서도 언제든 바꿀 수 있어요.</p></div>
             <div className="form-card">
               <Field label="프레젠테이션 제목" hint="비워두면 입력한 주제의 앞부분을 제목으로 사용합니다."><Input maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="주제에서 제목 만들기" /></Field>
-              <div className="form-grid two"><Field label="청중"><Input maxLength={300} value={audience} onChange={(event) => setAudience(event.target.value)} /></Field><Field label="발표 톤"><Select value={tone} onChange={(event) => setTone(event.target.value)}><option value="professional">전문적</option><option value="persuasive">설득력 있는</option><option value="friendly">친근한</option><option value="inspiring">영감을 주는</option><option value="academic">학술적인</option></Select></Field></div>
+              <div className="form-grid two"><Field label="청중" hint="누구에게 말하는지에 따라 문장의 높이와 근거의 종류가 달라집니다."><Input maxLength={300} value={audience} onChange={(event) => setAudience(event.target.value)} list="audience-options" placeholder="예: 경영진과 의사결정자" /><datalist id="audience-options">{audiences.map((item) => <option key={item} value={item} />)}</datalist><div className="chip-row">{audiences.slice(0, 4).map((item) => <button type="button" key={item} className={audience === item ? 'active' : ''} onClick={() => setAudience(item)}>{item}</button>)}</div></Field><Field label="발표 톤"><Select value={tone} onChange={(event) => setTone(event.target.value)}><option value="professional">전문적</option><option value="persuasive">설득력 있는</option><option value="friendly">친근한</option><option value="inspiring">영감을 주는</option><option value="academic">학술적인</option></Select></Field></div>
               <div className="form-grid two"><Field label="슬라이드 수"><div className="range-field"><input type="range" min="1" max={maxSlides} value={slideCount} onChange={(event) => setSlideCount(Number(event.target.value))} /><strong>{slideCount}장</strong></div></Field><Field label="언어"><Select value={language} onChange={(event) => setLanguage(event.target.value)}><option value="ko">한국어</option><option value="en">English</option><option value="ja">日本語</option><option value="zh">中文</option></Select></Field></div>
             </div>
           </div>

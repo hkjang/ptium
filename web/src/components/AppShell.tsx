@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity, BookOpen, ChevronDown, CircleUserRound, Gauge, Info, KeyRound, LayoutDashboard,
-  LayoutTemplate, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
+  LayoutTemplate, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { api } from '../api/client'
@@ -18,6 +18,7 @@ const workspaceNav: NavItem[] = [
 ]
 
 const settingsNav: NavItem[] = [
+  { label: '사용 가이드', to: '/guide', icon: <LifeBuoy size={18} /> },
   { label: '개인화', to: '/profile', icon: <CircleUserRound size={18} /> },
   { label: 'API 키', to: '/api-keys', icon: <KeyRound size={18} /> },
 ]
@@ -152,6 +153,7 @@ export function AppShell({ children, title, eyebrow, actions }: { children: Reac
               {accountOpen && <div className="account-menu">
                 <div className="account-menu-head"><strong>{user?.name}</strong><span>{user?.email}</span></div>
                 <Link to="/profile"><CircleUserRound size={16} /> 내 프로필</Link>
+                <Link to="/guide"><LifeBuoy size={16} /> 사용 가이드</Link>
                 <button onClick={() => void logout()}><LogOut size={16} /> 로그아웃</button>
                 {/* The build, so a report and a release can be matched up. */}
                 <div className="account-menu-foot">

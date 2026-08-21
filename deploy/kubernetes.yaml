@@ -35,6 +35,13 @@ data:
   BOOTSTRAP_ADMIN_EMAILS: "admin@example.com"
   BOOTSTRAP_ADMIN_NAME: "Ptium Administrator"
   SESSION_LIFETIME: "12h"
+  # Where uploaded images are kept. "database" needs nothing mounted and is the
+  # right answer for most installs. "filesystem" writes them to ASSET_DIR, which
+  # is the PersistentVolumeClaim at the bottom of this file — see the notes there
+  # before switching, because it changes what has to be backed up and how many
+  # replicas may run.
+  ASSET_STORAGE: "database"
+  ASSET_DIR: "/var/lib/ptium/assets"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -114,10 +121,17 @@ spec:
             # temporary file, which a read-only root filesystem would refuse.
             - name: tmp
               mountPath: /tmp
+            # With ASSET_STORAGE=filesystem, uncomment this and the volume and
+            # PersistentVolumeClaim below.
+            # - name: assets
+            #   mountPath: /var/lib/ptium/assets
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 256Mi
+        # - name: assets
+        #   persistentVolumeClaim:
+        #     claimName: ptium-assets
 ---
 apiVersion: v1
 kind: Service
@@ -156,3 +170,45 @@ spec:
                 name: ptium
                 port:
                   name: http
+
+# --- Image storage on a volume (optional) ------------------------------------
+#
+# By default the images people upload are rows in PostgreSQL, so the deployment
+# has exactly one thing to back up. Mount a volume instead when the pictures are
+# many or large: the database stays small and the images are backed up on their
+# own schedule.
+#
+# To switch:
+#   1. Uncomment the PersistentVolumeClaim below and set a storageClassName your
+#      cluster provides.
+#   2. Uncomment the `assets` volume and volumeMount in the Deployment.
+#   3. Set ASSET_STORAGE: "filesystem" in the ConfigMap and roll the Deployment.
+#
+# Two things decide the access mode:
+#   * This Deployment runs `replicas: 2`, and every replica serves every image.
+#     A ReadWriteOnce claim binds to one node, so more than one replica needs
+#     ReadWriteMany (NFS, CephFS, Longhorn RWX, Azure Files…). With ReadWriteOnce
+#     scale to `replicas: 1`, or stay on ASSET_STORAGE=database.
+#   * The container runs as uid 65532 with fsGroup 65532; the volume must be
+#     writable by that group. Ptium checks at startup and refuses to start with
+#     the reason, rather than failing on the first upload.
+#
+# Nothing is lost by switching. Images uploaded while the bytes were in the
+# database keep working, and each one moves onto the volume the first time it is
+# read. Switching back requires keeping the volume, because the rows no longer
+# carry the bytes.
+#
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: ptium-assets
+#   labels:
+#     app.kubernetes.io/name: ptium
+# spec:
+#   accessModes:
+#     - ReadWriteMany
+#   resources:
+#     requests:
+#       storage: 20Gi
+#   # storageClassName: nfs-client

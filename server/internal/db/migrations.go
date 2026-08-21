@@ -194,6 +194,10 @@ var migrations = []string{
 		created_at timestamptz NOT NULL DEFAULT now(),
 		UNIQUE(presentation_id,version))`,
 	`CREATE INDEX IF NOT EXISTS presentation_revisions_deck_idx ON presentation_revisions(presentation_id,created_at DESC)`,
+	// An image may live on a mounted volume instead of in the row, so a
+	// deployment can keep its database small and back the pictures up separately.
+	// A null column means "the bytes are on the volume".
+	`ALTER TABLE assets ALTER COLUMN data DROP NOT NULL`,
 }
 
 var defaultSettings = map[string]struct {

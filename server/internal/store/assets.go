@@ -59,17 +59,45 @@ func (s *Store) CreateAsset(ctx context.Context, ownerID string, in AssetInput) 
 	}
 	width, height := imageSize(in.Data)
 	digest := sha256.Sum256(in.Data)
+
+	// With a volume the row keeps the description and the volume keeps the
+	// picture, so the column is left null. The row is written first because the
+	// id it returns is the name the bytes are filed under — a replaced image
+	// keeps the id it already had.
+	column := in.Data
+	if s.Blobs != nil {
+		column = nil
+	}
+	transaction, err := s.Pool.Begin(ctx)
+	if err != nil {
+		return model.Asset{}, err
+	}
+	defer transaction.Rollback(context.WithoutCancel(ctx))
+
 	var asset model.Asset
-	err := s.Pool.QueryRow(ctx, `INSERT INTO assets(id,owner_id,name,content_type,size_bytes,width,height,checksum,data)
+	err = transaction.QueryRow(ctx, `INSERT INTO assets(id,owner_id,name,content_type,size_bytes,width,height,checksum,data)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		ON CONFLICT (owner_id,lower(name)) DO UPDATE SET
 			content_type=EXCLUDED.content_type,size_bytes=EXCLUDED.size_bytes,
 			width=EXCLUDED.width,height=EXCLUDED.height,checksum=EXCLUDED.checksum,data=EXCLUDED.data
 		RETURNING id::text,owner_id::text,name,content_type,size_bytes,width,height,checksum,created_at`,
 		newID(), ownerID, name, contentType, len(in.Data), width, height,
-		hex.EncodeToString(digest[:]), in.Data).Scan(&asset.ID, &asset.OwnerID, &asset.Name,
+		hex.EncodeToString(digest[:]), column).Scan(&asset.ID, &asset.OwnerID, &asset.Name,
 		&asset.ContentType, &asset.SizeBytes, &asset.Width, &asset.Height, &asset.Checksum, &asset.CreatedAt)
-	return asset, err
+	if err != nil {
+		return model.Asset{}, err
+	}
+	if s.Blobs != nil {
+		// A full or read-only volume must fail the upload, not record an image
+		// nobody can open. The row is rolled back with it.
+		if err := s.Blobs.Put(asset.ID, in.Data); err != nil {
+			return model.Asset{}, fmt.Errorf("store image bytes: %w", err)
+		}
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		return model.Asset{}, err
+	}
+	return asset, nil
 }
 
 // ListAssets returns a user's images without their bytes.
@@ -97,7 +125,12 @@ func (s *Store) ListAssets(ctx context.Context, ownerID string, limit, offset in
 	return result, total, rows.Err()
 }
 
-// AssetData returns an image's bytes.
+// AssetData returns an image's bytes, from wherever this deployment keeps them.
+//
+// Both places are read. A deployment that mounts a volume today still has every
+// image uploaded before it did, and those rows keep working — and are moved onto
+// the volume the first time they are read, so the database empties itself as the
+// pictures get used rather than in one migration nobody scheduled.
 func (s *Store) AssetData(ctx context.Context, id, ownerID string) ([]byte, model.Asset, error) {
 	var asset model.Asset
 	var data []byte
@@ -107,7 +140,34 @@ func (s *Store) AssetData(ctx context.Context, id, ownerID string) ([]byte, mode
 	if err != nil {
 		return nil, model.Asset{}, mapNotFound(err)
 	}
+	if s.Blobs == nil {
+		if len(data) == 0 {
+			return nil, model.Asset{}, fmt.Errorf("%s: %w", asset.Name, ErrBlobMissing)
+		}
+		return data, asset, nil
+	}
+	stored, err := s.Blobs.Get(asset.ID)
+	switch {
+	case err == nil:
+		return stored, asset, nil
+	case !errors.Is(err, ErrBlobMissing):
+		return nil, model.Asset{}, err
+	case len(data) == 0:
+		// Neither place has it. Usually the volume was swapped or never restored.
+		return nil, model.Asset{}, fmt.Errorf("%s: %w", asset.Name, ErrBlobMissing)
+	}
+	s.moveToVolume(ctx, asset.ID, data)
 	return data, asset, nil
+}
+
+// moveToVolume writes an older database-held image onto the volume and clears
+// the column. Failing is not worth an error to the reader — they asked for the
+// picture, they got the picture — so it is left for the next read to retry.
+func (s *Store) moveToVolume(ctx context.Context, id string, data []byte) {
+	if err := s.Blobs.Put(id, data); err != nil {
+		return
+	}
+	_, _ = s.Pool.Exec(ctx, `UPDATE assets SET data=NULL WHERE id=$1`, id)
 }
 
 // ResolveAsset finds an image by id or by the name its owner gave it, which is
@@ -136,6 +196,13 @@ func (s *Store) DeleteAsset(ctx context.Context, id, ownerID string) error {
 	}
 	if result.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	if s.Blobs != nil {
+		// The row is gone either way; a file left behind on the volume would be
+		// storage nobody can reach, so removing it is worth reporting.
+		if err := s.Blobs.Delete(id); err != nil {
+			return fmt.Errorf("remove image bytes: %w", err)
+		}
 	}
 	return nil
 }

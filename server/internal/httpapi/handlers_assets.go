@@ -13,9 +13,10 @@ import (
 	"github.com/hkjang/ptium/server/internal/store"
 )
 
-// Images a deck places are stored like everything else: in PostgreSQL, owned by
-// the person who uploaded them, referenced from deck source by the name they
-// gave. An air-gapped deployment then has one thing to back up rather than two.
+// Images a deck places are owned by the person who uploaded them and referenced
+// from deck source by the name they gave. The bytes go wherever the deployment
+// said: into PostgreSQL by default, so an air-gapped install has one thing to
+// back up, or onto a mounted volume when ASSET_STORAGE=filesystem.
 
 // listAssets returns the caller's images.
 func (s *Server) listAssets(writer http.ResponseWriter, request *http.Request) {
@@ -87,6 +88,14 @@ func (s *Server) createAsset(writer http.ResponseWriter, request *http.Request) 
 func (s *Server) getAsset(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	data, asset, err := s.store.AssetData(request.Context(), request.PathValue("id"), user.ID)
+	if errors.Is(err, store.ErrBlobMissing) {
+		// The description is in the database and the picture is not on the volume.
+		// That is a restore that left the images behind, and saying so is more use
+		// than a five hundred.
+		writeError(writer, request, http.StatusGone, "asset_bytes_missing",
+			"This image's file is missing from the image storage volume. Upload it again.", nil)
+		return
+	}
 	if err != nil {
 		s.handleStoreError(writer, request, err, "asset_read_failed")
 		return

@@ -43,6 +43,17 @@ func main() {
 	}
 	defer pool.Close()
 	dataStore := store.New(pool)
+	if applicationConfig.AssetStorage == "filesystem" {
+		// Checked here rather than on the first upload: a volume that is missing,
+		// read-only or owned by another user is a deployment mistake, and the pod
+		// should say so while it is still starting.
+		blobs, err := store.OpenFileBlobs(applicationConfig.AssetDir)
+		if err != nil {
+			fatal("prepare the image directory", err)
+		}
+		dataStore.WithBlobs(blobs)
+		logger.Info("uploaded images are stored on a volume", "location", blobs.Describe())
+	}
 	// The shipped designs are rebuilt from code on every boot, so an offline
 	// deployment always has a usable template without any network access.
 	seedContext, cancelSeed := context.WithTimeout(rootContext, 60*time.Second)

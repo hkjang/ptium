@@ -11,6 +11,7 @@ import { ApiDocsPage } from './pages/ApiDocsPage'
 import { CreatePage } from './pages/CreatePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EditorPage } from './pages/EditorPage'
+import { GuidePage } from './pages/GuidePage'
 import { LoginPage } from './pages/LoginPage'
 import { PresentationsPage } from './pages/PresentationsPage'
 import { PresenterPage } from './pages/PresenterPage'
@@ -39,6 +40,7 @@ export function App() {
   if (presenterMatch) return <PresenterPage id={decodeURIComponent(presenterMatch[1])} />
   if (pathname === '/profile') return <ProfilePage />
   if (pathname === '/api-keys') return <ApiKeysPage />
+  if (pathname === '/guide') return <GuidePage />
   if (pathname === '/docs') return <ApiDocsPage />
 
   if (pathname.startsWith('/admin') && user.role !== 'admin') return <AccessDenied />

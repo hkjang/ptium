@@ -157,7 +157,7 @@ function LineMarker({ id, kind, color }: { id: string; kind?: string; color: str
 
 export function FreeformCanvas({
   presentationId, position, slideId, elements, frames, styles, baseVersion, aiEnabled = true,
-  onChange, onRegionText, onRegionBlock, onRegionFrames, onRegionStyle, onPickImage, onRegionClear,
+  onChange, onRegionText, onRegionBlock, onRegionFrames, onRegionStyle, onPickImage, onImageFiles, onRegionClear,
   onCheckpoint, onUndo, onRedo, canUndo, canRedo, onRevise, onUndoRevise, canUndoRevise,
 }: {
   presentationId: string
@@ -178,6 +178,8 @@ export function FreeformCanvas({
   onRegionStyle: (slot: string, patch: SlotStyle | null) => void
   /** Opens the image library to fill one region. */
   onPickImage: (slot: string) => void
+  /** Uploads image files and places them, at a point on the slide if given. */
+  onImageFiles?: (files: File[], at?: { x: number; y: number }) => void
   onRegionClear: (slot: string) => void
   /** Records the slide as it stands, before the change about to be made. */
   onCheckpoint: (reason: string) => void
@@ -189,6 +191,7 @@ export function FreeformCanvas({
   onUndoRevise: () => void
   canUndoRevise: boolean
 }) {
+  const editorRoot = useRef<HTMLDivElement>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [editing, setEditing] = useState('')
   const [zoom, setZoom] = useState(100)
@@ -332,6 +335,39 @@ export function FreeformCanvas({
     return { x: (event.clientX - rect.left) / rect.width * 100, y: (event.clientY - rect.top) / rect.height * 100 }
   }
   const snapped = (value: number) => snap ? Math.round(value * 2) / 2 : value
+
+  // ── Images from outside the workspace ──────────────────────────────────────
+  // A screenshot is on the clipboard and a photograph is in a folder. Both used
+  // to mean: upload in the images panel, find it in the list, press place. Both
+  // now mean: paste, or drop it where it goes.
+  const [dropping, setDropping] = useState(false)
+  const imageFiles = (list: FileList | File[] | null | undefined) =>
+    Array.from(list || []).filter((file) => file.type.startsWith('image/'))
+
+  // Ctrl+V is answered here rather than in the key handler, because a key
+  // handler that prevents the default never learns what was on the clipboard —
+  // and a screenshot is on the clipboard far more often than a copied shape.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      const target = event.target as HTMLElement | null
+      // A paste into a text box is text, even when the clipboard also holds an
+      // image: the person is typing.
+      if (target?.matches?.('input, textarea, [contenteditable="true"]')) return
+      if (!editorRoot.current?.contains(document.activeElement)) return
+      const files = imageFiles(event.clipboardData?.files)
+      if (files.length > 0 && onImageFiles) {
+        event.preventDefault()
+        onImageFiles(files)
+        return
+      }
+      if (clipboard.current.length > 0) {
+        event.preventDefault()
+        paste()
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  })
 
   // ── Alignment guides ───────────────────────────────────────────────────────
   // What makes a slide look composed is that things line up with each other, not
@@ -804,7 +840,6 @@ export function FreeformCanvas({
     if (control && event.key.toLowerCase() === 'a') { event.preventDefault(); setSelected(elements.filter((element) => !element.hidden).map((element) => element.id)); return }
     if (control && event.key.toLowerCase() === 'c') { event.preventDefault(); copySelected(); return }
     if (control && event.key.toLowerCase() === 'x') { event.preventDefault(); copySelected(); removeSelected(); return }
-    if (control && event.key.toLowerCase() === 'v') { event.preventDefault(); paste(); return }
     if (control && event.key.toLowerCase() === 'd') { event.preventDefault(); duplicateSelected(); return }
     if (control && event.key.toLowerCase() === 'g') { event.preventDefault(); event.shiftKey ? ungroup() : group(); return }
     if (control && event.key === ']') { event.preventDefault(); layer(true); return }
@@ -953,7 +988,7 @@ export function FreeformCanvas({
 
   const handles: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
 
-  return <div className="freeform-editor" tabIndex={0} onKeyDown={onKeyDown}>
+  return <div className="freeform-editor" ref={editorRoot} tabIndex={0} onKeyDown={onKeyDown}>
     <div className="freeform-toolbar" role="toolbar" aria-label="슬라이드 편집 도구">
       <div className="freeform-tool-group">
         <button type="button" className="active" title="선택 도구 (Esc)"><MousePointer2 size={15} /></button>
@@ -1117,7 +1152,22 @@ export function FreeformCanvas({
           onPointerUp={(event) => { endDrag(event); endRegionDrag(event); endMarquee() }}
           onPointerCancel={(event) => { endDrag(event); endRegionDrag(event); endMarquee() }}
           onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, target: 'page' }) }}
+          onDragOver={onImageFiles ? (event) => {
+            if (!Array.from(event.dataTransfer.types).includes('Files')) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+            setDropping(true)
+          } : undefined}
+          onDragLeave={onImageFiles ? (event) => { if (event.currentTarget === event.target) setDropping(false) } : undefined}
+          onDrop={onImageFiles ? (event) => {
+            const files = imageFiles(event.dataTransfer.files)
+            setDropping(false)
+            if (files.length === 0) return
+            event.preventDefault()
+            onImageFiles(files, point(event))
+          } : undefined}
         >
+          {dropping && <div className="freeform-drop-hint" aria-hidden="true"><ImagePlus size={22} /> 놓으면 이 자리에 이미지가 들어갑니다</div>}
           <SlidePreview
             className="freeform-base"
             cacheKey={`${slideId}-${baseVersion}-${lifted}`}

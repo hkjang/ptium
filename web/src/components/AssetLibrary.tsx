@@ -87,6 +87,7 @@ export function AssetLibrary({ onInsert, onPlace, notify }: {
         <div>
           <strong>이미지 끌어다 놓기</strong>
           <span>PNG · JPEG · GIF · SVG, 16MB까지</span>
+          <span>캔버스에 바로 붙여넣거나(Ctrl+V) 끌어다 놓아도 올라갑니다</span>
         </div>
         <Button variant="ghost" onClick={() => input.current?.click()} disabled={busy}>파일 선택</Button>
         <input ref={input} type="file" accept="image/*" multiple hidden
@@ -95,7 +96,7 @@ export function AssetLibrary({ onInsert, onPlace, notify }: {
 
       {loading ? <div className="asset-loading"><LoaderIcon size={15} className="spin" /> 불러오는 중…</div>
         : assets.length === 0
-          ? <EmptyState title="이미지가 없습니다" description="올린 이미지는 코드에서 ::image 이름 으로 불러 씁니다." />
+          ? <EmptyState title="이미지가 없습니다" description="캔버스에 붙여넣거나 끌어다 놓으면 여기에 쌓이고, 코드에서는 ::image 이름 으로 불러 씁니다." />
           : <ul className="asset-grid">
             {assets.map((asset) => (
               <li key={asset.id}>

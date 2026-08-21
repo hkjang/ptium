@@ -71,6 +71,43 @@ DATABASE_URL=postgres://ptium:a-long-random-password@postgres.internal:5432/ptiu
 Nothing else is required: templates, generated decks, settings, credentials and
 incidents all live in that database, so the container itself is disposable.
 
+## Where uploaded images are kept
+
+Everything Ptium stores is small except the pictures people upload for their
+slides. By default those go into the database too, which keeps the deployment to
+one thing to back up. A deployment with many or large images can put them on a
+volume instead:
+
+| | `ASSET_STORAGE=database` (default) | `ASSET_STORAGE=filesystem` |
+| --- | --- | --- |
+| Where the bytes live | The `assets` table | One file per image under `ASSET_DIR` |
+| To back up | The database | The database **and** the volume |
+| To mount | Nothing | A volume, writable by uid/gid 65532 |
+| Replicas | Any number | Any number with a ReadWriteMany volume; one with ReadWriteOnce |
+
+```dotenv
+ASSET_STORAGE=filesystem
+ASSET_DIR=/var/lib/ptium/assets
+```
+
+On Kubernetes, uncomment the `ptium-assets` PersistentVolumeClaim at the bottom
+of the manifest along with the matching volume and volumeMount, and set
+`ASSET_STORAGE` in the ConfigMap. On Compose the bundled file already declares
+the `ptium-assets` volume, so switching is one variable in `.env`.
+
+Ptium checks the directory at startup and refuses to start — naming the
+directory and the reason — if it is missing, read-only, or owned by another
+user. That is deliberate: a broken volume should stop a rollout, not the first
+person who uploads a logo.
+
+**Switching is safe in one direction.** Images uploaded while the bytes were in
+the database keep working after the switch, and each one is moved onto the
+volume the first time it is read, so the database empties itself as the pictures
+get used. Going back to `database` afterwards means keeping that volume mounted,
+because the rows no longer carry the bytes. Deleting the volume deletes the
+images: Ptium then answers `410` with "this image's file is missing from the
+image storage volume" instead of pretending the image is there.
+
 ## Start with Compose
 
 Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
@@ -150,7 +187,7 @@ browser. Leave it unset for a public client.
 
 ## Upgrade
 
-1. Back up the Ptium database.
+1. Back up the Ptium database, and the image volume if `ASSET_STORAGE=filesystem`.
 2. Import the newer archive with `gzip -dc … | docker load`.
 3. Set `PTIUM_VERSION` in `.env` (or the image tag in the manifest) to the new
    version.

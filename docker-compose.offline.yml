@@ -33,5 +33,15 @@ services:
       DEV_AUTH_ROLES: ${DEV_AUTH_ROLES:-user}
       DEV_AUTH_ALLOW_REMOTE: ${DEV_AUTH_ALLOW_REMOTE:-false}
       KEY_ENCRYPTION_SECRET: ${KEY_ENCRYPTION_SECRET:-}
+      # Uploaded images: "database" keeps them in PostgreSQL (one thing to back
+      # up), "filesystem" writes them to the volume below.
+      ASSET_STORAGE: ${ASSET_STORAGE:-database}
+      ASSET_DIR: /var/lib/ptium/assets
+    volumes:
+      # Harmless with ASSET_STORAGE=database and already there when you switch.
+      - ptium-assets:/var/lib/ptium/assets
     ports:
       - "${PTIUM_PORT:-8080}:8080"
+
+volumes:
+  ptium-assets:
