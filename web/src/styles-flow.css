@@ -91,6 +91,16 @@
 .canvas-region-input::selection{background:rgba(114,91,214,.35)}
 .canvas-region-draft{pointer-events:none;opacity:.75}
 /* An alignment guide: what one dragged thing has just lined up with. */
+/* A rubber band over empty page, and the menu a right-click opens. */
+.canvas-marquee{position:absolute;z-index:9000;border:1px solid var(--violet);background:rgba(114,91,214,.12);pointer-events:none}
+.canvas-menu-shield{position:fixed;z-index:11000;inset:0}
+.canvas-menu{position:fixed;z-index:11001;min-width:178px;padding:5px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:9px;background:#fff;box-shadow:0 14px 34px rgba(32,28,46,.2)}
+.canvas-menu button{display:flex;align-items:center;justify-content:space-between;gap:14px;height:29px;padding:0 9px;border:0;border-radius:6px;color:var(--ink);background:transparent;font-size:10px;text-align:left;cursor:pointer}
+.canvas-menu button:hover:not(:disabled){background:var(--surface-soft)}
+.canvas-menu button:disabled{opacity:.4;cursor:default}
+.canvas-menu button.danger:hover{color:#a33c3c;background:#fdf1f1}
+.canvas-menu kbd{color:var(--muted);font-size:8px}
+.canvas-menu-line{height:1px;margin:4px 6px;background:var(--line)}
 .canvas-guide{position:absolute;z-index:10001;pointer-events:none;background:#ff3d81;box-shadow:0 0 0 .5px rgba(255,61,129,.35)}
 .canvas-guide.x{top:-2%;bottom:-2%;width:1px}
 .canvas-guide.y{left:-2%;right:-2%;height:1px}
@@ -172,10 +182,63 @@
 .revision-list .revision-current>span{color:var(--violet);background:#eee9fb}
 .modal-note{color:var(--muted);font-size:10px}
 
-.present-render{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:18px}
-.present-render .slide-preview{max-width:min(1280px,calc(100vw - 80px));max-height:100%;width:auto;height:auto;box-shadow:0 30px 80px #000}
-.present-notes{padding:10px 20px;border-top:1px solid #23232a;background:#121216;color:#c9c9d1}
-.present-notes strong{display:block;font-size:9px;letter-spacing:.4px;text-transform:uppercase;color:#7d7d8a}
-.present-notes p{margin:4px 0 0;font-size:11px;line-height:1.6}
-.presentation-mode footer>span{display:flex;flex-direction:column;align-items:center;gap:2px}
-.presentation-mode footer>span>small{color:#6d6d78;font-size:8px}
+
+/* ── Presenting ───────────────────────────────────────────────────────────
+   The audience sees the slide and nothing else. Everything a presenter needs
+   is in the other window. */
+.presentation-mode{position:fixed;z-index:150;inset:0;display:block;background:#000;cursor:default}
+.presentation-mode.idle{cursor:none}
+.presentation-mode.idle .present-controls{opacity:0;pointer-events:none}
+.present-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.present-stage img{max-width:100vw;max-height:100vh;width:auto;height:auto;object-fit:contain}
+.presentation-mode.blackout-black .present-stage,.presentation-mode.blackout-white .present-stage{visibility:hidden}
+.presentation-mode.blackout-white{background:#fff}
+.present-loading{color:#666}
+.present-laser{position:fixed;z-index:170;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:radial-gradient(circle,rgba(255,45,60,.95) 0%,rgba(255,45,60,.65) 45%,rgba(255,45,60,0) 70%);box-shadow:0 0 14px 4px rgba(255,45,60,.5);pointer-events:none}
+.present-jump{position:fixed;z-index:170;left:50%;top:50%;transform:translate(-50%,-50%);padding:18px 30px;display:flex;align-items:baseline;gap:10px;border-radius:14px;color:#fff;background:rgba(10,10,14,.86);font-size:52px;font-weight:700;font-variant-numeric:tabular-nums;pointer-events:none}
+.present-jump small{font-size:11px;font-weight:500;opacity:.6}
+.present-controls{position:fixed;z-index:160;left:50%;bottom:26px;transform:translateX(-50%);height:46px;padding:0 10px;display:flex;align-items:center;gap:4px;border-radius:999px;background:rgba(18,18,22,.9);box-shadow:0 12px 34px rgba(0,0,0,.5);transition:opacity .25s}
+.present-controls button{width:34px;height:34px;display:grid;place-items:center;border:0;border-radius:50%;color:#d8d8e0;background:transparent;cursor:pointer}
+.present-controls button:hover:not(:disabled){color:#fff;background:#2a2a33}
+.present-controls button:disabled{opacity:.25;cursor:default}
+.present-controls button.active{color:#fff;background:var(--violet)}
+.present-controls>span{padding:0 8px;color:#c9c9d3;font-size:12px;font-variant-numeric:tabular-nums}
+.present-controls>span>i{color:#6d6d78;font-style:normal}
+.present-controls .present-divider{width:1px;height:20px;padding:0;background:#33333d}
+.present-overview{position:fixed;z-index:165;inset:0;padding:34px;overflow:auto;background:rgba(8,8,11,.985)}
+.present-overview-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.present-overview-grid button{position:relative;padding:0;overflow:hidden;border:2px solid transparent;border-radius:9px;background:#16161b;cursor:pointer}
+.present-overview-grid button:hover{border-color:#55556a}
+.present-overview-grid button.active{border-color:var(--violet)}
+.present-overview-grid img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover}
+.present-overview-grid em{position:absolute;left:6px;bottom:6px;padding:1px 7px;border-radius:999px;color:#fff;background:rgba(0,0,0,.6);font-size:10px;font-style:normal}
+.present-thumb-empty{display:block;width:100%;aspect-ratio:16/9;background:linear-gradient(120deg,#1a1a20,#24242c)}
+
+/* ── The presenter's window ───────────────────────────────────────────── */
+.presenter-screen{min-height:100vh;display:flex;flex-direction:column;color:#eceaf3;background:#101015;font-size:13px}
+.presenter-screen.loading{align-items:center;justify-content:center;gap:12px;color:#9a99a8}
+.presenter-screen>header{height:64px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #23232c}
+.presenter-screen>header .eyebrow{color:#8a88a0}
+.presenter-screen>header strong{display:block;margin-top:2px;font-size:15px}
+.presenter-clock{display:flex;align-items:center;gap:10px}
+.presenter-clock button{padding:6px 12px;border:1px solid #2f2f3a;border-radius:8px;color:#fff;background:#1a1a21;font-size:22px;font-variant-numeric:tabular-nums;cursor:pointer}
+.presenter-clock button.ghost{font-size:10px;color:#9a99a8;padding:5px 9px}
+.presenter-clock span{color:#8a88a0;font-size:12px;font-variant-numeric:tabular-nums}
+.presenter-body{flex:1;min-height:0;padding:20px 22px;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:20px}
+.presenter-current{display:flex;flex-direction:column;gap:12px;min-width:0}
+.presenter-frame{position:relative;border-radius:10px;overflow:hidden;background:#000;box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.presenter-frame img{display:block;width:100%;aspect-ratio:16/9;object-fit:contain;background:#000}
+.presenter-frame.small img,.presenter-frame.small .present-thumb-empty{aspect-ratio:16/9}
+.presenter-step{display:flex;align-items:center;justify-content:center;gap:14px}
+.presenter-step button{display:flex;align-items:center;gap:6px;padding:9px 16px;border:1px solid #2f2f3a;border-radius:9px;color:#e7e6ee;background:#1a1a21;font-size:12px;cursor:pointer}
+.presenter-step button:disabled{opacity:.3;cursor:default}
+.presenter-step span{color:#9a99a8;font-size:12px;font-variant-numeric:tabular-nums}
+.presenter-side{display:flex;flex-direction:column;gap:16px;min-height:0}
+.presenter-next>span,.presenter-notes>span{display:block;margin-bottom:7px;color:#8a88a0;font-size:10px;letter-spacing:.4px;text-transform:uppercase}
+.presenter-next strong{display:block;margin-top:8px;font-size:12px;color:#c9c7d6}
+.presenter-end{margin:0;padding:26px 12px;text-align:center;color:#77768a;font-size:11px}
+.presenter-notes{flex:1;min-height:0;display:flex;flex-direction:column}
+.presenter-notes p{margin:0;flex:1;min-height:0;padding:14px;overflow:auto;border:1px solid #23232c;border-radius:10px;background:#16161c;font-size:16px;line-height:1.7;white-space:pre-wrap}
+.presenter-notes .presenter-empty{color:#77768a;font-size:12px;line-height:1.6}
+.presenter-screen>footer{height:40px;display:flex;align-items:center;justify-content:center;color:#6f6e80;font-size:10px;border-top:1px solid #23232c}
+@media (max-width:900px){.presenter-body{grid-template-columns:1fr}}

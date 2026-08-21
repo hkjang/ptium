@@ -149,6 +149,8 @@ type layoutFamily struct {
 	Cover string
 	// Body is how a content slide divides its page.
 	Body string
+	// Motif is the figure a metaphor family draws: a circle, an arc, a diagonal.
+	Motif string
 	// Serif sets the display face in a serif whatever the palette prefers.
 	Serif bool
 	// Footer draws a quiet rule along the bottom margin.
@@ -163,6 +165,19 @@ const (
 	coverPlate  = "plate"  // a centred plate the title sits inside
 	coverCorner = "corner" // a large accent block in the upper corner
 	coverColumn = "column" // the title and the subtitle in facing columns
+	coverMotif  = "motif"  // a drawn metaphor: a circle, an arc, a diagonal
+)
+
+// Motifs. A metaphor family draws one figure and repeats a quiet echo of it on
+// every content slide, which is what makes a deck look designed rather than
+// decorated: the same idea, said once loudly and then softly.
+const (
+	motifOrbit    = "orbit"    // a circle rising off the right edge
+	motifArc      = "arc"      // a wide arc across the foot of the slide
+	motifDiagonal = "diagonal" // a diagonal field cutting the page
+	motifDots     = "dots"     // a scatter of dots, densest at one corner
+	motifLayers   = "layers"   // translucent panels overlapping
+	motifWash     = "wash"     // a gradient the title is reversed out of
 )
 
 // Body compositions.
@@ -234,6 +249,36 @@ var layoutFamilies = []layoutFamily{
 		TitleAlign: "ctr", CoverAlign: "ctr", Cover: coverPlate, Serif: true,
 	},
 	{
+		Key: "orbit", Name: "Orbit", Label: "원", Note: "오른쪽에서 떠오르는 큰 원. 성장과 확장을 말하는 덱에",
+		Margin: 914400, TitleSize: 3400, BodySize: 1800, CoverSize: 4400,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifOrbit, Rule: true,
+	},
+	{
+		Key: "arc", Name: "Arc", Label: "아치", Note: "슬라이드 아래를 가로지르는 아치. 여정과 단계를 말하는 덱에",
+		Margin: 914400, TitleSize: 3400, BodySize: 1800, CoverSize: 4200,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifArc, Hairline: true,
+	},
+	{
+		Key: "diagonal", Name: "Diagonal", Label: "사선", Note: "화면을 가르는 사선. 전환과 대비를 말하는 덱에",
+		Margin: 914400, TitleSize: 3400, BodySize: 1800, CoverSize: 4200,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifDiagonal,
+	},
+	{
+		Key: "dots", Name: "Dots", Label: "도트", Note: "모서리에 모인 점들. 데이터와 규모를 말하는 덱에",
+		Margin: 914400, TitleSize: 3400, BodySize: 1800, CoverSize: 4200,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifDots, Eyebrow: true,
+	},
+	{
+		Key: "layers", Name: "Layers", Label: "레이어", Note: "겹쳐진 반투명 판. 구조와 계층을 말하는 덱에",
+		Margin: 1005840, TitleSize: 3200, BodySize: 1700, CoverSize: 4000,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifLayers,
+	},
+	{
+		Key: "wash", Name: "Wash", Label: "그라데이션", Note: "표지를 가득 채운 그라데이션. 비전과 출시를 말하는 덱에",
+		Margin: 914400, TitleSize: 3400, BodySize: 1800, CoverSize: 4600,
+		TitleAlign: "l", CoverAlign: "l", Cover: coverMotif, Motif: motifWash, Rule: true,
+	},
+	{
 		Key: "corner", Name: "Corner", Label: "코너", Note: "위쪽 모서리 색 블록과 아래에 앉은 제목",
 		Margin: 838200, TitleSize: 3600, BodySize: 1800, CoverSize: 4600,
 		TitleAlign: "l", CoverAlign: "l", Cover: coverCorner, Rule: true, Footer: true,
@@ -285,21 +330,22 @@ func (d BuiltinDesign) Description() string {
 	return fmt.Sprintf("%s · %s. %s", d.Family.Name, d.Family.Note, d.Palette.Note)
 }
 
-// builtinPairs assigns four layout families to every palette. The first three of
-// each row are the pairings the library shipped with, so a deck built on one
-// keeps its design; the fourth is a structurally different composition, because
-// what makes a library feel varied is where the title sits, not its hue.
-var builtinPairs = map[string][4]string{
-	"slate":    {"classic", "panel", "minimal", "column"},
-	"azure":    {"classic", "rail", "centered", "sidebar"},
-	"crimson":  {"classic", "editorial", "panel", "corner"},
-	"coral":    {"rail", "centered", "editorial", "band"},
-	"ivory":    {"editorial", "centered", "classic", "plate"},
-	"sand":     {"editorial", "minimal", "panel", "column"},
-	"midnight": {"panel", "rail", "minimal", "band"},
-	"graphite": {"minimal", "classic", "rail", "sidebar"},
-	"forest":   {"panel", "centered", "minimal", "split"},
-	"plum":     {"rail", "centered", "editorial", "corner"},
+// builtinPairs assigns five layout families to every palette. Rows are appended
+// to, never rewritten: a deck built on any pairing keeps its design. The first
+// three are the original compositions, the fourth is a structurally different
+// one, and the fifth draws a metaphor — a circle, an arc, a diagonal — because a
+// deck about growth and a deck about risk should not open with the same picture.
+var builtinPairs = map[string][5]string{
+	"slate":    {"classic", "panel", "minimal", "column", "orbit"},
+	"azure":    {"classic", "rail", "centered", "sidebar", "arc"},
+	"crimson":  {"classic", "editorial", "panel", "corner", "diagonal"},
+	"coral":    {"rail", "centered", "editorial", "band", "dots"},
+	"ivory":    {"editorial", "centered", "classic", "plate", "layers"},
+	"sand":     {"editorial", "minimal", "panel", "column", "arc"},
+	"midnight": {"panel", "rail", "minimal", "band", "wash"},
+	"graphite": {"minimal", "classic", "rail", "sidebar", "diagonal"},
+	"forest":   {"panel", "centered", "minimal", "split", "orbit"},
+	"plum":     {"rail", "centered", "editorial", "corner", "wash"},
 }
 
 // BuiltinDesigns returns the shipped library in a stable order.
@@ -308,7 +354,7 @@ func BuiltinDesigns() []BuiltinDesign {
 	for _, family := range layoutFamilies {
 		families[family.Key] = family
 	}
-	result := make([]BuiltinDesign, 0, len(builtinPalettes)*4)
+	result := make([]BuiltinDesign, 0, len(builtinPalettes)*5)
 	for _, palette := range builtinPalettes {
 		for _, familyKey := range builtinPairs[palette.Key] {
 			family, ok := families[familyKey]
@@ -623,6 +669,56 @@ func shapeRect(id int, name string, x, y, width, height int, fill string) string
 		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`, id, escapeAttribute(name), x, y, width, height, fill)
 }
 
+// shapeGeom draws one decorative shape: any preset geometry, an optional
+// transparency, an optional rotation. The metaphor families are built out of
+// these — a circle, an arc, a diagonal, a scatter of dots.
+func shapeGeom(id int, name, preset string, x, y, width, height int, fill string, alpha, rotation int) string {
+	transparency := ""
+	if alpha > 0 && alpha < 100 {
+		transparency = fmt.Sprintf(`<a:alpha val="%d"/>`, alpha*1000)
+	}
+	spin := ""
+	if rotation != 0 {
+		spin = fmt.Sprintf(` rot="%d"`, rotation*60000)
+	}
+	return fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`+
+		`<p:spPr><a:xfrm%s><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>`+
+		`<a:prstGeom prst="%s"><a:avLst/></a:prstGeom>`+
+		`<a:solidFill><a:srgbClr val="%s">%s</a:srgbClr></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>`+
+		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`,
+		id, escapeAttribute(name), spin, x, y, max(width, 1), max(height, 1), escapeAttribute(preset),
+		escapeAttribute(fill), transparency)
+}
+
+// shapeOutline draws a preset shape as a stroked outline rather than a fill,
+// which is how an arc or a ring reads as a mark instead of a block.
+func shapeOutline(id int, name, preset string, x, y, width, height int, stroke string, weight, alpha int) string {
+	transparency := ""
+	if alpha > 0 && alpha < 100 {
+		transparency = fmt.Sprintf(`<a:alpha val="%d"/>`, alpha*1000)
+	}
+	return fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`+
+		`<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>`+
+		`<a:prstGeom prst="%s"><a:avLst/></a:prstGeom><a:noFill/>`+
+		`<a:ln w="%d"><a:solidFill><a:srgbClr val="%s">%s</a:srgbClr></a:solidFill></a:ln></p:spPr>`+
+		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`,
+		id, escapeAttribute(name), x, y, max(width, 1), max(height, 1), escapeAttribute(preset),
+		weight, escapeAttribute(stroke), transparency)
+}
+
+// shapeWash fills a frame with a gradient between two colours.
+func shapeWash(id int, name string, x, y, width, height int, from, to string, angle int) string {
+	return fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`+
+		`<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm>`+
+		`<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`+
+		`<a:gradFill rotWithShape="1"><a:gsLst>`+
+		`<a:gs pos="0"><a:srgbClr val="%s"/></a:gs><a:gs pos="100000"><a:srgbClr val="%s"/></a:gs>`+
+		`</a:gsLst><a:lin ang="%d" scaled="0"/></a:gradFill><a:ln><a:noFill/></a:ln></p:spPr>`+
+		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`,
+		id, escapeAttribute(name), x, y, max(width, 1), max(height, 1),
+		escapeAttribute(from), escapeAttribute(to), angle*60000)
+}
+
 type builtinLayout struct {
 	Name       string
 	Type       string
@@ -688,6 +784,119 @@ func ifInt(condition bool, whenTrue, whenFalse int) int {
 // panelInk is the text colour a title panel needs to stay readable.
 func panelInk(palette BuiltinPalette) string {
 	return readableInk(palette.Accents[0], palette.Surface, palette.Ink)
+}
+
+// motifCover draws a metaphor family's opening slide: the figure, then the
+// title standing clear of it. Every figure is built from preset geometry, so the
+// browser preview and PowerPoint draw the same picture.
+func (f layoutFamily) motifCover(palette BuiltinPalette, area Frame) string {
+	accent := palette.Accents[0]
+	subtitleInk := mixColor(palette.Ink, palette.Surface, 0.42)
+	ink := palette.Ink
+	art := ""
+	titleTop, titleWidth := slideHeight*44/100, area.Width
+	switch f.Motif {
+	case motifOrbit:
+		// A circle rising off the right edge, with a smaller one in orbit.
+		size := slideHeight * 118 / 100
+		art = shapeGeom(8, "Orbit", "ellipse", slideWidth-size*62/100, slideHeight-size*72/100, size, size, accent, 16, 0) +
+			shapeGeom(9, "Orbit Core", "ellipse", slideWidth-slideWidth*17/100, slideHeight*17/100,
+				slideWidth*9/100, slideWidth*9/100, accent, 100, 0) +
+			shapeOutline(10, "Orbit Ring", "ellipse", slideWidth-slideWidth*30/100, slideHeight*6/100,
+				slideWidth*22/100, slideWidth*22/100, accent, 12700, 45)
+		titleWidth = area.Width * 62 / 100
+	case motifArc:
+		// A wide arc across the foot of the slide, and its echo above.
+		width, height := slideWidth*150/100, slideHeight*120/100
+		art = shapeGeom(8, "Arc", "ellipse", (slideWidth-width)/2, slideHeight-height*32/100, width, height, accent, 14, 0) +
+			shapeOutline(9, "Arc Line", "ellipse", (slideWidth-width)/2, slideHeight-height*26/100, width, height, accent, 19050, 55)
+		titleTop = slideHeight * 30 / 100
+	case motifDiagonal:
+		// A diagonal field cutting the page, with a thin second cut beside it.
+		art = shapeGeom(8, "Diagonal", "rtTriangle", 0, 0, slideWidth*72/100, slideHeight, accent, 12, 0) +
+			shapeGeom(9, "Diagonal Edge", "rtTriangle", 0, 0, slideWidth*30/100, slideHeight*42/100, accent, 100, 0)
+		titleTop = slideHeight * 52 / 100
+		titleWidth = area.Width * 78 / 100
+	case motifDots:
+		// A scatter of dots, densest at the corner it starts from.
+		dot := slideWidth * 13 / 1000
+		gap := dot * 22 / 10
+		for row := 0; row < 5; row++ {
+			for column := 0; column < 7; column++ {
+				fade := 100 - (row+column)*11
+				if fade < 12 {
+					continue
+				}
+				art += shapeGeom(20+row*10+column, fmt.Sprintf("Dot %d-%d", row, column), "ellipse",
+					slideWidth-area.X-gap*(6-column), slideHeight*10/100+gap*row, dot, dot, accent, fade, 0)
+			}
+		}
+		art += shapeGeom(9, "Dot Mark", "ellipse", area.X, slideHeight*36/100, dot*3, dot*3, accent, 100, 0)
+		titleTop = slideHeight * 46 / 100
+		titleWidth = area.Width * 70 / 100
+	case motifLayers:
+		// Panels overlapping, the way a structure is drawn in section.
+		width, height := slideWidth*46/100, slideHeight*62/100
+		art = shapeGeom(8, "Layer Back", "roundRect", slideWidth-width-area.X/2, slideHeight*10/100, width, height, accent, 10, 0) +
+			shapeGeom(9, "Layer Middle", "roundRect", slideWidth-width-area.X/2-slideWidth*7/100, slideHeight*20/100,
+				width, height, accent, 17, 0) +
+			shapeGeom(10, "Layer Front", "roundRect", slideWidth-width-area.X/2-slideWidth*14/100, slideHeight*30/100,
+				width, height, accent, 26, 0)
+		titleTop = slideHeight * 34 / 100
+		titleWidth = area.Width * 52 / 100
+	case motifWash:
+		// The whole page washed in the brand hue, the title reversed out of it.
+		// A wash deepens toward the page's own colour. Mixing toward the ink turns
+		// a midnight palette's wash pale, because on a dark theme the ink is white.
+		deep := mixColor(accent, palette.Surface, 0.55)
+		if !palette.Dark {
+			deep = mixColor(accent, palette.Ink, 0.42)
+		}
+		middle := mixColor(accent, deep, 0.5)
+		ink = readableInk(middle, palette.Surface, palette.Ink)
+		art = shapeWash(8, "Wash", 0, 0, slideWidth, slideHeight, accent, deep, 45) +
+			shapeOutline(9, "Wash Ring", "ellipse", slideWidth-slideWidth*26/100, -slideHeight*18/100,
+				slideWidth*34/100, slideWidth*34/100, ink, 12700, 30)
+		subtitleInk = mixColor(ink, middle, 0.30)
+		titleTop = slideHeight * 46 / 100
+	}
+	return art +
+		placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, titleTop, titleWidth, 1737360,
+			textBody("l", "b", f.CoverSize, true, ink, "프레젠테이션 제목")) +
+		placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, titleTop+1874520, titleWidth, 731520,
+			textBody("l", "t", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+}
+
+// motifEcho is the quiet repeat a metaphor family puts on its content slides.
+// The figure is stated once on the cover; after that it only has to be present.
+func (f layoutFamily) motifEcho(id int, palette BuiltinPalette, area Frame) string {
+	accent := palette.Accents[0]
+	switch f.Motif {
+	case motifOrbit:
+		size := slideWidth * 14 / 100
+		return shapeGeom(id, "Orbit Echo", "ellipse", slideWidth-size*55/100, slideHeight-size*55/100, size, size, accent, 12, 0)
+	case motifArc:
+		width, height := slideWidth*90/100, slideHeight*70/100
+		return shapeOutline(id, "Arc Echo", "ellipse", slideWidth-width*55/100, slideHeight-height*22/100, width, height, accent, 12700, 24)
+	case motifDiagonal:
+		return shapeGeom(id, "Diagonal Echo", "rtTriangle", 0, slideHeight*62/100, slideWidth*18/100, slideHeight*38/100, accent, 10, 0)
+	case motifDots:
+		dot := slideWidth * 9 / 1000
+		gap := dot * 24 / 10
+		art := ""
+		for index := 0; index < 3; index++ {
+			art += shapeGeom(id+index, fmt.Sprintf("Dot Echo %d", index), "ellipse",
+				slideWidth-area.X-gap*index, slideHeight-slideHeight*9/100, dot, dot, accent, 100-index*28, 0)
+		}
+		return art
+	case motifLayers:
+		return shapeGeom(id, "Layer Echo", "roundRect", slideWidth-slideWidth*30/100, slideHeight*62/100,
+			slideWidth*34/100, slideHeight*46/100, accent, 9, 0)
+	case motifWash:
+		return shapeWash(id, "Wash Edge", 0, slideHeight-91440, slideWidth, 91440, accent,
+			mixColor(accent, palette.Ink, 0.45), 0)
+	}
+	return ""
 }
 
 // coverShapes composes the opening slide. This is the picture a gallery shows
@@ -767,6 +976,8 @@ func (f layoutFamily) coverShapes(palette BuiltinPalette, area Frame) string {
 			placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, slideHeight*58/100+1965960,
 				area.Width-blockWidth/2, 685800,
 				textBody("l", "t", 2000, false, subtitleInk, "부제목 또는 한 줄 요약"))
+	case coverMotif:
+		return f.motifCover(palette, area)
 	}
 	// The library's default: an accent bar, the title, the subtitle under it.
 	coverTop := 2560320
@@ -812,6 +1023,8 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			furniture += shapeRect(10, "Footer Rule", area.X, slideHeight-548640, area.Width, 9525,
 				mixColor(palette.Surface, palette.Ink, ifElse(palette.Dark, 0.22, 0.12)))
 		}
+		// A metaphor family repeats its figure quietly, behind everything else.
+		furniture = family.motifEcho(40, palette, area) + furniture
 		eyebrow := ""
 		if family.Eyebrow {
 			eyebrow = placeholderShape(7, "Text Placeholder 6", "body", 9, frame.X, titleTop-320040, frame.Width, 274320,

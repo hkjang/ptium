@@ -8,6 +8,7 @@ import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
 import { FreeformCanvas } from '../components/FreeformCanvas'
 import { GridLibrary } from '../components/GridLibrary'
+import { PresentationView } from '../components/Presentation'
 import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
@@ -285,28 +286,6 @@ export function EditorPage({ id }: { id: string }) {
   layoutsRef.current = template?.layouts || []
   const { showToast } = useToast()
   const markEdited = () => { revision.current += 1; setEditVersion((value) => value + 1); setSourceLoaded(false) }
-
-  // A presenter's hands are on the arrow keys, not on the footer buttons.
-  useEffect(() => {
-    if (!presenting) return
-    const onKey = (event: KeyboardEvent) => {
-      switch (event.key) {
-        case 'ArrowRight': case 'PageDown': case ' ': case 'Enter':
-          event.preventDefault()
-          setPresentIndex((value) => Math.min(slides.length - 1, value + 1))
-          break
-        case 'ArrowLeft': case 'PageUp':
-          event.preventDefault()
-          setPresentIndex((value) => Math.max(0, value - 1))
-          break
-        case 'Home': setPresentIndex(0); break
-        case 'End': setPresentIndex(Math.max(0, slides.length - 1)); break
-        case 'Escape': setPresenting(false); break
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [presenting, slides.length])
 
   // The measurement follows the saved deck, not the keystrokes.
   useEffect(() => {
@@ -1203,23 +1182,16 @@ export function EditorPage({ id }: { id: string }) {
         </aside>
       </div>
 
-      {presenting && <div className="presentation-mode" role="dialog" aria-modal="true">
-        <header><span>{presentation.title}</span><button onClick={() => setPresenting(false)}><X size={20} /> 닫기</button></header>
-        {/* The slide as it will be shown, drawn by the same renderer as the export. */}
-        <div className="present-render">
-          <SlidePreview
-            cacheKey={`${id}-present-${presentIndex}-${railVersion}`}
-            alt={`${presentIndex + 1}번 슬라이드`}
-            load={() => api.slidePreview(id, presentIndex + 1, 1600)}
-          />
-        </div>
-        {slides[presentIndex]?.speakerNotes && <div className="present-notes"><strong>발표 노트</strong><p>{slides[presentIndex]?.speakerNotes}</p></div>}
-        <footer>
-          <button disabled={presentIndex === 0} onClick={() => setPresentIndex((value) => value - 1)}><ChevronLeft size={22} /></button>
-          <span>{presentIndex + 1} / {slides.length}<small>← → 로 이동 · ESC 로 종료</small></span>
-          <button disabled={presentIndex === slides.length - 1} onClick={() => setPresentIndex((value) => value + 1)}><ChevronRight size={22} /></button>
-        </footer>
-      </div>}
+      {/* The audience screen. Notes, the next slide and the clock live in the
+          presenter's own window, which this one drives. */}
+      {presenting && <PresentationView
+        presentationId={id}
+        title={presentation.title}
+        slides={slides}
+        version={`${railVersion}`}
+        startIndex={presentIndex}
+        onClose={() => setPresenting(false)}
+      />}
       <Modal
         open={findingsOpen}
         onClose={() => setFindingsOpen(false)}

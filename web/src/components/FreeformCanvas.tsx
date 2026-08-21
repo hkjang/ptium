@@ -207,6 +207,10 @@ export function FreeformCanvas({
   const [regionDraft, setRegionDraft] = useState('')
   const [regionOffset, setRegionOffset] = useState<{ x: number; y: number } | null>(null)
   const [guides, setGuides] = useState<{ axis: 'x' | 'y'; at: number }[]>([])
+  // A rubber band drawn over empty page, and the menu a right-click opens.
+  const [marquee, setMarquee] = useState<Bounds | null>(null)
+  const marqueeStart = useRef<{ x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; target: 'element' | 'region' | 'page' } | null>(null)
   const [regionBox, setRegionBox] = useState<SlotFrame | null>(null)
   const [spriteURL, setSpriteURL] = useState('')
   // Where the server drew the lifted region, which is what a drag offsets from.
@@ -526,10 +530,18 @@ export function FreeformCanvas({
     event.preventDefault()
     event.stopPropagation()
     const ids = forcedSelection || selected
-    const originals = elements.filter((element) => ids.includes(element.id) && !element.locked)
+    let originals = elements.filter((element) => ids.includes(element.id) && !element.locked)
     if (originals.length === 0) return
     const start = point(event)
     pushHistory()
+    // Alt-dragging leaves the original where it was and drags a copy, which is
+    // how a row of identical boxes gets made anywhere else.
+    if (event.altKey && mode === 'move') {
+      const copies = originals.map((element) => ({ ...element, id: nextID(), groupId: undefined, locked: false }))
+      onChange([...elementsRef.current, ...copies])
+      setSelected(copies.map((element) => element.id))
+      originals = copies
+    }
     drag.current = { mode, handle, pointerId: event.pointerId, startX: start.x, startY: start.y, bounds: boundsOf(originals), originals: clone(originals) }
     page.current?.setPointerCapture(event.pointerId)
   }
@@ -543,8 +555,12 @@ export function FreeformCanvas({
     let replacement = operation.originals
     if (operation.mode === 'move') {
       const group = operation.bounds
-      let boundedDX = clamp(dx, -group.x, 100 - group.x - group.width)
-      let boundedDY = clamp(dy, -group.y, 100 - group.y - group.height)
+      // Shift locks the drag to the axis it has travelled furthest along, the way
+      // every drawing tool does: a row of boxes stays a row.
+      const lockedX = event.shiftKey && Math.abs(dx) < Math.abs(dy) ? 0 : dx
+      const lockedY = event.shiftKey && Math.abs(dy) <= Math.abs(dx) ? 0 : dy
+      let boundedDX = clamp(lockedX, -group.x, 100 - group.x - group.width)
+      let boundedDY = clamp(lockedY, -group.y, 100 - group.y - group.height)
       const aligned = snapToGuides({ ...group, x: group.x + boundedDX, y: group.y + boundedDY },
         new Set(operation.originals.map((element) => element.id)), '')
       setGuides(aligned.guides)
@@ -562,6 +578,16 @@ export function FreeformCanvas({
       if (handle.includes('n')) top = clamp(snapped(top + dy), 0, bottom - 1)
       if (handle.includes('s')) bottom = clamp(snapped(bottom + dy), top + 1, 100)
       const next = { x: left, y: top, width: right - left, height: bottom - top }
+      // Shift keeps the proportions, so a picture resized by its corner is not
+      // quietly squashed.
+      if (event.shiftKey && operation.bounds.width > 0 && operation.bounds.height > 0) {
+        const ratio = operation.bounds.width / operation.bounds.height
+        const byWidth = next.width / operation.bounds.width >= next.height / operation.bounds.height
+        if (byWidth) next.height = next.width / ratio
+        else next.width = next.height * ratio
+        if (handle.includes('n')) next.y = bottom - next.height
+        if (handle.includes('w')) next.x = right - next.width
+      }
       const sx = next.width / Math.max(operation.bounds.width, .1)
       const sy = next.height / Math.max(operation.bounds.height, .1)
       replacement = operation.originals.map((element) => ({
@@ -576,7 +602,9 @@ export function FreeformCanvas({
       const centerY = operation.bounds.y + operation.bounds.height / 2
       const startAngle = Math.atan2(operation.startY - centerY, operation.startX - centerX)
       const currentAngle = Math.atan2(current.y - centerY, current.x - centerX)
-      const delta = (currentAngle - startAngle) * 180 / Math.PI
+      let delta = (currentAngle - startAngle) * 180 / Math.PI
+      // Shift turns in fifteen-degree steps.
+      if (event.shiftKey) delta = Math.round(delta / 15) * 15
       const radians = delta * Math.PI / 180
       replacement = operation.originals.map((element) => {
         const elementCenterX = element.x + element.width / 2
@@ -595,6 +623,27 @@ export function FreeformCanvas({
     }
     const nextByID = new Map(replacement.map((element) => [element.id, element]))
     onChange(elementsRef.current.map((element) => nextByID.get(element.id) || element))
+  }
+
+  const onMarqueeMove = (event: ReactPointerEvent) => {
+    const start = marqueeStart.current
+    if (!start || drag.current || regionDrag.current) return
+    const current = point(event)
+    setMarquee({
+      x: Math.min(start.x, current.x), y: Math.min(start.y, current.y),
+      width: Math.abs(current.x - start.x), height: Math.abs(current.y - start.y),
+    })
+  }
+
+  const endMarquee = () => {
+    const band = marquee
+    marqueeStart.current = null
+    setMarquee(null)
+    if (!band || band.width < 1 || band.height < 1) return
+    const caught = elements.filter((element) => !element.hidden && !element.locked
+      && element.x < band.x + band.width && element.x + element.width > band.x
+      && element.y < band.y + band.height && element.y + element.height > band.y)
+    if (caught.length > 0) setSelected(caught.map((element) => element.id))
   }
 
   const endDrag = (event: ReactPointerEvent) => {
@@ -818,7 +867,11 @@ export function FreeformCanvas({
         setSelected(ids)
         setRegionSlot('')
         if (editing && editing !== element.id) setEditing('')
-        if (doublePress(`element:${element.id}`, event.timeStamp) && !element.locked
+        // A right-click selects and then lets the context menu through. Starting a
+        // drag would capture the pointer, and a captured pointer sends the menu
+        // event to the page instead of to the object under the cursor.
+        if (event.button !== 0) { event.stopPropagation(); return }
+        if (!event.altKey && doublePress(`element:${element.id}`, event.timeStamp) && !element.locked
           && (element.kind === 'text' || element.kind === 'table' || element.text !== undefined)) {
           // Cancel the press: the browser's focus fix-up would otherwise run after
           // the box has opened and pull focus back out of it, blurring the
@@ -838,6 +891,13 @@ export function FreeformCanvas({
           pushHistory()
           setEditing(element.id)
         }
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!selected.includes(element.id)) setSelected([element.id])
+        setRegionSlot('')
+        setMenu({ x: event.clientX, y: event.clientY, target: 'element' })
       }}
     >
       {element.kind === 'line'
@@ -1044,10 +1104,19 @@ export function FreeformCanvas({
           ref={page}
           className={`freeform-page ${showGrid ? 'show-grid' : ''}`}
           style={{ width: `${zoom}%` }}
-          onPointerDown={() => { setSelected([]); setEditing(''); commitRegionEdit(); setRegionSlot('') }}
-          onPointerMove={(event) => { onPointerMove(event); onRegionPointerMove(event) }}
-          onPointerUp={(event) => { endDrag(event); endRegionDrag(event) }}
-          onPointerCancel={(event) => { endDrag(event); endRegionDrag(event) }}
+          onPointerDown={(event) => {
+            setSelected([]); setEditing(''); commitRegionEdit(); setRegionSlot(''); setMenu(null)
+            if (event.button !== 0) return
+            // Dragging across empty page draws a selection band.
+            const start = point(event)
+            marqueeStart.current = start
+            setMarquee({ x: start.x, y: start.y, width: 0, height: 0 })
+            page.current?.setPointerCapture(event.pointerId)
+          }}
+          onPointerMove={(event) => { onPointerMove(event); onRegionPointerMove(event); onMarqueeMove(event) }}
+          onPointerUp={(event) => { endDrag(event); endRegionDrag(event); endMarquee() }}
+          onPointerCancel={(event) => { endDrag(event); endRegionDrag(event); endMarquee() }}
+          onContextMenu={(event) => { event.preventDefault(); setMenu({ x: event.clientX, y: event.clientY, target: 'page' }) }}
         >
           <SlidePreview
             className="freeform-base"
@@ -1083,6 +1152,7 @@ export function FreeformCanvas({
               onPointerDown={(event) => {
                 event.stopPropagation()
                 if (regionEditing && regionEditing !== candidate.slot) commitRegionEdit()
+                if (event.button !== 0) { if (!active) selectRegion(candidate.slot); return }
                 // A second click on a region opens it for typing. Reading that from
                 // pointerdown rather than waiting for dblclick keeps it working when
                 // the same press also begins a drag.
@@ -1095,6 +1165,12 @@ export function FreeformCanvas({
                 }
                 if (!active) { selectRegion(candidate.slot); return }
                 if (candidate.kind !== 'empty') beginRegionDrag(event, 'move')
+              }}
+              onContextMenu={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                if (!active) selectRegion(candidate.slot)
+                setMenu({ x: event.clientX, y: event.clientY, target: 'region' })
               }}
               onDoubleClick={(event) => {
                 event.stopPropagation()
@@ -1125,6 +1201,9 @@ export function FreeformCanvas({
             </div>
           })}
           {elements.map(renderElement)}
+          {marquee && marquee.width > 0.4 && <div className="canvas-marquee" style={{
+            left: `${marquee.x}%`, top: `${marquee.y}%`, width: `${marquee.width}%`, height: `${marquee.height}%`,
+          }} />}
           {guides.map((guide) => <div key={`${guide.axis}-${guide.at}`} className={`canvas-guide ${guide.axis}`}
             style={guide.axis === 'x' ? { left: `${guide.at}%` } : { top: `${guide.at}%` }} />)}
           {region && shown && selectedElements.length === 0 && <div className="freeform-selection region" style={{ left: `${shown.x}%`, top: `${shown.y}%`, width: `${shown.width}%`, height: `${shown.height}%` }}>
@@ -1203,6 +1282,43 @@ export function FreeformCanvas({
         </li>)}</ul>}
       </aside>}
     </div>
+
+    {menu && <>
+      <div className="canvas-menu-shield" onPointerDown={() => setMenu(null)} onContextMenu={(event) => { event.preventDefault(); setMenu(null) }} />
+      <div className="canvas-menu" style={{ left: menu.x, top: menu.y }} role="menu">
+        {menu.target === 'element' && <>
+          <button type="button" onClick={() => { copySelected(); setMenu(null) }}>복사 <kbd>Ctrl C</kbd></button>
+          <button type="button" onClick={() => { duplicateSelected(); setMenu(null) }}>복제 <kbd>Ctrl D</kbd></button>
+          <button type="button" onClick={() => { layer(true); setMenu(null) }}>맨 앞으로</button>
+          <button type="button" onClick={() => { layer(false); setMenu(null) }}>맨 뒤로</button>
+          <button type="button" onClick={() => { patchSelected({ locked: !selectedElements.every((element) => element.locked) }); setMenu(null) }}>
+            {selectedElements.every((element) => element.locked) ? '잠금 해제' : '잠금'}
+          </button>
+          <span className="canvas-menu-line" />
+          <button type="button" className="danger" onClick={() => { removeSelected(); setMenu(null) }}>삭제 <kbd>Del</kbd></button>
+        </>}
+        {menu.target === 'region' && region && <>
+          {region.acceptsText && region.kind !== 'component' && region.kind !== 'picture' &&
+            <button type="button" onClick={() => { startRegionEdit(); setMenu(null) }}>텍스트 편집</button>}
+          {(region.kind === 'empty' || region.kind === 'picture') &&
+            <button type="button" onClick={() => { onPickImage(region.slot); setMenu(null) }}>이미지 넣기</button>}
+          {(region.moved || regionBox) && <button type="button" onClick={() => { resetRegionFrame(); setMenu(null) }}>원래 자리로</button>}
+          {Object.keys(style).length > 0 && <button type="button" onClick={() => { patchStyle(null); setMenu(null) }}>서식 초기화</button>}
+          {aiEnabled && <button type="button" onClick={() => { void runRevision('rewrite'); setMenu(null) }}>AI로 다시 쓰기</button>}
+          {region.kind !== 'empty' && <>
+            <span className="canvas-menu-line" />
+            <button type="button" className="danger" onClick={() => { setRegionDirty(true); onRegionClear(region.slot); setMenu(null) }}>내용 비우기</button>
+          </>}
+        </>}
+        {menu.target === 'page' && <>
+          <button type="button" onClick={() => { add('text'); setMenu(null) }}>텍스트 상자 추가</button>
+          <button type="button" onClick={() => { add('shape', shape); setMenu(null) }}>도형 추가</button>
+          <button type="button" onClick={() => { add('table'); setMenu(null) }}>표 추가</button>
+          <span className="canvas-menu-line" />
+          <button type="button" disabled={clipboard.current.length === 0} onClick={() => { paste(); setMenu(null) }}>붙여넣기 <kbd>Ctrl V</kbd></button>
+        </>}
+      </div>
+    </>}
 
     <div className="freeform-footer">
       <span>

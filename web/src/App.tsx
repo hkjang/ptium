@@ -13,6 +13,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { EditorPage } from './pages/EditorPage'
 import { LoginPage } from './pages/LoginPage'
 import { PresentationsPage } from './pages/PresentationsPage'
+import { PresenterPage } from './pages/PresenterPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { Link, navigate, useLocation } from './router'
@@ -32,6 +33,10 @@ export function App() {
   if (pathname === '/create') return <CreatePage />
   const editorMatch = pathname.match(/^\/presentations\/([^/]+)\/editor$/)
   if (editorMatch) return <EditorPage id={decodeURIComponent(editorMatch[1])} />
+  // The presenter's second window. It carries no workspace chrome: it is the
+  // screen the speaker looks at while the projector shows the deck.
+  const presenterMatch = pathname.match(/^\/presentations\/([^/]+)\/presenter$/)
+  if (presenterMatch) return <PresenterPage id={decodeURIComponent(presenterMatch[1])} />
   if (pathname === '/profile') return <ProfilePage />
   if (pathname === '/api-keys') return <ApiKeysPage />
   if (pathname === '/docs') return <ApiDocsPage />
