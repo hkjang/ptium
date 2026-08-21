@@ -239,6 +239,7 @@ justifies rewriting an author's words to satisfy a measurement.
 | `orphan` | advisory | a heading whose wrap leaves one stray word or syllable on its last line |
 | `density` | advisory | more than six points on a slide, or a region filled to its last line |
 | `notes` | advisory | a slide that argues something with nothing written down to say |
+| `repeat` | advisory | two lines making the same point in different words |
 
 `GET …/inspect` reports `defects` and `advisories` separately, and `clean` refers
 to the defects: a deck can be drawn perfectly and still be unfinished.
@@ -253,6 +254,47 @@ is what replaced opening a rendered file and looking at it.
 
 The first slide is a cover only by convention. One that carries a component or a
 list of points is compiled as content, whatever its position.
+
+## The canvas
+
+The source is one of two ways to edit a deck; the other is to edit the drawn
+slide directly, and both act on the same stored slides.
+
+A slide's template regions are addressable objects:
+
+| Request | Effect |
+| --- | --- |
+| `GET …/slides/{n}/regions` | every region of one slide: where it draws, what it holds, how it is styled |
+| `GET …/preview.svg?slide=N&only=body2` | that region alone, on a transparent page |
+| `GET …/preview.svg?slide=N&exclude=body2` | the slide without it |
+| `POST …/slides/{n}/revise` | another draft of one slide from the model, proposed and not saved |
+
+Frames come back as percentages of the slide, which is the only unit a browser
+and a PPTX can both be given without conversion. `only` and `exclude` exist so
+the canvas can lift a region off the page and drag the real drawing rather than
+an outline over a stale copy of it.
+
+A region the author drags is stored per slide, in `content.frames`:
+
+```json
+"frames": { "body2": { "x": 12.5, "y": 30, "width": 70, "height": 45 } }
+```
+
+The layout it came from is untouched, so every other slide keeps the design. A
+moved region carries its capacity with it — a taller box holds more lines — and
+the exported slide writes its geometry explicitly, because a placeholder that
+says nothing inherits the layout's box and would spring back.
+
+`POST …/slides/{n}/revise` takes `{"action", "instruction", "slot"}`. The action
+is one of `rewrite`, `shorten`, `expand`, `component`, `notes`, `fit`; `slot`
+narrows the rewrite to one region. The model is given the slide as source, the
+capacity of every region of its layout, the titles of the deck around it, and
+whatever inspection measured about it — an overflow reported in centimetres is
+something a rewrite can aim at, "too long" is not. The response carries the
+proposed slide, the source it came from, and what measuring the proposal found;
+nothing is stored until the author saves. Objects the author placed and regions
+they moved are carried onto the proposal, because those belong to the author
+rather than to the model.
 
 ## Where the source comes from
 
@@ -297,6 +339,11 @@ is reported on that page as needing re-entry instead of failing the whole page.
 
 `GET` regenerates the text from the stored slides when they have been edited on
 the canvas since the source was written, so the two never disagree.
+
+Applying source replaces the slides, and the canvas layer is carried across it:
+by position when the source still produces the same number of slides, and
+otherwise only onto a slide whose title is unchanged. Objects are dropped rather
+than moved onto a slide that is now about something else.
 
 `preview.svg` is what the editor calls while someone types: it compiles the text
 and draws the slide through the real template without storing anything, and

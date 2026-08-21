@@ -91,6 +91,9 @@ Writing craft:
 - Titles are assertions, not labels: "새 공급사 전환이 리스크를 만든다", not "공급사 분석".
 - Bullets are complete thoughts, six to fourteen words, parallel, leading with the
   point. Three to five per slide, never one. Sub-bullets are evidence only.
+- Never make the same point twice in different words. A slide with three real
+  points is finished; a fourth line restating the first is padding, and it reads
+  as generated. If there is nothing further to say, stop writing.
 - Notes are two or three sentences of what to say, not a repeat of the bullets.
 - Write in the requested language and tone. No markdown, asterisks or emoji.
 

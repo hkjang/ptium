@@ -73,8 +73,8 @@ export interface SlideParagraph {
 
 /**
  * A drawn component in a template slot — a KPI row, a timeline, a comparison
- * table. The editor does not edit its insides; it carries it so that editing the
- * text around it cannot destroy it.
+ * table. The canvas edits it in place: a generated component that can only be
+ * deleted and rewritten is not an editable deck.
  */
 export interface SlideBlock {
   kind: string
@@ -83,6 +83,36 @@ export interface SlideBlock {
   items?: Array<Record<string, unknown>>
   rows?: string[][]
   [key: string]: unknown
+}
+
+/** Where something draws on a slide, in percentages of the slide. */
+export interface SlotFrame { x: number; y: number; width: number; height: number }
+
+/**
+ * One region of a rendered slide, as the canvas needs it. This is what makes
+ * generated content editable rather than a picture: the title the model wrote and
+ * a text box the author added are the same kind of object to a click.
+ */
+export interface CanvasRegion {
+  slot: string
+  kind: 'text' | 'component' | 'picture' | 'empty'
+  frame: SlotFrame
+  layout: SlotFrame
+  moved: boolean
+  text?: string
+  paragraphs?: SlideParagraph[]
+  block?: SlideBlock
+  image?: SlideImage
+  /** Point size the template gives the region's text. */
+  fontSize?: number
+  bold?: boolean
+  color?: string
+  font?: string
+  name?: string
+  prompt?: string
+  acceptsText: boolean
+  /** Set when a component placed in another slot covers this region. */
+  spannedBy?: string
 }
 
 /** An image placed in a slot, by reference to the asset store. */
@@ -149,6 +179,8 @@ export interface Slide {
   images?: Record<string, SlideImage>
   /** Freely positioned objects layered above the template. */
   elements?: SlideElement[]
+  /** Where a template region was dragged to, per slot, in slide percentages. */
+  frames?: Record<string, SlotFrame>
   speakerNotes?: string
   imageUrl?: string
   accent?: string

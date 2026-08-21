@@ -52,11 +52,30 @@ func PPTX(presentation model.Presentation, options Options) ([]byte, error) {
 // can show the real template design without a PowerPoint engine.
 func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, position, width int,
 	media pptx.MediaResolver, images deck.ImageSource) (string, error) {
+	return PreviewSlideSVG(presentation, manifest, position, pptx.PreviewOptions{Width: width, Media: media}, images)
+}
+
+// PreviewSlideSVG is PreviewSVG with the renderer's own options, so a caller can
+// ask for the slide without the template's background — which is how the canvas
+// lifts one region off the page to drag it.
+func PreviewSlideSVG(presentation model.Presentation, manifest pptx.Manifest, position int,
+	options pptx.PreviewOptions, images deck.ImageSource) (string, error) {
+	layout, slide, err := PreviewSlide(presentation, manifest, position, images)
+	if err != nil {
+		return "", err
+	}
+	return pptx.PreviewSVG(manifest, layout, slide, options), nil
+}
+
+// PreviewSlide binds one stored slide to its layout, which is what both the
+// renderer and the editor need before they can say anything about it.
+func PreviewSlide(presentation model.Presentation, manifest pptx.Manifest, position int,
+	images deck.ImageSource) (pptx.Layout, pptx.Slide, error) {
 	if position < 1 || position > len(presentation.Slides) {
-		return "", fmt.Errorf("slide %d does not exist", position)
+		return pptx.Layout{}, pptx.Slide{}, fmt.Errorf("slide %d does not exist", position)
 	}
 	if len(manifest.Layouts) == 0 {
-		return "", errors.New("the presentation template is unavailable")
+		return pptx.Layout{}, pptx.Slide{}, errors.New("the presentation template is unavailable")
 	}
 	built := deck.BuildWithImages(presentation, manifest, "", images)
 	slide := built.Slides[position-1]
@@ -64,5 +83,5 @@ func PreviewSVG(presentation model.Presentation, manifest pptx.Manifest, positio
 	if !ok {
 		layout = manifest.Layouts[0]
 	}
-	return pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{Width: width, Media: media}), nil
+	return layout, slide, nil
 }

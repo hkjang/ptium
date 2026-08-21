@@ -7,6 +7,8 @@ const endpoints = [
   ['POST', '/api/v1/presentations/{id}/generate', '슬라이드 생성 작업 큐 등록'],
   ['PATCH', '/api/v1/presentations/{id}', '메타데이터와 슬라이드 편집'],
   ['GET', '/api/v1/presentations/{id}/export?format=pptx', 'PowerPoint 다운로드'],
+  ['GET', '/api/v1/presentations/{id}/slides/{n}/regions', '한 슬라이드의 영역을 편집 가능한 개체로 조회'],
+  ['POST', '/api/v1/presentations/{id}/slides/{n}/revise', '한 장만 AI로 다시 쓰기 (저장하지 않고 제안)'],
   ['GET', '/api/v1/profile', '개인화 프로필 조회'],
   ['GET', '/api/v1/api-keys', 'API 키 수명주기 관리'],
 ]

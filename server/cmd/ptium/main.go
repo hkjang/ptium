@@ -152,7 +152,7 @@ func main() {
 	}
 
 	api, err := httpapi.New(httpapi.Options{
-		Store: dataStore, Settings: settingService, Keys: keyManager, Worker: worker,
+		Store: dataStore, Settings: settingService, Keys: keyManager, Worker: worker, Generator: generator,
 		Authenticator: authenticator, AuthPublic: publicAuth, AdminRoles: authConfig.AdminRoles,
 		BootstrapAdminEmails: applicationConfig.BootstrapAdminEmails, BootstrapAdminSubjects: applicationConfig.BootstrapAdminSubjects,
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,

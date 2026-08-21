@@ -1465,6 +1465,23 @@ paths:
           schema:
             type: boolean
             default: true
+        - name: only
+          in: query
+          required: false
+          description: |
+            Draw one region alone, on a transparent page with no template
+            background or artwork. A canvas uses it to lift a region off the
+            slide and drag the real drawing rather than an outline over a stale
+            copy of it.
+          schema:
+            type: string
+            maxLength: 100
+        - name: exclude
+          in: query
+          required: false
+          description: Comma-separated slots to leave out, so a region being moved is not drawn twice.
+          schema:
+            type: string
         - $ref: '#/components/parameters/PreviewWidth'
       responses:
         '200':
@@ -1486,6 +1503,142 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/slides/{position}/regions:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/SlidePosition'
+    get:
+      operationId: listSlideRegions
+      summary: Describe one slide's regions as editable objects
+      description: |
+        Returns every region of a drawn slide: where it draws, what it holds and
+        how it is styled. Without this a generated slide is a picture to an
+        editor, and the only thing anyone can do to a picture is draw on top of
+        it.
+
+        Frames are percentages of the slide. `slideHeightPoints` is the slide's
+        height in points, so a browser can size type the way the renderer does
+        whatever pixel width it draws at.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: The slide's regions, in the layout's own order.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      slide: { type: integer }
+                      layoutId: { type: string }
+                      layoutName: { type: string }
+                      aspectRatio: { type: number }
+                      slideHeightPoints: { type: number }
+                      regions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CanvasRegion'
+                  requestId: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/slides/{position}/revise:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/SlidePosition'
+    post:
+      operationId: reviseSlide
+      summary: Ask the model for another draft of one slide
+      description: |
+        Rewrites a single slide and returns the proposal without storing it. It
+        is scoped to one slide on purpose: regenerating a deck to fix one
+        sentence throws away every edit made since, which is why people stop
+        editing generated decks and start rewriting them elsewhere.
+
+        The model is given the slide as source, the capacity of every region of
+        its layout, the titles of the deck around it, and whatever inspection
+        measured about it — an overflow reported in centimetres is something a
+        rewrite can aim at. Objects the author placed and regions they moved are
+        carried onto the proposal.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum: [rewrite, shorten, expand, component, notes, fit]
+                  default: rewrite
+                instruction:
+                  type: string
+                  maxLength: 2000
+                  description: What the author asked for, in their own words.
+                slot:
+                  type: string
+                  maxLength: 100
+                  description: Narrows the rewrite to one region of the slide.
+      responses:
+        '200':
+          description: The proposed slide. Nothing has been saved.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      slide: { type: integer }
+                      source:
+                        type: string
+                        description: The revised slide in the deck source language.
+                      proposal:
+                        $ref: '#/components/schemas/Slide'
+                      warnings:
+                        type: array
+                        items: { type: string }
+                      findings:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DeckFinding'
+                      applied:
+                        type: boolean
+                        enum: [false]
+                  requestId: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '502':
+          description: The AI provider answered with something that could not be used.
+        '503':
+          description: This deployment has no AI provider configured.
 
   /api/v1/templates:
     parameters:
@@ -2424,6 +2577,14 @@ components:
       schema:
         type: string
         format: uuid
+    SlidePosition:
+      name: position
+      in: path
+      required: true
+      description: 1-based position of the slide within the deck.
+      schema:
+        type: integer
+        minimum: 1
     TemplateID:
       name: id
       in: path
@@ -3001,7 +3162,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 0.14.0
+            service.version: 0.15.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -3666,10 +3827,11 @@ components:
         either paragraphs or a component, never both. Unknown keys are ignored,
         so clients may round-trip content they do not understand.
 
-        Updating a slide without mentioning `blocks`, `images`, or `elements` keeps whatever
-        the slide already carries: a client that only edits text cannot delete the
-        components and pictures a generated deck is largely made of. Send
-        `"blocks": {}`, `"images": {}`, or `"elements": []` to clear them.
+        Updating a slide without mentioning `blocks`, `images`, `elements` or `frames`
+        keeps whatever the slide already carries: a client that only edits text
+        cannot delete the components and pictures a generated deck is largely made
+        of. Send `"blocks": {}`, `"images": {}`, `"elements": []` or `"frames": {}`
+        to clear them.
       properties:
         type:
           type: string
@@ -3712,6 +3874,15 @@ components:
           items:
             $ref: '#/components/schemas/SlideElement'
           description: Freely positioned objects layered above the template, in z-index order.
+        frames:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SlotFrame'
+          description: |
+            Where a template region draws on this slide, when the author moved or
+            resized it on the canvas. A slot with no entry keeps the layout's own
+            geometry, so a deck stays inside its template until a region is
+            deliberately dragged somewhere else. The layout itself is untouched.
         bullets:
           type: array
           items:
@@ -3720,6 +3891,66 @@ components:
         accent:
           type: string
           description: Brand colour applied to the slide, as `#RRGGBB`.
+
+    SlotFrame:
+      type: object
+      required: [x, y, width, height]
+      description: |
+        Where something draws on a slide, in percentages of the slide — the only
+        unit a browser and a PPTX can both be given without conversion.
+      properties:
+        x: { type: number, minimum: -100, maximum: 200 }
+        y: { type: number, minimum: -100, maximum: 200 }
+        width: { type: number, minimum: 1, maximum: 300 }
+        height: { type: number, minimum: 1, maximum: 300 }
+
+    CanvasRegion:
+      type: object
+      required: [slot, kind, frame, layout, moved, acceptsText]
+      description: |
+        One region of a drawn slide, described for an editor rather than for the
+        renderer. This is what makes generated content editable rather than a
+        picture: the title a model wrote and a text box someone added answer the
+        same click.
+      properties:
+        slot:
+          type: string
+        kind:
+          type: string
+          enum: [text, component, picture, empty]
+        frame:
+          $ref: '#/components/schemas/SlotFrame'
+        layout:
+          allOf:
+            - $ref: '#/components/schemas/SlotFrame'
+          description: Where the template puts the region, which is what "reset" restores.
+        moved:
+          type: boolean
+        text:
+          type: string
+          description: The region's paragraphs, joined by newlines, with two spaces per outline level.
+        paragraphs:
+          type: array
+          items:
+            $ref: '#/components/schemas/SlideParagraph'
+        block:
+          $ref: '#/components/schemas/SlideBlock'
+        image:
+          $ref: '#/components/schemas/SlideContentImage'
+        fontSize:
+          type: number
+          description: Point size the template gives the region's text.
+        bold: { type: boolean }
+        color: { type: string }
+        font: { type: string }
+        name: { type: string }
+        prompt: { type: string }
+        acceptsText:
+          type: boolean
+          description: False for a region that holds a picture and nothing else.
+        spannedBy:
+          type: string
+          description: Set when a component placed in another slot covers this region.
 
     SlideParagraph:
       type: object

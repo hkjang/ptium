@@ -104,6 +104,10 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 			map[string]any{"slides": len(compiled.Slides)})
 		return
 	}
+	// The canvas layer belongs to the author, not to the text: objects they placed
+	// and regions they moved survive a re-compile of the words, as long as the
+	// slide they sit on can still be identified.
+	compiled.Slides = carryCanvasLayerAcross(presentation.Slides, compiled.Slides)
 	findings := s.inspectCompiled(request, user.ID, presentation, manifest, compiled.Slides)
 	if input.DryRun {
 		writeData(writer, request, http.StatusOK, map[string]any{
@@ -204,6 +208,39 @@ func (s *Server) inspectCompiled(request *http.Request, ownerID string,
 	copied.Slides = slides
 	built := deck.BuildWithImages(copied, manifest, "", s.imageSource(request, ownerID))
 	return pptx.InspectDeck(manifest, built)
+}
+
+// carryCanvasLayerAcross moves the freeform objects and moved regions of the
+// stored deck onto the deck the source just produced.
+//
+// Slides are matched by position when the source still has the same number of
+// them, which is what editing prose in the code view does. When the count
+// changed, only a slide whose title is unchanged keeps its objects: putting them
+// on a slide that is now about something else is worse than dropping them.
+func carryCanvasLayerAcross(stored, compiled []model.Slide) []model.Slide {
+	byTitle := map[string]model.Slide{}
+	for _, slide := range stored {
+		if _, clash := byTitle[slide.Title]; clash {
+			// An ambiguous title identifies nothing.
+			byTitle[slide.Title] = model.Slide{}
+			continue
+		}
+		byTitle[slide.Title] = slide
+	}
+	sameLength := len(stored) == len(compiled)
+	for index := range compiled {
+		source := model.Slide{}
+		if sameLength {
+			source = stored[index]
+		} else if matched, ok := byTitle[compiled[index].Title]; ok {
+			source = matched
+		}
+		if len(source.Content) == 0 {
+			continue
+		}
+		compiled[index].Content = carryCanvasLayer(compiled[index].Content, source.Content)
+	}
+	return compiled
 }
 
 // sourceMatchesSlides reports whether stored source still describes the stored

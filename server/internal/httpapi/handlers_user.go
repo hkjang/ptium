@@ -566,7 +566,7 @@ func preserveDrawing(incoming, stored json.RawMessage) json.RawMessage {
 		return incoming
 	}
 	changed := false
-	for _, key := range []string{"blocks", "images", "elements"} {
+	for _, key := range []string{"blocks", "images", "elements", "frames"} {
 		if _, mentioned := edited[key]; mentioned {
 			continue
 		}
@@ -595,7 +595,11 @@ func convertSlide(input slideRequest, index int) (model.Slide, error) {
 		SpeakerNotes string `json:"speaker_notes"`
 	}
 	_ = json.Unmarshal(input.Content, &contentFields)
-	if err := deck.ValidateFreeformElements(deck.Decode(input.Content).Elements); err != nil {
+	decoded := deck.Decode(input.Content)
+	if err := deck.ValidateFreeformElements(decoded.Elements); err != nil {
+		return model.Slide{}, err
+	}
+	if err := deck.ValidateSlotFrames(decoded.Frames); err != nil {
 		return model.Slide{}, err
 	}
 	if input.Title == "" {

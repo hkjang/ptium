@@ -31,7 +31,41 @@ type Slide struct {
 	// Elements are freely positioned editable objects layered above the
 	// template-bound content.
 	Elements []Element `json:"elements,omitempty"`
-	Notes    string    `json:"notes,omitempty"`
+	// Frames overrides where a slot draws. The canvas writes one when someone
+	// moves or resizes a region the template placed; every slot without an entry
+	// keeps the template's own geometry, which is what lets a deck be rearranged
+	// by hand without losing the design it was built from.
+	Frames map[string]Frame `json:"frames,omitempty"`
+	Notes  string           `json:"notes,omitempty"`
+}
+
+// Place returns the placeholder as this slide positions it. A moved region
+// carries its capacity with it: a taller box holds more lines, and autofit has to
+// know that or it shrinks text that now fits.
+func (s Slide) Place(placeholder Placeholder) Placeholder {
+	frame, ok := s.Frames[placeholder.Slot]
+	if !ok || frame.Width <= 0 || frame.Height <= 0 {
+		return placeholder
+	}
+	horizontal, vertical := 1.0, 1.0
+	if placeholder.Width > 0 {
+		horizontal = float64(frame.Width) / float64(placeholder.Width)
+	}
+	if placeholder.Height > 0 {
+		vertical = float64(frame.Height) / float64(placeholder.Height)
+	}
+	placeholder.X, placeholder.Y = frame.X, frame.Y
+	placeholder.Width, placeholder.Height = frame.Width, frame.Height
+	if placeholder.MaxChars > 0 {
+		placeholder.MaxChars = max(1, int(math.Round(float64(placeholder.MaxChars)*horizontal*vertical)))
+	}
+	if placeholder.MaxLines > 0 {
+		placeholder.MaxLines = max(1, int(math.Round(float64(placeholder.MaxLines)*vertical)))
+	}
+	if placeholder.LineEm > 0 {
+		placeholder.LineEm = placeholder.LineEm * horizontal
+	}
+	return placeholder
 }
 
 // spannedSlots is every region covered by a component placed elsewhere.
@@ -49,13 +83,15 @@ func (s Slide) spannedSlots() map[string]bool {
 
 // blockFrame is the area a component draws in: its own region, plus the regions
 // it spans.
-func blockFrame(layout Layout, placeholder Placeholder, block Block) Frame {
+func (s Slide) blockFrame(layout Layout, placeholder Placeholder, block Block) Frame {
+	placeholder = s.Place(placeholder)
 	frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
 	for _, slot := range block.Span {
 		other, ok := layout.Slot(slot)
 		if !ok || other.Slot == placeholder.Slot {
 			continue
 		}
+		other = s.Place(other)
 		right := max(frame.X+frame.Width, other.X+other.Width)
 		bottom := max(frame.Y+frame.Height, other.Y+other.Height)
 		frame.X = min(frame.X, other.X)
@@ -408,6 +444,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 			// A component placed elsewhere covers this region.
 			continue
 		}
+		placeholder = slide.Place(placeholder)
 		// An image replaces whatever the slot would otherwise hold.
 		if placed, ok := placedBySlot[placeholder.Slot]; ok {
 			components.WriteString(pictureXML(shapeID, placeholder, placed))
@@ -417,7 +454,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		// A component replaces its placeholder rather than sitting on top of
 		// it, so the exported slide has no empty text box behind the drawing.
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
-			frame := blockFrame(layout, placeholder, block)
+			frame := slide.blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
 				markup, next := component.DrawingML(shapeID)
 				components.WriteString(markup)
@@ -429,7 +466,8 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		if len(paragraphs) == 0 && placeholder.AcceptsText() {
 			continue
 		}
-		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language))
+		_, moved := slide.Frames[placeholder.Slot]
+		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language, moved))
 		shapeID++
 	}
 	for _, element := range slide.Elements {
@@ -447,7 +485,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapes.String() + components.String() + freeform.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 
-func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string) string {
+func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string, moved bool) string {
 	name := placeholder.Name
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s %d", capitalize(placeholder.Slot), shapeID-1)
@@ -464,8 +502,17 @@ func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Para
 	if placeholder.AcceptsText() {
 		body = `<p:txBody>` + bodyPropertiesXML(placeholder, paragraphs) + `<a:lstStyle/>` + paragraphsXML(paragraphs, language) + `</p:txBody>`
 	}
+	// A placeholder normally inherits its box from the layout, which is what keeps
+	// a deck inside its template. A region the author dragged has to say where it
+	// went, or the exported file would put it back.
+	properties := `<p:spPr/>`
+	if moved {
+		properties = `<p:spPr><a:xfrm><a:off x="` + strconv.Itoa(placeholder.X) + `" y="` + strconv.Itoa(placeholder.Y) +
+			`"/><a:ext cx="` + strconv.Itoa(max(placeholder.Width, 1)) + `" cy="` + strconv.Itoa(max(placeholder.Height, 1)) +
+			`"/></a:xfrm></p:spPr>`
+	}
 	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) + `"/>` +
-		`<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>` + reference + `</p:nvPr></p:nvSpPr><p:spPr/>` + body + `</p:sp>`
+		`<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>` + reference + `</p:nvPr></p:nvSpPr>` + properties + body + `</p:sp>`
 }
 
 // composedShapeXML draws a text box for a region Ptium derived itself.

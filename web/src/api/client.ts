@@ -2,6 +2,7 @@ import type {
   AdminUser,
   ApiKey,
   AuthConfig,
+  CanvasRegion,
   Incident,
   Presentation,
 	PresentationRevision,
@@ -12,6 +13,7 @@ import type {
   SlideElement,
   SlideImage,
   SlideParagraph,
+  SlotFrame,
   Template,
   TemplateLayout,
   TemplatePalette,
@@ -470,6 +472,21 @@ function normalizeElements(raw: unknown): SlideElement[] {
   })
 }
 
+/** Region overrides, kept only when they are complete and finite. */
+function normalizeFrames(raw: unknown): Record<string, SlotFrame> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const frames: Record<string, SlotFrame> = {}
+  for (const [slot, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue
+    const frame = value as Record<string, unknown>
+    const numbers = [frame.x, frame.y, frame.width, frame.height].map(Number)
+    if (numbers.some((number) => !Number.isFinite(number))) continue
+    if (numbers[2] <= 0 || numbers[3] <= 0) continue
+    frames[slot] = { x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3] }
+  }
+  return Object.keys(frames).length > 0 ? frames : undefined
+}
+
 function normalizePresentation(value: Presentation & Record<string, unknown>): Presentation {
   const rawSlides = Array.isArray(value.slides) ? value.slides as unknown as Array<Record<string, unknown>> : []
   const slides = rawSlides.map((slide, index) => {
@@ -495,6 +512,7 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
       blocks: asRecord<SlideBlock>(content.blocks),
       images: asRecord<SlideImage>(content.images),
       elements: normalizeElements(content.elements),
+      frames: normalizeFrames(content.frames),
       speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
       imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
       accent: String(slide.accent || content.accent || '') || undefined,
@@ -858,8 +876,56 @@ export const api = {
       : `/templates/${encodeURIComponent(id)}/preview.svg`
     return fetchImage(`${path}?width=${width}`)
   },
-  slidePreview(presentationId: string, slide: number, width = 960, includeFreeform = true) {
-    return fetchImage(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?slide=${slide}&width=${width}&freeform=${includeFreeform}`)
+  slidePreview(presentationId: string, slide: number, width = 960, includeFreeform = true,
+    options: { exclude?: string[]; only?: string } = {}) {
+    const query = new URLSearchParams({ slide: String(slide), width: String(width), freeform: String(includeFreeform) })
+    // The canvas asks for one region on its own to drag it, and for the page
+    // without the regions it is moving, so the drawing itself moves rather than an
+    // outline over a stale copy of it.
+    if (options.only) query.set('only', options.only)
+    if (options.exclude?.length) query.set('exclude', options.exclude.join(','))
+    return fetchImage(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?${query.toString()}`)
+  },
+
+  /** The slide's template regions, as objects the canvas can select and edit. */
+  async slideRegions(presentationId: string, slide: number) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(presentationId)}/slides/${slide}/regions`)
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const regions = Array.isArray(data.regions) ? data.regions as CanvasRegion[] : []
+    return {
+      slide: Number(data.slide) || slide,
+      layoutId: String(data.layoutId || ''),
+      layoutName: String(data.layoutName || ''),
+      aspectRatio: Number(data.aspectRatio) || 16 / 9,
+      slideHeightPoints: Number(data.slideHeightPoints) || 540,
+      regions: regions.filter((region) => region && typeof region.slot === 'string'),
+    }
+  },
+
+  /** Asks the model for another draft of one slide. Nothing is saved. */
+  async reviseSlide(presentationId: string, slide: number, input: { action: string; instruction?: string; slot?: string }) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(presentationId)}/slides/${slide}/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ action: input.action, instruction: input.instruction || '', slot: input.slot || '' }),
+    })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const proposal = data.proposal && typeof data.proposal === 'object' ? data.proposal as Record<string, unknown> : {}
+    const content = proposal.content && typeof proposal.content === 'object' ? proposal.content as Record<string, unknown> : {}
+    return {
+      source: String(data.source || ''),
+      warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      findings: normalizeFindings(data.findings),
+      slide: {
+        title: String(proposal.title || ''),
+        subtitle: String(proposal.subtitle || '') || undefined,
+        speakerNotes: String(proposal.speakerNotes || proposal.speaker_notes || '') || undefined,
+        layoutId: String(proposal.layoutId || proposal.layout_id || content.layoutId || '') || undefined,
+        fields: normalizeFields(content.fields),
+        blocks: asRecord<SlideBlock>(content.blocks),
+        images: asRecord<SlideImage>(content.images),
+        accent: String(content.accent || '') || undefined,
+      },
+    }
   },
 
   async profile() {

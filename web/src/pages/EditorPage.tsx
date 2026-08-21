@@ -12,7 +12,9 @@ import { SlidePreview } from '../components/SlidePreview'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
-import type { Presentation, PresentationRevision, Slide, SlideElement, Template, TemplateLayout } from '../types'
+import type {
+  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, SlotFrame, Template, TemplateLayout,
+} from '../types'
 import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
@@ -109,6 +111,23 @@ function slideFields(slide: Slide, layout?: TemplateLayout) {
   return fields
 }
 
+/**
+ * Rebuilds the prose the text editors show from one slot's paragraphs.
+ *
+ * The slot is passed in rather than guessed: saving writes the body textarea back
+ * to the slide's prose slot, so reading it from a different slot would copy one
+ * region's words over another's on the next save.
+ */
+function bodyFromFields(fields: Record<string, SlideParagraph[]>, slot: string) {
+  const bullets = (fields[slot] || []).map((paragraph) => `${'  '.repeat(paragraph.level || 0)}${paragraph.text}`)
+  return { body: bullets.join('\n'), bullets }
+}
+
+/** The same, from text the canvas just typed into the prose slot. */
+function bodyFromText(text: string) {
+  return { body: text, bullets: text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) }
+}
+
 function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
   return slides.map((slide, index) => {
     const layout = layouts.find((candidate) => candidate.id === slide.layoutId)
@@ -129,6 +148,9 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         blocks: slide.blocks || {},
         images: slide.images || {},
         elements: slide.elements || [],
+        // Where the author dragged a template region, if they did. An empty map
+        // is the deck sitting exactly where its template puts it.
+        frames: slide.frames || {},
         bullets: slideBodyLines(slide),
         accent: slide.accent,
       },
@@ -146,6 +168,7 @@ function findingLabel(kind: string) {
     case 'orphan': return '줄 끝에 한 음절만 남음'
     case 'density': return '한 장에 너무 많음'
     case 'notes': return '발표 노트 없음'
+    case 'repeat': return '같은 말을 두 번 함'
   }
   return kind
 }
@@ -356,11 +379,118 @@ export function EditorPage({ id }: { id: string }) {
   const activeHoldings = useMemo(() => slideHoldings(active), [active])
   const defects = (deckFindings || []).filter((finding) => !finding.advisory)
   const advisories = (deckFindings || []).filter((finding) => finding.advisory)
+  const updateSlide = (slideId: string, updates: Partial<Slide>) => {
+    markEdited()
+    setSlides((current) => current.map((slide) => slide.id === slideId ? { ...slide, ...updates } : slide)); setDirty(true)
+  }
   const updateActive = (updates: Partial<Slide>) => {
     if (!active) return
-    markEdited()
-    setSlides((current) => current.map((slide) => slide.id === activeId ? { ...slide, ...updates } : slide)); setDirty(true)
+    updateSlide(activeId, updates)
   }
+  const activeLayout = useMemo(() => (template?.layouts || []).find((layout) => layout.id === active?.layoutId), [template, active?.layoutId])
+
+  // ── Editing what the generator wrote ───────────────────────────────────────
+  // The canvas edits the slide's own regions. Every change lands in the same
+  // slide state the text editors use, so the two views never disagree.
+  /**
+   * Keeps the body textarea's slot and its text in step with the regions.
+   *
+   * Saving writes that textarea back to the slide's prose slot, and which slot
+   * that is depends on what the other regions hold. Editing one region can move
+   * it — filling an empty region, or turning a region into a component — so the
+   * prose is re-read from wherever it will be written, or one region's words end
+   * up overwriting another's on the next save.
+   */
+  const withProse = (next: Slide, updates: Partial<Slide>, typed?: { slot: string; text: string }) => {
+    const slot = proseSlot(next, activeLayout)
+    return {
+      ...updates,
+      ...(typed && typed.slot === slot ? bodyFromText(typed.text) : bodyFromFields(next.fields || {}, slot)),
+    }
+  }
+
+  const writeRegionText = (slot: string, text: string) => {
+    if (!active) return
+    const paragraphs = textToParagraphs(text)
+    const fields = { ...(active.fields || {}) }
+    if (paragraphs.length > 0) fields[slot] = paragraphs
+    else delete fields[slot]
+    const updates: Partial<Slide> = { fields }
+    if (slot === 'title') {
+      // A slide must keep a title: emptying the region would fail the save, and
+      // failing a save while someone types is worse than keeping the old words.
+      if (paragraphs[0]?.text) updates.title = paragraphs[0].text
+      else fields.title = active.fields?.title || [{ text: active.title }]
+    } else if (slot === 'subtitle') {
+      updates.subtitle = text.trim()
+    }
+    updateActive(withProse({ ...active, fields }, updates, { slot, text }))
+  }
+  const writeRegionBlock = (slot: string, block: SlideBlock) => {
+    if (!active) return
+    const blocks = { ...(active.blocks || {}), [slot]: block }
+    updateActive(withProse({ ...active, blocks }, { blocks }))
+  }
+  const clearRegion = (slot: string) => {
+    if (!active) return
+    const fields = { ...(active.fields || {}) }
+    const blocks = { ...(active.blocks || {}) }
+    const images = { ...(active.images || {}) }
+    delete fields[slot]; delete blocks[slot]; delete images[slot]
+    const updates: Partial<Slide> = { fields, blocks, images }
+    if (slot === 'subtitle') updates.subtitle = ''
+    updateActive(withProse({ ...active, fields, blocks, images }, updates))
+  }
+  const writeRegionFrames = (frames: Record<string, SlotFrame>) => updateActive({ frames })
+
+  const revisionSnapshot = useRef<Slide | null>(null)
+  const [canUndoRevise, setCanUndoRevise] = useState(false)
+  const reviseSlideAt = async (index: number, input: { action: string; instruction: string; slot: string }) => {
+    const slide = slides[index]
+    if (!slide || !presentation) return
+    // The model is asked to revise what the server has, so anything typed a
+    // moment ago is part of the draft it works from.
+    if (editorState.current.dirty) await save()
+    try {
+      const result = await api.reviseSlide(id, index + 1, input)
+      const current = editorState.current.slides.find((candidate) => candidate.id === slide.id) || slide
+      revisionSnapshot.current = current
+      setCanUndoRevise(true)
+      const fields = result.slide.fields
+      const written: Slide = { ...current, fields, blocks: result.slide.blocks, images: result.slide.images }
+      const layout = (template?.layouts || []).find((candidate) => candidate.id === (result.slide.layoutId || current.layoutId))
+      updateSlide(current.id, {
+        title: result.slide.title || current.title,
+        subtitle: result.slide.subtitle,
+        speakerNotes: result.slide.speakerNotes ?? current.speakerNotes,
+        layoutId: result.slide.layoutId || current.layoutId,
+        fields,
+        blocks: result.slide.blocks,
+        images: result.slide.images,
+        accent: result.slide.accent || current.accent,
+        ...bodyFromFields(fields, proseSlot(written, layout)),
+      })
+      const trouble = result.findings.filter((finding) => !finding.advisory).length
+      showToast(trouble > 0
+        ? `AI가 다시 썼습니다. 아직 맞지 않는 부분이 ${trouble}곳 있습니다.`
+        : result.warnings.length > 0 ? `AI가 다시 썼습니다. ${result.warnings[0]}` : 'AI가 이 슬라이드를 다시 썼습니다.')
+    } catch (err) {
+      showToast(err instanceof ApiError && err.status === 503
+        ? '이 배포에는 AI 공급자가 설정되어 있지 않습니다. 관리자 설정에서 연결하세요.'
+        : displayError(err))
+    }
+  }
+  const reviseActiveSlide = (input: { action: string; instruction: string; slot: string }) => reviseSlideAt(activeIndex, input)
+  const undoRevise = () => {
+    const snapshot = revisionSnapshot.current
+    if (!snapshot) return
+    markEdited()
+    setSlides((current) => current.map((slide) => slide.id === snapshot.id ? snapshot : slide))
+    setDirty(true)
+    setCanUndoRevise(false)
+    revisionSnapshot.current = null
+  }
+
   const contentLayoutId = useMemo(() => {
     const layouts = template?.layouts || []
     return (layouts.find((layout) => layout.role === 'content') || layouts[0])?.id
@@ -497,6 +627,26 @@ export function EditorPage({ id }: { id: string }) {
 		if (finding.kind === 'notes') return Boolean(slides[finding.slide - 1])
 		if (finding.kind !== 'density' && finding.kind !== 'overflow') return false
 		return slides.length < MAX_SLIDES && slideBodyLines(slides[finding.slide - 1]).length >= 4
+	}
+
+	// What cannot be fixed without rewriting words is handed to the model, with
+	// the measurement attached: "0.9cm too tall" is something a rewrite can aim at.
+	const [aiFixing, setAiFixing] = useState(0)
+	const fixFindingWithAI = async (finding: DeckFinding) => {
+		const target = slides[finding.slide - 1]
+		if (!target || aiFixing) return
+		setActiveId(target.id)
+		setFindingsOpen(false)
+		setAiFixing(finding.slide)
+		try {
+			await reviseSlideAt(finding.slide - 1, {
+				action: finding.kind === 'notes' ? 'notes' : finding.kind === 'repeat' ? 'shorten' : 'fit',
+				instruction: `측정 결과: ${finding.detail}`,
+				slot: finding.slot || '',
+			})
+		} finally {
+			setAiFixing(0)
+		}
 	}
 
 	// Safe fixes never discard content: missing notes receive a draft, while a
@@ -749,11 +899,20 @@ export function EditorPage({ id }: { id: string }) {
           </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
           {active ? <div className={`canvas-stage ${canvasMode === 'edit' ? 'detail-mode' : ''}`}>
             {canvasMode === 'edit' ? <FreeformCanvas
+              presentationId={id}
+              position={activeIndex + 1}
               slideId={active.id}
               elements={active.elements || []}
-              cacheKey={`${id}-edit-base-${activeIndex}-${railVersion}`}
-              loadBase={() => api.slidePreview(id, activeIndex + 1, 1200, false)}
+              frames={active.frames || {}}
+              baseVersion={`${activeIndex}-${railVersion}`}
               onChange={(elements) => updateActive({ elements })}
+              onRegionText={writeRegionText}
+              onRegionBlock={writeRegionBlock}
+              onRegionFrames={writeRegionFrames}
+              onRegionClear={clearRegion}
+              onRevise={reviseActiveSlide}
+              onUndoRevise={undoRevise}
+              canUndoRevise={canUndoRevise}
             /> : canvasMode === 'source' ? <div className="source-editor">
               <div className="source-editor-head">
                 <div>
@@ -897,7 +1056,11 @@ export function EditorPage({ id }: { id: string }) {
 				  <span>{findingLabel(finding.kind)}</span>
 				  <small>{finding.detail}</small>
 				</button>
-				{canSafelyFix(finding) && <button type="button" className="finding-safe-fix" onClick={() => safelyFixFinding(finding)}><WandSparkles size={13} /> 안전 수정</button>}
+				{canSafelyFix(finding)
+				  ? <button type="button" className="finding-safe-fix" onClick={() => safelyFixFinding(finding)}><WandSparkles size={13} /> 안전 수정</button>
+				  : <button type="button" className="finding-safe-fix ai" disabled={aiFixing === finding.slide} onClick={() => void fixFindingWithAI(finding)}>
+					  {aiFixing === finding.slide ? <LoaderCircle className="spin" size={13} /> : <WandSparkles size={13} />} AI로 고치기
+					</button>}
 			  </li>
 			))}</ul>}
       </Modal>

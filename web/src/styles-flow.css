@@ -74,6 +74,50 @@
 .freeform-page{position:relative;container-type:inline-size;aspect-ratio:16/9;margin:auto;overflow:visible;background:#fff;box-shadow:0 13px 38px rgba(32,29,44,.22);touch-action:none;user-select:none}
 .freeform-page.show-grid:after{content:'';position:absolute;z-index:3;inset:0;pointer-events:none;background-image:linear-gradient(rgba(114,91,214,.1) 1px,transparent 1px),linear-gradient(90deg,rgba(114,91,214,.1) 1px,transparent 1px);background-size:5% 10%;box-shadow:inset 0 0 0 1px rgba(114,91,214,.2)}
 .freeform-base{position:absolute!important;z-index:1!important;inset:0;width:100%!important;height:100%!important;object-fit:fill;pointer-events:none;border:0!important;border-radius:0!important}
+/* The slide's own regions — what the generator wrote — as objects a click can
+   reach. They sit above the drawing and below the freeform objects, so an added
+   text box still wins the click where the two overlap. */
+.canvas-region{position:absolute;z-index:4;box-sizing:border-box;border:1px solid transparent;border-radius:2px;cursor:move}
+.canvas-region:hover{border-color:rgba(114,91,214,.45);background:rgba(114,91,214,.05)}
+.canvas-region.empty{border-style:dashed;border-color:rgba(140,134,155,.35);cursor:text}
+.canvas-region.empty:hover{border-color:rgba(114,91,214,.5);background:rgba(114,91,214,.06)}
+.canvas-region.active{border-color:transparent;background:transparent}
+.canvas-region-tag{position:absolute;left:0;top:-15px;z-index:6;padding:1px 5px;border-radius:4px 4px 0 0;color:#fff;background:rgba(78,62,152,.9);font-size:8px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s}
+.canvas-region:hover .canvas-region-tag,.canvas-region.active .canvas-region-tag{opacity:1}
+.canvas-region-input,.canvas-region-draft{position:absolute;z-index:7;inset:0;width:100%;height:100%;padding:1.2% 1.5%;margin:0;box-sizing:border-box;line-height:1.22;white-space:pre-wrap;overflow-wrap:anywhere;overflow:hidden}
+.canvas-region-input{resize:none;border:1px solid var(--violet);outline:0;background:transparent;border-radius:2px;caret-color:currentColor}
+/* No white box behind the words: the region is edited over the slide's own
+   background, in the template's own colour, so typing shows what will print. */
+.canvas-region-input::selection{background:rgba(114,91,214,.35)}
+.canvas-region-draft{pointer-events:none;opacity:.75}
+.canvas-region-sprite{position:absolute;z-index:2;inset:0;width:100%;height:100%;pointer-events:none;object-fit:fill}
+.canvas-region-sprite.pending{opacity:.45}
+.freeform-selection.region{border-style:dashed;border-color:#4e3e98}
+.region-properties.empty{color:var(--muted)}
+.region-properties .region-hint{display:inline-flex;align-items:center;gap:5px;font-size:9px}
+.region-properties .region-chip{display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 8px;border-radius:999px;color:#4e3e98;background:#efeaff;font-size:9px;font-weight:700;white-space:nowrap}
+.region-properties .region-divider{width:1px;height:18px;background:var(--line)}
+.region-properties .region-instruction{flex:1;min-width:120px;max-width:320px;height:25px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:9px;outline:0}
+.region-properties .region-instruction:focus{border-color:var(--violet)}
+.region-properties .danger-hover:hover{color:#a33c3c;border-color:#e6c3c3;background:#fdf1f1}
+/* Editing a component's insides needs room, so it gets a panel rather than a row. */
+.region-inspector{flex:0 0 226px;min-width:0;padding:0 0 12px;border-left:1px solid var(--line-strong);background:#fff;box-shadow:-6px 0 18px rgba(35,31,49,.08);overflow:auto}
+.region-inspector header{position:sticky;z-index:2;top:0;height:35px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:#fff}
+.region-inspector header strong{font-size:9px}.region-inspector header span{color:var(--muted);font-size:8px}
+.region-inspector label{display:flex;flex-direction:column;gap:3px;padding:7px 10px 0;color:var(--muted);font-size:8px}
+.region-inspector input,.region-inspector select,.region-inspector textarea{width:100%;min-height:26px;padding:4px 6px;box-sizing:border-box;border:1px solid var(--line);border-radius:5px;color:var(--ink);background:#fff;font-family:inherit;font-size:9px;outline:0}
+.region-inspector input:focus,.region-inspector select:focus,.region-inspector textarea:focus{border-color:var(--violet)}
+.region-inspector textarea{resize:vertical;line-height:1.4}
+.region-inspector .inspector-hint{margin:9px 10px 3px;color:var(--muted);font-size:8px;line-height:1.5}
+.region-inspector .inspector-item{margin:6px 10px;padding:6px;display:flex;flex-direction:column;gap:4px;border:1px solid var(--line);border-radius:7px;background:#fbfaf8}
+.region-inspector .inspector-item-head{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:8px}
+.region-inspector .inspector-item-head button{width:20px;height:20px;padding:0;display:grid;place-items:center;border:0;border-radius:4px;color:var(--muted);background:transparent;cursor:pointer}
+.region-inspector .inspector-item-head button:hover{color:#a33c3c;background:#fdf1f1}
+.region-inspector .inspector-rows{padding:0 10px;display:flex;flex-direction:column;gap:4px}
+.region-inspector .inspector-row{display:flex;gap:3px}
+.region-inspector .inspector-add{width:calc(100% - 20px);margin:4px 10px 0;height:27px;display:flex;align-items:center;justify-content:center;gap:5px;border:1px dashed var(--line-strong);border-radius:6px;color:var(--violet);background:#fff;font-size:9px;cursor:pointer}
+.region-inspector .inspector-add:disabled{opacity:.4;cursor:default}
+.freeform-layers .layer-group{margin:7px 10px 2px;color:var(--muted);font-size:8px;font-weight:700;letter-spacing:.03em}
 .freeform-element{position:absolute;box-sizing:border-box;cursor:move;transform-origin:center;pointer-events:auto}
 .freeform-element.selected:after{content:'';position:absolute;z-index:5;inset:-2px;border:1px solid rgba(114,91,214,.45);pointer-events:none}
 .freeform-element.locked{cursor:default}.freeform-element-body,.freeform-element>svg,.freeform-element>img{display:block;width:100%;height:100%;box-sizing:border-box}
@@ -109,6 +153,8 @@
 .deck-findings .finding-target{padding-right:104px}
 .deck-findings .finding-safe-fix{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:auto;min-height:29px;padding:0 8px;display:flex;grid-template-columns:none;align-items:center;gap:5px;color:var(--violet);border-color:#d9d1f1;background:#f8f5ff;font-size:9px;font-weight:700}
 .deck-findings .finding-safe-fix:hover{border-color:var(--violet);background:#f1ecff}
+.deck-findings .finding-safe-fix.ai{color:#4e3e98;border-color:#ded7f4;background:#fff}
+.deck-findings .finding-safe-fix:disabled{opacity:.55;cursor:default}
 .revision-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;max-height:min(55vh,440px);overflow-y:auto}
 .revision-list li{min-height:57px;padding:9px 10px;display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:center;border:1px solid var(--line);border-radius:9px;background:#fff}
 .revision-list li>span{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--muted);background:var(--surface-soft)}

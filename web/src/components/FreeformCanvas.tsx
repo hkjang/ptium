@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react'
 import {
   AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical,
-  AlignVerticalJustifyCenter, ArrowRight, Bold, BringToFront, Copy, Eye, EyeOff, Grid3X3, Group, Italic,
-  Layers3, Lock, Minus, MousePointer2, Redo2, RotateCw, SendToBack, Square, Table2, Trash2, Type, Underline,
-  Ungroup, Unlock, Undo2, ZoomIn, ZoomOut,
+  AlignVerticalJustifyCenter, ArrowRight, Bold, BringToFront, Copy, CornerUpLeft, Eraser, Eye, EyeOff, Grid3X3,
+  Group, Italic, Layers3, LayoutTemplate, Lock, Minus, MousePointer2, Plus, Redo2, RotateCw, SendToBack, Square,
+  Table2, Trash2, Type, Underline, Ungroup, Unlock, Undo2, WandSparkles, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { SlideElement } from '../types'
+import type { CanvasRegion, SlideBlock, SlideElement, SlotFrame } from '../types'
 import { SlidePreview } from './SlidePreview'
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
@@ -42,6 +42,58 @@ function boundsOf(elements: SlideElement[]): Bounds {
 }
 
 function nextID() { return `element-${crypto.randomUUID()}` }
+
+/** What a template region holds, named the way the workspace names it. */
+const regionNames: Record<string, string> = {
+  title: '제목', subtitle: '리드 문장', body: '본문', body1: '본문', body2: '본문 2', body3: '본문 3',
+  body4: '본문 4', notes: '노트', picture: '이미지', chart: '차트', table: '표',
+}
+const blockNames: Record<string, string> = {
+  bullets: '목록', kpi: '핵심 지표', hero: '대표 숫자', steps: '단계', timeline: '타임라인',
+  comparison: '비교', columnChart: '세로 막대', barChart: '가로 막대', lineChart: '추이',
+  shareBar: '비중 바', meter: '달성률', table: '표', quote: '인용', callout: '강조', grid: '격자',
+}
+/** The components a person can switch between without losing what they wrote. */
+const switchableBlocks = ['bullets', 'kpi', 'hero', 'steps', 'timeline', 'comparison', 'columnChart', 'barChart', 'lineChart', 'shareBar', 'meter', 'table', 'quote', 'callout']
+
+function regionLabel(region: CanvasRegion) {
+  if (region.kind === 'component') return blockNames[String(region.block?.kind || '')] || '컴포넌트'
+  if (region.kind === 'picture') return '이미지'
+  return regionNames[region.slot] || region.name || region.slot
+}
+
+/** The rows a component carries, as label / value / detail triples. */
+interface BlockItem { label: string; value: string; detail: string }
+function blockItems(block?: SlideBlock): BlockItem[] {
+  if (!block?.items) return []
+  return block.items.map((item) => ({
+    label: String((item as Record<string, unknown>).label ?? ''),
+    value: String((item as Record<string, unknown>).value ?? ''),
+    detail: String((item as Record<string, unknown>).detail ?? ''),
+  }))
+}
+/** Writes the edited rows back, keeping every field the renderer knows about. */
+function withItems(block: SlideBlock, items: BlockItem[]): SlideBlock {
+  const existing = block.items || []
+  return {
+    ...block,
+    items: items.map((item, index) => {
+      const carried = { ...(existing[index] as Record<string, unknown> | undefined) }
+      delete carried.label; delete carried.value; delete carried.detail
+      // A number the renderer plots was parsed from the value; re-parse it so a
+      // chart follows the figure the author just typed.
+      if (carried.number !== undefined) {
+        const parsed = Number(item.value.replace(/[^0-9.-]/g, ''))
+        carried.number = Number.isFinite(parsed) ? parsed : carried.number
+      }
+      const written: Record<string, unknown> = { ...carried }
+      if (item.label) written.label = item.label
+      if (item.value) written.value = item.value
+      if (item.detail) written.detail = item.detail
+      return written
+    }),
+  }
+}
 
 function elementLabel(element: SlideElement) {
   if (element.name) return element.name
@@ -82,13 +134,27 @@ function LineMarker({ id, kind, color }: { id: string; kind?: string; color: str
 }
 
 export function FreeformCanvas({
-  slideId, elements, loadBase, cacheKey, onChange,
+  presentationId, position, slideId, elements, frames, baseVersion, aiEnabled = true,
+  onChange, onRegionText, onRegionBlock, onRegionFrames, onRegionClear, onRevise, onUndoRevise, canUndoRevise,
 }: {
+  presentationId: string
+  /** 1-based position of the slide being edited. */
+  position: number
   slideId: string
   elements: SlideElement[]
-  loadBase: () => Promise<string>
-  cacheKey: string | number
+  frames: Record<string, SlotFrame>
+  /** Changes when the server's copy of the slide changes, which is when the
+   * drawing and the regions are worth fetching again. */
+  baseVersion: string | number
+  aiEnabled?: boolean
   onChange: (elements: SlideElement[]) => void
+  onRegionText: (slot: string, text: string) => void
+  onRegionBlock: (slot: string, block: SlideBlock) => void
+  onRegionFrames: (frames: Record<string, SlotFrame>) => void
+  onRegionClear: (slot: string) => void
+  onRevise: (input: { action: string; instruction: string; slot: string }) => Promise<void>
+  onUndoRevise: () => void
+  canUndoRevise: boolean
 }) {
   const [selected, setSelected] = useState<string[]>([])
   const [editing, setEditing] = useState('')
@@ -98,6 +164,23 @@ export function FreeformCanvas({
   const [shape, setShape] = useState('rect')
   const [layersOpen, setLayersOpen] = useState(false)
   const [assetURLs, setAssetURLs] = useState<Record<string, string>>({})
+  // The slide's own regions: what the generator wrote, as objects rather than
+  // as pixels in a picture.
+  const [regions, setRegions] = useState<CanvasRegion[]>([])
+  const [slideHeightPoints, setSlideHeightPoints] = useState(540)
+  const [aspect, setAspect] = useState(16 / 9)
+  const [regionSlot, setRegionSlot] = useState('')
+  const [regionEditing, setRegionEditing] = useState('')
+  const [regionDraft, setRegionDraft] = useState('')
+  const [regionOffset, setRegionOffset] = useState<{ x: number; y: number } | null>(null)
+  const [regionBox, setRegionBox] = useState<SlotFrame | null>(null)
+  const [spriteURL, setSpriteURL] = useState('')
+  // Where the server drew the lifted region, which is what a drag offsets from.
+  const [spriteAt, setSpriteAt] = useState<SlotFrame | null>(null)
+  const [showRegions, setShowRegions] = useState(true)
+  const [aiInstruction, setAiInstruction] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const regionDrag = useRef<{ mode: DragMode; handle?: Handle; pointerId: number; startX: number; startY: number; frame: SlotFrame } | null>(null)
   const page = useRef<HTMLDivElement>(null)
   const history = useRef<SlideElement[][]>([])
   const future = useRef<SlideElement[][]>([])
@@ -109,9 +192,53 @@ export function FreeformCanvas({
   useEffect(() => {
     setSelected([])
     setEditing('')
+    setRegionSlot('')
+    setRegionEditing('')
     history.current = []
     future.current = []
   }, [slideId])
+
+  // The regions come from the server, drawn through the real template, so what
+  // the canvas offers to edit is exactly what the exported file contains.
+  useEffect(() => {
+    let active = true
+    api.slideRegions(presentationId, position).then((result) => {
+      if (!active) return
+      setRegions(result.regions)
+      setSlideHeightPoints(result.slideHeightPoints)
+      setAspect(result.aspectRatio)
+    }).catch(() => { if (active) setRegions([]) })
+    return () => { active = false }
+  }, [presentationId, position, baseVersion])
+
+  const region = useMemo(() => regions.find((candidate) => candidate.slot === regionSlot), [regions, regionSlot])
+  const regionDrawn = Boolean(region && region.kind !== 'empty')
+  // A selected region is lifted off the page: the base is drawn without it and
+  // the region itself is drawn above, so dragging moves the drawing rather than
+  // an outline over a stale copy of it.
+  const lifted = regionDrawn ? regionSlot : ''
+  const regionFrame = useCallback((candidate: CanvasRegion) => frames[candidate.slot] || candidate.frame, [frames])
+
+  // The lifted region is drawn where the server last saved it, so where it was
+  // drawn has to be recorded with it: the offset a drag adds is measured from
+  // there, and reading it from anywhere else applies the same move twice.
+  const framesRef = useRef(frames)
+  framesRef.current = frames
+  const regionsRef = useRef(regions)
+  regionsRef.current = regions
+  useEffect(() => {
+    if (!lifted) { setSpriteURL(''); setSpriteAt(null); return }
+    let active = true
+    let created = ''
+    api.slidePreview(presentationId, position, 1400, false, { only: lifted }).then((url) => {
+      if (!active) { URL.revokeObjectURL(url); return }
+      created = url
+      const drawn = regionsRef.current.find((candidate) => candidate.slot === lifted)
+      setSpriteAt(framesRef.current[lifted] || drawn?.frame || null)
+      setSpriteURL(url)
+    }).catch(() => { if (active) setSpriteURL('') })
+    return () => { active = false; if (created) URL.revokeObjectURL(created) }
+  }, [presentationId, position, lifted, baseVersion])
 
   useEffect(() => {
     const assetIDs = [...new Set(elements.filter((element) => element.kind === 'image' && element.assetId).map((element) => element.assetId!))]
@@ -152,12 +279,152 @@ export function FreeformCanvas({
     return selected.includes(element.id) ? selected : grouped
   }
 
+  // Double-click, detected here rather than left to the dblclick event.
+  //
+  // Dragging captures the pointer on the page, and a captured pointer retargets
+  // the mouse events that follow it — so the browser's own dblclick lands on the
+  // page instead of on the object that was pressed, and never opens it for
+  // typing. Two presses on the same object inside 450ms is the same gesture and
+  // does not depend on capture.
+  const lastPress = useRef({ id: '', time: 0 })
+  const doublePress = (id: string, time: number) => {
+    const again = lastPress.current.id === id && time - lastPress.current.time < 450
+    lastPress.current = { id, time: again ? 0 : time }
+    return again
+  }
+
   const point = (event: { clientX: number; clientY: number }) => {
     const rect = page.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
     return { x: (event.clientX - rect.left) / rect.width * 100, y: (event.clientY - rect.top) / rect.height * 100 }
   }
   const snapped = (value: number) => snap ? Math.round(value * 2) / 2 : value
+
+  // ── The slide's own regions ────────────────────────────────────────────────
+  // A generated slide is edited here, not only drawn on: the title the model
+  // wrote and a text box someone added answer the same click, the same drag and
+  // the same Delete.
+  const [regionDirty, setRegionDirty] = useState(false)
+  const shown = region ? (regionBox || regionFrame(region)) : null
+  /** Type sized the way the renderer sizes it: a point size is a fraction of the
+   *  slide's height, whatever width the canvas happens to be drawn at. */
+  const regionTextStyle = (candidate: CanvasRegion): CSSProperties => ({
+    fontSize: `${((candidate.fontSize || 18) / slideHeightPoints * 100 / aspect).toFixed(3)}cqw`,
+    color: `#${cleanColor(candidate.color, '20242D')}`,
+    fontFamily: `${candidate.font && !candidate.font.startsWith('+') ? `${candidate.font}, ` : ''}'Noto Sans KR', sans-serif`,
+    fontWeight: candidate.bold || candidate.slot === 'title' ? 700 : 400,
+  })
+
+  const selectRegion = (slot: string) => {
+    setSelected([])
+    setEditing('')
+    setRegionEditing('')
+    setRegionSlot(slot)
+  }
+
+  const beginRegionDrag = (event: ReactPointerEvent, mode: DragMode, handle?: Handle) => {
+    if (!region || !regionDrawn || regionEditing) return
+    // Deliberately not preventDefault: cancelling the press would take the second
+    // click with it, and the second click is how a region is opened for typing.
+    event.stopPropagation()
+    const start = point(event)
+    regionDrag.current = { mode, handle, pointerId: event.pointerId, startX: start.x, startY: start.y, frame: regionFrame(region) }
+    page.current?.setPointerCapture(event.pointerId)
+  }
+
+  const onRegionPointerMove = (event: ReactPointerEvent) => {
+    const operation = regionDrag.current
+    if (!operation) return
+    const current = point(event)
+    const dx = snapped(current.x - operation.startX)
+    const dy = snapped(current.y - operation.startY)
+    if (operation.mode === 'move') {
+      // A quarter of a region may hang off the slide — a deliberate bleed is a
+      // real design — but no further: a region dragged past that is lost rather
+      // than placed.
+      const bleedX = operation.frame.width / 4
+      const bleedY = operation.frame.height / 4
+      setRegionBox({
+        ...operation.frame,
+        x: clamp(operation.frame.x + dx, -bleedX, 100 - operation.frame.width + bleedX),
+        y: clamp(operation.frame.y + dy, -bleedY, 100 - operation.frame.height + bleedY),
+      })
+      return
+    }
+    const handle = operation.handle || 'se'
+    let left = operation.frame.x
+    let top = operation.frame.y
+    let right = left + operation.frame.width
+    let bottom = top + operation.frame.height
+    if (handle.includes('w')) left = clamp(snapped(left + dx), -20, right - 4)
+    if (handle.includes('e')) right = clamp(snapped(right + dx), left + 4, 120)
+    if (handle.includes('n')) top = clamp(snapped(top + dy), -20, bottom - 3)
+    if (handle.includes('s')) bottom = clamp(snapped(bottom + dy), top + 3, 120)
+    setRegionBox({ x: left, y: top, width: right - left, height: bottom - top })
+  }
+
+  const endRegionDrag = (event: ReactPointerEvent) => {
+    const operation = regionDrag.current
+    if (!operation) return
+    regionDrag.current = null
+    if (page.current?.hasPointerCapture(event.pointerId)) page.current.releasePointerCapture(event.pointerId)
+    if (!region || !regionBox) return
+    const round = (value: number) => Math.round(value * 100) / 100
+    onRegionFrames({
+      ...frames,
+      [region.slot]: { x: round(regionBox.x), y: round(regionBox.y), width: round(regionBox.width), height: round(regionBox.height) },
+    })
+  }
+
+  const resetRegionFrame = () => {
+    if (!region) return
+    const next = { ...frames }
+    delete next[region.slot]
+    onRegionFrames(next)
+    setRegionBox(null)
+  }
+
+  const startRegionEdit = () => {
+    if (!region || !region.acceptsText || region.kind === 'component' || region.kind === 'picture') return
+    setRegionDraft(region.text || '')
+    setRegionEditing(region.slot)
+  }
+
+  const commitRegionEdit = () => {
+    if (!regionEditing) return
+    const slot = regionEditing
+    setRegionEditing('')
+    const before = regions.find((candidate) => candidate.slot === slot)?.text || ''
+    if (regionDraft === before) return
+    setRegionDirty(true)
+    onRegionText(slot, regionDraft)
+  }
+
+  // A refreshed slide is the answer to what was typed, so the draft stops
+  // standing in for it.
+  useEffect(() => { setRegionDirty(false); setRegionBox(null) }, [baseVersion])
+
+  const patchBlock = (patch: Partial<SlideBlock>) => {
+    if (!region?.block) return
+    setRegionDirty(true)
+    onRegionBlock(region.slot, { ...region.block, ...patch })
+  }
+  const patchBlockItems = (items: BlockItem[]) => {
+    if (!region?.block) return
+    setRegionDirty(true)
+    onRegionBlock(region.slot, withItems(region.block, items))
+  }
+
+  const runRevision = async (action: string) => {
+    if (aiBusy) return
+    setAiBusy(true)
+    try {
+      await onRevise({ action, instruction: aiInstruction.trim(), slot: regionSlot })
+      setAiInstruction('')
+    } finally {
+      setAiBusy(false)
+    }
+  }
 
   const beginDrag = (event: ReactPointerEvent, mode: DragMode, handle?: Handle, forcedSelection?: string[]) => {
     event.preventDefault()
@@ -403,8 +670,25 @@ export function FreeformCanvas({
     if (control && event.key.toLowerCase() === 'g') { event.preventDefault(); event.shiftKey ? ungroup() : group(); return }
     if (control && event.key === ']') { event.preventDefault(); layer(true); return }
     if (control && event.key === '[') { event.preventDefault(); layer(false); return }
+    if (event.key === 'Escape') { setEditing(''); setSelected([]); setRegionEditing(''); setRegionSlot(''); return }
+    // A selected region answers the same keys an object does, except Delete:
+    // emptying a template region is done deliberately, from its panel.
+    if (region && selected.length === 0) {
+      if (event.key === 'Enter' || event.key === 'F2') { event.preventDefault(); startRegionEdit(); return }
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) && regionDrawn) {
+        event.preventDefault()
+        const distance = event.shiftKey ? 2 : .25
+        const current = regionFrame(region)
+        const moved = {
+          ...current,
+          x: current.x + (event.key === 'ArrowLeft' ? -distance : event.key === 'ArrowRight' ? distance : 0),
+          y: current.y + (event.key === 'ArrowUp' ? -distance : event.key === 'ArrowDown' ? distance : 0),
+        }
+        onRegionFrames({ ...frames, [region.slot]: moved })
+        return
+      }
+    }
     if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); removeSelected(); return }
-    if (event.key === 'Escape') { setEditing(''); setSelected([]); return }
     if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key) && selected.length > 0) {
       event.preventDefault()
       const distance = event.shiftKey ? 2 : .25
@@ -442,7 +726,19 @@ export function FreeformCanvas({
       onPointerDown={(event) => {
         const ids = resolveSelection(element, event.shiftKey)
         setSelected(ids)
+        setRegionSlot('')
         if (editing && editing !== element.id) setEditing('')
+        if (doublePress(`element:${element.id}`, event.timeStamp) && !element.locked
+          && (element.kind === 'text' || element.kind === 'table' || element.text !== undefined)) {
+          // Cancel the press: the browser's focus fix-up would otherwise run after
+          // the box has opened and pull focus back out of it, blurring the
+          // textarea and closing it again inside the same gesture.
+          event.preventDefault()
+          event.stopPropagation()
+          pushHistory()
+          setEditing(element.id)
+          return
+        }
         if (!event.shiftKey) beginDrag(event, 'move', undefined, ids)
         else { event.preventDefault(); event.stopPropagation() }
       }}
@@ -529,6 +825,38 @@ export function FreeformCanvas({
       </div>
     </div>
 
+    {/* The properties bar is always here, even with nothing selected. It used to
+        appear on the first click, and the 36px it added pushed the slide down
+        under the pointer — so the second click of a double-click landed on the
+        object's own resize handle instead of opening it for typing. */}
+    {!primary && !region && <div className="freeform-properties region-properties empty" aria-label="선택 없음">
+      <span className="region-hint"><MousePointer2 size={12} /> 슬라이드의 글·컴포넌트나 얹은 개체를 클릭하면 여기에서 고칩니다. 한 번 더 누르면 그 자리에서 타이핑합니다.</span>
+    </div>}
+    {!primary && region && <div className="freeform-properties region-properties" aria-label="선택 영역">
+      <span className="region-chip"><LayoutTemplate size={12} /> {regionLabel(region)}</span>
+      {region.kind !== 'component' && region.kind !== 'picture' && region.acceptsText && (
+        <button type="button" className={regionEditing === region.slot ? 'active' : ''}
+          onClick={() => regionEditing === region.slot ? commitRegionEdit() : startRegionEdit()}>
+          <Type size={13} /> {regionEditing === region.slot ? '편집 완료' : '텍스트 편집'}
+        </button>
+      )}
+      {region.moved || regionBox ? <button type="button" onClick={resetRegionFrame}><CornerUpLeft size={13} /> 원래 자리로</button> : null}
+      {region.kind !== 'empty' && <button type="button" className="danger-hover" onClick={() => { setRegionDirty(true); onRegionClear(region.slot) }}>
+        <Eraser size={13} /> 내용 비우기
+      </button>}
+      {aiEnabled && <>
+        <span className="region-divider" />
+        <input className="region-instruction" value={aiInstruction} placeholder="AI에게 시킬 내용 (예: 숫자를 앞에 세워 줘)"
+          onChange={(event) => setAiInstruction(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); void runRevision('rewrite') } }} />
+        <button type="button" disabled={aiBusy} onClick={() => void runRevision('rewrite')}><WandSparkles size={13} /> {aiBusy ? '고쳐 쓰는 중…' : '다시 쓰기'}</button>
+        <button type="button" disabled={aiBusy} onClick={() => void runRevision('shorten')}>짧게</button>
+        <button type="button" disabled={aiBusy} onClick={() => void runRevision('expand')}>자세히</button>
+        <button type="button" disabled={aiBusy} onClick={() => void runRevision('component')}>컴포넌트로</button>
+        <button type="button" disabled={aiBusy} onClick={() => void runRevision('notes')}>발표 노트</button>
+        {canUndoRevise && <button type="button" onClick={onUndoRevise}><Undo2 size={13} /> AI 이전으로</button>}
+      </>}
+    </div>}
     {primary && <div className="freeform-properties" aria-label="선택 개체 속성">
       {(primary.kind === 'text' || primary.kind === 'table' || primary.text !== undefined) && <>
         <select value={primary.fontFamily || 'Aptos'} onChange={(event) => patchSelected({ fontFamily: event.target.value })} aria-label="글꼴">
@@ -570,13 +898,91 @@ export function FreeformCanvas({
           ref={page}
           className={`freeform-page ${showGrid ? 'show-grid' : ''}`}
           style={{ width: `${zoom}%` }}
-          onPointerDown={() => { setSelected([]); setEditing('') }}
-          onPointerMove={onPointerMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
+          onPointerDown={() => { setSelected([]); setEditing(''); commitRegionEdit(); setRegionSlot('') }}
+          onPointerMove={(event) => { onPointerMove(event); onRegionPointerMove(event) }}
+          onPointerUp={(event) => { endDrag(event); endRegionDrag(event) }}
+          onPointerCancel={(event) => { endDrag(event); endRegionDrag(event) }}
         >
-          <SlidePreview className="freeform-base" cacheKey={cacheKey} alt="템플릿 기반 슬라이드" load={loadBase} />
+          <SlidePreview
+            className="freeform-base"
+            cacheKey={`${slideId}-${baseVersion}-${lifted}`}
+            alt="템플릿 기반 슬라이드"
+            load={() => api.slidePreview(presentationId, position, 1400, false, lifted ? { exclude: [lifted] } : {})}
+          />
+          {/* The lifted region, drawn by the same renderer as the page it came
+              from, so dragging it moves the drawing itself. */}
+          {lifted && region && shown && spriteAt && spriteURL && regionEditing !== lifted && (
+            <img
+              className={`canvas-region-sprite ${regionDirty ? 'pending' : ''}`}
+              src={spriteURL}
+              alt=""
+              style={{
+                transform: `translate(${shown.x - spriteAt.x}%, ${shown.y - spriteAt.y}%) scale(${(shown.width / spriteAt.width).toFixed(4)}, ${(shown.height / spriteAt.height).toFixed(4)})`,
+                transformOrigin: `${spriteAt.x}% ${spriteAt.y}%`,
+              }}
+            />
+          )}
+          {showRegions && regions.map((candidate) => {
+            const frame = candidate.slot === regionSlot && regionBox ? regionBox : regionFrame(candidate)
+            const empty = candidate.kind === 'empty'
+            if (empty && !candidate.acceptsText) return null
+            if (candidate.spannedBy) return null
+            const active = candidate.slot === regionSlot
+            return <div
+              key={candidate.slot}
+              className={`canvas-region kind-${candidate.kind} ${active ? 'active' : ''} ${empty ? 'empty' : ''}`}
+              style={{ left: `${frame.x}%`, top: `${frame.y}%`, width: `${frame.width}%`, height: `${frame.height}%` }}
+              title={`${regionLabel(candidate)} · 두 번 클릭해 편집`}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                if (regionEditing && regionEditing !== candidate.slot) commitRegionEdit()
+                // A second click on a region opens it for typing. Reading that from
+                // pointerdown rather than waiting for dblclick keeps it working when
+                // the same press also begins a drag.
+                const typing = candidate.acceptsText && candidate.kind !== 'component' && candidate.kind !== 'picture'
+                if (doublePress(`region:${candidate.slot}`, event.timeStamp) && typing) {
+                  event.preventDefault()
+                  setRegionDraft(candidate.text || '')
+                  setRegionEditing(candidate.slot)
+                  return
+                }
+                if (!active) { selectRegion(candidate.slot); return }
+                if (candidate.kind !== 'empty') beginRegionDrag(event, 'move')
+              }}
+              onDoubleClick={(event) => {
+                event.stopPropagation()
+                if (!active) selectRegion(candidate.slot)
+                if (candidate.acceptsText && candidate.kind !== 'component' && candidate.kind !== 'picture') {
+                  setRegionDraft(candidate.text || '')
+                  setRegionEditing(candidate.slot)
+                }
+              }}
+            >
+              <span className="canvas-region-tag">{regionLabel(candidate)}{empty ? ' · 비어 있음' : ''}</span>
+              {active && regionEditing === candidate.slot && <textarea
+                autoFocus
+                className="canvas-region-input"
+                value={regionDraft}
+                style={regionTextStyle(candidate)}
+                onPointerDown={(event) => event.stopPropagation()}
+                onChange={(event) => setRegionDraft(event.target.value)}
+                onBlur={commitRegionEdit}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') { event.preventDefault(); setRegionEditing(''); return }
+                  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); commitRegionEdit() }
+                }}
+              />}
+              {active && regionDirty && regionEditing !== candidate.slot && candidate.kind !== 'component' && candidate.kind !== 'picture' && (
+                <div className="canvas-region-draft" style={regionTextStyle(candidate)}>{regionDraft}</div>
+              )}
+            </div>
+          })}
           {elements.map(renderElement)}
+          {region && shown && selectedElements.length === 0 && <div className="freeform-selection region" style={{ left: `${shown.x}%`, top: `${shown.y}%`, width: `${shown.width}%`, height: `${shown.height}%` }}>
+            {regionDrawn && !regionEditing && handles.map((handle) => <button type="button" key={handle}
+              className={`resize-handle handle-${handle}`} onPointerDown={(event) => beginRegionDrag(event, 'resize', handle)}
+              aria-label={`${handle} 방향 크기 조절`} />)}
+          </div>}
           {selectedElements.length > 0 && <div className="freeform-selection" style={{ left: `${selectedBounds.x}%`, top: `${selectedBounds.y}%`, width: `${selectedBounds.width}%`, height: `${selectedBounds.height}%` }}>
             {!selectedElements.every((element) => element.locked) && <>
               <button type="button" className="rotate-handle" onPointerDown={(event) => beginDrag(event, 'rotate')} title="회전"><RotateCw size={11} /></button>
@@ -585,8 +991,59 @@ export function FreeformCanvas({
           </div>}
         </div>
       </div>
+      {region?.kind === 'component' && region.block && <aside className="region-inspector" aria-label="컴포넌트 편집">
+        <header><strong>{blockNames[String(region.block.kind)] || '컴포넌트'} 편집</strong><span>{region.slot}</span></header>
+        <label>형식
+          <select value={String(region.block.kind)} onChange={(event) => patchBlock({ kind: event.target.value })}>
+            {switchableBlocks.map((kind) => <option key={kind} value={kind}>{blockNames[kind] || kind}</option>)}
+            {!switchableBlocks.includes(String(region.block.kind)) && <option value={String(region.block.kind)}>{blockNames[String(region.block.kind)] || String(region.block.kind)}</option>}
+          </select>
+        </label>
+        <label>제목 <input value={String(region.block.heading || '')} placeholder="없음" onChange={(event) => patchBlock({ heading: event.target.value })} /></label>
+        <label>캡션 <input value={String(region.block.caption || '')} placeholder="없음" onChange={(event) => patchBlock({ caption: event.target.value })} /></label>
+        {(region.block.kind === 'quote' || region.block.kind === 'callout') && (
+          <label>문장 <textarea rows={3} value={String(region.block.text || '')} onChange={(event) => patchBlock({ text: event.target.value })} /></label>
+        )}
+        {Array.isArray(region.block.rows) && region.block.rows.length > 0 ? <>
+          <p className="inspector-hint">표의 칸을 직접 고칩니다. 첫 줄은 머리글입니다.</p>
+          <div className="inspector-rows">
+            {(region.block.rows as string[][]).map((row, rowIndex) => <div key={rowIndex} className="inspector-row">
+              {row.map((cell, columnIndex) => <input key={columnIndex} value={cell} aria-label={`${rowIndex + 1}행 ${columnIndex + 1}열`}
+                onChange={(event) => {
+                  const rows = (region.block!.rows as string[][]).map((current) => [...current])
+                  rows[rowIndex][columnIndex] = event.target.value
+                  patchBlock({ rows })
+                }} />)}
+            </div>)}
+          </div>
+        </> : <>
+          <p className="inspector-hint">항목을 고치면 슬라이드가 그대로 다시 그려집니다.</p>
+          {blockItems(region.block).map((item, index) => <div key={index} className="inspector-item">
+            <div className="inspector-item-head"><span>{index + 1}</span>
+              <button type="button" aria-label={`${index + 1}번째 항목 삭제`} onClick={() => patchBlockItems(blockItems(region.block).filter((_, position) => position !== index))}><Trash2 size={11} /></button>
+            </div>
+            <input value={item.label} placeholder="이름" onChange={(event) => patchBlockItems(blockItems(region.block).map((current, position) => position === index ? { ...current, label: event.target.value } : current))} />
+            <input value={item.value} placeholder="값" onChange={(event) => patchBlockItems(blockItems(region.block).map((current, position) => position === index ? { ...current, value: event.target.value } : current))} />
+            <input value={item.detail} placeholder="설명 (선택)" onChange={(event) => patchBlockItems(blockItems(region.block).map((current, position) => position === index ? { ...current, detail: event.target.value } : current))} />
+          </div>)}
+          <button type="button" className="inspector-add" disabled={blockItems(region.block).length >= 8}
+            onClick={() => patchBlockItems([...blockItems(region.block), { label: '새 항목', value: '', detail: '' }])}>
+            <Plus size={12} /> 항목 추가
+          </button>
+        </>}
+      </aside>}
       {layersOpen && <aside className="freeform-layers" aria-label="개체 레이어">
         <header><strong><Layers3 size={13} /> 개체 레이어</strong><span>{elements.length}</span></header>
+        {regions.some((candidate) => candidate.kind !== 'empty') && <>
+          <p className="layer-group">템플릿 영역</p>
+          <ul>{regions.filter((candidate) => candidate.kind !== 'empty' && !candidate.spannedBy).map((candidate) => <li key={candidate.slot} className={candidate.slot === regionSlot ? 'active' : ''}>
+            <button type="button" className="layer-select" onClick={() => selectRegion(candidate.slot)} title={candidate.text || regionLabel(candidate)}>
+              <LayoutTemplate size={12} />
+              <span>{regionLabel(candidate)}{candidate.moved ? ' · 옮김' : ''}</span>
+            </button>
+          </li>)}</ul>
+          <p className="layer-group">자유 배치 개체</p>
+        </>}
         {layerElements.length === 0 ? <p>아직 개체가 없습니다.</p> : <ul>{layerElements.map((element) => <li key={element.id} className={selected.includes(element.id) ? 'active' : ''}>
           <button type="button" className="layer-select" onClick={() => { setSelected([element.id]); setEditing('') }} title={elementLabel(element)}>
             {element.kind === 'table' ? <Table2 size={12} /> : element.kind === 'text' ? <Type size={12} /> : element.kind === 'line' ? <Minus size={12} /> : element.kind === 'image' ? <Square size={12} /> : <Square size={12} />}
@@ -599,8 +1056,12 @@ export function FreeformCanvas({
     </div>
 
     <div className="freeform-footer">
-      <span>{elements.length}개 개체 · {selected.length > 0 ? `${selected.length}개 선택` : '개체를 클릭해 선택'}</span>
+      <span>
+        {regions.filter((candidate) => candidate.kind !== 'empty').length}개 템플릿 영역 · {elements.length}개 개체 ·{' '}
+        {region ? `${regionLabel(region)} 선택` : selected.length > 0 ? `${selected.length}개 선택` : '슬라이드의 글이나 도형을 클릭하세요'}
+      </span>
       <div>
+        <button type="button" className={showRegions ? 'active' : ''} onClick={() => { setShowRegions((value) => !value); setRegionSlot('') }} title="AI가 만든 영역 선택 가능"><LayoutTemplate size={13} /></button>
         <button type="button" className={layersOpen ? 'active' : ''} onClick={() => setLayersOpen((value) => !value)} title="개체 레이어"><Layers3 size={13} /></button>
         <label><input type="checkbox" checked={snap} onChange={(event) => setSnap(event.target.checked)} /> 맞춤</label>
         <button type="button" className={showGrid ? 'active' : ''} onClick={() => setShowGrid((value) => !value)} title="격자 표시"><Grid3X3 size={13} /></button>

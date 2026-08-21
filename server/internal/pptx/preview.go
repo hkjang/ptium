@@ -17,6 +17,11 @@ type PreviewOptions struct {
 	// from photographs previews as an empty slide, which reads as the design
 	// having been thrown away.
 	Media MediaResolver
+	// Bare drops the template's background and artwork, drawing only what the
+	// slide itself puts on the page. The canvas uses it to lift one region off a
+	// slide as a transparent sprite it can drag, so what moves under the pointer
+	// is the real drawing rather than an outline standing in for it.
+	Bare bool
 }
 
 // PreviewSVG renders an approximate but faithful picture of a slide using the
@@ -46,6 +51,12 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 	fmt.Fprintf(&builder, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" width="%d" height="%d" role="img" preserveAspectRatio="xMidYMid meet">`,
 		pixelWidth, pixelHeight, pixelWidth, pixelHeight)
 	gradients := &gradientRegistry{}
+	if options.Bare {
+		builder.WriteString(previewSlideBody(manifest, layout, slide, design, scale, options, gradients))
+		builder.WriteString(gradients.defs())
+		builder.WriteString(`</svg>`)
+		return builder.String()
+	}
 	builder.WriteString(previewBackground(layout, background, pixelWidth, pixelHeight, options.Media, gradients))
 	// A template's identity usually lives in its artwork rather than its colour
 	// scheme, and it paints in document order underneath the placeholders.
@@ -66,19 +77,31 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 				float64(decoration.X)*scale, float64(decoration.Y)*scale, width, height, radius, decoration.Fill)
 		}
 	}
+	builder.WriteString(previewSlideBody(manifest, layout, slide, design, scale, options, gradients))
+	builder.WriteString(gradients.defs())
+	builder.WriteString(`</svg>`)
+	return builder.String()
+}
+
+// previewSlideBody draws what the slide itself puts on the page: its regions in
+// the layout's order, then the freeform objects above them.
+func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Design,
+	scale float64, options PreviewOptions, gradients *gradientRegistry) string {
+	var builder strings.Builder
 	spanned := slide.spannedSlots()
 	for _, placeholder := range layout.Placeholders {
 		if spanned[placeholder.Slot] {
 			// Covered by a component placed in another region.
 			continue
 		}
+		placeholder = slide.Place(placeholder)
 		// An image occupies its slot the same way it does in the exported file.
 		if picture, ok := slide.Pictures[placeholder.Slot]; ok && len(picture.Data) > 0 {
 			builder.WriteString(previewSlidePicture(placeholder, picture, scale, gradients.clipID()))
 			continue
 		}
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
-			frame := blockFrame(layout, placeholder, block)
+			frame := slide.blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
 				builder.WriteString(component.SVG(scale))
 				continue
@@ -101,8 +124,6 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 	for _, element := range slide.Elements {
 		builder.WriteString(element.SVG(scale))
 	}
-	builder.WriteString(gradients.defs())
-	builder.WriteString(`</svg>`)
 	return builder.String()
 }
 

@@ -32,6 +32,10 @@ const (
 	FindingDensity = "density"
 	// FindingNotes is a slide with nothing to say out loud.
 	FindingNotes = "notes"
+	// FindingRepeat is the same point made twice in different words. A model
+	// writing to a line count pads rather than stops, and a padded slide reads as
+	// generated — so it is measured rather than hoped away.
+	FindingRepeat = "repeat"
 )
 
 // A slide is a thing someone stands next to and talks over. Two of its failures
@@ -117,9 +121,10 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 		if spanned[placeholder.Slot] {
 			continue
 		}
+		placeholder = slide.Place(placeholder)
 		frame := Frame{X: placeholder.X, Y: placeholder.Y, Width: placeholder.Width, Height: placeholder.Height}
 		if block, ok := slide.Blocks[placeholder.Slot]; ok {
-			frame = blockFrame(layout, placeholder, block)
+			frame = slide.blockFrame(layout, placeholder, block)
 		}
 		switch {
 		case len(slide.Pictures[placeholder.Slot].Data) > 0:
@@ -218,6 +223,112 @@ func inspectDensity(placeholder Placeholder, paragraphs []Paragraph) []Finding {
 	return nil
 }
 
+// slideSentences is every point a slide makes, in the terms an audience hears
+// them: prose lines and the rows of its components.
+func slideSentences(slide Slide) []string {
+	var sentences []string
+	for _, paragraphs := range slide.Fields {
+		for _, paragraph := range paragraphs {
+			sentences = append(sentences, paragraph.Text)
+		}
+	}
+	for _, block := range slide.Blocks {
+		for _, item := range block.Items {
+			for _, part := range []string{item.Label, item.Value, item.Detail} {
+				sentences = append(sentences, part)
+			}
+		}
+		sentences = append(sentences, block.Text)
+	}
+	sort.Strings(sentences)
+	return sentences
+}
+
+// repeatedPoints finds two lines that make the same point in different words.
+//
+// A model writing to a line count restates rather than stops, and a restatement
+// keeps most of its words while changing their endings — so words are compared
+// by their stems, and only lines long enough to carry an argument are compared
+// at all. Parallel lines ("매출은 전년 대비 12% 늘었습니다" beside "비용은 전년
+// 대비 8% 줄었습니다") are good writing and share too little to trip this.
+func repeatedPoints(slide Slide) []Finding {
+	sentences := slideSentences(slide)
+	words := make([][]string, len(sentences))
+	for index, sentence := range sentences {
+		words[index] = contentWords(sentence)
+	}
+	var findings []Finding
+	for index, first := range sentences {
+		if len(words[index]) < 4 {
+			continue
+		}
+		for other := index + 1; other < len(sentences); other++ {
+			if len(words[other]) < 4 {
+				continue
+			}
+			if wordOverlap(words[index], words[other]) >= 0.65 {
+				findings = append(findings, Finding{Kind: FindingRepeat, Advisory: true,
+					Detail: fmt.Sprintf("the same point twice: %q and %q",
+						shorten(first, 34), shorten(sentences[other], 34))})
+			}
+		}
+	}
+	return findings
+}
+
+// contentWords is a line reduced to the words that carry its meaning.
+func contentWords(text string) []string {
+	fields := strings.FieldsFunc(strings.TrimSpace(text), func(r rune) bool {
+		return r == ' ' || r == '\t' || strings.ContainsRune(".,·|()[]{}\"'`~!?:;-–—/", r)
+	})
+	words := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if len([]rune(field)) >= 2 {
+			words = append(words, field)
+		}
+	}
+	return words
+}
+
+// wordOverlap is the share of the shorter line's words the longer one repeats,
+// counting a word whose stem matches as the same word.
+func wordOverlap(left, right []string) float64 {
+	used := make([]bool, len(right))
+	shared := 0
+	for _, word := range left {
+		for index, candidate := range right {
+			if used[index] || !sameStem(word, candidate) {
+				continue
+			}
+			used[index] = true
+			shared++
+			break
+		}
+	}
+	smaller := min(len(left), len(right))
+	if smaller == 0 {
+		return 0
+	}
+	return float64(shared) / float64(smaller)
+}
+
+// sameStem reports whether two words are the same word with different endings.
+func sameStem(first, second string) bool {
+	if first == second {
+		return true
+	}
+	shorter, longer := []rune(first), []rune(second)
+	if len(shorter) > len(longer) {
+		shorter, longer = longer, shorter
+	}
+	// A two-syllable noun with an ending on it — 저하 and 저하됩니다, 비용 and
+	// 비용은 — is the same word. One syllable is a coincidence.
+	if len(shorter) < 2 {
+		return false
+	}
+	return strings.HasPrefix(string(longer), string(shorter))
+}
+
 // InspectDeck reports the defects of a whole deck.
 func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	design := NewDesign(manifest)
@@ -235,6 +346,10 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 		}
 		// A slide with something to argue and nothing prepared to say is half
 		// finished. A cover or a divider carries the room on its own.
+		for _, finding := range repeatedPoints(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})

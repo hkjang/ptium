@@ -137,7 +137,7 @@ func TestBlockSpanCoversBothRegions(t *testing.T) {
 		{Label: "확장성", Value: "수직", Detail: "수평"},
 		{Label: "비용", Value: "높음", Detail: "낮음"},
 	}}
-	frame := blockFrame(layout, layout.Placeholders[0], block)
+	frame := Slide{}.blockFrame(layout, layout.Placeholders[0], block)
 	if frame.X != 1000000 || frame.Width != 9000000 {
 		t.Fatalf("spanned frame = %+v", frame)
 	}

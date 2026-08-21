@@ -104,7 +104,7 @@ func TestComposedShapeIsAPlainTextBox(t *testing.T) {
 		X: 100, Y: 200, Width: 3000000, Height: 800000, FontSize: 3600, Bold: true,
 		Color: "FFFFFF", Font: "Pretendard", MaxChars: 40, MaxLines: 2, LineEm: 20,
 	}
-	xml := placeholderShapeXML(2, placeholder, []Paragraph{{Text: "전환 로드맵"}}, "ko-KR")
+	xml := placeholderShapeXML(2, placeholder, []Paragraph{{Text: "전환 로드맵"}}, "ko-KR", false)
 	for _, want := range []string{`txBox="1"`, `<a:off x="100" y="200"/>`, `sz="3600"`, `b="1"`,
 		`<a:srgbClr val="FFFFFF"/>`, `typeface="Pretendard"`, `<a:buNone/>`, "전환 로드맵"} {
 		if !strings.Contains(xml, want) {
@@ -118,7 +118,7 @@ func TestComposedShapeIsAPlainTextBox(t *testing.T) {
 	// A real placeholder keeps inheriting, so it carries no explicit styling.
 	real := placeholder
 	real.Synthetic = false
-	inherited := placeholderShapeXML(2, real, []Paragraph{{Text: "전환 로드맵"}}, "ko-KR")
+	inherited := placeholderShapeXML(2, real, []Paragraph{{Text: "전환 로드맵"}}, "ko-KR", false)
 	if !strings.Contains(inherited, "<p:ph") || strings.Contains(inherited, "sz=\"3600\"") {
 		t.Fatalf("a template placeholder must inherit its styling:\n%s", inherited)
 	}

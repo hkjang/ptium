@@ -38,10 +38,13 @@ type AuthPublicConfig struct {
 }
 
 type Options struct {
-	Store         *store.Store
-	Settings      *settings.Service
-	Keys          *keys.Manager
-	Worker        *generation.Worker
+	Store    *store.Store
+	Settings *settings.Service
+	Keys     *keys.Manager
+	Worker   *generation.Worker
+	// Generator answers the editor directly, for work a person waits on: another
+	// draft of one slide. Deck generation stays on the worker's queue.
+	Generator     *generation.Generator
 	Authenticator auth.Authenticator
 	AuthPublic    AuthPublicConfig
 	// Version is the build the workspace is running, shown in the account menu so
@@ -71,6 +74,7 @@ type Server struct {
 	settings               *settings.Service
 	keys                   *keys.Manager
 	worker                 *generation.Worker
+	generator              *generation.Generator
 	authenticator          auth.Authenticator
 	authPublic             AuthPublicConfig
 	version                string
@@ -110,6 +114,7 @@ func New(options Options) (*Server, error) {
 	}
 	return &Server{
 		store: options.Store, settings: options.Settings, keys: options.Keys, worker: options.Worker,
+		generator:     options.Generator,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
@@ -166,6 +171,11 @@ func (s *Server) Handler() http.Handler {
 	// Rendering source that has not been saved is how the code editor shows a
 	// slide as it is typed.
 	api.Handle("POST /api/v1/presentations/{id}/source/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.previewSource))))
+	// One slide's regions, as objects the canvas can select, move and retype.
+	// This is what makes a generated deck editable rather than a picture.
+	api.Handle("GET /api/v1/presentations/{id}/slides/{position}/regions", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.slideRegions))))
+	// Another draft of one slide, proposed and not saved.
+	api.Handle("POST /api/v1/presentations/{id}/slides/{position}/revise", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.reviseSlide))))
 	api.Handle("GET /api/v1/presentations/{id}/inspect", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.inspectPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))

@@ -35,13 +35,73 @@ type Content struct {
 	// geometry uses slide percentages, so the same payload works with every
 	// aspect ratio and can be mapped losslessly to browser CSS and PPTX EMUs.
 	Elements []FreeformElement `json:"elements,omitempty"`
-	Bullets  []string          `json:"bullets,omitempty"`
-	Body     string            `json:"body,omitempty"`
-	Accent   string            `json:"accent,omitempty"`
-	Notes    string            `json:"notes,omitempty"`
+	// Frames moves or resizes a template region on this slide alone. A slot with
+	// no entry keeps the layout's own geometry, so a deck stays inside its
+	// template until someone deliberately drags a region somewhere else.
+	Frames  map[string]SlotFrame `json:"frames,omitempty"`
+	Bullets []string             `json:"bullets,omitempty"`
+	Body    string               `json:"body,omitempty"`
+	Accent  string               `json:"accent,omitempty"`
+	Notes   string               `json:"notes,omitempty"`
 }
 
 const MaxFreeformElements = 200
+
+// SlotFrame is where a template region draws on one slide, in percentages of
+// the slide. Percentages rather than EMUs, for the same reason freeform objects
+// use them: the browser and the exported file then agree without either side
+// knowing the other's units.
+type SlotFrame struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+// MaxSlotFrames bounds the override map. A layout has a handful of regions; a
+// hundred entries is already a client sending nonsense.
+const MaxSlotFrames = 100
+
+// ValidateSlotFrames keeps a moved region on, or near, the slide. The bounds
+// match the freeform ones: a little overhang is a legitimate design, a region
+// parked ten slides to the left is a bug.
+func ValidateSlotFrames(frames map[string]SlotFrame) error {
+	if len(frames) > MaxSlotFrames {
+		return fmt.Errorf("a slide may override at most %d regions", MaxSlotFrames)
+	}
+	for slot, frame := range frames {
+		if strings.TrimSpace(slot) == "" || utf8.RuneCountInString(slot) > 100 {
+			return fmt.Errorf("region override %q names an invalid slot", slot)
+		}
+		for _, value := range []float64{frame.X, frame.Y, frame.Width, frame.Height} {
+			if math.IsNaN(value) || math.IsInf(value, 0) {
+				return fmt.Errorf("region override %q contains a non-finite number", slot)
+			}
+		}
+		if frame.X < -100 || frame.X > 200 || frame.Y < -100 || frame.Y > 200 ||
+			frame.Width < 1 || frame.Width > 300 || frame.Height < 1 || frame.Height > 300 {
+			return fmt.Errorf("region override %q is outside the supported canvas range", slot)
+		}
+	}
+	return nil
+}
+
+// slotFramesInEMU converts the stored percentages to the renderer's units.
+func slotFramesInEMU(frames map[string]SlotFrame, slideWidth, slideHeight int) map[string]pptx.Frame {
+	if len(frames) == 0 {
+		return nil
+	}
+	converted := make(map[string]pptx.Frame, len(frames))
+	for slot, frame := range frames {
+		converted[slot] = pptx.Frame{
+			X:      int(math.Round(frame.X / 100 * float64(slideWidth))),
+			Y:      int(math.Round(frame.Y / 100 * float64(slideHeight))),
+			Width:  max(1, int(math.Round(frame.Width/100*float64(slideWidth)))),
+			Height: max(1, int(math.Round(frame.Height/100*float64(slideHeight)))),
+		}
+	}
+	return converted
+}
 
 // FreeformElement is one Google-Slides-style object on top of a template:
 // text, an editable shape, a line, or an image from the owner's asset library.
@@ -397,6 +457,9 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 		layout := resolveLayout(manifest, slide, index, len(presentation.Slides))
 		rendered := RenderSlide(slide, layout)
 		content := Decode(slide.Content)
+		// A region someone dragged on the canvas moves for this slide only; the
+		// layout it came from is untouched, so every other slide keeps the design.
+		rendered.Frames = slotFramesInEMU(content.Frames, slideWidth, slideHeight)
 		if images != nil {
 			for slot, placed := range content.Images {
 				if _, ok := layout.Slot(slot); !ok {

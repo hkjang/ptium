@@ -296,21 +296,96 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 	if position < 1 {
 		position = 1
 	}
-	// The canvas asks for the template-bound layer without freeform objects and
-	// draws its unsaved local objects above it. Other previews include everything.
-	if request.URL.Query().Get("freeform") == "false" && position <= len(presentation.Slides) {
-		presentation.Slides = append([]model.Slide(nil), presentation.Slides...)
-		content := deck.Decode(presentation.Slides[position-1].Content)
-		content.Elements = nil
-		presentation.Slides[position-1].Content = content.Encode()
+	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data)}
+	if position <= len(presentation.Slides) {
+		query := request.URL.Query()
+		// The canvas asks for the template-bound layer without freeform objects and
+		// draws its unsaved local objects above it. Other previews include everything.
+		dropFreeform := query.Get("freeform") == "false"
+		// It also asks for one region on its own, or for the page without the
+		// regions it is currently moving, so that dragging a generated component
+		// moves the drawing itself instead of an outline over a stale copy of it.
+		only := strings.TrimSpace(query.Get("only"))
+		exclude := splitSlots(query.Get("exclude"))
+		if dropFreeform || only != "" || len(exclude) > 0 {
+			presentation.Slides = append([]model.Slide(nil), presentation.Slides...)
+			presentation.Slides[position-1] = filterSlideRegions(presentation.Slides[position-1], only, exclude, dropFreeform)
+			options.Bare = only != ""
+		}
 	}
-	svg, err := export.PreviewSVG(presentation, manifest, position, previewWidth(request),
-		templateMedia(data), s.imageSource(request, user.ID))
+	svg, err := export.PreviewSlideSVG(presentation, manifest, position, options, s.imageSource(request, user.ID))
 	if err != nil {
 		writeError(writer, request, http.StatusNotFound, "not_found", err.Error(), nil)
 		return
 	}
 	writeSVG(writer, svg)
+}
+
+// splitSlots reads a comma-separated slot list, ignoring the empty entries a
+// client produces when it joins nothing.
+func splitSlots(value string) []string {
+	slots := make([]string, 0, 4)
+	for _, part := range strings.Split(value, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" && len(trimmed) <= 100 {
+			slots = append(slots, trimmed)
+		}
+	}
+	return slots
+}
+
+// filterSlideRegions narrows a slide to one region, or removes some of them.
+//
+// The title and the bullet list are also cleared, because rendering falls back
+// to them when the fields are empty: without that, asking for the body alone
+// would draw the title as well, and the canvas would show it twice.
+func filterSlideRegions(slide model.Slide, only string, exclude []string, dropFreeform bool) model.Slide {
+	content := deck.Decode(slide.Content)
+	if dropFreeform {
+		content.Elements = nil
+	}
+	if only == "" && len(exclude) == 0 {
+		slide.Content = content.Encode()
+		return slide
+	}
+	keep := func(slot string) bool {
+		if only != "" {
+			return slot == only
+		}
+		for _, excluded := range exclude {
+			if excluded == slot {
+				return false
+			}
+		}
+		return true
+	}
+	for slot := range content.Fields {
+		if !keep(slot) {
+			delete(content.Fields, slot)
+		}
+	}
+	for slot := range content.Blocks {
+		if !keep(slot) {
+			delete(content.Blocks, slot)
+		}
+	}
+	for slot := range content.Images {
+		if !keep(slot) {
+			delete(content.Images, slot)
+		}
+	}
+	if only != "" {
+		content.Elements = nil
+	}
+	content.Bullets = nil
+	content.Body = ""
+	if !keep(pptx.SlotTitle) {
+		slide.Title = ""
+	}
+	if !keep(pptx.SlotSubtitle) {
+		slide.Subtitle = ""
+	}
+	slide.Content = content.Encode()
+	return slide
 }
 
 func writeSVG(writer http.ResponseWriter, svg string) {
