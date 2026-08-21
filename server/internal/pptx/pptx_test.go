@@ -541,6 +541,8 @@ func TestReadDeckCarriesTheWordsAndSaysWhatItLeft(t *testing.T) {
 			Blocks: map[string]Block{SlotBody: {Kind: BlockTable,
 				Columns: []string{"채널", "3분기", "4분기"},
 				Rows:    [][]string{{"직영", "420억", "480억"}}}}},
+		{LayoutID: contentLayout.ID, Fields: map[string][]Paragraph{SlotTitle: {{Text: "신규 매장"}}},
+			Pictures: map[string]Picture{SlotBody: {Data: onePixelPNG, ContentType: "image/png", Width: 8, Height: 8}}},
 	}}
 	rendered, err := Render(pkg, manifest, deck)
 	if err != nil {
@@ -552,8 +554,8 @@ func TestReadDeckCarriesTheWordsAndSaysWhatItLeft(t *testing.T) {
 	}
 
 	read := ReadDeck(stored)
-	if len(read.Slides) != 3 {
-		t.Fatalf("read %d slides, want 3", len(read.Slides))
+	if len(read.Slides) != 4 {
+		t.Fatalf("read %d slides, want 4", len(read.Slides))
 	}
 	if read.Slides[0].Title != "2025년 4분기 영업 실적" {
 		t.Fatalf("first title = %q", read.Slides[0].Title)
@@ -567,6 +569,14 @@ func TestReadDeckCarriesTheWordsAndSaysWhatItLeft(t *testing.T) {
 	// The depth of a point is part of the argument.
 	if len(read.Slides[1].Bullets) != 2 || read.Slides[1].Bullets[1].Level != 1 {
 		t.Fatalf("the points came back as %+v", read.Slides[1].Bullets)
+	}
+	// A photograph is the author's; where it sat is not. The bytes come across so
+	// the picture can go into the region the new design keeps for one.
+	if len(read.Slides[3].Pictures) != 1 || len(read.Slides[3].Pictures[0].Data) == 0 {
+		t.Fatalf("the picture did not come across: %+v", read.Slides[3].Pictures)
+	}
+	if read.Slides[3].Pictures[0].Area == 0 {
+		t.Fatal("the picture came across without how much of the slide it covered")
 	}
 	// A table is words in a grid, so it comes across whole.
 	if len(read.Slides[2].Tables) != 1 {

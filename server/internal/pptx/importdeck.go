@@ -2,6 +2,7 @@ package pptx
 
 import (
 	"encoding/xml"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -36,9 +37,21 @@ type ImportedSlide struct {
 	// Tables come across whole: a table is words in a grid, and Ptium draws one
 	// from exactly that.
 	Tables [][][]string
-	// What was on the slide that words cannot carry.
-	Pictures int
+	// Pictures are the photographs on the slide, bytes and all. They are placed
+	// into the new design's picture region rather than at the old design's
+	// coordinates: a photograph positioned for one layout means nothing in
+	// another, but the photograph itself is the author's.
+	Pictures []ImportedPicture
 	Charts   int
+}
+
+// ImportedPicture is a photograph carried over from a slide.
+type ImportedPicture struct {
+	Name string
+	Data []byte
+	// Area is how much of the slide the picture covered, in per-mille. A logo in
+	// the corner is not the slide's illustration.
+	Area int
 }
 
 // ImportedDeck is a whole deck as text.
@@ -126,9 +139,9 @@ func readSlide(pkg *Package, part string) (ImportedSlide, bool) {
 	// A picture, a table and a chart are counted from the part itself: the shape
 	// parser does not descend into a graphic frame, and what matters here is only
 	// how much of the slide the words leave behind.
-	slide.Pictures = strings.Count(content, "<p:pic>")
 	slide.Charts = strings.Count(content, "/chart\"")
 	slide.Tables = readTables(content)
+	slide.Pictures = readPictures(pkg, part, parsed.CSld.SpTree, slideArea(pkg))
 	slide.Notes = readNotes(pkg, part)
 	return slide, true
 }
@@ -163,6 +176,51 @@ func joinLines(lines []ImportedLine) string {
 		parts = append(parts, line.Text)
 	}
 	return strings.Join(parts, " ")
+}
+
+// slideArea is how big a slide is, for judging how much of it a picture covered.
+func slideArea(pkg *Package) int {
+	presentation, ok := pkg.Text("ppt/presentation.xml")
+	if !ok {
+		return 0
+	}
+	size := regexp.MustCompile(`<p:sldSz[^>]*cx="(\d+)"[^>]*cy="(\d+)"`).FindStringSubmatch(presentation)
+	if len(size) != 3 {
+		return 0
+	}
+	width, height := atoiDefault(size[1], 0), atoiDefault(size[2], 0)
+	return width * height / 1000
+}
+
+// readPictures carries a slide's photographs over, bytes and all.
+//
+// Where they sat is not carried: coordinates chosen for one design mean nothing
+// in another. What is carried is the picture itself, into the region the new
+// design keeps for one — which is what a person redoing the deck by hand would
+// do with it.
+func readPictures(pkg *Package, slidePart string, tree rawShapeTree, slideArea int) []ImportedPicture {
+	var pictures []ImportedPicture
+	for _, shape := range tree.flatten() {
+		fill := shape.picture()
+		if fill == nil || strings.TrimSpace(fill.Blip.Embed) == "" {
+			continue
+		}
+		target, ok := pkg.RelationshipByID(slidePart, fill.Blip.Embed)
+		if !ok {
+			continue
+		}
+		data, ok := pkg.Part(target)
+		if !ok || len(data) == 0 {
+			continue
+		}
+		_, _, width, height, hasGeometry := shape.geometry()
+		area := 0
+		if hasGeometry && slideArea > 0 {
+			area = int(int64(width) * int64(height) * 1000 / int64(slideArea))
+		}
+		pictures = append(pictures, ImportedPicture{Name: path.Base(target), Data: data, Area: area})
+	}
+	return pictures
 }
 
 // readTables reads every table on a slide as rows of cell text.

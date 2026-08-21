@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -46,7 +48,39 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 			"This file has no slides Ptium could read", nil)
 		return
 	}
-	source, warnings := deck.SourceFromImport(imported)
+	// A picture on most of the slides is the company's logo, and a picture too
+	// small to be looked at is a decoration; neither is what the slide is about,
+	// and putting either into a picture region would be worse than leaving it
+	// out. What is left is stored once — an identical file uploaded twice is the
+	// same image — and placed in the new design's own picture region.
+	slides := len(imported.Slides)
+	seen := map[string]int{}
+	for _, slide := range imported.Slides {
+		for _, picture := range slide.Pictures {
+			seen[pictureKey(picture)]++
+		}
+	}
+	saved := map[string]string{}
+	source, warnings := deck.SourceFromImportWithImages(imported, func(picture pptx.ImportedPicture) (string, bool) {
+		key := pictureKey(picture)
+		if slides > 2 && seen[key]*2 > slides {
+			return "", false
+		}
+		if picture.Area > 0 && picture.Area < 30 {
+			return "", false
+		}
+		if name, ok := saved[key]; ok {
+			return name, true
+		}
+		asset, err := s.store.CreateAsset(request.Context(), user.ID, store.AssetInput{
+			Name: importedPictureName(meta.Filename, picture.Name), Data: picture.Data,
+		})
+		if err != nil {
+			return "", false
+		}
+		saved[key] = asset.Name
+		return asset.Name, true
+	})
 
 	// The design is chosen, not inherited: someone importing a deck is usually
 	// doing it to put it in a different template. Without a choice, their default
@@ -126,6 +160,25 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	writeData(writer, request, http.StatusCreated, map[string]any{
 		"presentation": stored, "warnings": warnings, "slides": len(compiled.Slides),
 	})
+}
+
+// pictureKey identifies the same picture wherever it appears.
+func pictureKey(picture pptx.ImportedPicture) string {
+	digest := sha256.Sum256(picture.Data)
+	return hex.EncodeToString(digest[:])
+}
+
+// importedPictureName is what the image library will call it: the file it came
+// from, and the picture's own name inside that file.
+func importedPictureName(filename, name string) string {
+	base := strings.TrimSuffix(strings.TrimSpace(filename), ".pptx")
+	if base == "" {
+		base = "가져온 파일"
+	}
+	if strings.TrimSpace(name) == "" {
+		name = "image.png"
+	}
+	return base + " · " + name
 }
 
 func firstNonEmpty(values ...string) string {

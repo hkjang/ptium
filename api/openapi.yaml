@@ -857,9 +857,12 @@ paths:
         the kind of each slide; the text is then compiled into the chosen template,
         so an old deck can be redrawn in a new design.
 
-        Pictures and charts are not carried: a photograph placed for one aspect
-        ratio cannot be moved into another design and be trusted to look right.
-        The response says how many there were.
+        Pictures are carried too: each is stored in the caller's image library and
+        placed in the new design's picture region. Where it sat is not carried —
+        coordinates chosen for one layout mean nothing in another — and a picture
+        repeated on most slides (a logo) or too small to be the point of the slide
+        is left out. Charts are not carried; the response says how many there
+        were.
       tags: [Presentations]
       requestBody:
         required: true

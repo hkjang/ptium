@@ -18,8 +18,16 @@ import (
 // photograph cannot be moved into another design at another aspect ratio and be
 // trusted to look right, so the import says what it left behind.
 func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
+	return SourceFromImportWithImages(imported, nil)
+}
+
+// SourceFromImportWithImages is SourceFromImport with somewhere to put the
+// pictures: store takes one and returns the name deck source should call it by.
+// A picture it declines — because it is a logo repeated on every slide, or a
+// decoration too small to be the point of the slide — is simply not placed.
+func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
-	pictures, tables, charts := 0, 0, 0
+	pictures, placed, tables, charts := 0, 0, 0, 0
 	for index, slide := range imported.Slides {
 		if index > 0 {
 			builder.WriteString("\n")
@@ -52,13 +60,31 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 			builder.WriteString("::\n")
 			tables++
 		}
+		// A photograph goes into the region the new design keeps for one. Where it
+		// sat in the old deck is not carried: coordinates chosen for one layout
+		// mean nothing in another.
+		for _, picture := range slide.Pictures {
+			if store == nil {
+				pictures++
+				continue
+			}
+			name, ok := store(picture)
+			if !ok {
+				continue
+			}
+			fmt.Fprintf(&builder, "::image %s\n", escapeItemField(name))
+			placed++
+		}
 		if notes := strings.TrimSpace(slide.Notes); notes != "" {
 			fmt.Fprintf(&builder, "!notes %s\n", strings.ReplaceAll(notes, "\n", " "))
 		}
-		pictures += slide.Pictures
 		charts += slide.Charts
 	}
 	var warnings []string
+	if placed > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"그림 %d개를 이미지 라이브러리에 저장하고 슬라이드에 넣었습니다", placed))
+	}
 	if pictures > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"그림 %d개는 가져오지 않았습니다. 이미지 탭에서 올려 다시 넣어 주세요", pictures))

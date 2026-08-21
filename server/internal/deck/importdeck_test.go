@@ -15,7 +15,8 @@ func TestSourceFromImportKeepsTheArgument(t *testing.T) {
 		{Title: "2025년 4분기 영업 실적", Lead: "영업기획팀", Role: pptx.RoleTitle, Notes: "결론을 먼저 말합니다."},
 		{Title: "실적 요약", Bullets: []pptx.ImportedLine{
 			{Text: "매출 1,240억"}, {Text: "신규 채널이 절반", Level: 1}}},
-		{Title: "채널별 매출", Tables: [][][]string{{{"채널", "3분기"}, {"직영", "420억"}}}, Pictures: 2, Charts: 1},
+		{Title: "채널별 매출", Tables: [][][]string{{{"채널", "3분기"}, {"직영", "420억"}}},
+			Pictures: []pptx.ImportedPicture{{Name: "image1.png", Data: []byte("png"), Area: 400}}, Charts: 1},
 	}}
 	source, warnings := SourceFromImport(imported)
 
