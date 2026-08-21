@@ -27,7 +27,7 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 // decoration too small to be the point of the slide — is simply not placed.
 func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
-	pictures, placed, tables, charts := 0, 0, 0, 0
+	pictures, placed, tables, charts, plots := 0, 0, 0, 0, 0
 	for index, slide := range imported.Slides {
 		if index > 0 {
 			builder.WriteString("\n")
@@ -78,7 +78,16 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		if notes := strings.TrimSpace(slide.Notes); notes != "" {
 			fmt.Fprintf(&builder, "!notes %s\n", strings.ReplaceAll(notes, "\n", " "))
 		}
-		charts += slide.Charts
+		// A chart comes back as its numbers. The plot in the file was drawn from
+		// figures, and those figures are what the slide is arguing; redrawn by the
+		// design it lands in, they argue the same thing in the new deck's hand.
+		for _, chart := range slide.Charts {
+			if written := chartSource(chart); written != "" {
+				builder.WriteString(written)
+				plots++
+			}
+		}
+		charts += slide.OtherCharts
 	}
 	var warnings []string
 	if placed > 0 {
@@ -92,9 +101,118 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 	if tables > 0 {
 		warnings = append(warnings, fmt.Sprintf("표 %d개를 이 덱의 디자인으로 다시 그렸습니다", tables))
 	}
+	if plots > 0 {
+		warnings = append(warnings, fmt.Sprintf("차트 %d개를 숫자째 가져와 이 덱의 디자인으로 다시 그렸습니다", plots))
+	}
 	if charts > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"차트 %d개는 가져오지 않았습니다. 숫자를 ::bars 나 ::line 으로 적으면 다시 그려집니다", charts))
 	}
 	return builder.String(), warnings
+}
+
+// chartSource writes an imported chart as a component in deck source.
+//
+// A plot of one series is the component it looks like. A trend of several is a
+// line chart, whose source names the axis first and then each series. Several
+// series of columns are a grid of numbers — Ptium draws no grouped column — and
+// a table says what they say without inventing a trend that was not claimed.
+func chartSource(chart pptx.ImportedChart) string {
+	if len(chart.Series) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	if chart.Kind != pptx.BlockLine && len(chart.Series) > 1 {
+		if len(chart.Categories) == 0 {
+			return ""
+		}
+		builder.WriteString("::table\n")
+		header := append([]string{escapeItemField("구분")}, escapedFields(chart.Categories)...)
+		fmt.Fprintf(&builder, "- %s\n", strings.Join(header, " | "))
+		for index, series := range chart.Series {
+			name := strings.TrimSpace(series.Name)
+			if name == "" {
+				name = fmt.Sprintf("계열 %d", index+1)
+			}
+			cells := []string{escapeItemField(name)}
+			for point := range chart.Categories {
+				value := ""
+				if point < len(series.Points) {
+					value = trimNumber(series.Points[point])
+				}
+				cells = append(cells, escapeItemField(value))
+			}
+			fmt.Fprintf(&builder, "- %s\n", strings.Join(cells, " | "))
+		}
+		builder.WriteString("::\n")
+		return builder.String()
+	}
+	if chart.Kind == pptx.BlockLine {
+		if len(chart.Categories) == 0 {
+			return ""
+		}
+		builder.WriteString("::line\n")
+		labels := make([]string, 0, len(chart.Categories))
+		for index, category := range chart.Categories {
+			if strings.TrimSpace(category) == "" {
+				category = fmt.Sprintf("%d", index+1)
+			}
+			labels = append(labels, strings.ReplaceAll(category, ",", " "))
+		}
+		fmt.Fprintf(&builder, "- %s | %s\n", escapeItemField("기간"), escapeItemField(strings.Join(labels, ", ")))
+		for index, series := range chart.Series {
+			if len(series.Points) < 2 {
+				continue
+			}
+			name := strings.TrimSpace(series.Name)
+			if name == "" {
+				name = fmt.Sprintf("계열 %d", index+1)
+			}
+			points := make([]string, 0, len(series.Points))
+			for _, point := range series.Points {
+				points = append(points, trimNumber(point))
+			}
+			fmt.Fprintf(&builder, "- %s | %s\n", escapeItemField(name), escapeItemField(strings.Join(points, ", ")))
+		}
+		builder.WriteString("::\n")
+		return builder.String()
+	}
+	series := chart.Series[0]
+	name := "columns"
+	switch chart.Kind {
+	case pptx.BlockBars:
+		name = "bars"
+	case pptx.BlockShare:
+		name = "share"
+	}
+	fmt.Fprintf(&builder, "::%s\n", name)
+	written := 0
+	for index, point := range series.Points {
+		label := ""
+		if index < len(chart.Categories) {
+			label = strings.TrimSpace(chart.Categories[index])
+		}
+		if label == "" {
+			label = fmt.Sprintf("%d", index+1)
+		}
+		fmt.Fprintf(&builder, "- %s | %s\n", escapeItemField(label), escapeItemField(trimNumber(point)))
+		written++
+	}
+	builder.WriteString("::\n")
+	if written == 0 {
+		return ""
+	}
+	return builder.String()
+}
+
+// escapedFields protects a row's cells from being read as more columns.
+func escapedFields(values []string) []string {
+	fields := make([]string, 0, len(values))
+	for index, value := range values {
+		if strings.TrimSpace(value) == "" {
+			value = fmt.Sprintf("%d", index+1)
+		}
+		fields = append(fields, escapeItemField(value))
+	}
+	return fields
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -42,7 +43,21 @@ type ImportedSlide struct {
 	// coordinates: a photograph positioned for one layout means nothing in
 	// another, but the photograph itself is the author's.
 	Pictures []ImportedPicture
-	Charts   int
+	// Charts come across as their numbers. A chart part carries the figures it
+	// was plotted from — that is what makes it a chart rather than a picture —
+	// and those numbers are the slide's argument.
+	Charts []ImportedChart
+	// OtherCharts counts the plots whose form Ptium does not draw: a pie, a
+	// scatter, a doughnut of a doughnut. They are reported, not invented.
+	OtherCharts int
+}
+
+// ImportedChart is a plot carried over from a slide, as its numbers.
+type ImportedChart struct {
+	// Kind is the component the numbers should be drawn as: columns, bars, line.
+	Kind       string
+	Categories []string
+	Series     []Series
 }
 
 // ImportedPicture is a photograph carried over from a slide.
@@ -136,10 +151,9 @@ func readSlide(pkg *Package, part string) (ImportedSlide, bool) {
 		slide.Title = slide.Bullets[0].Text
 		slide.Bullets = slide.Bullets[1:]
 	}
-	// A picture, a table and a chart are counted from the part itself: the shape
-	// parser does not descend into a graphic frame, and what matters here is only
-	// how much of the slide the words leave behind.
-	slide.Charts = strings.Count(content, "/chart\"")
+	// A picture and a table are read from the part itself: the shape parser does
+	// not descend into a graphic frame.
+	slide.Charts, slide.OtherCharts = readCharts(pkg, part)
 	slide.Tables = readTables(content)
 	slide.Pictures = readPictures(pkg, part, parsed.CSld.SpTree, slideArea(pkg))
 	slide.Notes = readNotes(pkg, part)
@@ -404,4 +418,155 @@ func betweenTags(document, tag string) string {
 		return ""
 	}
 	return rest[:end]
+}
+
+// --- charts -----------------------------------------------------------------
+
+type rawChartSpace struct {
+	Chart struct {
+		PlotArea struct {
+			Bar  []rawChartPlot `xml:"barChart"`
+			Line []rawChartPlot `xml:"lineChart"`
+			Pie  []rawChartPlot `xml:"pieChart"`
+			Ring []rawChartPlot `xml:"doughnutChart"`
+		} `xml:"plotArea"`
+	} `xml:"chart"`
+}
+
+type rawChartPlot struct {
+	Direction struct {
+		Val string `xml:"val,attr"`
+	} `xml:"barDir"`
+	Series []rawChartSeries `xml:"ser"`
+}
+
+type rawChartSeries struct {
+	Name struct {
+		Ref struct {
+			Cache rawChartCache `xml:"strCache"`
+		} `xml:"strRef"`
+	} `xml:"tx"`
+	Categories struct {
+		Strings struct {
+			Cache rawChartCache `xml:"strCache"`
+		} `xml:"strRef"`
+		Numbers struct {
+			Cache rawChartCache `xml:"numCache"`
+		} `xml:"numRef"`
+	} `xml:"cat"`
+	Values struct {
+		Numbers struct {
+			Cache rawChartCache `xml:"numCache"`
+		} `xml:"numRef"`
+	} `xml:"val"`
+}
+
+type rawChartCache struct {
+	Count struct {
+		Val int `xml:"val,attr"`
+	} `xml:"ptCount"`
+	Points []struct {
+		Index int    `xml:"idx,attr"`
+		Value string `xml:"v"`
+	} `xml:"pt"`
+}
+
+// values returns the cache in point order, with holes kept as empty strings so
+// a series and its categories stay aligned.
+func (c rawChartCache) values() []string {
+	size := c.Count.Val
+	for _, point := range c.Points {
+		size = max(size, point.Index+1)
+	}
+	if size <= 0 {
+		return nil
+	}
+	values := make([]string, size)
+	for _, point := range c.Points {
+		if point.Index >= 0 && point.Index < size {
+			values[point.Index] = strings.TrimSpace(point.Value)
+		}
+	}
+	return values
+}
+
+// readCharts reads the numbers behind a slide's charts, and counts the plots
+// whose form has no component to come back as.
+func readCharts(pkg *Package, slidePart string) ([]ImportedChart, int) {
+	var charts []ImportedChart
+	other := 0
+	for _, chartPart := range pkg.RelatedParts(slidePart, "chart") {
+		content, ok := pkg.Text(chartPart)
+		if !ok {
+			continue
+		}
+		var parsed rawChartSpace
+		if err := xml.Unmarshal([]byte(content), &parsed); err != nil {
+			other++
+			continue
+		}
+		found := false
+		for _, plot := range parsed.Chart.PlotArea.Bar {
+			kind := BlockColumns
+			if plot.Direction.Val == "bar" {
+				kind = BlockBars
+			}
+			if chart, ok := importedChart(kind, plot); ok {
+				charts = append(charts, chart)
+				found = true
+			}
+		}
+		for _, plot := range parsed.Chart.PlotArea.Line {
+			if chart, ok := importedChart(BlockLine, plot); ok {
+				charts = append(charts, chart)
+				found = true
+			}
+		}
+		// A pie is a division of one whole, which Ptium draws as a share bar —
+		// the same statement, in the form that reads at slide distance.
+		for _, plot := range append(parsed.Chart.PlotArea.Pie, parsed.Chart.PlotArea.Ring...) {
+			if chart, ok := importedChart(BlockShare, plot); ok {
+				charts = append(charts, chart)
+				found = true
+			}
+		}
+		if !found {
+			other++
+		}
+	}
+	return charts, other
+}
+
+func importedChart(kind string, plot rawChartPlot) (ImportedChart, bool) {
+	chart := ImportedChart{Kind: kind}
+	for _, series := range plot.Series {
+		values := series.Values.Numbers.Cache.values()
+		if len(values) == 0 {
+			continue
+		}
+		points := make([]float64, 0, len(values))
+		for _, value := range values {
+			number, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				number = 0
+			}
+			points = append(points, number)
+		}
+		categories := series.Categories.Strings.Cache.values()
+		if len(categories) == 0 {
+			categories = series.Categories.Numbers.Cache.values()
+		}
+		if len(categories) > len(chart.Categories) {
+			chart.Categories = categories
+		}
+		name := ""
+		if named := series.Name.Ref.Cache.values(); len(named) > 0 {
+			name = named[0]
+		}
+		chart.Series = append(chart.Series, Series{Name: name, Points: points})
+	}
+	if len(chart.Series) == 0 {
+		return ImportedChart{}, false
+	}
+	return chart, true
 }

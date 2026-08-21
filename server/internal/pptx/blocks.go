@@ -180,10 +180,13 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		primitives = design.layoutComparison(body, block)
 	case BlockColumns:
 		primitives = design.layoutColumns(body, block)
+		component.Chart = design.chartPart(body, block)
 	case BlockBars:
 		primitives = design.layoutBars(body, block)
+		component.Chart = design.chartPart(body, block)
 	case BlockLine:
 		primitives = design.layoutLine(body, block)
+		component.Chart = design.chartPart(body, block)
 	case BlockShare:
 		primitives = design.layoutShare(body, block)
 	case BlockMeter:

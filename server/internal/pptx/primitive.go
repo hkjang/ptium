@@ -125,8 +125,13 @@ type Component struct {
 	// is what every preview renders — but an exported file carries the table,
 	// because a table someone cannot type into is a picture of a table.
 	Table *TablePart
+	// Chart is set for a component PowerPoint should hold as a real chart, for
+	// the same reason as Table: the numbers behind a chart are the first thing
+	// anyone needs to change.
+	Chart *ChartPart
 	// BodyFrom is where the component's own drawing starts, after its heading and
-	// caption. Only those lead primitives are exported alongside a real table.
+	// caption. Only those lead primitives are exported alongside a real table or
+	// chart.
 	BodyFrom int
 }
 
@@ -212,18 +217,19 @@ func line(value string) []Paragraph { return []Paragraph{{Text: value}} }
 // DrawingML wraps a component in a group whose child coordinate space matches
 // its own, so children keep absolute coordinates while the whole component
 // stays selectable and movable as one object in PowerPoint.
-func (c Component) DrawingML(startID int) (string, int) {
+func (c Component) DrawingML(startID int, chartRelationshipID string) (string, int) {
 	if len(c.Primitives) == 0 {
 		return "", startID
 	}
 	id := startID
 	var body strings.Builder
 	primitives := c.Primitives
-	if c.Table != nil {
-		// The heading and the caption stay shapes; the table becomes a table, and
-		// it sits beside the group rather than inside it. PowerPoint will not let
-		// anyone group a table, and one it finds inside a group is a table nobody
-		// can click into.
+	chart := c.Chart != nil && chartRelationshipID != ""
+	if c.Table != nil || chart {
+		// The heading and the caption stay shapes; the drawing becomes a table or
+		// a chart, and it sits beside the group rather than inside it. PowerPoint
+		// will not let anyone group either one, and a graphic frame it finds
+		// inside a group is one nobody can click into.
 		primitives = primitives[:min(c.BodyFrom, len(primitives))]
 	}
 	for _, primitive := range primitives {
@@ -246,6 +252,10 @@ func (c Component) DrawingML(startID int) (string, int) {
 	if c.Table != nil {
 		id++
 		group += c.Table.drawingML(id)
+	}
+	if chart {
+		id++
+		group += c.Chart.graphicFrame(id, chartRelationshipID)
 	}
 	return group, id + 1
 }
@@ -391,8 +401,8 @@ func (p Primitive) textDrawingML(id int) string {
 		id, escapeAttribute(name), id, p.Frame.X, p.Frame.Y, p.Frame.Width, p.Frame.Height, wrap, p.Anchor, paragraphs.String())
 }
 
-// polylineDrawingML emits a stroked freeform path, which is how a line series
-// is drawn without embedding a chart part and its workbook.
+// polylineDrawingML emits a stroked freeform path: what every preview draws a
+// trend with, and what a freeform slide keeps its own lines as.
 func (p Primitive) polylineDrawingML(id int) string {
 	if len(p.Points) < 2 {
 		return ""

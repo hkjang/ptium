@@ -268,7 +268,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 
 	slideRelIDs := make([]string, 0, len(deck.Slides))
 	nextRelationshipID := maxRelationshipNumber(pkg, "ppt/presentation.xml") + 1
-	notesIndex := 0
+	notesIndex, chartIndex := 0, 0
 	for index, slide := range deck.Slides {
 		layout, ok := manifest.Layout(slide.LayoutID)
 		if !ok {
@@ -293,8 +293,10 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		// Pictures become package parts and slide relationships before the slide
 		// itself is written, because the shape refers to them by relationship id.
 		pictures := addSlidePictures(pkg, slidePart, index+1, slide, layout)
-		pkg.SetText(slidePart, slideXML(layout, slide, language, design, pictures))
-		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures))
+		markup, charts := slideXML(layout, slide, language, design, pictures)
+		pkg.SetText(slidePart, markup)
+		chartParts := addSlideCharts(pkg, slidePart, &chartIndex, charts)
+		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts))
 		if notesPart != "" {
 			pkg.SetText(notesPart, notesSlideXML(slide.Notes, language))
 			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart))
@@ -334,6 +336,38 @@ func dropExistingSlides(pkg *Package) {
 		case strings.HasPrefix(name, "ppt/slides/"),
 			strings.HasPrefix(name, "ppt/notesSlides/"):
 			pkg.Delete(name)
+		}
+	}
+	dropOrphanedParts(pkg)
+}
+
+// dropOrphanedParts removes what the departed slides left behind.
+//
+// A template is often a deck: someone uploads last quarter's report and builds
+// on it. Its charts and their workbooks belonged to slides that are now gone,
+// and nothing points at them any more — so they would ride along, unseen, in
+// every file made from that template. The workbooks go after the charts, since
+// a chart is the only thing that points at one.
+func dropOrphanedParts(pkg *Package) {
+	for _, prefix := range []string{"ppt/charts/", "ppt/embeddings/"} {
+		referenced := map[string]bool{}
+		for _, name := range pkg.Names() {
+			if strings.Contains(name, "/_rels/") || strings.HasPrefix(name, "_rels/") {
+				continue
+			}
+			for _, relationship := range pkg.Relationships(name) {
+				if relationship.TargetMode == "External" {
+					continue
+				}
+				referenced[Resolve(name, relationship.Target)] = true
+			}
+		}
+		for _, name := range pkg.Names() {
+			if !strings.HasPrefix(name, prefix) || strings.Contains(name, "/_rels/") || referenced[name] {
+				continue
+			}
+			pkg.Delete(name)
+			pkg.Delete(RelationshipsPath(name))
 		}
 	}
 }
@@ -390,7 +424,7 @@ func addSlidePictures(pkg *Package, slidePart string, position int, slide Slide,
 
 	placed := make([]placedPicture, 0, len(slots)+len(slide.Elements))
 	// Slide relationship ids start after the layout and any notes slide.
-	next := 3
+	next := firstPictureRelationship
 	mediaIndex := 0
 	for _, slot := range slots {
 		picture := slide.Pictures[slot]
@@ -513,8 +547,21 @@ func freeformPictureXML(shapeID int, element Element, placed placedPicture) stri
 		`" cy="` + strconv.Itoa(max(frame.Height, 1)) + `"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`
 }
 
-func slideXML(layout Layout, slide Slide, language string, design Design, pictures []placedPicture) string {
+// slideXML writes the slide, and returns the charts it placed on it in the
+// order their relationship ids were handed out. The parts themselves are
+// written by the caller, which is the one holding the package.
+func slideXML(layout Layout, slide Slide, language string, design Design, pictures []placedPicture) (string, []*ChartPart) {
 	var shapes, components, freeform strings.Builder
+	var charts []*ChartPart
+	// A chart is a relationship of the slide, and the picture relationships came
+	// first.
+	chartRelationship := func(chart *ChartPart) string {
+		if chart == nil {
+			return ""
+		}
+		charts = append(charts, chart)
+		return fmt.Sprintf("rId%d", firstPictureRelationship+len(pictures)+len(charts)-1)
+	}
 	shapeID := 2
 	placedBySlot := map[string]placedPicture{}
 	placedByElement := map[string]placedPicture{}
@@ -543,7 +590,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
 			frame := slide.blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
-				markup, next := component.DrawingML(shapeID)
+				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart))
 				components.WriteString(markup)
 				shapeID = next
 				continue
@@ -572,7 +619,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		shapes.String() + components.String() + freeform.String() +
 		slideNumberXML(shapeID, layout, slide, language) +
-		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`, charts
 }
 
 // slideNumberXML writes the page number where the design put its placeholder.
@@ -871,7 +918,36 @@ func boolAttribute(value bool) string {
 	return "0"
 }
 
-func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture) string {
+// firstPictureRelationship is where a slide's own relationships start: the
+// layout is rId1 and a notes slide rId2, whether or not one is there.
+const firstPictureRelationship = 3
+
+// addSlideCharts writes a chart part, its workbook and its relationships for
+// every chart the slide placed, and returns where they landed.
+func addSlideCharts(pkg *Package, slidePart string, index *int, charts []*ChartPart) []string {
+	parts := make([]string, 0, len(charts))
+	for _, chart := range charts {
+		*index++
+		chartPart := fmt.Sprintf("ppt/charts/chart%d.xml", *index)
+		workbookPart := fmt.Sprintf("ppt/embeddings/ptiumChart%d.xlsx", *index)
+		workbook := chart.chartWorkbook()
+		workbookRelID := ""
+		if len(workbook) > 0 {
+			workbookRelID = "rId1"
+			pkg.Set(workbookPart, workbook)
+		}
+		pkg.SetText(chartPart, chart.chartSpaceXML(workbookRelID))
+		if workbookRelID != "" {
+			pkg.SetText(RelationshipsPath(chartPart), relationshipsDocument(
+				`<Relationship Id="rId1" Type="`+relationshipNamespace+`/package" Target="`+
+					escapeAttribute(relativePath(chartPart, workbookPart))+`"/>`))
+		}
+		parts = append(parts, chartPart)
+	}
+	return parts
+}
+
+func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture, charts []string) string {
 	relationships := `<Relationship Id="rId1" Type="` + relationshipNamespace + `/slideLayout" Target="` + escapeAttribute(relativePath(slidePart, layoutPart)) + `"/>`
 	if notesPart != "" {
 		relationships += `<Relationship Id="rId2" Type="` + relationshipNamespace + `/notesSlide" Target="` + escapeAttribute(relativePath(slidePart, notesPart)) + `"/>`
@@ -879,6 +955,11 @@ func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []p
 	for _, placed := range pictures {
 		relationships += `<Relationship Id="` + placed.RelationshipID + `" Type="` + relationshipNamespace +
 			`/image" Target="` + escapeAttribute(relativePath(slidePart, placed.Part)) + `"/>`
+	}
+	for index, part := range charts {
+		relationships += fmt.Sprintf(`<Relationship Id="rId%d" Type="%s/chart" Target="%s"/>`,
+			firstPictureRelationship+len(pictures)+index, relationshipNamespace,
+			escapeAttribute(relativePath(slidePart, part)))
 	}
 	return relationshipsDocument(relationships)
 }
@@ -1013,6 +1094,14 @@ func contentTypesXML(pkg *Package) string {
 			order = append(order, extension)
 		}
 	}
+	// The workbook behind a chart is a part like any other, and PowerPoint reads
+	// none of them unless the extension is declared.
+	if len(pkg.NamesUnder("ppt/embeddings/")) > 0 {
+		if _, exists := defaults["xlsx"]; !exists {
+			defaults["xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+			order = append(order, "xlsx")
+		}
+	}
 	sort.Strings(order[2:])
 	for _, entry := range parsed.Defaults {
 		key := strings.ToLower(entry.Extension)
@@ -1069,6 +1158,12 @@ func contentTypesXML(pkg *Package) string {
 			continue
 		}
 		add(name, "application/vnd.openxmlformats-officedocument.theme+xml")
+	}
+	for _, name := range pkg.NamesUnder("ppt/charts/") {
+		if strings.Contains(name, "/_rels/") {
+			continue
+		}
+		add(name, "application/vnd.openxmlformats-officedocument.drawingml.chart+xml")
 	}
 	sort.SliceStable(overrides, func(i, j int) bool { return overrides[i][0] < overrides[j][0] })
 

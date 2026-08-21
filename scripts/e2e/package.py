@@ -54,10 +54,21 @@ source = """# 패키지 점검 {run}
 - 예상 절감 | 18%
 ::
 - 요점 하나
+
+# 분기 매출
+::columns 분기 매출
+- 1분기 | 1180
+- 2분기 | 1240
+- 3분기 | 1390
+::
+
+# 마무리
+@closing
+> 감사합니다
 """.format(run=RUN)
 
 deck = call("POST", "/presentations", {"title": f"패키지 점검 {RUN}", "prompt": "패키지",
-                                       "requestedSlideCount": 3, "language": "ko"})
+                                       "requestedSlideCount": 5, "language": "ko"})
 call("PUT", f"/presentations/{deck['id']}/source", {"source": source})
 package = call("GET", f"/presentations/{deck['id']}/export?format=pptx", raw=True)
 path = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"ptium-package-{RUN}.pptx")
@@ -72,10 +83,10 @@ except Exception as error:
     sys.exit(1)
 
 print(f"slides: {len(read.slides)}  size: {read.slide_width}x{read.slide_height}")
-if len(read.slides) != 3:
-    failures.append(f"the package holds {len(read.slides)} slides, expected 3")
+if len(read.slides) != 5:
+    failures.append(f"the package holds {len(read.slides)} slides, expected 5")
 
-tables, numbered, noted, titles = 0, 0, 0, []
+tables, charts, numbered, noted, titles = 0, 0, 0, 0, []
 cover_numbered = False
 for index, slide in enumerate(read.slides, 1):
     for shape in slide.shapes:
@@ -91,6 +102,20 @@ for index, slide in enumerate(read.slides, 1):
             # A grouped table is a table nobody can click into.
             if shape.shape_type == 6:
                 failures.append("the table is inside a group")
+        # A chart someone cannot change the numbers of is a picture of a chart.
+        if shape.has_chart:
+            charts += 1
+            chart = shape.chart
+            plot = chart.plots[0]
+            values = [list(series.values) for series in plot.series]
+            print(f"  slide{index}: chart {chart.chart_type} {list(plot.categories)} {values}")
+            if list(plot.categories) != ["1분기", "2분기", "3분기"]:
+                failures.append(f"the chart's categories read {list(plot.categories)}")
+            if values != [[1180.0, 1240.0, 1390.0]]:
+                failures.append(f"the chart plots {values}")
+            if not chart.part.part_related_by(
+                    "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"):
+                failures.append("the chart carries no workbook, so nobody can edit its data")
         if shape.is_placeholder and shape.placeholder_format.type is not None:
             if str(shape.placeholder_format.type).startswith("SLIDE_NUMBER"):
                 numbered += 1
@@ -104,9 +129,11 @@ for index, slide in enumerate(read.slides, 1):
         noted += 1
 
 print(f"titles: {titles}")
-print(f"tables: {tables}  numbered slides: {numbered}  slides with notes: {noted}")
+print(f"tables: {tables}  charts: {charts}  numbered slides: {numbered}  slides with notes: {noted}")
 if tables != 1:
     failures.append(f"found {tables} real tables, expected 1")
+if charts != 1:
+    failures.append(f"found {charts} real charts, expected 1")
 # The cover never carries one, and a layout that opts out of the master's shapes
 # — the shipped closing page paints its own full-bleed background — has no place
 # for one either. What must hold is that ordinary content slides are numbered and
@@ -117,8 +144,8 @@ if cover_numbered:
     failures.append("the cover carries a page number")
 if noted < 1:
     failures.append("no slide carries speaker notes")
-if len(titles) != 3:
-    failures.append(f"read {len(titles)} slide titles, expected 3")
+if len(titles) != 5:
+    failures.append(f"read {len(titles)} slide titles, expected 5")
 
 print()
 print(f"{len(failures)} failures")
