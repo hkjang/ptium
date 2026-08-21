@@ -534,7 +534,9 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 				if !found {
 					continue
 				}
-				picture.Caption = placed.Caption
+				if strings.TrimSpace(placed.Caption) != "" {
+					picture.Caption = placed.Caption
+				}
 				if rendered.Pictures == nil {
 					rendered.Pictures = map[string]pptx.Picture{}
 				}
@@ -582,7 +584,9 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 				}
 				if element.Kind == "image" && images != nil {
 					if picture, found := images(element.AssetID); found {
-						picture.Caption = element.Caption
+						if strings.TrimSpace(element.Caption) != "" {
+							picture.Caption = element.Caption
+						}
 						built.Picture = &picture
 					}
 				}

@@ -87,6 +87,13 @@ if len(read.slides) != 5:
     failures.append(f"the package holds {len(read.slides)} slides, expected 5")
 
 tables, charts, numbered, noted, titles = 0, 0, 0, 0, []
+undescribed = []  # objects a screen reader would find empty
+
+
+def alt_text(shape):
+    marker = "{http://schemas.openxmlformats.org/presentationml/2006/main}cNvPr"
+    element = shape._element.find(".//" + marker)
+    return (element.get("descr") or "").strip() if element is not None else ""
 cover_numbered = False
 for index, slide in enumerate(read.slides, 1):
     for shape in slide.shapes:
@@ -116,6 +123,10 @@ for index, slide in enumerate(read.slides, 1):
             if not chart.part.part_related_by(
                     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"):
                 failures.append("the chart carries no workbook, so nobody can edit its data")
+        # PowerPoint's accessibility check reports a drawing with no alternative
+        # text as an error, which keeps a deck out of a public-sector filing.
+        if not shape.is_placeholder and not alt_text(shape):
+            undescribed.append(f"slide{index}: {shape.shape_type}")
         if shape.is_placeholder and shape.placeholder_format.type is not None:
             if str(shape.placeholder_format.type).startswith("SLIDE_NUMBER"):
                 numbered += 1
@@ -130,6 +141,9 @@ for index, slide in enumerate(read.slides, 1):
 
 print(f"titles: {titles}")
 print(f"tables: {tables}  charts: {charts}  numbered slides: {numbered}  slides with notes: {noted}")
+print(f"objects without alt text: {len(undescribed)}")
+for entry in undescribed:
+    failures.append(f"{entry} carries no alternative text")
 if tables != 1:
     failures.append(f"found {tables} real tables, expected 1")
 if charts != 1:

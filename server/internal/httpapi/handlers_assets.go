@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -231,8 +232,29 @@ func (s *Server) imageSource(request *http.Request, ownerID string) deck.ImageSo
 		return pptx.Picture{
 			Data: data, ContentType: asset.ContentType,
 			Width: asset.Width, Height: asset.Height,
+			// A picture with no alternative text is an error in PowerPoint's own
+			// accessibility check. The caption the author wrote is the right text
+			// and wins; failing that, the name they gave the image in their
+			// library describes it, where a file name does not.
+			Caption: describedName(asset.Name),
 		}, true
 	}
+}
+
+// describedName is an image's name when the name says what the image is.
+// "매장 전경" describes a photograph; "IMG_2481.png" names a file.
+func describedName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	lowered := strings.ToLower(trimmed)
+	for _, extension := range []string{".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".heic"} {
+		if strings.HasSuffix(lowered, extension) {
+			return ""
+		}
+	}
+	if utf8.RuneCountInString(trimmed) < 2 {
+		return ""
+	}
+	return trimmed
 }
 
 // resolveImage turns the reference an author wrote into a stored image.

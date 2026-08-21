@@ -175,3 +175,53 @@ func TestATemplatesOwnChartsDoNotRideAlong(t *testing.T) {
 		}
 	}
 }
+
+// A drawing with no alternative text is nothing at all to a screen reader, and
+// PowerPoint's own accessibility check reports it as an error — which is enough
+// to keep a deck out of a public-sector filing.
+func TestEveryDrawnObjectSaysWhatItShows(t *testing.T) {
+	deck := chartDeck(Block{Kind: BlockColumns, Heading: "분기 매출", Items: []Item{
+		{Label: "1분기", Value: "1,180"}, {Label: "2분기", Value: "1,240"}}})
+	deck.Slides = append(deck.Slides, Slide{LayoutID: "content",
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "채널별"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockTable, Heading: "채널별 매출",
+			Columns: []string{"항목", "1분기"}, Rows: [][]string{{"매출", "120억"}, {"이익", "12억"}}}}})
+	deck.Slides = append(deck.Slides, Slide{LayoutID: "content",
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "지표"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockKPI, Items: []Item{
+			{Label: "전환 대상", Value: "42개"}, {Label: "절감", Value: "18%"}}}}})
+	parts := renderedParts(t, deck)
+
+	chartFrame := parts["ppt/slides/slide2.xml"]
+	if !strings.Contains(chartFrame, `name="Chart" descr="세로막대 차트. 분기 매출. 1분기 1,180; 2분기 1,240"`) {
+		t.Errorf("the chart does not say what it shows:\n%s", chartFrame)
+	}
+	table := parts["ppt/slides/slide3.xml"]
+	if !strings.Contains(table, `name="Table" descr="표. 채널별 매출. 항목 / 1분기; 매출 / 120억; 이익 / 12억 (2열 3행)"`) {
+		t.Errorf("the table does not say what it shows:\n%s", table)
+	}
+	figures := parts["ppt/slides/slide4.xml"]
+	if !strings.Contains(figures, `descr="핵심 지표. 전환 대상 42개; 절감 18%"`) {
+		t.Errorf("the figures do not say what they show:\n%s", figures)
+	}
+	// A component whose body left the group says it once, not twice — and the
+	// group it left behind is described by the words it still holds, because an
+	// object with no alternative text is the error this all exists to avoid.
+	if strings.Count(chartFrame, "세로막대 차트. 분기 매출. 1분기") != 1 {
+		t.Errorf("the chart's description is repeated:\n%s", chartFrame)
+	}
+	if !strings.Contains(chartFrame, `name="Column chart" descr="분기 매출"`) {
+		t.Errorf("the heading left beside the chart says nothing:\n%s", chartFrame)
+	}
+}
+
+// Alt text is read aloud in the deck's language, not in Ptium's.
+func TestAlternativeTextFollowsTheDeckLanguage(t *testing.T) {
+	deck := chartDeck(Block{Kind: BlockColumns, Heading: "Quarterly revenue", Items: []Item{
+		{Label: "Q1", Value: "1,180"}, {Label: "Q2", Value: "1,240"}}})
+	deck.Language = "en"
+	parts := renderedParts(t, deck)
+	if slide := parts["ppt/slides/slide2.xml"]; !strings.Contains(slide, `descr="column chart. Quarterly revenue.`) {
+		t.Errorf("the chart is described in the wrong language:\n%s", slide)
+	}
+}

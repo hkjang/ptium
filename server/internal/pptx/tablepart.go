@@ -15,7 +15,7 @@ import (
 // rule under the header, hairlines between rows, labels left and figures right.
 
 // drawingML writes the table as a graphic frame.
-func (t *TablePart) drawingML(shapeID int) string {
+func (t *TablePart) drawingML(shapeID int, description string) string {
 	if t == nil || len(t.Columns) == 0 || len(t.Rows) == 0 {
 		return ""
 	}
@@ -70,7 +70,8 @@ func (t *TablePart) drawingML(shapeID int) string {
 	}
 
 	height := headerHeight + rowHeight*len(t.Rows)
-	return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Table"/>` +
+	return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Table"` +
+		descriptionAttribute(description) + `/>` +
 		`<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>` +
 		`<p:xfrm><a:off x="` + strconv.Itoa(t.Frame.X) + `" y="` + strconv.Itoa(t.Frame.Y) + `"/>` +
 		`<a:ext cx="` + strconv.Itoa(max(t.Frame.Width, 1)) + `" cy="` + strconv.Itoa(max(height, 1)) + `"/></p:xfrm>` +

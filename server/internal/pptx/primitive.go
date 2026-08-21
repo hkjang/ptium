@@ -133,6 +133,10 @@ type Component struct {
 	// caption. Only those lead primitives are exported alongside a real table or
 	// chart.
 	BodyFrom int
+	// Description is what the component says, for anyone who cannot see it. A
+	// drawing with no alternative text is nothing at all to a screen reader, and
+	// PowerPoint's own accessibility check reports it as an error.
+	Description string
 }
 
 // TablePart is a table as PowerPoint holds one: a frame, a header row and rows
@@ -212,6 +216,23 @@ func text(frame Frame, lines []Paragraph, options textOptions) Primitive {
 
 func line(value string) []Paragraph { return []Paragraph{{Text: value}} }
 
+// textOf reads back the words a set of primitives draws, which is what a group
+// of them says.
+func textOf(primitives []Primitive) string {
+	parts := make([]string, 0, len(primitives))
+	for _, primitive := range primitives {
+		if primitive.Kind != shapeText {
+			continue
+		}
+		for _, paragraph := range primitive.Lines {
+			if text := strings.TrimSpace(paragraph.Text); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // --- DrawingML emitter ------------------------------------------------------
 
 // DrawingML wraps a component in a group whose child coordinate space matches
@@ -240,22 +261,30 @@ func (c Component) DrawingML(startID int, chartRelationshipID string) (string, i
 	if name == "" {
 		name = "Component"
 	}
+	// When the body leaves the group — as a table or a chart — the group holds
+	// only the heading and the caption. Repeating the whole component there
+	// would say it twice, and leaving it empty is an accessibility error, so the
+	// group is described by the words it actually contains.
+	groupDescription := c.Description
+	if c.Table != nil || chart {
+		groupDescription = textOf(primitives)
+	}
 	group := ""
 	if body.Len() > 0 {
 		groupID := startID
-		group = fmt.Sprintf(`<p:grpSp><p:nvGrpSpPr><p:cNvPr id="%d" name="%s"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>`+
+		group = fmt.Sprintf(`<p:grpSp><p:nvGrpSpPr><p:cNvPr id="%d" name="%s"%s/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>`+
 			`<p:grpSpPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/><a:chOff x="%d" y="%d"/><a:chExt cx="%d" cy="%d"/></a:xfrm></p:grpSpPr>%s</p:grpSp>`,
-			groupID, escapeAttribute(name),
+			groupID, escapeAttribute(name), descriptionAttribute(groupDescription),
 			c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height,
 			c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height, body.String())
 	}
 	if c.Table != nil {
 		id++
-		group += c.Table.drawingML(id)
+		group += c.Table.drawingML(id, c.Description)
 	}
 	if chart {
 		id++
-		group += c.Chart.graphicFrame(id, chartRelationshipID)
+		group += c.Chart.graphicFrame(id, chartRelationshipID, c.Description)
 	}
 	return group, id + 1
 }

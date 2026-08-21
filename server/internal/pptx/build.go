@@ -590,6 +590,12 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
 			frame := slide.blockFrame(layout, placeholder, block)
 			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
+				// The language is known here rather than inside the drawing, and
+				// alternative text is read aloud in the deck's own language.
+				component.Description = describeBlock(block, language)
+				if component.Table != nil {
+					component.Description = describeTable(component.Table, block, language)
+				}
 				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart))
 				components.WriteString(markup)
 				shapeID = next

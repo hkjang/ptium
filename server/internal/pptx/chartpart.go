@@ -57,11 +57,12 @@ type ChartPart struct {
 }
 
 // graphicFrame writes the frame that points at the chart part.
-func (c *ChartPart) graphicFrame(shapeID int, relationshipID string) string {
+func (c *ChartPart) graphicFrame(shapeID int, relationshipID, description string) string {
 	if c == nil || relationshipID == "" {
 		return ""
 	}
-	return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Chart"/>` +
+	return `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Chart"` +
+		descriptionAttribute(description) + `/>` +
 		`<p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr>` +
 		`<p:xfrm><a:off x="` + strconv.Itoa(c.Frame.X) + `" y="` + strconv.Itoa(c.Frame.Y) + `"/>` +
 		`<a:ext cx="` + strconv.Itoa(max(c.Frame.Width, 1)) + `" cy="` + strconv.Itoa(max(c.Frame.Height, 1)) + `"/></p:xfrm>` +
