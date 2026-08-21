@@ -3,6 +3,7 @@ package generation
 import (
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -83,16 +84,27 @@ var instructionPattern = regexp.MustCompile(
 		`(자료(로|를)?\s*(만들|작성|정리))|` +
 		`(만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
-		`please|make me|create|generate|write|prepare|summari[sz]e|for the (board|team|exec\w*))`)
+		`please|make me|create|generate|write|prepare|summari[sz]e|` +
+		// "for the executive team", "for our board": in English the audience sits
+		// at the end of the sentence, and half of it left behind — "…two regions
+		// team" — is what a slide title used to read.
+		`for\s+(?:the|our|your|an?)?\s*(?:[a-z]+\s+){0,2}` +
+		`(?:board|teams?|execs?|executives?|leadership|management|committee|stakeholders?|` +
+		`customers?|clients?|investors?|partners?|staff|department|audience))`)
 
 // periodPattern finds a stated timeframe, which belongs on the cover.
 var periodPattern = regexp.MustCompile(
 	`(?i)(20\d{2}\s*년?\s*(상반기|하반기|[1-4]\s*분기|[1-9]|1[0-2])?\s*(월|분기)?)|((FY|fy)\s?20\d{2})|(20\d{2}\s*[-~]\s*20\d{2})`)
 
 // figurePattern finds a number with a unit attached, the kind a prompt supplies
-// as a fact: "18%", "42개", "120억", "3배".
-// Longer units come first: "12개월" is a duration, not twelve of something.
-var figurePattern = regexp.MustCompile(`(\d[\d,.]*)\s*(%|퍼센트|억원|만원|개월|시간|주일|억|만|천|배|개|건|명|일|주|년|원|달러|USD|usd)`)
+// as a fact: "18%", "42개", "120억", "3배", "400M KRW", "12 months".
+// Longer units come first: "12개월" is a duration, not twelve of something, and
+// "400M KRW" is an amount rather than the letter M.
+var figurePattern = regexp.MustCompile(`(?i)(\d[\d,.]*)\s*(%|퍼센트|억원|만원|개월|시간|주일|억|만|천|배|개|건|명|일|주|년|원|달러|` +
+	`[kmb]n?\s*(?:KRW|USD|EUR|JPY|GBP)|KRW|USD|EUR|JPY|GBP|` +
+	`months?|weeks?|quarters?|years?|days?|hours?|minutes?|` +
+	`people|users?|customers?|accounts?|systems?|teams?|sites?|stores?|cases?|` +
+	`percentage points?|pp|x)\b?`)
 
 // topicSplitter breaks a subject into the things it names. Korean conjunctions
 // and list punctuation both appear constantly.
@@ -194,6 +206,9 @@ func figureClause(clause string, figures []promptFigure) bool {
 // the subject: "신규 채널 확장 계획을 임원에게" becomes "확장 계획".
 func topicPhrase(name string) string {
 	const limit = 20
+	if latinPhrase(name) {
+		return latinHeadPhrase(name, 48)
+	}
 	words := make([]string, 0, 8)
 	for _, word := range strings.Fields(strings.TrimSpace(name)) {
 		// A conjugated verb is never part of a subject. "보고합니다" is what the
@@ -374,8 +389,11 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	// keeps the words that say what this is — leaves "이중화와 재해복구 체계 구축,
 	// 그리고 운영 조직 재편" for a deck about payment infrastructure. When the
 	// whole thing will not fit, the first subject is the honest title.
+	// A title read out of the brief starts the cover, so it is capitalised even
+	// though the brief wrote it mid-sentence. A title the author typed is left
+	// exactly as they typed it.
 	if whole, shortened := titlePhrase(outline.Subject); whole != "" && !shortened {
-		return whole
+		return capitalized(whole)
 	}
 	names := make([]string, 0, len(outline.Topics))
 	for _, topic := range outline.Topics {
@@ -400,7 +418,7 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	if candidate == "" {
 		return given
 	}
-	return candidate
+	return capitalized(candidate)
 }
 
 // subjectPhrase is what the deck is about, in words a sentence can carry.
@@ -429,6 +447,12 @@ func (outline promptOutline) subjectPhrase() string {
 // at the audience instead ("…을 실무진에게 …" → "결제 시스템 이중화 계획").
 func titlePhrase(subject string) (string, bool) {
 	const limit = 30
+	if latinPhrase(subject) {
+		// Latin script puts the head noun first, so an over-long phrase gives way
+		// at the end rather than at the front.
+		phrase := latinHeadPhrase(subject, 48)
+		return phrase, phrase != cleanTopic(strings.TrimSpace(subject))
+	}
 	words := strings.Fields(strings.TrimSpace(subject))
 	// Everything from the audience onward is the request, not the subject.
 	for index, word := range words {
@@ -551,4 +575,105 @@ func isAuthoredTitle(given, prompt string) bool {
 	}
 	// A title that is the opening of the prompt was sliced from it, not written.
 	return !strings.HasPrefix(strings.TrimSpace(prompt), trimmed)
+}
+
+// --- phrases in a script that reads the other way ----------------------------
+
+// latinPhrase reports whether a phrase is written in Latin script.
+//
+// Everything above cuts a phrase down by keeping its tail, because Korean —
+// like Japanese and Chinese — puts the head noun last. English does the
+// opposite: "a plan to make the payment platform redundant across two regions"
+// says what it is in its first words, and keeping the tail produced titles that
+// read "two regions team". So a Latin phrase is cut from the other end.
+func latinPhrase(value string) bool {
+	letters, latin := 0, 0
+	for _, symbol := range value {
+		if !unicode.IsLetter(symbol) {
+			continue
+		}
+		letters++
+		if symbol < unicode.MaxASCII || unicode.Is(unicode.Latin, symbol) {
+			latin++
+		}
+	}
+	return letters > 0 && latin*4 >= letters*3
+}
+
+// latinPrepositions begin the modifier at the end of a noun phrase. When a
+// phrase has to give way, it gives way at one of these rather than mid-thought.
+var latinPrepositions = map[string]bool{
+	"across": true, "for": true, "with": true, "within": true, "under": true, "over": true,
+	"through": true, "throughout": true, "during": true, "among": true, "between": true,
+	"into": true, "onto": true, "toward": true, "towards": true, "against": true, "about": true,
+	"by": true, "from": true, "in": true, "on": true, "at": true, "to": true,
+}
+
+// latinArticles open a phrase without naming anything, and a title never starts
+// or ends with one.
+var latinArticles = map[string]bool{"a": true, "an": true, "the": true, "and": true, "or": true, "of": true}
+
+// latinHeadPhrase keeps the head of a Latin phrase, within a limit. It gives
+// way one word at a time from the end, because the words at the front are the
+// ones that say what the phrase is about, and it never ends on a word that
+// only introduces what was cut.
+func latinHeadPhrase(name string, limit int) string {
+	words := strings.Fields(strings.TrimSpace(name))
+	for len(words) > 1 && latinArticles[strings.ToLower(strings.Trim(words[0], " .,"))] {
+		words = words[1:]
+	}
+	gaveWay := false
+	for len(words) > 0 {
+		for len(words) > 1 {
+			last := strings.ToLower(strings.Trim(words[len(words)-1], " .,"))
+			// A phrase never ends on a word that only introduces what was cut, and
+			// after it gives way, not on the participle that opened the clause it
+			// lost: "…for new engineers joining the" is half a thought.
+			if latinPrepositions[last] || latinArticles[last] ||
+				(gaveWay && len(words) > 2 && strings.HasSuffix(last, "ing")) {
+				words = words[:len(words)-1]
+				continue
+			}
+			break
+		}
+		candidate := cleanTopic(strings.Join(words, " "))
+		if utf8.RuneCountInString(candidate) <= limit {
+			return candidate
+		}
+		words = words[:len(words)-1]
+		gaveWay = true
+	}
+	return ""
+}
+
+// phraseWithin cuts a phrase to a limit from whichever end its script keeps its
+// head noun on.
+func phraseWithin(name string, limit int) string {
+	if latinPhrase(name) {
+		return latinHeadPhrase(name, limit)
+	}
+	words := strings.Fields(strings.TrimSpace(name))
+	for start := 0; start < len(words); start++ {
+		candidate := cleanTopic(strings.Join(words[start:], " "))
+		if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
+			return candidate
+		}
+	}
+	return ""
+}
+
+// capitalized starts a Latin phrase the way a title does. A heading lifted out
+// of a brief arrives in the middle of a sentence — "migration in three phases"
+// — and a slide that opens in lower case reads as an unfinished note.
+func capitalized(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || !latinPhrase(trimmed) {
+		return trimmed
+	}
+	runes := []rune(trimmed)
+	if unicode.IsUpper(runes[0]) {
+		return trimmed
+	}
+	runes[0] = unicode.ToUpper(runes[0])
+	return string(runes)
 }

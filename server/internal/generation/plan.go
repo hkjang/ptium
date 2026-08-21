@@ -92,11 +92,37 @@ func partTitle(language, name, frame string, part, share int) string {
 	if !ok || suffix == "" {
 		return fmt.Sprintf("%s (%d/%d)", name, part+1, share)
 	}
-	combined := name + " — " + suffix
-	if utf8.RuneCountInString(combined) > 24 {
-		return suffix
+	// Latin script needs more room for the same amount of meaning: twenty-four
+	// characters is a full Korean title and half an English one.
+	limit := 24
+	if latinPhrase(name) {
+		limit = 56
 	}
-	return combined
+	// The name gives way, not the aspect — dropping it entirely is what made two
+	// different subjects both arrive at a slide titled "expected outcome". It
+	// gives way by the same amount on every slide of the topic, measured against
+	// the longest aspect, so a subject is not called three different things in
+	// three consecutive titles.
+	display := name
+	if room := limit - longestFrameSuffix(language) - 3; utf8.RuneCountInString(name) > room {
+		if short := phraseWithin(name, room); short != "" {
+			display = short
+		}
+	}
+	combined := display + " — " + suffix
+	if utf8.RuneCountInString(combined) <= limit {
+		return combined
+	}
+	return suffix
+}
+
+// longestFrameSuffix is how much room the aspects need in a language.
+func longestFrameSuffix(language string) int {
+	longest := 0
+	for _, suffix := range frameTitleSuffix[language] {
+		longest = max(longest, utf8.RuneCountInString(suffix))
+	}
+	return longest
 }
 
 // sectionPlan is one slide, before it becomes source.
@@ -215,7 +241,7 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 					if label == "" {
 						label = name
 					}
-					section.Items = append(section.Items, fmt.Sprintf("%s | %s", label, figure.Value))
+					section.Items = append(section.Items, fmt.Sprintf("%s | %s", capitalized(label), figure.Value))
 				}
 			} else {
 				section.Points = []string{
@@ -274,7 +300,7 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 	}
 	plan.Section = func(topic promptTopic, part, share int) sectionPlan {
 		name := topic.Name
-		section := sectionPlan{Title: partTitle("en", headingName(name), topic.Frame, part, share), Role: "content"}
+		section := sectionPlan{Title: capitalized(partTitle("en", headingName(name), topic.Frame, part, share)), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:
 			section.Lead = "The order this happens in."
@@ -319,7 +345,7 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 					if label == "" {
 						label = name
 					}
-					section.Items = append(section.Items, fmt.Sprintf("%s | %s", label, figure.Value))
+					section.Items = append(section.Items, fmt.Sprintf("%s | %s", capitalized(label), figure.Value))
 				}
 			} else {
 				section.Points = []string{

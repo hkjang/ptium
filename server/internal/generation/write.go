@@ -45,7 +45,7 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 		write("# %s", plan.AgendaTitle)
 		write("@content")
 		for _, topic := range outline.Topics {
-			write("- %s", headingName(topic.Name))
+			write("- %s", capitalized(headingName(topic.Name)))
 		}
 		if plan.AgendaNotes != "" {
 			write("!notes %s", plan.AgendaNotes)
@@ -62,23 +62,34 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 	// Two slides in a row arguing the same way read as one slide printed twice —
 	// especially once a lead drops the subject the title already carries, which is
 	// what makes two different subjects sound identical.
+	//
+	// The same holds across the whole deck, not just between neighbours: two
+	// topics that both ask to be argued as a sequence rotate the same way, and a
+	// deck came out with the expected outcome — the same figures, the same lead —
+	// on two different slides. A frame the deck has already used gives way to one
+	// it has not.
 	previousFrame := ""
+	usedFrames := map[string]bool{}
 	for index, topic := range outline.Topics {
 		share := shares[index]
 		for part := 0; part < share; part++ {
 			// A second slide about the same topic argues a different aspect of it;
 			// repeating the first one is worse than not having it.
-			frame := framePart(topic.Frame, part)
-			if frame == previousFrame {
-				frame = framePart(topic.Frame, part+1)
+			frame, fresh := unusedFrame(topic.Frame, part, previousFrame, usedFrames)
+			if !fresh {
+				// Every angle is spoken for. Another slide about this topic would
+				// repeat one word for word, and the questions the deck raises next
+				// are worth more than a page printed twice.
+				break
 			}
 			previousFrame = frame
+			usedFrames[frame] = true
 			section := plan.Section(promptTopic{Name: topic.Name, Frame: frame}, part, share)
 			// A deck whose title is its only subject would open with that title
 			// twice. The second one says which part of the subject the slide is.
 			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
 				if aspect := frameTitleSuffix[plan.Language][frame]; aspect != "" {
-					section.Title = aspect
+					section.Title = capitalized(aspect)
 				}
 			}
 			write("# %s", section.Title)
@@ -238,4 +249,24 @@ func optional(prefix, value string) string {
 		return ""
 	}
 	return prefix + value
+}
+
+// unusedFrame picks the angle a slide takes: the one the topic's own words ask
+// for, then the rotation, and finally any angle the deck has not used yet.
+//
+// A deck of two topics that both read as a plan rotated identically, and the
+// expected outcome — the same figures, the same lead, the same notes — came out
+// on two slides. Only when every angle has been used does one repeat.
+func unusedFrame(frame string, part int, previous string, used map[string]bool) (string, bool) {
+	candidates := make([]string, 0, 4+len(defaultFrames))
+	for attempt := 0; attempt <= 3; attempt++ {
+		candidates = append(candidates, framePart(frame, part+attempt))
+	}
+	candidates = append(candidates, frameSituation, frameSequence, frameCase, frameOptions, frameRisk, frameOutcome)
+	for _, candidate := range candidates {
+		if candidate != previous && !used[candidate] {
+			return candidate, true
+		}
+	}
+	return candidates[0], false
 }
