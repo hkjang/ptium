@@ -64,6 +64,13 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 			// A second slide about the same topic argues a different aspect of it;
 			// repeating the first one is worse than not having it.
 			section := plan.Section(promptTopic{Name: topic.Name, Frame: framePart(topic.Frame, part)}, part, share)
+			// A deck whose title is its only subject would open with that title
+			// twice. The second one says which part of the subject the slide is.
+			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
+				if aspect := frameTitleSuffix[plan.Language][framePart(topic.Frame, part)]; aspect != "" {
+					section.Title = aspect
+				}
+			}
 			write("# %s", section.Title)
 			if section.Role != "" {
 				write("@%s", section.Role)
@@ -91,9 +98,11 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 		}
 	}
 	// A deck asked for more slides than the prompt gives topics: the remainder
-	// becomes the questions a reader of this deck would ask next.
-	for position < slots {
-		extra := plan.Followup(position - len(outline.Topics))
+	// becomes the questions a reader of this deck would ask next — each asked
+	// once. Past that the deck simply ends. Nine slides that each say something
+	// is a better answer to "twelve" than twelve with the same page three times.
+	for extras := 0; position < slots && extras < followupCount; extras++ {
+		extra := plan.Followup(extras)
 		write("# %s", extra.Title)
 		if extra.Lead != "" {
 			write("> %s", extra.Lead)
@@ -146,6 +155,18 @@ func framePart(frame string, part int) string {
 
 // shareSlides hands out the available slides across topics, giving the earlier
 // ones the surplus.
+// maximumTopicSlides bounds how far one subject is stretched.
+//
+// A topic is argued from a different angle on each of its slides — where it
+// stands, what it costs, what could go wrong, what changes — and there are four
+// such angles. A fifth slide about the same subject can only repeat one of them,
+// which is what a reader sees as padding.
+const maximumTopicSlides = 4
+
+// followupCount is how many closing questions a deck can carry. Each is asked
+// once; the second "남은 질문" in one deck is filler.
+const followupCount = 3
+
 func shareSlides(topics, slots int) []int {
 	if topics <= 0 {
 		return nil
@@ -161,11 +182,11 @@ func shareSlides(topics, slots int) []int {
 		}
 		return shares
 	}
-	base := slots / topics
-	surplus := slots % topics
+	base := min(slots/topics, maximumTopicSlides)
+	surplus := slots - base*topics
 	for index := range shares {
 		shares[index] = base
-		if index < surplus {
+		if index < surplus && shares[index] < maximumTopicSlides {
 			shares[index]++
 		}
 	}

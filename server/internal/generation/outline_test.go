@@ -181,6 +181,68 @@ func TestLongDecksOpenWithTheirContents(t *testing.T) {
 	}
 }
 
+// A brief lists its figures the way it lists its subjects, and reading a figure
+// as a subject gave it its own slides: a twelve-slide deck came out with the same
+// step diagram three times and the same indicators three times.
+func TestFiguresAreNotTopics(t *testing.T) {
+	prompt := "결제 시스템 이중화 계획을 실무진에게 설명하는 12장짜리 자료. 목표 가용성 99.95%, 예산 4억, 이행 기간 8개월."
+	outline := outlinePrompt(prompt, "", koreanCopy)
+	if len(outline.Topics) != 1 || outline.Topics[0].Name != "결제 시스템 이중화 계획" {
+		t.Fatalf("topics = %+v, want the one subject", outline.Topics)
+	}
+	if len(outline.Figures) != 3 {
+		t.Fatalf("figures = %+v, want three", outline.Figures)
+	}
+	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 12, Prompt: prompt}
+	plan := newDeckPlan(outline, presentation, koreanCopy, audienceName("general", koreanCopy), "")
+	parsed := deck.ParseSource(writeSource(outline, plan, 12))
+
+	// One subject cannot honestly fill twelve slides, so the deck is shorter and
+	// every slide is a different one.
+	if len(parsed.Slides) > 10 {
+		t.Fatalf("wrote %d slides for one subject", len(parsed.Slides))
+	}
+	seen := map[string]int{}
+	for _, slide := range parsed.Slides {
+		seen[strings.TrimSpace(slide.Title)]++
+		body := slide.Lead
+		for _, bullet := range slide.Bullets {
+			body += "|" + bullet.Text
+		}
+		for _, block := range slide.Blocks {
+			body += "|" + block.Kind
+		}
+		seen["body:"+body]++
+	}
+	for key, count := range seen {
+		if count > 1 {
+			t.Fatalf("the deck repeats %q %d times", key, count)
+		}
+	}
+	// And the audience key never reaches the page.
+	if strings.Contains(writeSource(outline, plan, 12), "general") {
+		t.Fatal("the stored audience key was written into the deck")
+	}
+}
+
+// A setting is a key; a cover is words.
+func TestAudienceKeysBecomeWords(t *testing.T) {
+	if got := audienceName("general", koreanCopy); got != "일반 청중" {
+		t.Fatalf("audienceName(general) = %q", got)
+	}
+	if got := audienceName("executive", koreanCopy); got != "경영진" {
+		t.Fatalf("audienceName(executive) = %q", got)
+	}
+	// What a person typed is theirs.
+	if got := audienceName("현장 운영팀", koreanCopy); got != "현장 운영팀" {
+		t.Fatalf("audienceName kept nothing of what the author wrote: %q", got)
+	}
+	// An untranslated key is still not something to print.
+	if got := audienceName("stakeholders", koreanCopy); got != "일반 청중" {
+		t.Fatalf("an unknown key reached the deck: %q", got)
+	}
+}
+
 func TestWriteSourceShortDeckHasNoClosingSlide(t *testing.T) {
 	outline := outlinePrompt("클라우드 전환 로드맵과 투자 타당성", "", koreanCopy)
 	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 3}

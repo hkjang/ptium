@@ -304,12 +304,58 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 		}
 	}
 	if layout, ok := manifest.LayoutForRole(role); ok {
+		// A structural layout keeps its slide even when the fit is loose — that is
+		// the deck's shape. But a closing page that cannot hold the ask is the one
+		// slide nobody can afford to lose: "다음 단계" with three requests set as a
+		// stray line under the title is the most important slide of the deck being
+		// dropped on the floor.
+		if structuralRole(role) && !layoutHoldsBody(layout, slide) {
+			// Another layout of the same kind, if the template has one. The deck's
+			// shape is not negotiable — a closing slide stays a closing slide — but
+			// a template with two closing pages should be given the one that can
+			// hold the ask.
+			if better, ok := roleLayoutThatHolds(manifest, slide, role, layout.ID); ok {
+				return better, fmt.Sprintf("the %q layout has no room for this slide's points; used %q instead",
+					layout.Name, better.Name)
+			}
+		}
 		return layout, ""
 	}
 	if layout, ok := manifest.LayoutForRole(pptx.RoleContent); ok {
 		return layout, ""
 	}
 	return manifest.Layouts[0], ""
+}
+
+// roleLayoutThatHolds finds another layout of the same role with room for the
+// slide's points.
+func roleLayoutThatHolds(manifest pptx.Manifest, slide SourceSlide, role, avoid string) (pptx.Layout, bool) {
+	for _, layout := range manifest.Layouts {
+		if layout.Role != role || layout.ID == avoid {
+			continue
+		}
+		if layoutHoldsBody(layout, slide) {
+			return layout, true
+		}
+	}
+	return pptx.Layout{}, false
+}
+
+// layoutHoldsBody reports whether a layout has somewhere to put what the slide
+// carries below its title. A slide with nothing below its title always fits.
+func layoutHoldsBody(layout pptx.Layout, slide SourceSlide) bool {
+	if len(slide.Bullets) == 0 && len(slide.Blocks) == 0 {
+		return true
+	}
+	for _, placeholder := range layout.Placeholders {
+		if placeholder.Slot == pptx.SlotTitle || placeholder.Slot == pptx.SlotSubtitle {
+			continue
+		}
+		if placeholder.AcceptsText() && placeholder.MaxLines > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // bestFittingLayout scores every layout against what the slide actually holds.

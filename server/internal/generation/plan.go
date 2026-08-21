@@ -18,6 +18,7 @@ import (
 // honest scaffolding, and it is why the prompt is visible in the result.
 type deckPlanCopy struct {
 	Title     string
+	Language  string
 	CoverLead string
 	// AgendaTitle and AgendaNotes head the contents page a long deck opens with.
 	AgendaTitle   string
@@ -122,10 +123,13 @@ func languageOf(language string) string {
 }
 
 func koreanPlan(outline promptOutline, title, audience, presenter string, phrases languageCopy) deckPlanCopy {
-	subject := outline.Subject
+	// The subject as a phrase, not as the brief: sentences are built from it, and
+	// "…을 실무진에게 하는 자료에 대한 결정" is the request read back aloud.
+	subject := outline.subjectPhrase()
 	cover := coverLine(outline.Period, presenter, audience+" 보고")
 	plan := deckPlanCopy{
 		Title:        title,
+		Language:     "ko",
 		CoverLead:    cover,
 		AgendaTitle:  "목차",
 		AgendaNotes:  "오늘 다룰 순서를 한 번 훑고, 결론이 어디에 있는지 미리 말합니다.",
@@ -225,12 +229,13 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 }
 
 func englishPlan(outline promptOutline, title, audience, presenter string, phrases languageCopy) deckPlanCopy {
-	subject := outline.Subject
+	subject := outline.subjectPhrase()
 	cover := coverLine(outline.Period, presenter, "Prepared for "+audience)
 	plan := deckPlanCopy{
 		Title:        title,
 		CoverLead:    cover,
 		CoverNotes:   fmt.Sprintf("Say why %s matters now, and give the conclusion before the detail.", subject),
+		Language:     "en",
 		AgendaTitle:  "Agenda",
 		AgendaNotes:  "Walk the order once, and say up front where the decision sits.",
 		ClosingTitle: "Next steps",
@@ -348,7 +353,8 @@ func buildPlan(outline promptOutline, title, audience string, words planWords) d
 	plan := deckPlanCopy{
 		Title:         title,
 		CoverLead:     words.coverLead(outline.Period, audience),
-		CoverNotes:    words.coverNotes(outline.Subject),
+		CoverNotes:    words.coverNotes(outline.subjectPhrase()),
+		Language:      words.language,
 		AgendaTitle:   words.agendaTitle,
 		AgendaNotes:   words.agendaNotes,
 		ClosingTitle:  words.closingTitle,

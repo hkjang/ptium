@@ -2,6 +2,7 @@ package generation
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -23,10 +24,7 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 		count = 50
 	}
 	phrases := localizedCopy(presentation.Language)
-	audience := strings.TrimSpace(presentation.Audience)
-	if audience == "" {
-		audience = phrases.DefaultAudience
-	}
+	audience := audienceName(presentation.Audience, phrases)
 	// The prompt is read for what it asks about, then written as deck source and
 	// compiled against the template — the same path a model's output takes, so
 	// both produce a deck the template actually designed.
@@ -35,9 +33,15 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 	source := writeSource(outline, plan, count)
 
 	result := CompileSource(source, presentation, profile, template)
-	// Compiling always yields as many slides as the source has; if the source came
-	// out short of the requested count the deck is still coherent, and saying so
-	// is better than padding it with filler.
+	// Compiling always yields as many slides as the source has. A brief with one
+	// subject cannot honestly fill twenty slides: each subject is argued from four
+	// angles and the closing questions are asked once, and past that a deck can
+	// only repeat itself. Saying so is better than padding it with filler.
+	if short := count - len(result.Slides); short > 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"%d slide(s) were asked for and %d were written: the brief names %d subject(s), and stretching them further would repeat pages",
+			count, len(result.Slides), len(outline.Topics)))
+	}
 	return result
 }
 
@@ -279,6 +283,8 @@ func presenterLine(profile model.Profile) string {
 // audience. Everything else a deck says is written in plan.go, from the topics
 // the prompt actually named.
 type languageCopy struct {
+	// Language is the two-letter code this copy is written in.
+	Language        string
 	DefaultTopic    string
 	DefaultAudience string
 }
@@ -295,10 +301,63 @@ func localizedCopy(language string) languageCopy {
 	return englishCopy
 }
 
-var koreanCopy = languageCopy{DefaultTopic: "제안 주제", DefaultAudience: "일반 청중"}
+// audienceNames turn the keys an administrator stores into words a deck can say.
+//
+// A default is stored as "general" or "executive", and a cover that reads
+// "general 보고" is a deck telling its reader about its own settings. Anything a
+// person typed themselves is left exactly as written.
+var audienceNames = map[string]map[string]string{
+	"ko": {"general": "일반 청중", "executive": "경영진", "executives": "경영진", "board": "이사회",
+		"practitioner": "실무진", "practitioners": "실무진", "technical": "기술 담당자",
+		"customer": "고객사", "customers": "고객사", "investor": "투자자", "investors": "투자자",
+		"student": "교육생", "students": "교육생", "internal": "사내 구성원"},
+	"en": {"general": "a general audience", "executive": "the executive team", "executives": "the executive team",
+		"board": "the board", "practitioner": "the working team", "practitioners": "the working team",
+		"technical": "the engineering team", "customer": "the customer", "customers": "customers",
+		"investor": "investors", "investors": "investors", "student": "learners", "students": "learners",
+		"internal": "the company"},
+	"ja": {"general": "一般の聴衆", "executive": "経営層", "practitioner": "実務担当者", "investor": "投資家"},
+	"zh": {"general": "一般听众", "executive": "管理层", "practitioner": "业务负责人", "investor": "投资人"},
+}
 
-var englishCopy = languageCopy{DefaultTopic: "the proposal", DefaultAudience: "a general audience"}
+// audienceName is who the deck addresses, in words.
+func audienceName(audience string, phrases languageCopy) string {
+	audience = strings.TrimSpace(audience)
+	if audience == "" {
+		return phrases.DefaultAudience
+	}
+	if named, ok := audienceNames[phrases.Language][strings.ToLower(audience)]; ok {
+		return named
+	}
+	// A key nobody translated is still not something to print. Anything with a
+	// space or a non-Latin letter is a phrase a person wrote.
+	if isSettingKey(audience) {
+		return phrases.DefaultAudience
+	}
+	return audience
+}
 
-var japaneseCopy = languageCopy{DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆"}
+// isSettingKey reports whether a value looks like a stored key rather than words
+// someone wrote: one lowercase Latin word, no spaces.
+func isSettingKey(value string) bool {
+	if strings.ContainsAny(value, " ·,·") {
+		return false
+	}
+	for _, letter := range value {
+		if letter > 127 {
+			return false
+		}
+		if !(letter >= 'a' && letter <= 'z') && letter != '-' && letter != '_' {
+			return false
+		}
+	}
+	return value != ""
+}
 
-var chineseCopy = languageCopy{DefaultTopic: "提案主题", DefaultAudience: "一般听众"}
+var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", DefaultAudience: "일반 청중"}
+
+var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", DefaultAudience: "a general audience"}
+
+var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆"}
+
+var chineseCopy = languageCopy{Language: "zh", DefaultTopic: "提案主题", DefaultAudience: "一般听众"}

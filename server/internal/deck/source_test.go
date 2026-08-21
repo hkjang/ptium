@@ -176,6 +176,38 @@ func TestCompileSpreadsBulletsAcrossATwoColumnLayout(t *testing.T) {
 	}
 }
 
+// A deck's shape is not negotiable — the last slide is the closing — but a
+// template with more than one closing page should be given the one that can hold
+// the ask. "다음 단계" with three requests set as a stray line under the title is
+// the most important slide of the deck being dropped on the floor.
+func TestAClosingSlideKeepsItsPoints(t *testing.T) {
+	manifest := testManifest()
+	statement := pptx.Layout{ID: "마무리-문구", Name: "마무리 문구", Role: pptx.RoleClosing,
+		Placeholders: []pptx.Placeholder{
+			{Slot: pptx.SlotTitle, Kind: "text", Type: "title", X: 900000, Y: 2000000, Width: 8000000, Height: 900000, MaxChars: 40, MaxLines: 2},
+		}}
+	holds := pptx.Layout{ID: "마무리-목록", Name: "마무리 목록", Role: pptx.RoleClosing,
+		Placeholders: []pptx.Placeholder{
+			{Slot: pptx.SlotTitle, Kind: "text", Type: "title", X: 900000, Y: 800000, Width: 8000000, Height: 900000, MaxChars: 40, MaxLines: 2},
+			{Slot: pptx.SlotBody, Kind: "text", Type: "body", X: 900000, Y: 1900000, Width: 8000000, Height: 2600000, MaxChars: 60, MaxLines: 6},
+		}}
+	manifest.Layouts = append([]pptx.Layout{statement, holds}, manifest.Layouts...)
+
+	source := "# 표지\n@cover\n> 여는 줄\n\n# 본문\n- 한 줄\n\n# 다음 단계\n@closing\n> 결정과 실행을 나눠 요청합니다\n- 오늘 요청하는 결정\n- 30일 안에 진행할 일\n- 다음 보고 시점\n"
+	compiled := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	last := compiled.Slides[len(compiled.Slides)-1]
+	if last.Layout != pptx.RoleClosing {
+		t.Fatalf("the deck stopped closing on a closing layout: %q", last.Layout)
+	}
+	if last.LayoutID != holds.ID {
+		t.Fatalf("the closing slide landed on %q, which has no room for its points", last.LayoutID)
+	}
+	content := Decode(last.Content)
+	if len(content.Fields[pptx.SlotBody]) != 3 {
+		t.Fatalf("the closing slide kept %d of its three points: %+v", len(content.Fields[pptx.SlotBody]), content.Fields)
+	}
+}
+
 func TestCompileReportsAMissingLayoutInsteadOfFailing(t *testing.T) {
 	manifest := testManifest()
 	result := Compile(ParseSource("# 제목\n@layout nonexistent\n- 내용\n"), manifest, CompileOptions{})

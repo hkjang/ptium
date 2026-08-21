@@ -56,8 +56,22 @@ func TestFallbackBuildsANarrativeArcWithLayoutVariety(t *testing.T) {
 	template := testTemplate(t)
 	p := model.Presentation{Title: "성장 전략", Prompt: "국내 재진입", Language: "ko", RequestedSlideCount: 10}
 	generated := Fallback(p, model.Profile{Company: "코리아크레딧뷰로"}, template)
-	if len(generated.Slides) != 10 {
-		t.Fatalf("expected 10 slides, got %d", len(generated.Slides))
+	// One subject argued from four angles, the closing questions asked once, and
+	// a cover and a close: that is what this brief honestly holds. A deck padded
+	// out to exactly ten would repeat pages, so a short deck says so instead.
+	if len(generated.Slides) < 8 || len(generated.Slides) > 10 {
+		t.Fatalf("expected a deck of 8 to 10 slides, got %d", len(generated.Slides))
+	}
+	if len(generated.Slides) < 10 && len(generated.Warnings) == 0 {
+		t.Fatal("a deck shorter than asked for must say why")
+	}
+	// And no page may appear twice.
+	seen := map[string]bool{}
+	for _, slide := range generated.Slides {
+		if seen[slide.Title] {
+			t.Fatalf("the deck repeats the slide %q", slide.Title)
+		}
+		seen[slide.Title] = true
 	}
 	if generated.Slides[0].Layout != pptx.RoleTitle {
 		t.Fatalf("deck must open on a title layout, got %q", generated.Slides[0].Layout)

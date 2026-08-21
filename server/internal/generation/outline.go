@@ -129,6 +129,12 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	outline.Subject = subject
 
 	for _, candidate := range topicSplitter.Split(subject, -1) {
+		// "목표 가용성 99.95%" is a figure the deck should show, not a subject it
+		// should argue. Treating one as a topic gave it its own slides — and a
+		// twelve-slide deck came out with the same step diagram three times.
+		if figureClause(candidate, outline.Figures) {
+			continue
+		}
 		name := topicPhrase(cleanTopic(candidate))
 		if name == "" || utf8.RuneCountInString(name) < 2 {
 			continue
@@ -140,6 +146,34 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frameFor(subject)}}
 	}
 	return outline
+}
+
+// figureClause reports whether a clause is one of the numbers the prompt gave
+// rather than something the deck is about.
+//
+// A brief lists its figures the same way it lists its subjects — separated by
+// commas — so the split cannot tell them apart. What tells them apart is that a
+// figure clause is a label and a number and nothing else.
+func figureClause(clause string, figures []promptFigure) bool {
+	trimmed := strings.TrimSpace(clause)
+	if trimmed == "" {
+		return false
+	}
+	for _, figure := range figures {
+		value := strings.TrimSpace(figure.Value)
+		if value == "" || !strings.Contains(trimmed, value) {
+			continue
+		}
+		// The clause is the figure plus its label, and nothing more: "예산 4억" is
+		// the figure, "예산 4억을 어떻게 쓸지" is a subject that mentions it.
+		rest := strings.TrimSpace(strings.Replace(trimmed, value, " ", 1))
+		label := strings.TrimSpace(figure.Label)
+		rest = strings.TrimSpace(strings.TrimPrefix(rest, label))
+		if utf8.RuneCountInString(rest) <= 2 {
+			return true
+		}
+	}
+	return false
 }
 
 // topicPhrase cuts a topic down to something that can sit inside a sentence.
@@ -345,6 +379,18 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 		return given
 	}
 	return candidate
+}
+
+// subjectPhrase is what the deck is about, in words a sentence can carry.
+//
+// The subject as extracted still has the request attached — "…을 실무진에게 하는
+// 자료" — and every sentence the plan builds from it inherits that. The title
+// already knows how to cut a subject down; the prose uses the same cut.
+func (outline promptOutline) subjectPhrase() string {
+	if phrase := titlePhrase(outline.Subject); phrase != "" {
+		return phrase
+	}
+	return outline.Subject
 }
 
 // titlePhrase is the prompt's own subject, kept whole, for the cover.
