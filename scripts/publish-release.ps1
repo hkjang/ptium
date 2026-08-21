@@ -17,6 +17,7 @@ $Assets = @(
     (Join-Path $RepositoryRoot "dist/docker-compose.ptium-$Version.yml"),
     (Join-Path $RepositoryRoot "dist/ptium-$Version.env.example"),
     (Join-Path $RepositoryRoot "dist/load-ptium-$Version.ps1"),
+    (Join-Path $RepositoryRoot "dist/load-ptium-$Version.sh"),
     (Join-Path $RepositoryRoot "dist/ptium-$Version.kubernetes.yaml")
 )
 
@@ -56,4 +57,3 @@ try {
 } finally {
     Pop-Location
 }
-

@@ -24,6 +24,7 @@ $ChecksumPath = "$ArchivePath.sha256"
 $OfflineComposePath = Join-Path $DistDirectory "docker-compose.ptium-$Version.yml"
 $OfflineEnvPath = Join-Path $DistDirectory "ptium-$Version.env.example"
 $OfflineLoaderPath = Join-Path $DistDirectory "load-ptium-$Version.ps1"
+$OfflineShellLoaderPath = Join-Path $DistDirectory "load-ptium-$Version.sh"
 $OfflineKubernetesPath = Join-Path $DistDirectory "ptium-$Version.kubernetes.yaml"
 $Revision = (git -C $RepositoryRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $Revision -notmatch '^[0-9a-f]{40}$') {
@@ -57,6 +58,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "docker-compose.offline.yml") -Destination $OfflineComposePath -Force
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot ".env.offline.example") -Destination $OfflineEnvPath -Force
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "scripts/load-offline.ps1") -Destination $OfflineLoaderPath -Force
+    Copy-Item -LiteralPath (Join-Path $RepositoryRoot "scripts/load-offline.sh") -Destination $OfflineShellLoaderPath -Force
     Copy-Item -LiteralPath (Join-Path $RepositoryRoot "deploy/kubernetes.yaml") -Destination $OfflineKubernetesPath -Force
 
     docker image inspect $Image $VersionedAlias | Out-Null
