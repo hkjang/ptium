@@ -564,7 +564,13 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 	if err := snapshotPresentationTx(ctx, tx, id, "source", true); err != nil {
 		return err
 	}
-	result, err := tx.Exec(ctx, `UPDATE presentations SET source=$3,outline=$4,version=version+1,updated_at=now()
+	// A deck with slides in it is not a draft. Someone who wrote their deck as
+	// source, or brought one in from a file, has a finished deck; leaving it
+	// labelled "초안" in their library describes how it was made rather than what
+	// it is. A generation still in flight keeps its own status.
+	result, err := tx.Exec(ctx, `UPDATE presentations SET source=$3,outline=$4,
+		status=CASE WHEN status IN ('draft','completed') THEN 'completed' ELSE status END,
+		version=version+1,updated_at=now()
 		WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL`, id, ownerID, source, outline)
 	if err != nil {
 		return err

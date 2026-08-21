@@ -57,7 +57,16 @@ else:
 
 print("── a deck exported, then uploaded back as a template ──")
 status, decks = api("/api/v1/presentations?limit=10")
-deck = [d for d in decks["data"] if (d.get("slideCount") or 0) > 2][0]["id"]
+existing = [d for d in decks["data"] if (d.get("slideCount") or 0) > 2]
+if existing:
+    deck = existing[0]["id"]
+else:
+    # A fresh database has nothing to export, so the sweep writes its own deck.
+    status, made = api("/api/v1/presentations", "POST", {
+        "title": f"내보내기용 덱 {RUN}", "prompt": "왕복 점검", "requestedSlideCount": 4, "language": "ko"})
+    deck = made["data"]["id"]
+    api(f"/api/v1/presentations/{deck}/source", "PUT", {"source":
+        "# 왕복 점검\n@cover\n> 내보내고 다시 읽습니다\n\n# 실적 요약\n- 매출 1,240억\n  - 신규 채널이 절반\n- 이익률 9.8%\n!notes 원인을 채널별로 나눕니다.\n\n# 채널별 매출\n::table 분기 비교\n- 채널 | 3분기 | 4분기\n- 직영 | 420억 | 480억\n::\n\n# 다음 단계\n@closing\n> 결정과 실행을 나눠 요청합니다\n"})
 status, package = api(f"/api/v1/presentations/{deck}/export?format=pptx", raw=True)
 print(f"   exported {len(package):,} bytes")
 boundary = "----ptium-deep"
@@ -98,6 +107,34 @@ try:
         failures.append(f"a deck generated into an uploaded template has defects: {inspected['data']['findings']}")
 except urllib.error.HTTPError as error:
     failures.append(f"uploading an exported deck as a template failed: {error.code} {error.read()[:300]!r}")
+
+print("── a deck someone already has, read back in ──")
+# The deck exported above is a real PowerPoint file; importing it is the round
+# trip a customer makes with last quarter's report.
+boundary = "----ptium-import"
+parts = [f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"old-deck-{RUN}.pptx\"\r\nContent-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation\r\n\r\n".encode()
+         + package + b"\r\n",
+         f"--{boundary}--\r\n".encode()]
+request = urllib.request.Request(BASE + "/api/v1/presentations/import", data=b"".join(parts), method="POST",
+                                 headers={"X-Ptium-Dev-Secret": SECRET,
+                                          "Content-Type": f"multipart/form-data; boundary={boundary}"})
+try:
+    with urllib.request.urlopen(request) as response:
+        imported = json.loads(response.read())["data"]
+    print("   imported:", imported["presentation"]["title"], "|", imported["slides"], "slides")
+    for warning in imported["warnings"]:
+        print("   warning:", warning)
+    if imported["slides"] < 3:
+        failures.append(f"the import read only {imported['slides']} slides out of a deck that has more")
+    titles = [slide["title"] for slide in imported["presentation"]["slides"]]
+    if not any(title.strip() for title in titles):
+        failures.append("every imported slide came back without a title")
+    status, inspected = api(f"/api/v1/presentations/{imported['presentation']['id']}/inspect")
+    print("   imported deck defects:", inspected["data"]["defects"], "advisories:", inspected["data"]["advisories"])
+    if inspected["data"]["defects"]:
+        failures.append(f"the imported deck has defects: {inspected['data']['findings']}")
+except urllib.error.HTTPError as error:
+    failures.append(f"importing an exported deck failed: {error.code} {error.read()[:300]!r}")
 
 with sync_playwright() as play:
     browser = play.chromium.launch()
