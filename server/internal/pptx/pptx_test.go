@@ -201,6 +201,53 @@ func TestRenderProducesValidPackage(t *testing.T) {
 	}
 }
 
+// A deck of twenty slides that nobody can refer to by number is harder to talk
+// about, so the export carries the page number the design has a place for — and
+// only where the design has one.
+func TestRenderNumbersEverySlideButTheCover(t *testing.T) {
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
+	titleLayout, _ := manifest.Layout(manifest.TitleLayout)
+	contentLayout, _ := manifest.Layout(manifest.DefaultLayout)
+	if contentLayout.SlideNumber == nil {
+		t.Fatal("the shipped design declares no place for a page number")
+	}
+	deck := Deck{Title: "번호", Language: "ko", Slides: []Slide{
+		{LayoutID: titleLayout.ID, Fields: map[string][]Paragraph{SlotTitle: {{Text: "표지"}}}},
+		{LayoutID: contentLayout.ID, Fields: map[string][]Paragraph{SlotTitle: {{Text: "둘째"}}, SlotBody: {{Text: "줄"}}}},
+		{LayoutID: contentLayout.ID, Fields: map[string][]Paragraph{SlotTitle: {{Text: "셋째"}}, SlotBody: {{Text: "줄"}}}},
+	}}
+	rendered, err := Render(pkg, manifest, deck)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	result, err := Open(rendered)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	cover, _ := result.Text("ppt/slides/slide1.xml")
+	if strings.Contains(cover, `type="slidenum"`) {
+		t.Fatalf("the cover carries a page number:\n%s", cover)
+	}
+	for _, part := range []string{"ppt/slides/slide2.xml", "ppt/slides/slide3.xml"} {
+		body, _ := result.Text(part)
+		if !strings.Contains(body, `type="slidenum"`) {
+			t.Fatalf("%s has no page number:\n%s", part, body)
+		}
+		// The field is what makes the number follow a slide someone reorders in
+		// PowerPoint; a literal digit would be wrong the moment they did.
+		if !strings.Contains(body, `<a:fld id=`) {
+			t.Fatalf("%s numbers itself with plain text rather than a field", part)
+		}
+	}
+	// And the preview draws it in the same place, so the screen and the file agree.
+	numbered := deck.Slides[1]
+	numbered.Number = 2
+	svg := PreviewSVG(manifest, contentLayout, numbered, PreviewOptions{Width: 640})
+	if !strings.Contains(svg, ">2</text>") {
+		t.Fatalf("the preview does not draw the page number:\n%s", svg)
+	}
+}
+
 func TestRenderIsRepeatableFromOneTemplate(t *testing.T) {
 	_, pkg, manifest := buildTemplate(t, "ivory-editorial")
 	deck := Deck{Title: "A", Slides: []Slide{{LayoutID: manifest.DefaultLayout, Fields: map[string][]Paragraph{SlotTitle: {{Text: "첫 번째"}}}}}}
@@ -419,7 +466,9 @@ func TestRenderPlacesAPictureInThePackage(t *testing.T) {
 		t.Fatalf("the png content type was not declared:\n%s", types)
 	}
 	// The slot holds the picture instead of prose, so nothing is drawn twice.
-	if strings.Count(slide, "<p:sp>") > 1 {
+	// The page number is a shape too, and it is not one of the slide's regions.
+	shapes := strings.Count(slide, "<p:sp>") - strings.Count(slide, `type="sldNum"`)
+	if shapes > 1 {
 		t.Fatalf("the picture's slot should hold no text shape:\n%s", slide)
 	}
 }

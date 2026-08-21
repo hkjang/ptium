@@ -210,6 +210,25 @@ type Layout struct {
 	// Composed marks a layout whose writable regions Ptium derived from its free
 	// space because it declares no text placeholder of its own.
 	Composed bool `json:"composed,omitempty"`
+	// SlideNumber is where this design puts the page number, if it has a place
+	// for one. Following the template rather than inventing a corner means a
+	// company deck gets its numbers where its designer put them, and a design
+	// that deliberately has none stays clean.
+	SlideNumber *SlideNumberSlot `json:"slideNumber,omitempty"`
+}
+
+// SlideNumberSlot is a design's own page-number placeholder.
+type SlideNumberSlot struct {
+	Index    int    `json:"index,omitempty"`
+	X        int    `json:"x"`
+	Y        int    `json:"y"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	FontSize int    `json:"fontSize,omitempty"`
+	Color    string `json:"color,omitempty"`
+	Font     string `json:"font,omitempty"`
+	Align    string `json:"align,omitempty"`
+	Bold     bool   `json:"bold,omitempty"`
 }
 
 // Slot finds a placeholder by canonical slot name.

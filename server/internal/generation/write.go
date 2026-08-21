@@ -37,6 +37,22 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 		return strings.TrimRight(builder.String(), "\n") + "\n"
 	}
 
+	// A long deck opens with its contents. Past half a dozen slides an audience
+	// wants to know where they are going and where the decision sits; below that
+	// a contents page is a slide spent saying what the next four slides say.
+	if count >= 7 && len(outline.Topics) >= 3 && plan.AgendaTitle != "" {
+		write("# %s", plan.AgendaTitle)
+		write("@content")
+		for _, topic := range outline.Topics {
+			write("- %s", headingName(topic.Name))
+		}
+		if plan.AgendaNotes != "" {
+			write("!notes %s", plan.AgendaNotes)
+		}
+		write("")
+		slots--
+	}
+
 	// Each topic gets at least one slide; when there is room to spare, the
 	// earlier topics get the extra ones, because that is where an argument needs
 	// to be built rather than summarised.

@@ -3,6 +3,7 @@ package pptx
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 )
 
@@ -124,7 +125,46 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 	for _, element := range slide.Elements {
 		builder.WriteString(element.SVG(scale))
 	}
+	builder.WriteString(previewSlideNumber(layout, slide, manifest.Theme, scale))
 	return builder.String()
+}
+
+// previewSlideNumber draws the page number where the export will put it, so the
+// editor and the file agree about what the slide looks like.
+func previewSlideNumber(layout Layout, slide Slide, theme Theme, scale float64) string {
+	slot := layout.SlideNumber
+	if slot == nil || slide.Number <= 0 || slide.HideNumber {
+		return ""
+	}
+	size := float64(slot.FontSize)
+	if size <= 0 {
+		size = 1100
+	}
+	colour := strings.TrimPrefix(strings.TrimSpace(slot.Color), "#")
+	if colour == "" {
+		colour = theme.Color("tx1")
+	}
+	anchor, x := "end", float64(slot.X+slot.Width)*scale
+	switch strings.TrimSpace(slot.Align) {
+	case "l":
+		anchor, x = "start", float64(slot.X)*scale
+	case "ctr":
+		anchor, x = "middle", float64(slot.X)*scale+float64(slot.Width)*scale/2
+	}
+	// Centred in its box, the way an anchored placeholder sets it.
+	drawn := size / 100 * (float64(EMUPerPoint) * scale)
+	y := float64(slot.Y)*scale + float64(slot.Height)*scale/2 + drawn*0.35
+	return fmt.Sprintf(`<text x="%.1f" y="%.1f" text-anchor="%s" font-size="%.1f" fill="#%s"%s>%s</text>`,
+		x, y, anchor, drawn, colour,
+		fontAttribute(slot.Font), escapeText(strconv.Itoa(slide.Number)))
+}
+
+// fontAttribute names a typeface for SVG when the design asked for one.
+func fontAttribute(font string) string {
+	if strings.TrimSpace(font) == "" {
+		return ""
+	}
+	return ` font-family="` + escapeAttribute(font) + `, sans-serif"`
 }
 
 // PreviewLayoutSVG renders a layout on its own, using the prompt text the

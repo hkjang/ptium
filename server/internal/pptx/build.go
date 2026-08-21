@@ -41,6 +41,10 @@ type Slide struct {
 	// styling, so a deck looks like its template until someone decides otherwise.
 	Styles map[string]Style `json:"styles,omitempty"`
 	Notes  string           `json:"notes,omitempty"`
+	// Number is the page number this slide shows, and HideNumber suppresses it.
+	// The cover of a deck carries no number, the way covers do not.
+	Number     int  `json:"number,omitempty"`
+	HideNumber bool `json:"hideNumber,omitempty"`
 }
 
 // Style is what a slide changes about one region's type. Every field is
@@ -271,6 +275,14 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 			if layout, ok = manifest.LayoutForRole(RoleContent); !ok {
 				return nil, fmt.Errorf("slide %d references unknown layout %q", index+1, slide.LayoutID)
 			}
+		}
+		// Numbering is the deck's, not the slide's: a slide does not know where it
+		// sits until it is placed in one. A caller that already numbered its deck
+		// — the same code path every preview goes through — is left alone, so the
+		// file and the screen cannot disagree.
+		if slide.Number == 0 {
+			slide.Number = index + 1
+			slide.HideNumber = layout.Role == RoleTitle
 		}
 		slidePart := fmt.Sprintf("ppt/slides/slide%d.xml", index+1)
 		var notesPart string
@@ -558,7 +570,62 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapeID++
 	}
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
-		shapes.String() + components.String() + freeform.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+		shapes.String() + components.String() + freeform.String() +
+		slideNumberXML(shapeID, layout, slide, language) +
+		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+}
+
+// slideNumberXML writes the page number where the design put its placeholder.
+//
+// A master can declare the placeholder and still show nothing: PowerPoint draws
+// the number only for slides that carry the shape themselves, which is what its
+// Header & Footer dialog inserts. Ptium writes it for the same reason a person
+// ticks that box — a deck of twenty slides that nobody can refer to by number is
+// harder to talk about — and leaves the cover alone, as every deck does.
+func slideNumberXML(shapeID int, layout Layout, slide Slide, language string) string {
+	slot := layout.SlideNumber
+	if slot == nil || slide.Number <= 0 || slide.HideNumber {
+		return ""
+	}
+	if language == "" {
+		language = "ko-KR"
+	}
+	reference := `<p:ph type="sldNum"`
+	if slot.Index > 0 {
+		reference += ` idx="` + strconv.Itoa(slot.Index) + `"`
+	}
+	reference += `/>`
+	align := strings.TrimSpace(slot.Align)
+	if align == "" {
+		align = "r"
+	}
+	properties := `<a:rPr lang="` + escapeAttribute(language) + `" smtClean="0"`
+	if slot.FontSize > 0 {
+		properties += ` sz="` + strconv.Itoa(slot.FontSize) + `"`
+	}
+	if slot.Bold {
+		properties += ` b="1"`
+	}
+	properties += `>`
+	if colour := strings.TrimSpace(slot.Color); colour != "" {
+		properties += `<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(colour, "#")) + `"/></a:solidFill>`
+	}
+	if font := strings.TrimSpace(slot.Font); font != "" {
+		properties += `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+	}
+	properties += `</a:rPr>`
+	// The field is what makes the number follow the slide when someone reorders
+	// the deck in PowerPoint; the literal text is only what renderers show before
+	// they evaluate it.
+	body := `<a:p><a:pPr algn="` + escapeAttribute(align) + `"/>` +
+		`<a:fld id="{5B2B4A21-6D1F-4A76-9E30-6B4C1E9F4B10}" type="slidenum">` + properties +
+		`<a:t>` + strconv.Itoa(slide.Number) + `</a:t></a:fld>` +
+		`<a:endParaRPr lang="` + escapeAttribute(language) + `"/></a:p>`
+	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Slide Number Placeholder"/>` +
+		`<p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>` + reference + `</p:nvPr></p:nvSpPr>` +
+		`<p:spPr><a:xfrm><a:off x="` + strconv.Itoa(slot.X) + `" y="` + strconv.Itoa(slot.Y) + `"/>` +
+		`<a:ext cx="` + strconv.Itoa(slot.Width) + `" cy="` + strconv.Itoa(slot.Height) + `"/></a:xfrm></p:spPr>` +
+		`<p:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/>` + body + `</p:txBody></p:sp>`
 }
 
 func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string,

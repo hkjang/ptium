@@ -148,6 +148,39 @@ func TestWriteSourceHonoursTheSlideCountAndVariesRepeatedTopics(t *testing.T) {
 	}
 }
 
+// Past half a dozen slides an audience wants to know where the deck is going;
+// below that, a contents page is a slide spent saying what the next four say.
+func TestLongDecksOpenWithTheirContents(t *testing.T) {
+	outline := outlinePrompt("클라우드 전환 로드맵, 투자 타당성, 리스크 대응을 정리해줘", "", koreanCopy)
+	for _, testCase := range []struct {
+		count  int
+		agenda bool
+	}{{5, false}, {8, true}} {
+		presentation := model.Presentation{Language: "ko", RequestedSlideCount: testCase.count}
+		plan := newDeckPlan(outline, presentation, koreanCopy, "임원", "")
+		parsed := deck.ParseSource(writeSource(outline, plan, testCase.count))
+		if len(parsed.Slides) != testCase.count {
+			t.Fatalf("asked for %d slides, wrote %d", testCase.count, len(parsed.Slides))
+		}
+		second := parsed.Slides[1].Title
+		if got := second == "목차"; got != testCase.agenda {
+			t.Fatalf("a %d-slide deck: contents page = %v, want %v (second slide is %q)",
+				testCase.count, got, testCase.agenda, second)
+		}
+		if !testCase.agenda {
+			continue
+		}
+		// The contents page names the sections, and nothing else.
+		points := []string{}
+		for _, bullet := range parsed.Slides[1].Bullets {
+			points = append(points, bullet.Text)
+		}
+		if len(points) != len(outline.Topics) {
+			t.Fatalf("the contents page lists %v for topics %+v", points, outline.Topics)
+		}
+	}
+}
+
 func TestWriteSourceShortDeckHasNoClosingSlide(t *testing.T) {
 	outline := outlinePrompt("클라우드 전환 로드맵과 투자 타당성", "", koreanCopy)
 	presentation := model.Presentation{Language: "ko", RequestedSlideCount: 3}

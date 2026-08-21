@@ -61,6 +61,10 @@ Rules:
   a comparison layout for trade-offs, a two-content layout for parallel ideas,
   a quote layout for a single memorable statement, a section layout to change
   chapters. Do not force every slide into a bullet list.
+- A deck of seven slides or more opens with a contents page after the cover:
+  role=content, the section names as its points, in the order they come. A
+  shorter deck does not need one — it would be a slide spent saying what the next
+  four slides say.
 - Return exactly the requested number of slides.
 
 Respond with strict JSON only:

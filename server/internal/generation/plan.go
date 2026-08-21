@@ -17,8 +17,11 @@ import (
 // answer — so the author fills in numbers rather than deciding structure. That is
 // honest scaffolding, and it is why the prompt is visible in the result.
 type deckPlanCopy struct {
-	Title         string
-	CoverLead     string
+	Title     string
+	CoverLead string
+	// AgendaTitle and AgendaNotes head the contents page a long deck opens with.
+	AgendaTitle   string
+	AgendaNotes   string
 	CoverNotes    string
 	ClosingTitle  string
 	ClosingLead   string
@@ -124,6 +127,8 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 	plan := deckPlanCopy{
 		Title:        title,
 		CoverLead:    cover,
+		AgendaTitle:  "목차",
+		AgendaNotes:  "오늘 다룰 순서를 한 번 훑고, 결론이 어디에 있는지 미리 말합니다.",
 		CoverNotes:   fmt.Sprintf("%s 왜 지금 다뤄야 하는지 한 문장으로 밝히고, 오늘 결론이 무엇인지 먼저 말합니다.", josa(subject, "을", "를")),
 		ClosingTitle: "다음 단계",
 		ClosingLead:  fmt.Sprintf("%s 대한 결정과 실행을 분리해 요청합니다.", josa(subject, "에", "에")),
@@ -226,6 +231,8 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 		Title:        title,
 		CoverLead:    cover,
 		CoverNotes:   fmt.Sprintf("Say why %s matters now, and give the conclusion before the detail.", subject),
+		AgendaTitle:  "Agenda",
+		AgendaNotes:  "Walk the order once, and say up front where the decision sits.",
 		ClosingTitle: "Next steps",
 		ClosingLead:  "Separate the decision from the work that follows it.",
 		ClosingPoints: []string{
@@ -325,6 +332,8 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 type planWords struct {
 	coverLead     func(period, audience string) string
 	coverNotes    func(subject string) string
+	agendaTitle   string
+	agendaNotes   string
 	closingTitle  string
 	closingLead   string
 	closingPoints []string
@@ -340,6 +349,8 @@ func buildPlan(outline promptOutline, title, audience string, words planWords) d
 		Title:         title,
 		CoverLead:     words.coverLead(outline.Period, audience),
 		CoverNotes:    words.coverNotes(outline.Subject),
+		AgendaTitle:   words.agendaTitle,
+		AgendaNotes:   words.agendaNotes,
 		ClosingTitle:  words.closingTitle,
 		ClosingLead:   words.closingLead,
 		ClosingPoints: words.closingPoints,

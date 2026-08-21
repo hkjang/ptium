@@ -200,6 +200,14 @@ export function GuidePage() {
         </section>
 
         <section id="present" className="guide-section">
+          <h3 className="guide-subhead">발표 자료다움</h3>
+          <ul className="guide-checklist">
+            <li><b>페이지 번호</b> — 템플릿이 번호 자리를 둔 디자인이면 자동으로 들어가고, 표지에는
+              넣지 않습니다. 미리보기와 파일이 같은 자리에 그리고, PowerPoint에서 순서를 바꿔도
+              번호가 따라옵니다.</li>
+            <li><b>목차</b> — 7장 이상이면 표지 다음에 목차가 들어갑니다.</li>
+            <li><b>발표자 노트</b> — 각 장에서 무엇을 말할지 초안이 함께 들어갑니다.</li>
+          </ul>
           <h2><MonitorPlay size={19} /> 발표와 내보내기</h2>
           <ul className="guide-checklist">
             <li><b>발표</b>(<kbd>F5</kbd>) — 청중 화면에는 슬라이드만 나옵니다.</li>

@@ -516,6 +516,10 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 	for index, slide := range presentation.Slides {
 		layout := resolveLayout(manifest, slide, index, len(presentation.Slides))
 		rendered := RenderSlide(slide, layout)
+		// Where the slide sits in the deck, so the export and every preview agree
+		// about the page number. A cover carries none, the way covers do not.
+		rendered.Number = index + 1
+		rendered.HideNumber = layout.Role == pptx.RoleTitle
 		content := Decode(slide.Content)
 		// A region someone dragged on the canvas moves for this slide only; the
 		// layout it came from is untouched, so every other slide keeps the design.

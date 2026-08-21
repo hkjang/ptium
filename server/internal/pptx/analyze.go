@@ -220,6 +220,13 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 		}
 		kind := placeholderKind(reference.Type)
 		if kind == "" {
+			// A page number is not a region to write into, but it is part of the
+			// design and the export has to honour it.
+			if normalizePlaceholderType(reference.Type) == "sldNum" && layout.SlideNumber == nil {
+				if slot := slideNumberSlot(shape, reference, parent, theme); slot != nil {
+					layout.SlideNumber = slot
+				}
+			}
 			continue
 		}
 		inherited, hasInherited := inheritedPlaceholder(parent, reference.Type, reference.Idx)
@@ -268,6 +275,11 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 		}
 		placeholder.MaxChars, placeholder.MaxLines, placeholder.LineEm = capacity(placeholder)
 		layout.Placeholders = append(layout.Placeholders, placeholder)
+	}
+	// A layout that declares no page number of its own still shows the master's,
+	// unless it opted out of the master's shapes altogether.
+	if layout.SlideNumber == nil && parsed.ShowMasterShp != "0" {
+		layout.SlideNumber = masterSlideNumber(parent, theme)
 	}
 	sort.SliceStable(layout.Placeholders, func(i, j int) bool { return readingOrder(layout.Placeholders[i], layout.Placeholders[j]) })
 	dedupeSlots(&layout)
@@ -341,6 +353,50 @@ func decorations(tree rawShapeTree, colorMap map[string]string, theme Theme) []D
 // an exact match is tried first, then the type alone, then a family of related
 // types — a centred title inherits from the master title, a picture or chart
 // placeholder from the master body.
+// slideNumberSlot reads a layout's own page-number placeholder.
+func slideNumberSlot(shape rawShape, reference *rawPlaceholderRef, parent master, theme Theme) *SlideNumberSlot {
+	inherited, hasInherited := inheritedPlaceholder(parent, reference.Type, reference.Idx)
+	x, y, width, height, hasGeometry := shape.geometry()
+	if !hasGeometry && hasInherited && inherited.HasGeometry {
+		x, y, width, height, hasGeometry = inherited.X, inherited.Y, inherited.Width, inherited.Height, true
+	}
+	if !hasGeometry || width <= 0 || height <= 0 {
+		return nil
+	}
+	slot := &SlideNumberSlot{
+		Index: atoiDefault(reference.Idx, 0), X: x, Y: y, Width: width, Height: height,
+		FontSize: layoutFontSize(shape, "sldNum", inherited, parent),
+	}
+	slot.Color, slot.Bold, slot.Font, _, slot.Align = textStyle(shape, "sldNum", inherited, parent, theme)
+	return slot
+}
+
+// masterSlideNumber is the page number a layout inherits without redeclaring it.
+func masterSlideNumber(parent master, theme Theme) *SlideNumberSlot {
+	for key, inherited := range parent.Placeholders {
+		if !strings.HasPrefix(key, "sldNum") || !inherited.HasGeometry || inherited.Width <= 0 || inherited.Height <= 0 {
+			continue
+		}
+		slot := &SlideNumberSlot{
+			Index: masterPlaceholderIndex(key), X: inherited.X, Y: inherited.Y,
+			Width: inherited.Width, Height: inherited.Height,
+			FontSize: layoutFontSize(rawShape{}, "sldNum", inherited, parent),
+		}
+		slot.Color, slot.Bold, slot.Font, _, slot.Align = textStyle(rawShape{}, "sldNum", inherited, parent, theme)
+		return slot
+	}
+	return nil
+}
+
+// masterPlaceholderIndex reads the idx back out of a placeholder key.
+func masterPlaceholderIndex(key string) int {
+	_, index, found := strings.Cut(key, ":")
+	if !found {
+		return 0
+	}
+	return atoiDefault(index, 0)
+}
+
 func inheritedPlaceholder(parent master, phType, index string) (rawPlaceholder, bool) {
 	if value, ok := parent.Placeholders[placeholderKey(phType, index)]; ok {
 		return value, true
