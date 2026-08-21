@@ -81,9 +81,10 @@ export function PresentationsPage() {
     showToast(`${file.name}을 읽고 있습니다…`)
     try {
       const result = await api.importPresentation(file)
-      showToast(result.warnings.length > 0
-        ? `${result.slides}장을 가져왔습니다. ${result.warnings[0]}`
-        : `${result.slides}장을 가져왔습니다.`)
+      // Only what the import did with their file. What the compiler adjusted is
+      // in the response for anyone debugging a template, and is not the thing to
+      // greet someone with.
+      showToast([`${result.slides}장을 가져왔습니다.`, ...result.warnings].join(' '))
       navigate(`/presentations/${result.presentation.id}/editor`)
     } catch (err) { showToast(displayError(err), 'error') } finally { setImporting(false) }
   }

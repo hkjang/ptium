@@ -126,11 +126,20 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 		warnings = append(warnings, fmt.Sprintf(
 			"이 배포는 한 덱에 %d장까지 허용하므로 그 뒤는 가져오지 않았습니다", maximum))
 	}
-	warnings = append(warnings, compiled.Warnings...)
+	// Two kinds of thing to say, and they are not for the same reader. What the
+	// import did with the file — "표 1개를 다시 그렸습니다" — is for the person who
+	// uploaded it. What the compiler adjusted — 'layout "마무리" has no free body
+	// region' — is for whoever is debugging a template, and putting it in front of
+	// someone who just wanted their deck back is noise in a language they did not
+	// choose.
 	if warnings == nil {
 		// An empty list, not a null: a client should not have to handle both to
 		// find out that nothing went wrong.
 		warnings = []string{}
+	}
+	technical := compiled.Warnings
+	if technical == nil {
+		technical = []string{}
 	}
 
 	created, err := s.store.CreatePresentation(request.Context(), user.ID, store.PresentationInput{
@@ -159,7 +168,8 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	s.store.Audit(request.Context(), &user.ID, "presentation.import", "presentation", created.ID,
 		map[string]any{"filename": meta.Filename, "slides": len(compiled.Slides)})
 	writeData(writer, request, http.StatusCreated, map[string]any{
-		"presentation": stored, "warnings": warnings, "slides": len(compiled.Slides),
+		"presentation": stored, "warnings": warnings, "notes": technical,
+		"slides": len(compiled.Slides),
 	})
 }
 

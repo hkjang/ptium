@@ -901,6 +901,17 @@ paths:
                         type: integer
                       warnings:
                         type: array
+                        description: |
+                          What the import did with the file, for the person who
+                          uploaded it: pictures placed, tables redrawn, charts left
+                          behind.
+                        items:
+                          type: string
+                      notes:
+                        type: array
+                        description: |
+                          What binding the text to the template adjusted, for
+                          whoever is debugging a template.
                         items:
                           type: string
                   requestId:

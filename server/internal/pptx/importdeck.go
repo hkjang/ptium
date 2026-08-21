@@ -354,9 +354,15 @@ func roleForLayoutType(layoutType, name string) string {
 		return RoleTitle
 	case "secHead":
 		return RoleSection
+	case "obj", "tx", "objTx", "txAndObj", "objAndTx", "txOverObj", "objOverTx2":
+		// The ordinary content layouts. Naming them matters: without a role the
+		// deck's position rules decide, and the last slide of an imported deck
+		// would become a closing page — losing its points to a layout designed to
+		// hold one line.
+		return RoleContent
 	case "twoObj", "twoTxTwoObj", "twoObjAndTx", "twoObjOverTx":
 		return RoleTwoContent
-	case "objOverTx", "picTx", "txAndPic", "picOnly":
+	case "picTx", "txAndPic", "picOnly":
 		return RolePicture
 	case "blank":
 		return RoleBlank
@@ -368,6 +374,8 @@ func roleForLayoutType(layoutType, name string) string {
 	}
 	lowered := strings.ToLower(strings.TrimSpace(name))
 	switch {
+	case strings.Contains(lowered, "title and content") || strings.Contains(lowered, "제목 및 내용"):
+		return RoleContent
 	case strings.Contains(lowered, "title slide") || strings.Contains(lowered, "표지"):
 		return RoleTitle
 	case strings.Contains(lowered, "section") || strings.Contains(lowered, "간지"):

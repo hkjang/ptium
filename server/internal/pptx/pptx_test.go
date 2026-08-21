@@ -586,3 +586,27 @@ func TestReadDeckCarriesTheWordsAndSaysWhatItLeft(t *testing.T) {
 		t.Fatalf("the table's header reads %v", got)
 	}
 }
+
+// Without a role of its own, an imported slide falls to the deck's position
+// rules and the last one becomes a closing page — which in most designs holds a
+// line, so its points are dropped. Microsoft's own content layout is type "obj".
+func TestImportedLayoutsKeepTheirKind(t *testing.T) {
+	cases := []struct{ layoutType, name, want string }{
+		{"obj", "Title and Content", RoleContent},
+		{"tx", "Title and Text", RoleContent},
+		{"", "Title and Content", RoleContent},
+		{"", "제목 및 내용", RoleContent},
+		{"title", "Title Slide", RoleTitle},
+		{"secHead", "Section Header", RoleSection},
+		{"twoObj", "Two Content", RoleTwoContent},
+		{"picTx", "Picture with Caption", RolePicture},
+		{"blank", "Blank", RoleBlank},
+		{"titleOnly", "Title Only", ""},
+	}
+	for _, testCase := range cases {
+		if got := roleForLayoutType(testCase.layoutType, testCase.name); got != testCase.want {
+			t.Errorf("roleForLayoutType(%q, %q) = %q, want %q",
+				testCase.layoutType, testCase.name, got, testCase.want)
+		}
+	}
+}

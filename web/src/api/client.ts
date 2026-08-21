@@ -1017,7 +1017,10 @@ export const api = {
     const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
     return {
       presentation: normalizePresentation(data.presentation as Presentation & Record<string, unknown>),
+      // What the import did with the file, for the person who uploaded it.
       warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      // What the compiler adjusted, for whoever is debugging a template.
+      notes: Array.isArray(data.notes) ? data.notes.map(String) : [],
       slides: Number(data.slides ?? 0),
     }
   },
