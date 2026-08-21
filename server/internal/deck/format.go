@@ -78,6 +78,20 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 				}
 			}
 		}
+		// Where the slide's figures came from, written back the way it was
+		// written in: a round trip that dropped the evidence would be a slow
+		// deletion of the one thing a reader asks about.
+		for _, source := range content.Sources {
+			fields := make([]string, 0, 3)
+			if marker := strings.TrimSpace(source.Marker); marker != "" {
+				fields = append(fields, escapeItemField(marker))
+			}
+			fields = append(fields, escapeItemField(source.Title))
+			if locator := strings.TrimSpace(source.Locator); locator != "" {
+				fields = append(fields, escapeItemField(locator))
+			}
+			fmt.Fprintf(&builder, "!source %s\n", strings.Join(fields, " | "))
+		}
 		notes := strings.TrimSpace(slide.SpeakerNotes)
 		if notes == "" {
 			notes = strings.TrimSpace(content.Notes)

@@ -4457,7 +4457,7 @@ components:
             properties:
               key:
                 type: string
-                enum: [readability, structure, visual, accessibility]
+                enum: [readability, structure, visual, accessibility, evidence]
               score:
                 type: integer
               counted:

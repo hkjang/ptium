@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -44,8 +46,26 @@ type SourceSlide struct {
 	Blocks   []SourceBlock
 	Images   []SourceImage
 	Notes    string
+	// Sources are where the slide's figures came from. A deck that states a
+	// number and cannot say where it is from is the first thing anyone in a
+	// company asks about, so the language carries the answer beside the claim.
+	Sources []SourceCitation
 	// Line is where the slide began, for error reporting.
 	Line int
+}
+
+// SourceCitation is one source a slide cites, as written in source:
+//
+//   - 매출 1,240억 ^1
+//     !source 1 | 2026 시장 조사 보고서 | p.42
+//
+// Marker is what the claim carries ("1"), Title names the source and Locator
+// says where in it to look.
+type SourceCitation struct {
+	Marker  string
+	Title   string
+	Locator string
+	Line    int
 }
 
 // SourceImage is an image a slide places, as written in source.
@@ -245,7 +265,16 @@ func ParseSource(source string) Source {
 			hungry = nil
 			begin(line)
 			name, value, _ := strings.Cut(strings.TrimPrefix(trimmed, "!"), " ")
-			if !strings.HasPrefix(strings.ToLower(name), "note") {
+			lowered := strings.ToLower(strings.TrimSpace(name))
+			if lowered == "source" || lowered == "출처" {
+				if citation, ok := parseCitation(value, line); ok {
+					current.Sources = append(current.Sources, citation)
+				} else {
+					warn(line, "!source needs a title: !source 1 | 2026 시장 조사 보고서 | p.42")
+				}
+				continue
+			}
+			if !strings.HasPrefix(lowered, "note") {
 				warn(line, "unknown directive %q", name)
 				continue
 			}
@@ -403,8 +432,15 @@ func (s SourceSlide) empty() bool {
 
 // koreanUnitSpace matches a number separated from its Korean unit by a space,
 // which a model produces constantly and a reader never writes.
+//
+// The unit has to end where the word ends. Without that, "2026 시장 조사" became
+// "2026시장 조사" — the list holds 시 as a unit and 시장 begins with it. So what
+// follows the unit must be anything but another Hangul syllable, unless that
+// syllable begins a particle or a suffix, which is how a real unit continues:
+// "4시간에서", "3단계로", "2장짜리".
 var koreanUnitSpace = regexp.MustCompile(
-	`([0-9%）\)\]])[ \t]+(개월|시간|주일|퍼센트|포인트|분기|단계|가지|주차|일차|페이지|배수|년|월|일|시|분|초|주|억|만|천|원|개|건|명|장|배|회|위|인|곳|층|쪽|권|편|톤|칸|줄|%)`)
+	`([0-9%）\)\]])[ \t]+(개월|시간|주일|퍼센트|포인트|분기|단계|가지|주차|일차|페이지|배수|년|월|일|시|분|초|주|억|만|천|원|개|건|명|장|배|회|위|인|곳|층|쪽|권|편|톤|칸|줄|%)` +
+		`([^가-힣]|[에으을를은는이가도만과와의로부까지간째당짜씩여반]|$)`)
 
 // koreanTrailingSpace matches a unit separated from the particle or suffix that
 // follows it, which is the same mistake one syllable later: "15% 씩", "3년 간".
@@ -429,7 +465,7 @@ func tidyText(value string) string {
 // deck's own text — the source the workspace shows — reads the way the slides do.
 func TidyKorean(value string) string {
 	for {
-		tidied := koreanUnitSpace.ReplaceAllString(value, "$1$2")
+		tidied := koreanUnitSpace.ReplaceAllString(value, "$1$2$3")
 		tidied = koreanTrailingSpace.ReplaceAllString(tidied, "$1$2")
 		tidied = koreanForeignParticle.ReplaceAllString(tidied, "$1$2$3")
 		if tidied == value {
@@ -577,4 +613,52 @@ func parseNumber(value string) (float64, bool) {
 	}
 	number, err := strconv.ParseFloat(digits.String(), 64)
 	return number, err == nil
+}
+
+// parseCitation reads "1 | 제목 | p.42". The marker is optional: a slide with
+// one source can simply name it.
+func parseCitation(value string, line int) (SourceCitation, bool) {
+	fields := splitItemFields(value)
+	for index := range fields {
+		fields[index] = strings.TrimSpace(unescapePayload(fields[index]))
+	}
+	citation := SourceCitation{Line: line}
+	switch {
+	case len(fields) == 0:
+		return SourceCitation{}, false
+	case len(fields) == 1:
+		citation.Title = fields[0]
+	default:
+		// A leading field that is only a marker — "1", "a", "*" — is the marker;
+		// otherwise the first field is the title and the rest is where to look.
+		if isCitationMarker(fields[0]) {
+			citation.Marker = fields[0]
+			citation.Title = fields[1]
+			if len(fields) > 2 {
+				citation.Locator = strings.Join(fields[2:], " ")
+			}
+		} else {
+			citation.Title = fields[0]
+			citation.Locator = strings.Join(fields[1:], " ")
+		}
+	}
+	if strings.TrimSpace(citation.Title) == "" {
+		return SourceCitation{}, false
+	}
+	return citation, true
+}
+
+// isCitationMarker reports whether a field is the short mark a claim carries
+// rather than the source's name.
+func isCitationMarker(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > 3 {
+		return false
+	}
+	for _, symbol := range trimmed {
+		if !unicode.IsDigit(symbol) && !unicode.IsLetter(symbol) && symbol != '*' && symbol != '†' {
+			return false
+		}
+	}
+	return true
 }

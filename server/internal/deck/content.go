@@ -46,6 +46,31 @@ type Content struct {
 	Body    string                `json:"body,omitempty"`
 	Accent  string                `json:"accent,omitempty"`
 	Notes   string                `json:"notes,omitempty"`
+	// Sources are where this slide's figures came from. They travel with the
+	// slide rather than in a table of their own, so duplicating a deck, restoring
+	// a version or exporting a file carries the evidence with the claim.
+	Sources []pptx.Citation `json:"sources,omitempty"`
+}
+
+// MaxSlideSources caps what one slide can cite. A slide that needs more than a
+// dozen sources is a document, not a slide.
+const MaxSlideSources = 12
+
+// ValidateSlideSources checks what a caller sends before it is stored.
+func ValidateSlideSources(sources []pptx.Citation) error {
+	if len(sources) > MaxSlideSources {
+		return fmt.Errorf("a slide may cite at most %d sources", MaxSlideSources)
+	}
+	for index, source := range sources {
+		if strings.TrimSpace(source.Title) == "" {
+			return fmt.Errorf("source %d has no title", index+1)
+		}
+		if utf8.RuneCountInString(source.Title) > 300 || utf8.RuneCountInString(source.Locator) > 200 ||
+			utf8.RuneCountInString(source.Marker) > 3 {
+			return fmt.Errorf("source %d is longer than it may be", index+1)
+		}
+	}
+	return nil
 }
 
 const MaxFreeformElements = 200
@@ -416,7 +441,8 @@ func (c *Content) SetBlock(slot string, block pptx.Block) {
 // subtitle and first body slot so old decks still export correctly.
 func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 	content := Decode(slide.Content)
-	rendered := pptx.Slide{LayoutID: layout.ID, Fields: map[string][]pptx.Paragraph{}, Notes: slide.SpeakerNotes}
+	rendered := pptx.Slide{LayoutID: layout.ID, Fields: map[string][]pptx.Paragraph{}, Notes: slide.SpeakerNotes,
+		Sources: content.Sources}
 	for slot, paragraphs := range content.Fields {
 		if _, ok := layout.Slot(slot); !ok {
 			continue

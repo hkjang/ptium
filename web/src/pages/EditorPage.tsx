@@ -171,6 +171,7 @@ function scoreDimensionLabel(key: string) {
     case 'structure': return '구성'
     case 'visual': return '시각'
     case 'accessibility': return '접근성'
+    case 'evidence': return '근거'
   }
   return key
 }
@@ -185,6 +186,7 @@ function findingLabel(kind: string) {
     case 'density': return '한 장에 너무 많음'
     case 'notes': return '발표 노트 없음'
     case 'repeat': return '같은 말을 두 번 함'
+    case 'source': return '숫자의 출처 없음'
   }
   return kind
 }

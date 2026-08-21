@@ -3,6 +3,7 @@ package pptx
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -36,6 +37,11 @@ const (
 	// writing to a line count pads rather than stops, and a padded slide reads as
 	// generated — so it is measured rather than hoped away.
 	FindingRepeat = "repeat"
+	// FindingSource is a slide that states figures and says nowhere they came
+	// from. In a company the first question asked of any number on a slide is
+	// where it is from, and a deck that cannot answer is not finished — however
+	// well it is drawn.
+	FindingSource = "source"
 )
 
 // A slide is a thing someone stands next to and talks over. Two of its failures
@@ -354,8 +360,52 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
 		}
+		if len(slide.Sources) == 0 && statesFigures(slide) {
+			findings = append(findings, Finding{Slide: index + 1, Kind: FindingSource, Advisory: true,
+				Detail: "figures with no source: nothing on this slide says where its numbers came from"})
+		}
 	}
 	return findings
+}
+
+// figurePattern is a number worth asking about: one with a unit, a percentage
+// or a thousands separator. A page number or a step count is not a claim.
+var statedFigure = regexp.MustCompile(`\d[\d,.]*\s*(%|억|만|천|원|달러|명|건|개|배|시간|일|주|년|개월|퍼센트|` +
+	`억원|만원|亿|億|円|元|USD|KRW|EUR|JPY|[kmb]n?\b)|\d{1,3}(,\d{3})+`)
+
+// statesFigures reports whether a slide puts numbers in front of a room.
+//
+// A figure inside a component is the strongest case — a KPI card or a chart is
+// nothing but figures — and a figure in the prose counts too. What does not
+// count is a slide with no numbers at all: asking it for a source would train
+// people to ignore the question.
+func statesFigures(slide Slide) bool {
+	for _, block := range slide.Blocks {
+		switch block.Kind {
+		case BlockKPI, BlockHero, BlockColumns, BlockBars, BlockLine, BlockShare, BlockMeter:
+			if block.hasPlottableValues() || len(block.Items) > 0 {
+				return true
+			}
+		}
+		for _, item := range block.Items {
+			if statedFigure.MatchString(item.Value + " " + item.Label) {
+				return true
+			}
+		}
+		for _, row := range block.Rows {
+			if statedFigure.MatchString(strings.Join(row, " ")) {
+				return true
+			}
+		}
+	}
+	for _, paragraphs := range slide.Fields {
+		for _, paragraph := range paragraphs {
+			if statedFigure.MatchString(paragraph.Text) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // carriesArgument reports whether a slide makes a point, as opposed to opening or

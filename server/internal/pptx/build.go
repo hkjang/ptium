@@ -23,6 +23,13 @@ type Paragraph struct {
 	Lead bool `json:"lead,omitempty"`
 }
 
+// Citation is where one of a slide's figures came from.
+type Citation struct {
+	Marker  string `json:"marker,omitempty"`
+	Title   string `json:"title"`
+	Locator string `json:"locator,omitempty"`
+}
+
 // Slide is one rendered slide bound to a template layout. A slot carries
 // either paragraphs of prose or one visual component, never both.
 type Slide struct {
@@ -45,6 +52,10 @@ type Slide struct {
 	// styling, so a deck looks like its template until someone decides otherwise.
 	Styles map[string]Style `json:"styles,omitempty"`
 	Notes  string           `json:"notes,omitempty"`
+	// Sources are where the slide's figures came from. They are printed at the
+	// end of the speaker notes, which is where a presenter looks when someone
+	// asks — and where PowerPoint keeps them without touching the slide.
+	Sources []Citation `json:"sources,omitempty"`
 	// Number is the page number this slide shows, and HideNumber suppresses it.
 	// The cover of a deck carries no number, the way covers do not.
 	Number     int  `json:"number,omitempty"`
@@ -258,7 +269,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 	language := normalizeLanguage(deck.Language)
 	notesNeeded := false
 	for _, slide := range deck.Slides {
-		if strings.TrimSpace(slide.Notes) != "" {
+		if strings.TrimSpace(notesWithSources(slide, language)) != "" {
 			notesNeeded = true
 			break
 		}
@@ -290,7 +301,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		}
 		slidePart := fmt.Sprintf("ppt/slides/slide%d.xml", index+1)
 		var notesPart string
-		if strings.TrimSpace(slide.Notes) != "" && notesMasterPart != "" {
+		if strings.TrimSpace(notesWithSources(slide, language)) != "" && notesMasterPart != "" {
 			notesIndex++
 			notesPart = fmt.Sprintf("ppt/notesSlides/notesSlide%d.xml", notesIndex)
 		}
@@ -302,7 +313,7 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		chartParts := addSlideCharts(pkg, slidePart, &chartIndex, charts)
 		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts))
 		if notesPart != "" {
-			pkg.SetText(notesPart, notesSlideXML(slide.Notes, language))
+			pkg.SetText(notesPart, notesSlideXML(notesWithSources(slide, language), language))
 			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart))
 		}
 		slideRelIDs = append(slideRelIDs, fmt.Sprintf("rId%d", nextRelationshipID))
@@ -1241,6 +1252,42 @@ func notesMasterXML(manifest Manifest) string {
 		fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr vert="horz" wrap="square" lIns="91440" tIns="45720" rIns="91440" bIns="45720" numCol="1" anchor="t"><a:normAutofit/></a:bodyPr><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>`, imageX, bodyY, imageWidth, max(bodyHeight, 914400)) +
 		`</p:spTree></p:cSld><p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>` +
 		`<p:notesStyle><a:lvl1pPr marL="0" algn="l" defTabSz="914400" rtl="0" eaLnBrk="1" latinLnBrk="0" hangingPunct="1"><a:defRPr sz="1200" kern="1200"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mn-lt"/><a:ea typeface="+mn-ea"/><a:cs typeface="+mn-cs"/></a:defRPr></a:lvl1pPr></p:notesStyle></p:notesMaster>`
+}
+
+// notesWithSources is what the notes page says: what the presenter wrote, then
+// where the slide's figures came from. A source nobody can see is not a source,
+// and the notes page is the one place it can stand without changing the design.
+func notesWithSources(slide Slide, language string) string {
+	notes := strings.TrimSpace(slide.Notes)
+	if len(slide.Sources) == 0 {
+		return notes
+	}
+	heading := "출처"
+	switch describeLanguage(language) {
+	case "en":
+		heading = "Sources"
+	case "ja":
+		heading = "出典"
+	case "zh":
+		heading = "来源"
+	}
+	lines := make([]string, 0, len(slide.Sources)+1)
+	if notes != "" {
+		lines = append(lines, notes, "")
+	}
+	lines = append(lines, heading)
+	for index, source := range slide.Sources {
+		mark := strings.TrimSpace(source.Marker)
+		if mark == "" {
+			mark = strconv.Itoa(index + 1)
+		}
+		entry := mark + ". " + strings.TrimSpace(source.Title)
+		if locator := strings.TrimSpace(source.Locator); locator != "" {
+			entry += " — " + locator
+		}
+		lines = append(lines, entry)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func notesSlideXML(notes, language string) string {

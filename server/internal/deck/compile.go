@@ -248,6 +248,15 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		// picture — the caption is written there, where a caption belongs.
 		placeImageCaptions(&content, layout, claimed, options.Language)
 
+		for _, citation := range slide.Sources {
+			content.Sources = append(content.Sources, pptx.Citation{
+				Marker: citation.Marker, Title: citation.Title, Locator: citation.Locator})
+		}
+		if len(content.Sources) > MaxSlideSources {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("%s: a slide may cite at most %d sources; the rest were dropped", where, MaxSlideSources))
+			content.Sources = content.Sources[:MaxSlideSources]
+		}
 		notes := strings.TrimSpace(slide.Notes)
 		result.Slides = append(result.Slides, model.Slide{
 			Position:     index + 1,

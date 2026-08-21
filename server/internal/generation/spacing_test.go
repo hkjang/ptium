@@ -55,3 +55,21 @@ func TestOnlyAKoreanDeckIsTidied(t *testing.T) {
 		t.Errorf("a deck in another language was tidied: %q", got)
 	}
 }
+
+// A unit has to end where the word ends. "2026 시장 조사" is not "2026시" and a
+// market, and joining it that way was worse than leaving the space alone.
+func TestAUnitDoesNotEatTheNextWord(t *testing.T) {
+	for written, wanted := range map[string]string{
+		"2026 시장 조사 보고서": "2026 시장 조사 보고서",
+		"3 장짜리 자료":       "3장짜리 자료",
+		"4 시간에서 15 분으로":  "4시간에서 15분으로",
+		"12 억 원":         "12억 원",
+		"5 개 회사":         "5개 회사",
+		"2 년간":           "2년간",
+		"7 월요일":          "7 월요일",
+	} {
+		if got := deck.TidyKorean(written); got != wanted {
+			t.Errorf("TidyKorean(%q) = %q, want %q", written, got, wanted)
+		}
+	}
+}

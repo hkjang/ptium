@@ -938,3 +938,37 @@ func TestAnImageCaptionFillsAFreeRegion(t *testing.T) {
 		t.Errorf("the slide kept %d of its two points: %+v", points, said.Fields)
 	}
 }
+
+// A number on a slide is asked about before anything else: where is it from.
+// The language carries the answer beside the claim, and a round trip keeps it.
+func TestASlideCitesWhereItsFiguresCameFrom(t *testing.T) {
+	manifest := testManifest()
+	source := "# 실적\n- 매출 1,240억 ^1\n- 이익률 9.8% ^2\n" +
+		"!source 1 | 2026 시장 조사 보고서 | p.42\n!source 2 | 사내 결산 자료\n!notes 숫자는 출처와 함께 말합니다\n"
+	parsed := ParseSource(source)
+	if len(parsed.Warnings) != 0 {
+		t.Fatalf("the source does not parse cleanly: %v", parsed.Warnings)
+	}
+	if len(parsed.Slides[0].Sources) != 2 {
+		t.Fatalf("parsed %d sources", len(parsed.Slides[0].Sources))
+	}
+	first := parsed.Slides[0].Sources[0]
+	if first.Marker != "1" || first.Title != "2026 시장 조사 보고서" || first.Locator != "p.42" {
+		t.Errorf("the first source reads %+v", first)
+	}
+	if second := parsed.Slides[0].Sources[1]; second.Marker != "2" || second.Title != "사내 결산 자료" || second.Locator != "" {
+		t.Errorf("a source with no locator reads %+v", second)
+	}
+
+	compiled := Compile(parsed, manifest, CompileOptions{Language: "ko"})
+	content := Decode(compiled.Slides[0].Content)
+	if len(content.Sources) != 2 {
+		t.Fatalf("the slide stored %d sources", len(content.Sources))
+	}
+	written := Format(model.Presentation{Language: "ko", Slides: compiled.Slides}, manifest)
+	for _, line := range []string{"!source 1 | 2026 시장 조사 보고서 | p.42", "!source 2 | 사내 결산 자료"} {
+		if !strings.Contains(written, line) {
+			t.Errorf("the round trip lost %q:\n%s", line, written)
+		}
+	}
+}

@@ -30,6 +30,8 @@ const (
 	// DimensionAccessibility is whether it can be read by someone who is not
 	// looking at it the way the author is: contrast above all.
 	DimensionAccessibility = "accessibility"
+	// DimensionEvidence is whether the deck can say where its numbers came from.
+	DimensionEvidence = "evidence"
 )
 
 // dimensionOf maps a finding to the dimension it belongs to.
@@ -42,6 +44,7 @@ var dimensionOf = map[string]string{
 	FindingRepeat:    DimensionStructure,
 	FindingCollision: DimensionVisual,
 	FindingContrast:  DimensionAccessibility,
+	FindingSource:    DimensionEvidence,
 }
 
 // weightOf is what one finding costs. A defect is something drawn wrong and
@@ -53,6 +56,9 @@ func weightOf(finding Finding) int {
 		switch finding.Kind {
 		case FindingDensity, FindingRepeat:
 			return 6
+		case FindingSource:
+			// A figure with no source is the advisory a company acts on first.
+			return 12
 		default:
 			return 4
 		}
@@ -91,7 +97,8 @@ type QualityScore struct {
 }
 
 // dimensionOrder keeps the axes in the order a reader reads them.
-var dimensionOrder = []string{DimensionReadability, DimensionStructure, DimensionVisual, DimensionAccessibility}
+var dimensionOrder = []string{DimensionReadability, DimensionStructure, DimensionVisual,
+	DimensionAccessibility, DimensionEvidence}
 
 // ScoreDeck turns measurements into a score.
 //

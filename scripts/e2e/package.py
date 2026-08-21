@@ -46,6 +46,7 @@ source = """# 패키지 점검 {run}
 - 매출 | 120억 | 140억
 - 영업이익 | 12억 | 18억
 ::
+!source 1 | 2026 시장 조사 보고서 | p.42
 !notes 표는 편집 가능한 표여야 합니다.
 
 # 핵심 지표
@@ -138,6 +139,10 @@ for index, slide in enumerate(read.slides, 1):
         titles.append(slide.shapes.title.text.strip())
     if slide.has_notes_slide and slide.notes_slide.notes_text_frame.text.strip():
         noted += 1
+        # A source travels with the claim into the notes pane, where a presenter
+        # looks when someone asks where a number came from.
+        if index == 2 and "2026 시장 조사 보고서" not in slide.notes_slide.notes_text_frame.text:
+            failures.append("the slide's source is not on its notes page")
 
 print(f"titles: {titles}")
 print(f"tables: {tables}  charts: {charts}  numbered slides: {numbered}  slides with notes: {noted}")

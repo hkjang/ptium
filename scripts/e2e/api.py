@@ -174,7 +174,8 @@ if not (0 <= int(score.get("total", -1)) <= 100):
     failures.append(f"the deck's quality score is {score.get('total')!r}")
 if len(score.get("slides") or []) != measured.get("slides"):
     failures.append(f"the score covers {len(score.get('slides') or [])} of {measured.get('slides')} slides")
-if {entry.get("key") for entry in (score.get("dimensions") or [])} != {"readability", "structure", "visual", "accessibility"}:
+if {entry.get("key") for entry in (score.get("dimensions") or [])} != {
+        "readability", "structure", "visual", "accessibility", "evidence"}:
     failures.append(f"the score's dimensions are {score.get('dimensions')!r}")
 print(f"   score {score.get('total')} weakest slide {score.get('weakest')}")
 
