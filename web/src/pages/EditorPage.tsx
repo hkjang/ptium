@@ -1122,7 +1122,18 @@ export function EditorPage({ id }: { id: string }) {
 
   if (loading) return <main className="editor-loading"><BrandMark /><LoadingState label="프레젠테이션을 준비하는 중…" /></main>
   if (error || !presentation) return <main className="editor-loading"><ErrorState message={error || '프레젠테이션을 찾을 수 없습니다.'} onRetry={() => void load()} /><Button variant="secondary" onClick={() => navigate('/presentations')}>목록으로 돌아가기</Button></main>
-  if (presentation.status === 'generating') return <main className="editor-loading generation-wait"><div className="generation-visual small"><div className={`generating-slide theme-${presentation.theme || 'aurora'}`}><span>PTIUM ENGINE</span><div><i /><i /><i /></div><strong>{presentation.title}</strong><em /></div></div><h1>슬라이드를 생성하고 있어요</h1><p>완성되는 대로 자동으로 편집기를 열어드릴게요.</p><LoaderCircle className="spin" size={22} /></main>
+  // A deck with slides that is queued or generating is being rewritten: the words
+  // say which is happening, because "생성 중" over a deck someone already has
+  // reads like it is being replaced.
+  if (presentation.status === 'generating') {
+    const rewriting = (presentation.slideCount || 0) > 0
+    return <main className="editor-loading generation-wait"><div className="generation-visual small"><div className={`generating-slide theme-${presentation.theme || 'aurora'}`}><span>PTIUM ENGINE</span><div><i /><i /><i /></div><strong>{presentation.title}</strong><em /></div></div>
+      <h1>{rewriting ? '덱을 다시 쓰고 있어요' : '슬라이드를 생성하고 있어요'}</h1>
+      <p>{rewriting
+        ? '숫자와 사실은 그대로 두고 제목·문장·구성을 다듬는 중입니다. 끝나면 이 화면이 열립니다.'
+        : '완성되는 대로 자동으로 편집기를 열어드릴게요.'}</p>
+      <LoaderCircle className="spin" size={22} /></main>
+  }
   if (presentation.status === 'failed') return <main className="editor-loading"><CircleAlert size={30} /><h1>슬라이드 생성에 실패했습니다</h1><p>{presentation.errorMessage || '관리자에게 오류 센터의 요청 기록을 확인해 달라고 요청하세요.'}</p><div><Button variant="secondary" onClick={() => navigate('/presentations')}>목록으로 돌아가기</Button> <Button disabled={retrying} onClick={() => void retryGeneration()}>{retrying ? '다시 등록 중…' : '생성 다시 시도'}</Button></div></main>
 
   return (

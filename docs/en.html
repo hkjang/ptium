@@ -286,33 +286,33 @@
                 <div class="feature-grid">
                     <article class="feature-card glass-panel fade-up-element">
                         <div class="feature-icon">📑</div>
-                        <h3 class="feature-title">Template-Driven Generation</h3>
-                        <p class="feature-desc">Preserves 100% of your existing PowerPoint template's masters, layouts, theme colors, fonts, and logos while generating new slides. The output is indistinguishable from hand-authored presentations.</p>
+                        <h3 class="feature-title">Your Template, Untouched</h3>
+                        <p class="feature-desc">Masters, layouts, theme colours, fonts and logos stay exactly as your designer made them; only the slides are filled. Page numbers appear where the template keeps a place for one, and tables export as real PowerPoint tables you can type into.</p>
                     </article>
                     <article class="feature-card glass-panel fade-up-element">
-                        <div class="feature-icon">🧠</div>
-                        <h3 class="feature-title">Auto Layout Selection</h3>
-                        <p class="feature-desc">Recognizes slide purposes — cover, section, body, two-column, comparison, quote, image, and closing — and automatically matches the optimal layout from your template.</p>
+                        <div class="feature-icon">📥</div>
+                        <h3 class="feature-title">Bring In What You Have</h3>
+                        <p class="feature-desc">Upload last quarter's deck and its titles, points, speaker notes, tables and photographs come across, redrawn in the design you choose. A logo repeated on every slide is left out, and whatever could not be carried is reported rather than dropped in silence.</p>
                     </article>
                     <article class="feature-card glass-panel fade-up-element">
-                        <div class="feature-icon">📏</div>
-                        <h3 class="feature-title">Capacity-Aware Text</h3>
-                        <p class="feature-desc">Measures each placeholder's character capacity in em units — Hangul/Kanji at 1em, Latin at ~0.5em — and auto-adjusts text to prevent overflow with precomputed scaling.</p>
+                        <div class="feature-icon">✨</div>
+                        <h3 class="feature-title">Rewrite, Don't Replace</h3>
+                        <p class="feature-desc">Hand a whole deck to the model and its facts stay: every number, name and claim reappears unchanged. What improves is the craft — titles that argue, points that carry one idea, speaker notes on every slide. The previous deck stays in version history.</p>
                     </article>
                     <article class="feature-card glass-panel fade-up-element">
-                        <div class="feature-icon">👁️</div>
-                        <h3 class="feature-title">Browser SVG Preview</h3>
-                        <p class="feature-desc">Preview slides in your browser using actual template layout, colors, and fonts — no PowerPoint software needed. The preview matches the exported file exactly.</p>
+                        <div class="feature-icon">📐</div>
+                        <h3 class="feature-title">Measured, Not Hoped For</h3>
+                        <p class="feature-desc">Every deck is drawn and measured — text past its box, lines that collide, a slide saying the same thing twice — and the slides that do not fit go back to the model with the measurement. A rewrite is kept only when it measures better.</p>
+                    </article>
+                    <article class="feature-card glass-panel fade-up-element">
+                        <div class="feature-icon">🖊️</div>
+                        <h3 class="feature-title">Editing That Feels Familiar</h3>
+                        <p class="feature-desc">What the AI wrote is an object: drag it, double-click to fix it, add text boxes, shapes, tables and images over it, then present with a presenter view. Images and slides worth keeping stack up in your own library.</p>
                     </article>
                     <article class="feature-card glass-panel fade-up-element">
                         <div class="feature-icon">🌐</div>
-                        <h3 class="feature-title">Offline / Air-Gapped</h3>
-                        <p class="feature-desc">A deterministic local generator creates complete decks without AI provider keys. Offline Docker image bundles enable deployment in environments without internet access.</p>
-                    </article>
-                    <article class="feature-card glass-panel fade-up-element">
-                        <div class="feature-icon">🤖</div>
-                        <h3 class="feature-title">MCP Integration</h3>
-                        <p class="feature-desc">Create presentations directly from AI agents like Claude Desktop and Cursor via MCP JSON-RPC. Uses the same authentication and authorization system as REST.</p>
+                        <h3 class="feature-title">Whole Offline</h3>
+                        <p class="feature-desc">With no AI key at all a deterministic local writer still produces a finished deck. One image tar.gz and a PostgreSQL DSN is the entire deployment, and uploaded images live in the database or on a mounted volume, whichever the site prefers.</p>
                     </article>
                 </div>
             </div>
@@ -327,33 +327,35 @@
                 <div class="workflow-visual">
                     <div class="step-card fade-up-element">
                         <div class="step-number">1</div>
-                        <h4>Upload Template</h4>
-                        <p>Upload your .pptx / .potx and Ptium auto-analyzes masters and layouts</p>
+                        <h4>Upload a template</h4>
+                        <p>Your .pptx / .potx is analysed for its masters and layouts — or use one of the 50 built-in designs</p>
                     </div>
                     <div class="step-connector desktop-only">→</div>
                     <div class="step-card fade-up-element">
                         <div class="step-number">2</div>
-                        <h4>Enter Prompt</h4>
-                        <p>Set topic, audience, tone, language, theme, and slide count</p>
+                        <h4>A brief, or a deck you have</h4>
+                        <p>Describe it in two sentences, or bring in an existing .pptx as it stands</p>
                     </div>
                     <div class="step-connector desktop-only">→</div>
                     <div class="step-card fade-up-element">
                         <div class="step-number">3</div>
-                        <h4>AI Generation</h4>
-                        <p>Two-pass process: outline design → copy writing per layout</p>
+                        <h4>Write and rewrite</h4>
+                        <p>Plan, write, draw, measure, and send back the slides that do not fit</p>
                     </div>
                     <div class="step-connector desktop-only">→</div>
                     <div class="step-card fade-up-element">
                         <div class="step-number">4</div>
-                        <h4>Preview & Edit</h4>
-                        <p>Review with real-time SVG preview in browser</p>
+                        <h4>Edit and present</h4>
+                        <p>Fix it on the canvas or as text, then present with notes on a second screen</p>
                     </div>
                     <div class="step-connector desktop-only">→</div>
                     <div class="step-card fade-up-element">
                         <div class="step-number">5</div>
                         <h4>Export</h4>
-                        <p>Download as native .pptx file</p>
+                        <p>A .pptx with real shapes, real tables, speaker notes and page numbers</p>
                     </div>
+                
+
                 </div>
 
                 <!-- Architecture Diagram -->
