@@ -15,10 +15,12 @@ python3 scripts/e2e/edges.py    # the limits: 50 slides, 16 MiB, two editors at 
 python3 scripts/e2e/ui.py .     # every screen renders, nothing logs an error
 python3 scripts/e2e/flows.py .  # generate, edit, apply source, save a slide, export
 python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter window, keyboard
+python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
 ```
 
 The browser scripts need Playwright (`pip install playwright && playwright install
-chromium`); the first two need nothing but Python. Each exits non-zero on a
+chromium`) and `package.py` needs `python-pptx`; the first two need nothing but
+Python. Each exits non-zero on a
 failure and prints the request, the status and the body — enough to go straight
 to the code.
 

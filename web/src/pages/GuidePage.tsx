@@ -207,6 +207,7 @@ export function GuidePage() {
               번호가 따라옵니다.</li>
             <li><b>목차</b> — 7장 이상이면 표지 다음에 목차가 들어갑니다.</li>
             <li><b>발표자 노트</b> — 각 장에서 무엇을 말할지 초안이 함께 들어갑니다.</li>
+            <li><b>표는 진짜 표</b>로 나갑니다 — PowerPoint에서 셀을 고치고 행을 더할 수 있습니다.</li>
           </ul>
           <h2><MonitorPlay size={19} /> 발표와 내보내기</h2>
           <ul className="guide-checklist">

@@ -248,6 +248,55 @@ func TestRenderNumbersEverySlideButTheCover(t *testing.T) {
 	}
 }
 
+// A table someone cannot type into is a picture of a table, so the export holds
+// a real one — beside the caption rather than inside its group, because
+// PowerPoint will not let anyone into a table it finds grouped.
+func TestRenderExportsATableAsATable(t *testing.T) {
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
+	layout, _ := manifest.Layout(manifest.DefaultLayout)
+	deck := Deck{Title: "표", Language: "ko", Slides: []Slide{{
+		LayoutID: layout.ID,
+		Fields:   map[string][]Paragraph{SlotTitle: {{Text: "분기 실적"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockTable, Caption: "분기 실적",
+			Columns: []string{"항목", "1분기", "2분기"},
+			Rows:    [][]string{{"매출", "120억", "140억"}, {"영업이익", "12억", "18억"}}}},
+	}}}
+	rendered, err := Render(pkg, manifest, deck)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	result, _ := Open(rendered)
+	slide, _ := result.Text("ppt/slides/slide1.xml")
+	if !strings.Contains(slide, "<a:tbl>") {
+		t.Fatalf("the table was drawn as shapes rather than exported as a table:\n%s", slide)
+	}
+	// Three columns and three rows: the header and the two rows of figures.
+	if got := strings.Count(slide, "<a:gridCol"); got != 3 {
+		t.Fatalf("the table has %d columns, want 3", got)
+	}
+	if got := strings.Count(slide, "<a:tr "); got != 3 {
+		t.Fatalf("the table has %d rows, want 3", got)
+	}
+	for _, cell := range []string{"항목", "매출", "140억", "영업이익"} {
+		if !strings.Contains(slide, ">"+cell+"<") {
+			t.Fatalf("the table lost the cell %q:\n%s", cell, slide)
+		}
+	}
+	// The caption is still a shape, and the table is not inside its group.
+	frame := strings.Index(slide, "<p:graphicFrame>")
+	group := strings.Index(slide, "</p:grpSp>")
+	if frame < 0 || group < 0 || frame < group {
+		t.Fatalf("the table sits inside the component group:\n%s", slide)
+	}
+	// And the preview still draws the same table, so the screen and the file agree.
+	svg := PreviewSVG(manifest, layout, deck.Slides[0], PreviewOptions{Width: 900})
+	for _, cell := range []string{"항목", "140억"} {
+		if !strings.Contains(svg, cell) {
+			t.Fatalf("the preview lost %q", cell)
+		}
+	}
+}
+
 func TestRenderIsRepeatableFromOneTemplate(t *testing.T) {
 	_, pkg, manifest := buildTemplate(t, "ivory-editorial")
 	deck := Deck{Title: "A", Slides: []Slide{{LayoutID: manifest.DefaultLayout, Fields: map[string][]Paragraph{SlotTitle: {{Text: "첫 번째"}}}}}}

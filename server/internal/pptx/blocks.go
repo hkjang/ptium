@@ -163,6 +163,9 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		return Component{}
 	}
 
+	// Everything after this point is the component's own drawing; the heading and
+	// caption above it are shapes either way.
+	component.BodyFrom = len(component.Primitives)
 	var primitives []Primitive
 	switch block.Kind {
 	case BlockKPI:
@@ -187,6 +190,7 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		primitives = design.layoutMeter(body, block)
 	case BlockTable:
 		primitives = design.layoutTable(body, block)
+		component.Table = design.tablePart(body, block)
 	case BlockQuote:
 		primitives = design.layoutQuote(body, block)
 	case BlockCallout:
@@ -661,6 +665,66 @@ func (d Design) layoutCallout(frame Frame, block Block) []Primitive {
 
 // layoutTable draws a header row and body rows separated by hairlines. Past
 // about seven classes a table is the right form, so this has no series cap.
+// tableRhythm is how tall a table's header and rows are.
+//
+// Rows share the region, but only up to a point: three rows spread over half a
+// slide read as three stranded lines rather than as a table, so a short table
+// keeps its rows close and leaves the space below it empty — which is what a
+// person setting the same table would do.
+//
+// The rule under the last row needs its own hairline of room. Dividing the frame
+// without reserving it made the drawing loop's own guard drop that row.
+func (d Design) tableRhythm(frame Frame, rows int) (headerHeight, rowHeight int) {
+	const hairlineHeight = 9525
+	headerHeight = lineHeightFor(d.Small) + d.Unit
+	if rows <= 0 {
+		return headerHeight, lineHeightFor(d.Body) + d.Unit
+	}
+	rowHeight = (frame.Height - headerHeight - hairlineHeight) / rows
+	minimum := lineHeightFor(d.Body) + d.Unit
+	maximum := lineHeightFor(d.Body)*5/2 + d.Unit
+	return headerHeight, min(max(rowHeight, minimum), maximum)
+}
+
+// tablePart describes the same table as a table, for the exported file. The
+// numbers here follow layoutTable so that what PowerPoint holds and what the
+// preview draws are the same table.
+func (d Design) tablePart(frame Frame, block Block) *TablePart {
+	if len(block.Columns) == 0 || len(block.Rows) == 0 {
+		return nil
+	}
+	columns := block.Columns
+	if len(columns) > 5 {
+		columns = columns[:5]
+	}
+	rows := block.Rows
+	if len(rows) > 8 {
+		rows = rows[:8]
+	}
+	aligns := make([]string, len(columns))
+	for index := range aligns {
+		aligns[index] = "r"
+		if index == 0 {
+			aligns[index] = "l"
+		}
+	}
+	trimmed := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		if len(row) > len(columns) {
+			row = row[:len(columns)]
+		}
+		trimmed = append(trimmed, row)
+	}
+	headerHeight, rowHeight := d.tableRhythm(frame, len(trimmed))
+	return &TablePart{
+		Frame: frame, Columns: columns, Rows: trimmed, Aligns: aligns,
+		HeaderHeight: headerHeight, RowHeight: rowHeight,
+		HeaderSize: d.Small, BodySize: d.Body, Font: d.Minor,
+		HeaderInk: d.InkMuted, LabelInk: d.InkPrimary, ValueInk: d.InkSecondary,
+		Rule: d.Line, Hairline: mixColor(d.Surface, d.Line, 0.6),
+	}
+}
+
 func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 	if len(block.Columns) == 0 || len(block.Rows) == 0 {
 		return nil
@@ -675,14 +739,8 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 	}
 	var primitives []Primitive
 	cells := frame.Columns(len(columns), d.Unit)
-	headerHeight := lineHeightFor(d.Small) + d.Unit
-	// The rule under the last row needs its own hairline of room. Dividing the
-	// frame without reserving it made the loop's own guard drop that row.
+	headerHeight, rowHeight := d.tableRhythm(frame, len(rows))
 	const hairlineHeight = 9525
-	rowHeight := (frame.Height - headerHeight - hairlineHeight) / max(len(rows), 1)
-	if minimum := lineHeightFor(d.Body) + d.Unit; rowHeight < minimum {
-		rowHeight = minimum
-	}
 	for index, cell := range cells {
 		align := "l"
 		if index > 0 {

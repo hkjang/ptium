@@ -120,6 +120,36 @@ type Component struct {
 	Name       string
 	Frame      Frame
 	Primitives []Primitive
+	// Table is set for a component that PowerPoint should hold as a real table
+	// rather than as the drawing of one. The primitives still describe it — that
+	// is what every preview renders — but an exported file carries the table,
+	// because a table someone cannot type into is a picture of a table.
+	Table *TablePart
+	// BodyFrom is where the component's own drawing starts, after its heading and
+	// caption. Only those lead primitives are exported alongside a real table.
+	BodyFrom int
+}
+
+// TablePart is a table as PowerPoint holds one: a frame, a header row and rows
+// of cells, in the design's own type and rules.
+type TablePart struct {
+	Frame   Frame
+	Columns []string
+	Rows    [][]string
+	// Aligns is per column: "l" or "r", matching how the design draws it.
+	Aligns []string
+	// HeaderHeight and RowHeight come from the same arithmetic the drawing uses,
+	// so the file and the preview hold the same table.
+	HeaderHeight int
+	RowHeight    int
+	HeaderSize   int
+	BodySize     int
+	Font         string
+	HeaderInk    string
+	LabelInk     string
+	ValueInk     string
+	Rule         string
+	Hairline     string
 }
 
 func filled(frame Frame, fill string) Primitive {
@@ -188,20 +218,35 @@ func (c Component) DrawingML(startID int) (string, int) {
 	}
 	id := startID
 	var body strings.Builder
-	for _, primitive := range c.Primitives {
+	primitives := c.Primitives
+	if c.Table != nil {
+		// The heading and the caption stay shapes; the table becomes a table, and
+		// it sits beside the group rather than inside it. PowerPoint will not let
+		// anyone group a table, and one it finds inside a group is a table nobody
+		// can click into.
+		primitives = primitives[:min(c.BodyFrom, len(primitives))]
+	}
+	for _, primitive := range primitives {
 		id++
 		body.WriteString(primitive.drawingML(id))
 	}
-	groupID := startID
 	name := c.Name
 	if name == "" {
 		name = "Component"
 	}
-	group := fmt.Sprintf(`<p:grpSp><p:nvGrpSpPr><p:cNvPr id="%d" name="%s"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>`+
-		`<p:grpSpPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/><a:chOff x="%d" y="%d"/><a:chExt cx="%d" cy="%d"/></a:xfrm></p:grpSpPr>%s</p:grpSp>`,
-		groupID, escapeAttribute(name),
-		c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height,
-		c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height, body.String())
+	group := ""
+	if body.Len() > 0 {
+		groupID := startID
+		group = fmt.Sprintf(`<p:grpSp><p:nvGrpSpPr><p:cNvPr id="%d" name="%s"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>`+
+			`<p:grpSpPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/><a:chOff x="%d" y="%d"/><a:chExt cx="%d" cy="%d"/></a:xfrm></p:grpSpPr>%s</p:grpSp>`,
+			groupID, escapeAttribute(name),
+			c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height,
+			c.Frame.X, c.Frame.Y, c.Frame.Width, c.Frame.Height, body.String())
+	}
+	if c.Table != nil {
+		id++
+		group += c.Table.drawingML(id)
+	}
 	return group, id + 1
 }
 
