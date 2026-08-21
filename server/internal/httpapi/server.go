@@ -194,6 +194,8 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PUT /api/v1/assets/{id}/favorite", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.favoriteAsset))))
 	api.Handle("DELETE /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deleteAsset))))
 	// Slides someone keeps and drops into other decks.
+	// A deck someone already has, read in as text and recompiled into a template.
+	api.Handle("POST /api/v1/presentations/import", requireScope("presentations:write", http.HandlerFunc(s.importPresentation)))
 	api.Handle("GET /api/v1/snippets", requireScope("presentations:read", http.HandlerFunc(s.listSnippets)))
 	api.Handle("POST /api/v1/snippets", requireScope("presentations:write", http.HandlerFunc(s.createSnippet)))
 	api.Handle("GET /api/v1/snippets/tags", requireScope("presentations:read", http.HandlerFunc(s.listSnippetTags)))

@@ -287,6 +287,9 @@ type rawTxBody struct {
 type rawParagraph struct {
 	PPr struct {
 		Align string `xml:"algn,attr"`
+		// Level is the outline depth of a bullet, which a deck being read back in
+		// has to keep: a sub-point promoted to a point changes the argument.
+		Level int `xml:"lvl,attr"`
 	} `xml:"pPr"`
 	Runs []struct {
 		RPr struct {

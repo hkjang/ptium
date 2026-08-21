@@ -845,6 +845,78 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/presentations/import:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: importPresentation
+      summary: Read a PowerPoint file into a new deck
+      description: |
+        Turns a deck someone already has into a Ptium deck. Titles, points (at the
+        depth they were written), speaker notes and tables come across, along with
+        the kind of each slide; the text is then compiled into the chosen template,
+        so an old deck can be redrawn in a new design.
+
+        Pictures and charts are not carried: a photograph placed for one aspect
+        ratio cannot be moved into another design and be trusted to look right.
+        The response says how many there were.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                templateId:
+                  type: string
+                  format: uuid
+                  description: The design to redraw it in. Defaults to the caller's own.
+                name:
+                  type: string
+                  description: Defaults to the file's own title.
+                language:
+                  type: string
+      responses:
+        '201':
+          description: The imported deck.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      presentation:
+                        $ref: '#/components/schemas/Presentation'
+                      slides:
+                        type: integer
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: The file is larger than this deployment accepts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: Not a PowerPoint file, or one with no readable slides.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/snippets:
     parameters:
       - $ref: '#/components/parameters/XRequestID'

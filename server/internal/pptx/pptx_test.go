@@ -521,3 +521,58 @@ func TestRenderPlacesAPictureInThePackage(t *testing.T) {
 		t.Fatalf("the picture's slot should hold no text shape:\n%s", slide)
 	}
 }
+
+// A deck someone already has is read for its argument, not its artwork: the
+// words come across and are recompiled into whatever design they land in.
+func TestReadDeckCarriesTheWordsAndSaysWhatItLeft(t *testing.T) {
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
+	titleLayout, _ := manifest.Layout(manifest.TitleLayout)
+	contentLayout, _ := manifest.Layout(manifest.DefaultLayout)
+	deck := Deck{Title: "지난 분기 보고", Language: "ko", Slides: []Slide{
+		{LayoutID: titleLayout.ID, Fields: map[string][]Paragraph{
+			SlotTitle:    {{Text: "2025년 4분기 영업 실적"}},
+			SlotSubtitle: {{Text: "영업기획팀"}},
+		}, Notes: "결론을 먼저 말합니다."},
+		{LayoutID: contentLayout.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "실적 요약"}},
+			SlotBody:  {{Text: "매출 1,240억"}, {Text: "신규 채널이 절반", Level: 1}},
+		}},
+		{LayoutID: contentLayout.ID, Fields: map[string][]Paragraph{SlotTitle: {{Text: "채널별 매출"}}},
+			Blocks: map[string]Block{SlotBody: {Kind: BlockTable,
+				Columns: []string{"채널", "3분기", "4분기"},
+				Rows:    [][]string{{"직영", "420억", "480억"}}}}},
+	}}
+	rendered, err := Render(pkg, manifest, deck)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	stored, err := Open(rendered)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+
+	read := ReadDeck(stored)
+	if len(read.Slides) != 3 {
+		t.Fatalf("read %d slides, want 3", len(read.Slides))
+	}
+	if read.Slides[0].Title != "2025년 4분기 영업 실적" {
+		t.Fatalf("first title = %q", read.Slides[0].Title)
+	}
+	if read.Slides[0].Lead != "영업기획팀" {
+		t.Fatalf("the subtitle did not come across: %q", read.Slides[0].Lead)
+	}
+	if read.Slides[0].Notes == "" {
+		t.Fatal("the speaker notes did not come across")
+	}
+	// The depth of a point is part of the argument.
+	if len(read.Slides[1].Bullets) != 2 || read.Slides[1].Bullets[1].Level != 1 {
+		t.Fatalf("the points came back as %+v", read.Slides[1].Bullets)
+	}
+	// A table is words in a grid, so it comes across whole.
+	if len(read.Slides[2].Tables) != 1 {
+		t.Fatalf("the table did not come across: %+v", read.Slides[2])
+	}
+	if got := read.Slides[2].Tables[0][0]; len(got) != 3 || got[0] != "채널" {
+		t.Fatalf("the table's header reads %v", got)
+	}
+}

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArchiveRestore, Plus, Search, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArchiveRestore, FileUp, Plus, Search, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { PresentationCard } from '../components/PresentationCard'
@@ -21,6 +21,8 @@ export function PresentationsPage() {
   const [target, setTarget] = useState<Presentation | null>(null)
   const [deleteForever, setDeleteForever] = useState(false)
   const [working, setWorking] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const importInput = useRef<HTMLInputElement>(null)
   const { showToast } = useToast()
   const trash = filter === 'trash'
 
@@ -69,13 +71,37 @@ export function PresentationsPage() {
     } catch (err) { showToast(displayError(err), 'error') } finally { setWorking(false) }
   }
 
+  /**
+   * A deck someone already has, read in as text and redrawn in a Ptium design.
+   * The file is theirs; what Ptium keeps is the argument.
+   */
+  const importDeck = async (file?: File) => {
+    if (!file) return
+    setImporting(true)
+    showToast(`${file.name}을 읽고 있습니다…`)
+    try {
+      const result = await api.importPresentation(file)
+      showToast(result.warnings.length > 0
+        ? `${result.slides}장을 가져왔습니다. ${result.warnings[0]}`
+        : `${result.slides}장을 가져왔습니다.`)
+      navigate(`/presentations/${result.presentation.id}/editor`)
+    } catch (err) { showToast(displayError(err), 'error') } finally { setImporting(false) }
+  }
+
   const askDelete = (presentation: Presentation, permanent = false) => {
     setDeleteForever(permanent)
     setTarget(presentation)
   }
 
   return (
-    <AppShell title="프레젠테이션" eyebrow="MY WORKSPACE" actions={<Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button>}>
+    <AppShell title="프레젠테이션" eyebrow="MY WORKSPACE" actions={<>
+      <Button variant="secondary" disabled={importing} onClick={() => importInput.current?.click()}>
+        <FileUp size={16} /> {importing ? '가져오는 중…' : '기존 자료 가져오기'}
+      </Button>
+      <input ref={importInput} type="file" accept=".pptx,.potx" hidden
+        onChange={(event) => { void importDeck(event.target.files?.[0]); event.target.value = '' }} />
+      <Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button>
+    </>}>
       <div className="library-toolbar">
         <div className="search-box"><Search size={17} /><Input placeholder="제목과 프롬프트 검색" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <div className="filter-tabs" role="tablist">

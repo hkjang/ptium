@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  BookOpenCheck, Download, Image as ImageIcon, Keyboard, LayoutTemplate, MessageSquareText,
+  BookOpenCheck, Download, FileUp, Image as ImageIcon, Keyboard, LayoutTemplate, MessageSquareText,
   MonitorPlay, MousePointerClick, Sparkles, TriangleAlert,
 } from 'lucide-react'
 import { AppShell } from '../components/AppShell'
@@ -24,6 +24,7 @@ interface Section { id: string; title: string; icon: typeof Sparkles }
 const sections: Section[] = [
   { id: 'quickstart', title: '5분 만에 첫 덱', icon: Sparkles },
   { id: 'brief', title: '브리프 잘 쓰기', icon: MessageSquareText },
+  { id: 'import', title: '기존 자료 가져오기', icon: FileUp },
   { id: 'templates', title: '템플릿 고르기', icon: LayoutTemplate },
   { id: 'editing', title: '편집하기', icon: MousePointerClick },
   { id: 'images', title: '이미지 넣기', icon: ImageIcon },
@@ -107,6 +108,21 @@ export function GuidePage() {
           </div>
           <p className="guide-note">장수는 브리프에 "8장으로"라고 써도 되고, 스타일 단계의 슬라이드 수로 지정해도 됩니다.
             둘 다 있으면 슬라이드 수 설정을 따릅니다.</p>
+        </section>
+
+        <section id="import" className="guide-section">
+          <h2><FileUp size={19} /> 이미 있는 자료 가져오기</h2>
+          <p>지난 분기 보고서, 잘 먹힌 제안서, 늘 복사해 쓰는 회사 소개.
+            <Link to="/presentations">프레젠테이션</Link> 화면의 <b>기존 자료 가져오기</b>에서
+            <code>.pptx</code>를 올리면 Ptium 덱이 됩니다.</p>
+          <ul className="guide-checklist">
+            <li>제목 · 요점(들여쓰기 그대로) · 발표자 노트 · <b>표</b>가 넘어오고, 표는 새 덱의
+              디자인으로 다시 그려집니다.</li>
+            <li>표지·간지 같은 <b>슬라이드의 성격</b>도 함께 넘어옵니다.</li>
+            <li><b>그림과 차트는 넘어오지 않습니다</b> — 다른 비율의 디자인에 사진을 옮겨 놓고
+              괜찮기를 바랄 수는 없습니다. 몇 개였는지 알려 주니 이미지 탭에서 다시 넣으세요.</li>
+            <li>가져온 뒤에는 보통 덱입니다: 템플릿을 바꾸고, 고치고, AI에게 다시 쓰게 하세요.</li>
+          </ul>
         </section>
 
         <section id="templates" className="guide-section">

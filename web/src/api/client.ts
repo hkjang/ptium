@@ -993,6 +993,26 @@ export const api = {
     return fetchImage(`/snippets/${encodeURIComponent(id)}/preview.svg?${query}`)
   },
 
+  /**
+   * Reads a PowerPoint file someone already has into a new deck.
+   *
+   * The words come across — titles, points, notes, tables — and are recompiled
+   * into the chosen design. What could not be carried is reported rather than
+   * dropped silently.
+   */
+  async importPresentation(file: File, templateId?: string) {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    if (templateId) form.append('templateId', templateId)
+    const raw = await request<unknown>('/presentations/import', { method: 'POST', body: form })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      presentation: normalizePresentation(data.presentation as Presentation & Record<string, unknown>),
+      warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      slides: Number(data.slides ?? 0),
+    }
+  },
+
   async templates() {
     return (await requestAllPages<Template & Record<string, unknown>>('/templates', ['templates', 'items', 'data'])).map(normalizeTemplate)
   },
