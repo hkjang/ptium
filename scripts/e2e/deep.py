@@ -122,7 +122,7 @@ try:
     with urllib.request.urlopen(request) as response:
         imported = json.loads(response.read())["data"]
     print("   imported:", imported["presentation"]["title"], "|", imported["slides"], "slides")
-    for warning in imported["warnings"]:
+    for warning in imported.get("warnings") or []:
         print("   warning:", warning)
     if imported["slides"] < 3:
         failures.append(f"the import read only {imported['slides']} slides out of a deck that has more")

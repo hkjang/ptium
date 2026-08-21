@@ -92,6 +92,11 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 			"이 배포는 한 덱에 %d장까지 허용하므로 그 뒤는 가져오지 않았습니다", maximum))
 	}
 	warnings = append(warnings, compiled.Warnings...)
+	if warnings == nil {
+		// An empty list, not a null: a client should not have to handle both to
+		// find out that nothing went wrong.
+		warnings = []string{}
+	}
 
 	created, err := s.store.CreatePresentation(request.Context(), user.ID, store.PresentationInput{
 		Title: presentation.Title, Prompt: presentation.Prompt, Language: language,
