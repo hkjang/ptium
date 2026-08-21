@@ -244,18 +244,26 @@ func carryCanvasLayerAcross(stored, compiled []model.Slide) []model.Slide {
 }
 
 // sourceMatchesSlides reports whether stored source still describes the stored
-// slides, by compiling it and comparing what it produces.
+// slides, by compiling it and writing both back out as source.
+//
+// Comparing only titles and layouts was not enough. A slide can be edited on the
+// canvas, rewritten by the model, or given speaker notes by a safe fix, and none
+// of that changes its title — so the stored text stayed "current" while the deck
+// had moved on. The workspace then showed the old text as though it were the
+// deck, and applying it would have thrown the newer edits away.
+//
+// Formatting is the source language's own inverse, so comparing the two
+// formatted forms compares exactly what the text can express: the points, the
+// components, the images, the notes — and nothing the text was never meant to
+// carry, such as a canvas layer.
 func sourceMatchesSlides(source string, presentation model.Presentation, manifest pptx.Manifest) bool {
 	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: presentation.Language})
 	if len(compiled.Slides) != len(presentation.Slides) {
 		return false
 	}
-	for index, slide := range compiled.Slides {
-		if slide.Title != presentation.Slides[index].Title || slide.LayoutID != presentation.Slides[index].LayoutID {
-			return false
-		}
-	}
-	return true
+	written := presentation
+	written.Slides = compiled.Slides
+	return deck.Format(written, manifest) == deck.Format(presentation, manifest)
 }
 
 // sourceLayouts is the layout vocabulary an author can write in @layout.
