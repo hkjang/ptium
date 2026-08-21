@@ -13,6 +13,29 @@ func FitParagraphs(paragraphs []Paragraph, placeholder Placeholder, language str
 	return result
 }
 
+// LinesNeeded is how many lines a region needs to show these paragraphs, using
+// the same measurement the renderer and the inspector use. Choosing a layout by
+// guessing at length produces slides that do not fit; measuring produces slides
+// that do.
+func LinesNeeded(paragraphs []Paragraph, placeholder Placeholder) int {
+	lineEm := placeholder.LineEm
+	if lineEm <= 0 {
+		if placeholder.MaxChars <= 0 || placeholder.MaxLines <= 0 {
+			return len(paragraphs)
+		}
+		lineEm = float64(placeholder.MaxChars) / float64(placeholder.MaxLines) * referenceAdvance
+	}
+	needed := 0
+	for _, paragraph := range paragraphs {
+		available := lineEm - float64(paragraph.Level)*2
+		if available < 1 {
+			available = 1
+		}
+		needed += wrappedLines(paragraph.Text, available)
+	}
+	return needed
+}
+
 // FitReport says what fitting had to remove. Silently dropping a point is the
 // one behaviour a tool like this must not have: the author has to know that the
 // slide does not say everything they wrote.

@@ -31,6 +31,9 @@ type Generator struct {
 	maxOutputTokens int
 	// reasoning says whether to ask the provider not to think.
 	reasoning reasoningMode
+	// repairs bounds how many slides a generation may send back to the model
+	// after measuring them. Zero turns the repair pass off.
+	repairs int
 }
 
 // Deck is the generator's output: the outline shown in the workspace plus the
@@ -72,6 +75,7 @@ func New(settings SettingReader) *Generator {
 		client:          &http.Client{Timeout: defaultRequestTimeout},
 		maxOutputTokens: defaultOutputTokens,
 		reasoning:       reasoningAuto,
+		repairs:         maximumRepairs,
 	}
 }
 
@@ -127,6 +131,10 @@ func (g *Generator) applyProviderSettings(ctx context.Context) {
 	if _ = g.settings.Get(ctx, "ai.max_output_tokens", &tokens); tokens >= 500 && tokens <= 32000 {
 		g.maxOutputTokens = tokens
 	}
+	repairs := maximumRepairs
+	if _ = g.settings.Get(ctx, "generation.repair_passes", &repairs); repairs >= 0 && repairs <= 10 {
+		g.repairs = repairs
+	}
 	mode := string(reasoningAuto)
 	_ = g.settings.Get(ctx, "ai.reasoning", &mode)
 	switch reasoningMode(strings.ToLower(strings.TrimSpace(mode))) {
@@ -152,6 +160,11 @@ func (g *Generator) completeSource(ctx context.Context, endpoint, modelName, api
 	raw, err := g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, nil, quiet)
 	if err == nil {
 		return raw, nil
+	}
+	// The provider thought instead of answering. Ask once more, plainly.
+	if errors.Is(err, errReasonedWithoutAnswering) {
+		return g.send(ctx, endpoint, modelName, apiKey, system+plainlyPrompt, noThinkPrefix+user,
+			temperature, nil, quiet)
 	}
 	if !quiet || g.reasoning != reasoningAuto {
 		return "", err
@@ -189,10 +202,12 @@ func (g *Generator) plan(ctx context.Context, endpoint, modelName, apiKey string
 // check it. A provider that answers with the older JSON shape is still accepted,
 // so a deployment pinned to a tuned model keeps working.
 func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (Deck, error) {
+	started := time.Now()
 	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey, sourceSystemPrompt, sourceUserPrompt(request), 0.35)
 	if err != nil {
 		return Deck{}, err
 	}
+	writing := time.Since(started)
 	source := cleanModelSource(raw)
 	if strings.HasPrefix(source, "{") {
 		var written writtenDeck
@@ -204,9 +219,14 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 	if len(parsed.Slides) == 0 {
 		return Deck{}, errors.New("AI provider returned a deck without slides")
 	}
-	result := CompileSource(source, request.Presentation, request.Profile, request.Template)
+	result := CompileGenerated(source, request.Presentation, request.Profile, request.Template)
 	if len(result.Slides) == 0 {
 		return Deck{}, errors.New("the deck the AI provider wrote could not be bound to this template")
+	}
+	// The deck is measured against the template before it is handed over, and the
+	// slides that do not fit are sent back to the model with the measurement.
+	if g.repairs > 0 {
+		result = g.repairDeck(ctx, request, result, writing)
 	}
 	if requested := request.Presentation.RequestedSlideCount; requested > 0 && len(result.Slides) != requested {
 		result.Warnings = append(result.Warnings,
@@ -214,7 +234,7 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 		if len(result.Slides) > requested {
 			// Extra slides are dropped from the end, where a deck's weakest
 			// material sits, rather than failing a generation someone waits for.
-			result = CompileSource(trimSourceSlides(source, requested), request.Presentation, request.Profile, request.Template)
+			result = CompileGenerated(trimSourceSlides(source, requested), request.Presentation, request.Profile, request.Template)
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("kept the first %d slides", requested))
 		}
@@ -309,8 +329,23 @@ func completionsEndpoint(baseURL string) (string, error) {
 }
 
 func (g *Generator) complete(ctx context.Context, endpoint, modelName, apiKey, system, user string, temperature float64) (string, error) {
-	return g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, map[string]string{"type": "json_object"})
+	raw, err := g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, map[string]string{"type": "json_object"})
+	if errors.Is(err, errReasonedWithoutAnswering) {
+		return g.request(ctx, endpoint, modelName, apiKey, system+plainlyPrompt, noThinkPrefix+user,
+			temperature, map[string]string{"type": "json_object"})
+	}
+	return raw, err
 }
+
+// A reasoning model that ignores the switch and thinks through its whole budget
+// returns nothing at all. Asking again, plainly, costs one round trip and turns
+// a failed generation into a deck. "/no_think" is the switch several open
+// weights answer to; to a model that does not know it, it is a stray token.
+const (
+	plainlyPrompt = "\n\nDo not think before answering. Do not write any analysis, plan or " +
+		"explanation. Begin your reply with the first character of the answer itself."
+	noThinkPrefix = "/no_think\n"
+)
 
 // reasoningMode says whether the provider should be told not to think.
 type reasoningMode string

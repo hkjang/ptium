@@ -518,3 +518,103 @@ func TestGenerateReportsAProviderThatOnlyThinks(t *testing.T) {
 		t.Fatalf("the error should name the cause: %v", err)
 	}
 }
+
+// The repair pass has to pick the right slides and judge its own results. The
+// model is asked, not trusted: a rewrite is kept only if it measures better.
+func TestRepairPicksTheWorstSlidesAndMeasuresTheResult(t *testing.T) {
+	template := testTemplate(t)
+	manifest := template.Manifest
+	layout, ok := manifest.Layout(manifest.DefaultLayout)
+	if !ok {
+		t.Fatal("the built-in template has no default layout")
+	}
+	body := pptx.SlotBody
+	for _, placeholder := range layout.BodySlots() {
+		if placeholder.MaxLines >= 3 {
+			body = placeholder.Slot
+			break
+		}
+	}
+	long := strings.Repeat("이 문장은 한 줄에 담기지 않을 만큼 길게 늘어놓은 설명입니다. ", 6)
+	slide := func(title string, lines ...string) model.Slide {
+		content := deck.Content{Type: deck.ContentType, LayoutID: layout.ID,
+			Fields: map[string][]pptx.Paragraph{pptx.SlotTitle: {{Text: title}}}}
+		paragraphs := make([]pptx.Paragraph, 0, len(lines))
+		for _, line := range lines {
+			paragraphs = append(paragraphs, pptx.Paragraph{Text: line})
+		}
+		if len(paragraphs) > 0 {
+			content.Fields[body] = paragraphs
+		}
+		return model.Slide{Position: 1, Title: title, Content: content.Encode(), LayoutID: layout.ID}
+	}
+	presentation := model.Presentation{Title: "측정", Language: "ko"}
+	presentation.Slides = []model.Slide{
+		slide("괜찮은 장", "짧은 요점 하나", "짧은 요점 둘"),
+		slide("넘치는 장", long, long, long, long),
+	}
+	for index := range presentation.Slides {
+		presentation.Slides[index].Position = index + 1
+	}
+
+	worst := slidesByDefect(manifest, presentation)
+	if len(worst) != 1 || worst[0].position != 2 {
+		t.Fatalf("the overflowing slide should be the one to repair: %+v", worst)
+	}
+	if len(worst[0].details) == 0 {
+		t.Fatal("a repair request carries the measurement, not an adjective")
+	}
+
+	// A shorter rewrite measures better; the original does not.
+	shorter := slide("넘치는 장", "한 줄로 줄인 요점")
+	if after := defectsOnSlide(manifest, presentation, 2, shorter); after >= worst[0].count {
+		t.Fatalf("a slide that fits must measure better: %d vs %d", after, worst[0].count)
+	}
+	if same := defectsOnSlide(manifest, presentation, 2, presentation.Slides[1]); same != worst[0].count {
+		t.Fatalf("measuring the same slide twice must agree: %d vs %d", same, worst[0].count)
+	}
+}
+
+// A reasoning model that ignores the switch and thinks through its whole budget
+// returns nothing at all. Asking again, plainly, turns a failed generation into
+// a deck.
+func TestGeneratorAsksAgainWhenTheModelOnlyThinks(t *testing.T) {
+	var prompts []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		var decoded completionRequest
+		if err := json.Unmarshal(body, &decoded); err != nil {
+			t.Fatalf("request body: %v", err)
+		}
+		prompts = append(prompts, decoded.Messages[len(decoded.Messages)-1].Content)
+		writer.Header().Set("Content-Type", "application/json")
+		if len(prompts) == 1 {
+			// The first answer is all thinking and no content.
+			fmt.Fprint(writer, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"","reasoning":"먼저 생각을 좀…"}}]}`)
+			return
+		}
+		fmt.Fprint(writer, `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 다시 물었습니다\n@cover\n"}}]}`)
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL, "ai.model": "test", "ai.api_key": "k",
+		"generation.outline_pass": false, "generation.repair_passes": 0,
+	})
+	generator.client = server.Client()
+	deckOut, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "다시", Prompt: "한 장짜리", Language: "ko", RequestedSlideCount: 1},
+		model.Profile{}, testTemplate(t))
+	if err != nil {
+		t.Fatalf("a second, plainer ask should have produced a deck: %v", err)
+	}
+	if len(deckOut.Slides) != 1 {
+		t.Fatalf("slides = %d", len(deckOut.Slides))
+	}
+	if len(prompts) != 2 {
+		t.Fatalf("expected exactly one retry, got %d requests", len(prompts))
+	}
+	if !strings.HasPrefix(prompts[1], "/no_think") {
+		t.Fatalf("the retry should say so plainly: %q", prompts[1][:20])
+	}
+}

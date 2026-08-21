@@ -93,7 +93,9 @@ var figurePattern = regexp.MustCompile(`(\d[\d,.]*)\s*(%|퍼센트|억원|만원
 
 // topicSplitter breaks a subject into the things it names. Korean conjunctions
 // and list punctuation both appear constantly.
-var topicSplitter = regexp.MustCompile(`\s*(?:,|·|/|、|;|:|：|및|그리고|와\s|과\s|\band\b|\bplus\b|\+)\s*`)
+// A topic never spans a full stop: two sentences are two thoughts, and joining
+// them produces a "topic" that reads like a paragraph of the brief.
+var topicSplitter = regexp.MustCompile(`\s*(?:[.!?。]+\s|[.!?。]+$|,|·|/|、|;|:|：|및|그리고|와\s|과\s|\band\b|\bplus\b|\+)\s*`)
 
 // outlinePrompt reads a prompt into the structure of a deck.
 func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
@@ -127,7 +129,7 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	outline.Subject = subject
 
 	for _, candidate := range topicSplitter.Split(subject, -1) {
-		name := cleanTopic(candidate)
+		name := topicPhrase(cleanTopic(candidate))
 		if name == "" || utf8.RuneCountInString(name) < 2 {
 			continue
 		}
@@ -135,9 +137,76 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	}
 	// A subject that does not split is still one topic.
 	if len(outline.Topics) == 0 {
-		outline.Topics = []promptTopic{{Name: subject, Frame: frameFor(subject)}}
+		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frameFor(subject)}}
 	}
 	return outline
+}
+
+// topicPhrase cuts a topic down to something that can sit inside a sentence.
+//
+// A topic is written into headings and leads — "…을 순서대로 나눠 봅니다" — so a
+// topic that is half the brief produces a slide that reads like the brief. Korean
+// puts the head noun last, so the tail of a long phrase is the part that names
+// the subject: "신규 채널 확장 계획을 임원에게" becomes "확장 계획".
+func topicPhrase(name string) string {
+	const limit = 20
+	words := make([]string, 0, 8)
+	for _, word := range strings.Fields(strings.TrimSpace(name)) {
+		// A conjugated verb is never part of a subject. "보고합니다" is what the
+		// author asked for, not what the slide is about.
+		if verbLike(word) {
+			continue
+		}
+		words = append(words, word)
+	}
+	// A word that ends in a marker — "임원에게", "현장에서" — names who is being
+	// addressed rather than the subject, at either end of what is left.
+	for len(words) > 1 && endsWithMarker(words[len(words)-1]) {
+		words = words[:len(words)-1]
+	}
+	for len(words) > 1 && endsWithMarker(words[0]) {
+		words = words[1:]
+	}
+	// Whatever is left, keep its tail: Korean puts the head noun last.
+	for start := 0; start < len(words); start++ {
+		candidate := strings.Join(words[start:], " ")
+		if utf8.RuneCountInString(candidate) <= limit {
+			return cleanTopic(candidate)
+		}
+	}
+	if len(words) == 0 {
+		return ""
+	}
+	runes := []rune(words[len(words)-1])
+	if len(runes) > limit {
+		runes = runes[len(runes)-limit:]
+	}
+	return string(runes)
+}
+
+// verbLike reports whether a word is a conjugated verb rather than a noun.
+func verbLike(word string) bool {
+	trimmed := strings.Trim(word, " .,·!?")
+	for _, ending := range []string{"습니다", "합니다", "됩니다", "입니다", "봅니다", "니다", "한다", "했다", "된다", "됐다",
+		// Connective forms carry the sentence on rather than naming a subject.
+		"하고", "하며", "되고", "되며", "시키고", "드리고", "이고"} {
+		if strings.HasSuffix(trimmed, ending) {
+			return true
+		}
+	}
+	return false
+}
+
+// endsWithMarker reports whether a word ends in a case marker long enough to be
+// unmistakable. One-syllable markers are skipped: 효과, 속도 and 자료 all end in
+// a syllable that is also a particle.
+func endsWithMarker(word string) bool {
+	for _, marker := range []string{"에게", "에서", "에는", "에도", "으로는", "한테", "께서", "부터", "까지"} {
+		if strings.HasSuffix(word, marker) && utf8.RuneCountInString(word) > utf8.RuneCountInString(marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // cleanTopic strips the grammatical tail a Korean phrase carries when it is

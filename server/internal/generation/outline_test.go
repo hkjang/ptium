@@ -126,3 +126,22 @@ func TestWriteSourceShortDeckHasNoClosingSlide(t *testing.T) {
 		t.Fatalf("both topics should have their own slide, got %v", titles)
 	}
 }
+
+// A topic is written into headings and leads, so it has to read as a phrase
+// rather than as a piece of the brief.
+func TestTopicsAreShortEnoughToWriteWith(t *testing.T) {
+	outline := outlinePrompt(
+		"신규 채널 확장 계획을 임원에게 보고합니다. 목표 성장률 24%, 신규 채널 3개, 예산 12억입니다.",
+		"성장 전략", koreanCopy)
+	if len(outline.Topics) == 0 {
+		t.Fatal("the prompt should produce at least one topic")
+	}
+	for _, topic := range outline.Topics {
+		if length := len([]rune(topic.Name)); length > 16 {
+			t.Fatalf("topic %q is %d characters; it will not fit inside a sentence", topic.Name, length)
+		}
+		if strings.Contains(topic.Name, "보고합니다") {
+			t.Fatalf("a topic must not carry the instruction: %q", topic.Name)
+		}
+	}
+}

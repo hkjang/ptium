@@ -144,13 +144,17 @@ func TestCompileBindsSourceToTheTemplate(t *testing.T) {
 	if _, ok := content.Blocks[pptx.SlotBody]; !ok {
 		t.Fatalf("a component should claim the body slot: %+v", content.Blocks)
 	}
-	// The bullets that followed the block need a slot of their own; this layout
-	// has one body region, so they are kept rather than dropped.
+	// The bullets that follow a component need a region of their own, so the
+	// compiler chooses the layout that has one. A slide is bound to the layout
+	// that can hold it, not merely to the layout its role names.
 	if len(content.Fields[pptx.SlotBody]) > 0 {
 		t.Fatal("prose and a component must not share one slot")
 	}
-	if strings.TrimSpace(content.Body) == "" && len(result.Warnings) == 0 {
-		t.Fatalf("text with nowhere to go should be reported: %+v", result)
+	if len(content.Fields["body2"]) == 0 {
+		t.Fatalf("the prose should have a region of its own: %+v", content.Fields)
+	}
+	if strings.TrimSpace(content.Body) != "" || len(result.Warnings) != 0 {
+		t.Fatalf("nothing should have been left over: %q %v", content.Body, result.Warnings)
 	}
 	if result.Outline[0].Layout != "Cover" {
 		t.Fatalf("outline = %+v", result.Outline)
@@ -411,8 +415,10 @@ func TestCompileReportsTextItCouldNotFit(t *testing.T) {
 	long := strings.Repeat("전환 대상 시스템의 이관 순서와 선행 조건을 한 문장에 담아 설명하는 긴 문장입니다. ", 3)
 	var builder strings.Builder
 	builder.WriteString("# 과적재\n")
-	for range 8 {
-		builder.WriteString("- " + long + "\n")
+	// Distinct lines: a slide that repeats itself has its echoes removed before
+	// anything is measured, which is a different behaviour with its own test.
+	for index := range 8 {
+		builder.WriteString(fmt.Sprintf("- %d번째 항목. %s\n", index+1, long))
 	}
 	result := Compile(ParseSource(builder.String()), manifest, CompileOptions{Language: "ko"})
 	joined := strings.Join(result.Warnings, "\n")
@@ -611,5 +617,111 @@ func TestParseSourceReadsALayoutWrittenAsAnAssignment(t *testing.T) {
 		if len(parsed.Warnings) != 0 {
 			t.Fatalf("@layout %s warned: %v", written, parsed.Warnings)
 		}
+	}
+}
+
+// A slide is bound to the layout that can hold what it carries. Choosing on the
+// declared role alone is how a component lands in a caption strip and the
+// author's points get dropped.
+func TestCompileChoosesTheLayoutThatFits(t *testing.T) {
+	manifest := testManifest()
+
+	// A component and four points need two regions.
+	both := Compile(ParseSource("# 이행 계획\n::steps\n- 준비 | 범위 확정\n- 이행 | 이관\n- 안정화 | 점검\n::\n"+
+		"- 첫 번째 근거를 한 문장으로 적습니다\n- 두 번째 근거를 한 문장으로 적습니다\n"+
+		"- 세 번째 근거를 한 문장으로 적습니다\n"), manifest, CompileOptions{Language: "ko"})
+	if len(both.Slides) != 1 {
+		t.Fatalf("slides = %d", len(both.Slides))
+	}
+	if both.Slides[0].LayoutID != "two" {
+		t.Fatalf("a component beside prose needs two regions, got %q", both.Slides[0].LayoutID)
+	}
+	if len(both.Warnings) != 0 {
+		t.Fatalf("nothing should be lost: %v", both.Warnings)
+	}
+
+	// Prose alone belongs on the plain content layout, not in a two-column one
+	// with a column left staring back at the room.
+	prose := Compile(ParseSource("# 하나의 논지\n- 짧은 요점 하나\n- 짧은 요점 둘\n"),
+		manifest, CompileOptions{Language: "ko"})
+	if prose.Slides[0].LayoutID != "content" {
+		t.Fatalf("prose alone belongs on the content layout, got %q", prose.Slides[0].LayoutID)
+	}
+
+	// An author who names a layout gets it, fit or no fit.
+	named := Compile(ParseSource("# 고른 대로\n@layout two\n- 한 줄\n"), manifest, CompileOptions{Language: "ko"})
+	if named.Slides[0].LayoutID != "two" {
+		t.Fatalf("an explicit layout must win, got %q", named.Slides[0].LayoutID)
+	}
+}
+
+// A model transcribing a layout id sometimes adds a space. Refusing the near
+// miss costs the slide its layout, and the fallback used to ignore what the
+// slide was carrying.
+func TestCompileAcceptsANearMissLayoutName(t *testing.T) {
+	manifest := testManifest()
+	result := Compile(ParseSource("# 두 갈래\n@layout Two content\n- 왼쪽 이야기\n- 오른쪽 이야기\n"),
+		manifest, CompileOptions{Language: "ko"})
+	if result.Slides[0].LayoutID != "two" {
+		t.Fatalf("a layout named with a space should still resolve: %q", result.Slides[0].LayoutID)
+	}
+	// A name that names nothing falls through to the layout that fits.
+	missing := Compile(ParseSource("# 없는 이름\n@layout nowhere\n::steps\n- 준비 | 범위\n- 이행 | 이관\n- 안정화 | 점검\n::\n"+
+		"- 이 슬라이드의 근거를 한 문장으로 적습니다\n- 두 번째 근거도 한 문장으로 적습니다\n"),
+		manifest, CompileOptions{Language: "ko"})
+	if missing.Slides[0].LayoutID != "two" {
+		t.Fatalf("an unknown layout should fall back to one that fits, got %q", missing.Slides[0].LayoutID)
+	}
+	if len(missing.Warnings) == 0 {
+		t.Fatal("substituting a layout has to be reported")
+	}
+}
+
+// A layout named by a person is a decision; one named by the model is a guess it
+// made before it knew what the slide would carry.
+func TestAModelsLayoutChoiceIsASuggestion(t *testing.T) {
+	manifest := testManifest()
+	source := "# 이행 계획\n@layout content\n::steps\n- 준비 | 범위 확정\n- 이행 | 이관\n- 안정화 | 점검\n::\n" +
+		"- 첫 번째 근거를 한 문장으로 적습니다\n- 두 번째 근거를 한 문장으로 적습니다\n"
+
+	// Written by a person: their choice stands, whatever it costs.
+	byHand := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if byHand.Slides[0].LayoutID != "content" {
+		t.Fatalf("a person's layout must stand, got %q", byHand.Slides[0].LayoutID)
+	}
+
+	// Written by the model: the slide moves to a layout that can hold it.
+	generated := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko", LayoutsAreSuggestions: true})
+	if generated.Slides[0].LayoutID != "two" {
+		t.Fatalf("a model's layout should give way to one that fits, got %q", generated.Slides[0].LayoutID)
+	}
+	if len(generated.Warnings) == 0 {
+		t.Fatal("moving a slide has to be reported")
+	}
+	// A suggestion that already fits is left alone.
+	fine := Compile(ParseSource("# 하나\n@layout two\n- 왼쪽\n- 오른쪽\n"),
+		manifest, CompileOptions{Language: "ko", LayoutsAreSuggestions: true})
+	if fine.Slides[0].LayoutID != "two" {
+		t.Fatalf("a workable suggestion should be kept, got %q", fine.Slides[0].LayoutID)
+	}
+}
+
+// A slide that repeats its own lead as a bullet says the same sentence twice on
+// the page. The model does it often enough to be worth removing at compile time.
+func TestCompileDropsAPointThatOnlyRepeatsTheLead(t *testing.T) {
+	manifest := testManifest()
+	result := Compile(ParseSource("# 병목\n> 수작업 병목이 2026년 성장의 최대 제약입니다\n"+
+		"- 수작업 병목이 2026 년 성장의 최대 제약입니다.\n- 처리 시간은 건당 4시간입니다\n"+
+		"- 처리 시간은 건당 4시간입니다\n"), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	lines := 0
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle || slot == pptx.SlotSubtitle {
+			continue
+		}
+		lines += len(paragraphs)
+	}
+	if lines != 1 {
+		t.Fatalf("the echo of the lead and the duplicate point should both go: %+v", content.Fields)
 	}
 }

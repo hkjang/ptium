@@ -54,17 +54,31 @@ func CompileSourceWithImages(source string, presentation model.Presentation, pro
 	return CompileSourceWith(source, presentation, profile, template, resolveImage, nil)
 }
 
+// CompileGenerated is CompileSource for source the model wrote rather than a
+// person: its @layout lines are suggestions, so a slide is moved to a layout that
+// can hold it rather than losing a component or three points.
+func CompileGenerated(source string, presentation model.Presentation, profile model.Profile, template Template) Deck {
+	return compileSource(source, presentation, profile, template, nil, nil, true)
+}
+
 // CompileSourceWith is CompileSource with resolvers for the things a deck refers
 // to but does not contain: images, and grid definitions.
 func CompileSourceWith(source string, presentation model.Presentation, profile model.Profile,
 	template Template, resolveImage func(string) (deck.ContentImage, bool),
 	resolveGrid func(string) (pptx.GridSpec, bool)) Deck {
+	return compileSource(source, presentation, profile, template, resolveImage, resolveGrid, false)
+}
+
+func compileSource(source string, presentation model.Presentation, profile model.Profile,
+	template Template, resolveImage func(string) (deck.ContentImage, bool),
+	resolveGrid func(string) (pptx.GridSpec, bool), generated bool) Deck {
 	parsed := deck.ParseSource(source)
 	compiled := deck.Compile(parsed, template.Manifest, deck.CompileOptions{
-		Language:     presentation.Language,
-		Accent:       func(position int) string { return profileAccent(profile, position) },
-		ResolveImage: resolveImage,
-		ResolveGrid:  resolveGrid,
+		Language:              presentation.Language,
+		Accent:                func(position int) string { return profileAccent(profile, position) },
+		ResolveImage:          resolveImage,
+		ResolveGrid:           resolveGrid,
+		LayoutsAreSuggestions: generated,
 	})
 	outlineJSON, err := json.Marshal(compiled.Outline)
 	if err != nil {

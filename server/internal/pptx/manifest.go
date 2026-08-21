@@ -296,7 +296,33 @@ func (m Manifest) LayoutByReference(reference string) (Layout, bool) {
 			return layout, true
 		}
 	}
+	// A model transcribing an id sometimes adds a space — "콘텐츠-2 개" for
+	// "콘텐츠-2개" — and refusing that costs the slide its layout. Matching on the
+	// squeezed form accepts the near miss without accepting a different layout.
+	squeezed := squeezeReference(reference)
+	if squeezed == "" {
+		return Layout{}, false
+	}
+	for _, layout := range m.Layouts {
+		if squeezeReference(layout.ID) == squeezed || squeezeReference(layout.Name) == squeezed {
+			return layout, true
+		}
+	}
 	return Layout{}, false
+}
+
+// squeezeReference removes what a transcription can add or lose: spaces, dashes
+// and case.
+func squeezeReference(value string) string {
+	var builder strings.Builder
+	for _, character := range strings.ToLower(value) {
+		switch character {
+		case ' ', '\t', '-', '_', '·', '.':
+			continue
+		}
+		builder.WriteRune(character)
+	}
+	return builder.String()
 }
 
 // LayoutForRole returns the best layout for a narrative role, falling back to

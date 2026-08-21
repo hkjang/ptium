@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,15 @@ type CompileOptions struct {
 	// an ::image directive is reported rather than silently dropped, because a
 	// missing picture is something the author has to know about.
 	ResolveImage func(reference string) (ContentImage, bool)
+	// LayoutsAreSuggestions says the @layout lines were written by the model
+	// rather than by a person.
+	//
+	// A person naming a layout has decided; the compiler obeys. A plan naming one
+	// chose it before knowing what the slide would end up carrying, so a component
+	// and four points can land on a layout with one region between them. When the
+	// names are the model's, a layout that would lose content is replaced by one
+	// that holds it, and the substitution is reported.
+	LayoutsAreSuggestions bool
 }
 
 // CompileResult is a compiled deck: slides ready to store, plus everything worth
@@ -54,6 +64,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		result.Warnings = append(result.Warnings, "the template exposes no usable layout")
 		return result
 	}
+	previousLayout := ""
 	for index, slide := range source.Slides {
 		// Warnings name the line the slide starts on as well as its position: an
 		// author fixing something needs to find it in the text.
@@ -61,10 +72,11 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		if slide.Line > 0 {
 			where = fmt.Sprintf("line %d (slide %d)", slide.Line, index+1)
 		}
-		layout, note := resolveSourceLayout(manifest, slide, index, len(source.Slides))
+		layout, note := resolveSourceLayout(manifest, slide, index, len(source.Slides), previousLayout, options)
 		if note != "" {
 			result.Warnings = append(result.Warnings, where+": "+note)
 		}
+		previousLayout = layout.ID
 		content := Content{Type: ContentType, LayoutID: layout.ID}
 		if options.Accent != nil {
 			content.Accent = options.Accent(index)
@@ -190,6 +202,10 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		}
 
 		lead := strings.TrimSpace(slide.Lead)
+		// A slide that says its own lead again as a bullet says it twice on the
+		// page. The model does this often enough to be worth removing here: the
+		// same sentence in two places is never what anyone meant.
+		slide.Bullets = dropEcho(slide.Bullets, lead, title)
 		// subtitle is only set when the lead really went into the layout's subtitle
 		// region. Recording it otherwise makes the renderer write the same sentence
 		// a second time, into whichever subtitle slot the layout happens to have.
@@ -245,24 +261,46 @@ func (c Content) WithNotes(notes string) Content {
 }
 
 // resolveLayout picks the template layout a slide should use: an explicit
-// request, then the role it declares, then the role its position implies.
-func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total int) (pptx.Layout, string) {
+// request, then the layout that can actually hold what the slide carries.
+//
+// The role a slide declares says what it is for; it does not say whether the
+// chosen layout has room for a chart and four points at once. Choosing on role
+// alone is how a component ends up in a caption strip and three of the author's
+// points get dropped, so the role is a strong preference and the fit decides.
+func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total int, previous string,
+	options CompileOptions) (pptx.Layout, string) {
 	if id := strings.TrimSpace(slide.LayoutID); id != "" {
 		if layout, ok := manifest.LayoutByReference(id); ok {
+			// An author who names a layout gets it, fit or no fit: it is their deck.
+			if !options.LayoutsAreSuggestions {
+				return layout, ""
+			}
+			// A model's choice is a suggestion. It stands unless it would cost the
+			// slide something a different layout would keep.
+			named := layoutFitScore(layout, slide, slideRole(slide, index, total))
+			if better, ok := bestFittingLayout(manifest, slide, slideRole(slide, index, total), previous); ok &&
+				better.ID != layout.ID && layoutFitScore(better, slide, slideRole(slide, index, total))-named >= 25 {
+				return better, fmt.Sprintf("layout %q cannot hold this slide; used %q instead", layout.Name, better.Name)
+			}
 			return layout, ""
+		}
+		// The named layout is not in this template. Rather than dropping to the
+		// role's default — which is how a component and its prose end up with one
+		// region between them — choose by what the slide has to carry.
+		if layout, ok := bestFittingLayout(manifest, slide, slideRole(slide, index, total), ""); ok {
+			return layout, fmt.Sprintf("layout %q does not exist in this template; used %q instead", id, layout.Name)
 		}
 		if layout, ok := manifest.LayoutForRole(sourcePositionRole(index, total)); ok {
 			return layout, fmt.Sprintf("layout %q does not exist in this template; used %q instead", id, layout.Name)
 		}
 	}
-	role := slide.Role
-	if role == "" {
-		role = sourcePositionRole(index, total)
-		// Position only implies a role. A first slide that carries a component or a
-		// list of points is not a cover, whatever its position says, and putting it
-		// on a title layout would throw the content away.
-		if role == pptx.RoleTitle && (len(slide.Blocks) > 0 || len(slide.Bullets) > 1) {
-			role = pptx.RoleContent
+	role := slideRole(slide, index, total)
+	// A cover, a divider and a closing slide are about the deck's arc, not about
+	// how much text they hold: those roles keep their own layout. Everything in
+	// between is chosen by what it has to carry.
+	if !structuralRole(role) {
+		if layout, ok := bestFittingLayout(manifest, slide, role, previous); ok {
+			return layout, ""
 		}
 	}
 	if layout, ok := manifest.LayoutForRole(role); ok {
@@ -272,6 +310,191 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 		return layout, ""
 	}
 	return manifest.Layouts[0], ""
+}
+
+// bestFittingLayout scores every layout against what the slide actually holds.
+func bestFittingLayout(manifest pptx.Manifest, slide SourceSlide, role, previous string) (pptx.Layout, bool) {
+	best, bestScore, found := pptx.Layout{}, 0.0, false
+	for _, layout := range manifest.Layouts {
+		// Structural layouts are reserved for structural slides. A content slide
+		// that lands on the closing layout breaks the deck's shape, however well
+		// its words happen to fit there.
+		if structuralRole(layout.Role) || layout.Role == pptx.RoleBlank {
+			continue
+		}
+		score := layoutFitScore(layout, slide, role)
+		// Two slides running on the same layout is a rhythm; five is a rut. The
+		// nudge is small enough that it never beats a real difference in fit.
+		if layout.ID == previous {
+			score -= 2
+		}
+		if !found || score > bestScore {
+			best, bestScore, found = layout, score, true
+		}
+	}
+	return best, found
+}
+
+// layoutFitScore is how well one layout holds one slide. It counts what would be
+// lost, what would be left empty, and whether the slide's role is honoured.
+func layoutFitScore(layout pptx.Layout, slide SourceSlide, role string) float64 {
+	score := 0.0
+	if layout.Role == role {
+		score += 14
+	}
+	if _, ok := layout.Slot(pptx.SlotTitle); ok {
+		if strings.TrimSpace(slide.Title) != "" {
+			score += 4
+		}
+	} else if strings.TrimSpace(slide.Title) != "" {
+		score -= 22
+	}
+	if strings.TrimSpace(slide.Lead) != "" {
+		if _, ok := layout.Slot(pptx.SlotSubtitle); ok {
+			score += 3
+		}
+	}
+
+	// Regions are handed out the way the compiler hands them out: components
+	// take the roomiest first, then images, then the prose fills what is left.
+	free := make([]pptx.Placeholder, 0, len(layout.Placeholders))
+	for _, placeholder := range layout.BodySlots() {
+		free = append(free, placeholder)
+	}
+	sort.SliceStable(free, func(i, j int) bool {
+		return free[i].Width*free[i].Height > free[j].Width*free[j].Height
+	})
+	take := func(minimumLines int) (pptx.Placeholder, bool) {
+		for index, placeholder := range free {
+			if placeholder.MaxLines >= minimumLines {
+				free = append(free[:index], free[index+1:]...)
+				return placeholder, true
+			}
+		}
+		return pptx.Placeholder{}, false
+	}
+
+	for _, block := range slide.Blocks {
+		if _, ok := take(pptx.BlockMinimumLines(block.Kind)); ok {
+			score += 12
+			continue
+		}
+		// No room: the compiler writes the component out as bullets, which is a
+		// real loss of the shape the author asked for.
+		score -= 34
+	}
+	for range slide.Images {
+		if picture, ok := layout.Slot(pptx.SlotPicture); ok && picture.Kind == "picture" {
+			score += 10
+			continue
+		}
+		if _, ok := take(3); ok {
+			score += 6
+			continue
+		}
+		score -= 24
+	}
+
+	if len(slide.Bullets) > 0 {
+		room, needed := 0, 0
+		for _, placeholder := range free {
+			if placeholder.MaxLines < 2 {
+				continue
+			}
+			room += placeholder.MaxLines
+			if needed == 0 {
+				needed = pptx.LinesNeeded(slide.Bullets, placeholder)
+			}
+		}
+		switch {
+		case room == 0:
+			// Nowhere to write is worse than anywhere to write: every line is lost,
+			// not merely crowded.
+			score -= float64(len(slide.Bullets))*7 + 30
+		case needed > room:
+			// Every line that would not fit is a line the author wrote and the
+			// audience will not read.
+			score -= float64(needed-room) * 7
+		default:
+			score += 8
+			// A layout three times larger than the text leaves a column staring
+			// back at the room.
+			if room > needed*3 && room-needed > 8 {
+				score -= 5
+			}
+		}
+	}
+	// Whatever is still free and roomy would be drawn as an empty region.
+	for _, placeholder := range free {
+		if placeholder.MaxLines >= 3 {
+			score -= 4
+		}
+	}
+	return score
+}
+
+// slideRole is what a slide is for: what it declared, or what its position
+// implies. Position only implies a role — a first slide that carries a component
+// or a list of points is not a cover, whatever its position says, and putting it
+// on a title layout would throw the content away.
+func slideRole(slide SourceSlide, index, total int) string {
+	if role := strings.TrimSpace(slide.Role); role != "" {
+		return role
+	}
+	role := sourcePositionRole(index, total)
+	if role == pptx.RoleTitle && (len(slide.Blocks) > 0 || len(slide.Bullets) > 1) {
+		return pptx.RoleContent
+	}
+	return role
+}
+
+// dropEcho removes the points that only repeat a line the slide already shows.
+func dropEcho(bullets []pptx.Paragraph, already ...string) []pptx.Paragraph {
+	seen := map[string]bool{}
+	for _, line := range already {
+		if key := comparableLine(line); key != "" {
+			seen[key] = true
+		}
+	}
+	if len(seen) == 0 {
+		return bullets
+	}
+	kept := make([]pptx.Paragraph, 0, len(bullets))
+	for _, bullet := range bullets {
+		key := comparableLine(bullet.Text)
+		if key != "" && seen[key] {
+			continue
+		}
+		if key != "" {
+			seen[key] = true
+		}
+		kept = append(kept, bullet)
+	}
+	return kept
+}
+
+// comparableLine is a line stripped to what it says, so "2026 년" and "2026년"
+// are recognised as the same sentence written twice.
+func comparableLine(text string) string {
+	var builder strings.Builder
+	for _, character := range strings.ToLower(strings.TrimSpace(text)) {
+		switch character {
+		case ' ', '\t', '.', ',', '·', '!', '?', ':', ';', '"', '\'':
+			continue
+		}
+		builder.WriteRune(character)
+	}
+	return builder.String()
+}
+
+// structuralRole marks the slides that carry the deck's shape rather than its
+// argument.
+func structuralRole(role string) bool {
+	switch role {
+	case pptx.RoleTitle, pptx.RoleSection, pptx.RoleClosing:
+		return true
+	}
+	return false
 }
 
 // positionRole is the shape of an unannotated deck: it opens, it argues, it ends.

@@ -69,7 +69,10 @@ func (w *Worker) processOne(ctx context.Context) error {
 		return w.fail(ctx, presentation, err)
 	}
 	w.logger.Info("presentation generated", "presentation_id", presentation.ID,
-		"slides", len(generated.Slides), "template", template.Name)
+		"slides", len(generated.Slides), "template", template.Name,
+		// What compiling adjusted and what the repair pass rewrote. An operator
+		// asking why a deck looks the way it does should not have to guess.
+		"warnings", generated.Warnings)
 	return nil
 }
 

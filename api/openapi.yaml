@@ -3162,7 +3162,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 0.18.0
+            service.version: 0.19.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -4664,6 +4664,16 @@ components:
         - if:
             properties:
               key:
+                const: generation.repair_passes
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 0
+                maximum: 10
+        - if:
+            properties:
+              key:
                 enum: [generation.default_slide_count, generation.max_slides]
           then:
             properties:
@@ -4750,6 +4760,15 @@ components:
           $ref: '#/components/schemas/SettingText1To200'
         generation.default_audience:
           $ref: '#/components/schemas/SettingText1To200'
+        generation.repair_passes:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: |
+            How many slides a generation may measure against the template and
+            send back to the model to be rewritten so they fit. A rewrite is kept
+            only when it measures better than what it replaced. 0 turns the pass
+            off, which is the setting for a deployment paying per token.
         auth.oidc.issuer_url:
           $ref: '#/components/schemas/SettingHTTPSURLOrEmpty'
         auth.oidc.client_id:

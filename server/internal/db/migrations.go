@@ -224,6 +224,7 @@ var defaultSettings = map[string]struct {
 	"generation.default_tone":        {`"professional"`, false, "Default writing tone"},
 	"generation.default_audience":    {`"general"`, false, "Default target audience"},
 	"generation.outline_pass":        {`true`, false, "Plan the deck narrative before writing slide copy"},
+	"generation.repair_passes":       {`3`, false, "How many slides a generation may measure and send back to the model to be rewritten to fit. 0 turns the repair pass off"},
 	"generation.max_template_mb":     {`32`, false, "Maximum uploaded template size in MiB"},
 	"generation.allow_user_uploads":  {`true`, false, "Allow users to upload their own PowerPoint templates"},
 }

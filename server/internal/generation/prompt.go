@@ -159,13 +159,17 @@ func sourceUserPrompt(request writingRequest) string {
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))
 	if request.Plan != nil {
-		builder.WriteString("\nApproved deck plan — follow it slide by slide:\n")
+		builder.WriteString("\nApproved deck plan — follow it slide by slide. The room line is what\n" +
+			"that slide's layout holds; write to it and nothing has to be cut:\n")
 		if strings.TrimSpace(request.Plan.Thesis) != "" {
 			fmt.Fprintf(&builder, "Thesis: %s\n", request.Plan.Thesis)
 		}
 		for index, slide := range request.Plan.Slides {
 			fmt.Fprintf(&builder, "%d. role=%s layout=%s headline=%q intent=%q points=%s\n",
 				index+1, slide.Role, slide.LayoutID, slide.Headline, slide.Intent, strings.Join(slide.KeyPoints, " / "))
+			if room := slideRoom(request.Template.Manifest, slide.LayoutID, request.Presentation.Language); room != "" {
+				fmt.Fprintf(&builder, "   room: %s\n", room)
+			}
 		}
 	}
 	fmt.Fprintf(&builder, "This template can tell %d data series apart, so never plot more than that.\n",
@@ -173,6 +177,48 @@ func sourceUserPrompt(request writingRequest) string {
 	fmt.Fprintf(&builder, "\nWrite exactly %d slides, in order, in the slide language.\n",
 		request.Presentation.RequestedSlideCount)
 	return builder.String()
+}
+
+// slideRoom states, in numbers, what one layout holds.
+//
+// A catalogue of every layout tells a model what exists; this tells it what the
+// slide it is writing right now can take. The difference shows up as text that
+// does not have to be cut afterwards.
+func slideRoom(manifest pptx.Manifest, layoutID, language string) string {
+	layout, ok := manifest.LayoutByReference(strings.TrimSpace(layoutID))
+	if !ok {
+		return ""
+	}
+	adjust := pptx.ReferenceAdvance / pptx.LanguageAdvance(language)
+	parts := make([]string, 0, 4)
+	componentLines := 0
+	for _, placeholder := range layout.TextSlots() {
+		budget := int(float64(placeholder.MaxChars) * adjust)
+		switch placeholder.Slot {
+		case pptx.SlotTitle:
+			parts = append(parts, fmt.Sprintf("title ≤%d chars", max(budget/max(placeholder.MaxLines, 1), 1)))
+		case pptx.SlotSubtitle:
+			parts = append(parts, fmt.Sprintf("lead ≤%d chars", max(budget/max(placeholder.MaxLines, 1), 1)))
+		default:
+			if placeholder.MaxLines <= 1 {
+				parts = append(parts, fmt.Sprintf("%s: one line ≤%d chars", placeholder.Slot, max(budget, 1)))
+				continue
+			}
+			perLine := max(budget/max(placeholder.MaxLines, 1), 1)
+			parts = append(parts, fmt.Sprintf("%s: %d lines × ~%d chars",
+				placeholder.Slot, placeholder.MaxLines, perLine))
+			componentLines = max(componentLines, placeholder.MaxLines)
+		}
+	}
+	if componentLines >= 4 {
+		parts = append(parts, "a component fits in the largest region")
+	} else if componentLines > 0 {
+		parts = append(parts, "too shallow for a component — write prose")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, ", ")
 }
 
 func writeBrief(builder *strings.Builder, request writingRequest) {

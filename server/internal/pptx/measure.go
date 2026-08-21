@@ -109,6 +109,11 @@ func LanguageAdvance(language string) float64 {
 // character budget stored in a manifest.
 const referenceAdvance = 0.72
 
+// ReferenceAdvance is the width one character of the reference language takes,
+// as a fraction of the type size. Callers outside the renderer need it to turn a
+// region's capacity into a number of characters someone can write to.
+const ReferenceAdvance = referenceAdvance
+
 // LineCount reports how many rendered lines a paragraph occupies inside a
 // placeholder, accounting for its indent level.
 func LineCount(text string, placeholder Placeholder, level int) int {
