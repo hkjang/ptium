@@ -11,6 +11,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 	"github.com/hkjang/ptium/server/internal/store"
+	"strings"
 )
 
 type Worker struct {
@@ -61,7 +62,15 @@ func (w *Worker) processOne(ctx context.Context) error {
 	if err != nil {
 		return w.fail(ctx, presentation, err)
 	}
-	generated, err := w.generator.Generate(ctx, presentation, profile, template)
+	// A deck queued with text in it is being rewritten — it was brought in from a
+	// file, or written here, and someone asked for it to be improved. A deck with
+	// no text is one being written for the first time. Generating from the brief
+	// over a deck that already has slides would throw away what it is.
+	generate := w.generator.Generate
+	if strings.TrimSpace(presentation.Source) != "" {
+		generate = w.generator.Rewrite
+	}
+	generated, err := generate(ctx, presentation, profile, template)
 	if err != nil {
 		return w.fail(ctx, presentation, err)
 	}

@@ -274,6 +274,7 @@ export function EditorPage({ id }: { id: string }) {
   const [sourcePreview, setSourcePreview] = useState<{ url: string; slide: number; count: number } | null>(null)
   const [sourcePreviewError, setSourcePreviewError] = useState('')
   const [presenting, setPresenting] = useState(false)
+  const [rewriting, setRewriting] = useState(false)
   const shortcuts = useShortcutSheet()
   const [presentIndex, setPresentIndex] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
@@ -1080,6 +1081,21 @@ export function EditorPage({ id }: { id: string }) {
     showToast(`"${snippet.name}"을 라이브러리에 저장했습니다. 다른 덱에서도 쓸 수 있어요.`)
   }
 
+  /**
+   * Hands the whole deck to the model to rewrite: the facts stay, the craft
+   * improves. Version history is what makes this safe to try, so the old deck is
+   * one click away in 버전 이력.
+   */
+  const rewriteDeck = async () => {
+    if (!window.confirm('덱 전체를 AI가 다시 씁니다. 숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다. 이전 상태는 버전 이력에서 되돌릴 수 있습니다.')) return
+    setRewriting(true)
+    try {
+      if (dirty) await save()
+      setPresentation(await api.rewritePresentation(id))
+      showToast('덱을 다시 쓰고 있습니다. 끝나면 이 화면이 바뀝니다.')
+    } catch (err) { showToast(displayError(err), 'error') } finally { setRewriting(false) }
+  }
+
   const exportDeck = async (format: 'pptx' | 'pdf') => {
     setExporting(true)
     try {
@@ -1128,7 +1144,7 @@ export function EditorPage({ id }: { id: string }) {
                 ? <><AlertTriangle size={13} /> 다듬을 곳 {advisories.length}</>
                 : <><Check size={13} /> 결함 없음</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
-		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
+		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       <div className="editor-workspace">

@@ -83,6 +83,23 @@ func New(settings SettingReader) *Generator {
 // and writes slide copy second, so the result reads like a deck a consultant
 // would build rather than a list of bullet points.
 func (g *Generator) Generate(ctx context.Context, presentation model.Presentation, profile model.Profile, template Template) (Deck, error) {
+	return g.generate(ctx, presentation, profile, template, false)
+}
+
+// Rewrite improves a deck that already exists rather than writing a new one.
+//
+// Everything in it is the author's — a deck brought in from a file, or one they
+// wrote here — so the facts are kept and the craft is what changes. Without an
+// AI provider there is nothing to do: writing a fresh deck from the brief would
+// throw away the very thing being improved, so this says so instead.
+func (g *Generator) Rewrite(ctx context.Context, presentation model.Presentation, profile model.Profile, template Template) (Deck, error) {
+	if strings.TrimSpace(presentation.Source) == "" {
+		return Deck{}, errors.New("this deck has no text to rewrite")
+	}
+	return g.generate(ctx, presentation, profile, template, true)
+}
+
+func (g *Generator) generate(ctx context.Context, presentation model.Presentation, profile model.Profile, template Template, rewrite bool) (Deck, error) {
 	profile = g.withDefaultBrand(ctx, profile)
 	if len(template.Manifest.Layouts) == 0 {
 		return Deck{}, errors.New("the selected template does not expose any usable layout")
@@ -98,6 +115,11 @@ func (g *Generator) Generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
 	g.applyProviderSettings(ctx)
 	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
+		if rewrite {
+			// Rewriting is the one thing the offline writer cannot stand in for: it
+			// would replace the author's deck with a new one about the brief.
+			return Deck{}, errors.New("rewriting a deck needs an AI provider; ask an administrator to configure one")
+		}
 		return Fallback(presentation, profile, template), nil
 	}
 	if provider != "openai-compatible" && provider != "openai" {
@@ -109,6 +131,13 @@ func (g *Generator) Generate(ctx context.Context, presentation model.Presentatio
 		return Deck{}, err
 	}
 	request := writingRequest{Presentation: presentation, Profile: profile, Template: template}
+	// A deck that already has slides is being rewritten, not invented. Its own
+	// text is the material, its structure is already decided, and planning a new
+	// narrative for it would throw away the thing being improved.
+	if material := strings.TrimSpace(presentation.Source); material != "" && rewrite {
+		request.Material = material
+		return g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+	}
 	outlinePass := true
 	_ = g.settings.Get(ctx, "generation.outline_pass", &outlinePass)
 	if outlinePass && presentation.RequestedSlideCount > 2 {
@@ -203,7 +232,11 @@ func (g *Generator) plan(ctx context.Context, endpoint, modelName, apiKey string
 // so a deployment pinned to a tuned model keeps working.
 func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (Deck, error) {
 	started := time.Now()
-	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey, sourceSystemPrompt, sourceUserPrompt(request), 0.35)
+	system := sourceSystemPrompt
+	if strings.TrimSpace(request.Material) != "" {
+		system = rewriteSystemPrompt
+	}
+	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey, system, sourceUserPrompt(request), 0.35)
 	if err != nil {
 		return Deck{}, err
 	}

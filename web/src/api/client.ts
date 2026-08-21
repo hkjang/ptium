@@ -994,6 +994,15 @@ export const api = {
   },
 
   /**
+   * Asks the model to rewrite a deck that already exists — its facts kept, its
+   * craft improved. Queued like generation, because it is the same round trip.
+   */
+  async rewritePresentation(id: string) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/rewrite`, { method: 'POST' })
+    return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(raw, ['presentation', 'data']))
+  },
+
+  /**
    * Reads a PowerPoint file someone already has into a new deck.
    *
    * The words come across — titles, points, notes, tables — and are recompiled

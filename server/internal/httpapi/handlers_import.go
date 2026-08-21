@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -188,4 +189,49 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// rewritePresentation asks the model to improve a deck that already exists.
+//
+// It is the same queue generation uses, because it is the same shape of work: a
+// round trip to a model that takes a minute or ten. The worker tells the two
+// apart by whether the deck already has text — a deck with slides is being
+// rewritten, and one without is being written.
+//
+// The deck's current version is kept: version history is what makes this safe to
+// try, and "다시 써 줘" that cannot be taken back is not an offer anyone accepts.
+func (s *Server) rewritePresentation(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	presentation, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	if len(presentation.Slides) == 0 || strings.TrimSpace(presentation.Source) == "" {
+		writeError(writer, request, http.StatusConflict, "nothing_to_rewrite",
+			"이 덱에는 다시 쓸 내용이 없습니다. 먼저 슬라이드를 만들거나 가져오세요", nil)
+		return
+	}
+	if !s.aiProviderConfigured(request.Context()) {
+		writeError(writer, request, http.StatusConflict, "ai_provider_required",
+			"덱 다듬기는 AI 제공자가 설정되어 있어야 합니다. 관리자에게 서비스 설정의 AI 항목을 요청하세요", nil)
+		return
+	}
+	queued, err := s.store.QueueGeneration(request.Context(), presentation.ID, user.ID, false, s.maximumSlides(request.Context()))
+	if err != nil {
+		s.handleStoreError(writer, request, err, "generation_queue_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.rewrite", "presentation", presentation.ID,
+		map[string]any{"slides": len(presentation.Slides)})
+	s.worker.Notify()
+	writeData(writer, request, http.StatusAccepted, queued)
+}
+
+// aiProviderConfigured reports whether this deployment has a model to ask.
+func (s *Server) aiProviderConfigured(ctx context.Context) bool {
+	provider, key := "fallback", ""
+	_ = s.settings.Get(ctx, "ai.provider", &provider)
+	_ = s.settings.Get(ctx, "ai.api_key", &key)
+	return !strings.EqualFold(strings.TrimSpace(provider), "fallback") && strings.TrimSpace(key) != ""
 }

@@ -15,6 +15,11 @@ type writingRequest struct {
 	Profile      model.Profile
 	Template     Template
 	Plan         *deckPlan
+	// Material is a deck that already exists, being rewritten rather than
+	// invented. Its facts are the author's and are not up for improvement; its
+	// wording, its titles and the shape of its argument are what the model is
+	// asked for.
+	Material string
 }
 
 // deckPlan is the narrative design produced by the first pass.
@@ -160,6 +165,12 @@ func planUserPrompt(request writingRequest) string {
 func sourceUserPrompt(request writingRequest) string {
 	var builder strings.Builder
 	writeBrief(&builder, request)
+	if material := strings.TrimSpace(request.Material); material != "" {
+		builder.WriteString("\nThe deck as it stands today, in the slide language. " +
+			"Rewrite it; do not start again:\n\n")
+		builder.WriteString(material)
+		builder.WriteString("\n")
+	}
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))
 	if request.Plan != nil {
@@ -178,10 +189,43 @@ func sourceUserPrompt(request writingRequest) string {
 	}
 	fmt.Fprintf(&builder, "This template can tell %d data series apart, so never plot more than that.\n",
 		pptx.NewDesign(request.Template.Manifest).SeriesCap())
+	if strings.TrimSpace(request.Material) != "" {
+		builder.WriteString("\nReturn the whole deck, rewritten, in the slide language.\n")
+		return builder.String()
+	}
 	fmt.Fprintf(&builder, "\nWrite exactly %d slides, in order, in the slide language.\n",
 		request.Presentation.RequestedSlideCount)
 	return builder.String()
 }
+
+// rewriteSystemPrompt is for a deck that already exists.
+//
+// The difference from writing one is entirely about what may change. The facts
+// are the author's: a number invented to make a slide read better is worse than
+// a slide that reads badly. What the model is asked for is the craft — the
+// title that says what the slide argues, the sentence that is not the title
+// again, the point that is a point rather than a paragraph.
+const rewriteSystemPrompt = `You are a senior presentation writer editing a deck someone already wrote.
+
+The deck's facts are theirs. Every number, name, date and claim in it must appear
+in your version, unchanged. Invent nothing: if a slide is thin, it stays thin.
+
+What you change is the craft:
+- A title that says what the slide argues, not what it is about.
+- One lead sentence that adds to the title instead of repeating it.
+- Points that are points: one idea each, no sentence fragments trailing off, no
+  paragraph pretending to be a bullet.
+- The order, where the argument is out of order — but keep every slide, and keep
+  the cover as the cover and the closing as the closing.
+- Speaker notes: keep what is there, and write one for every slide that has
+  none. Every slide except the cover ends with a !notes line — a deck nobody can
+  present from is half a deck.
+- Components where they earn their place: figures the deck already states as a
+  ::kpi row, a sequence it already describes as ::steps, a table it already has
+  as ::table. Never a chart without numbers.
+
+Write to the room each layout has. Output the deck in the slide language and
+nothing else: no JSON, no fences, no commentary.`
 
 // slideRoom states, in numbers, what one layout holds.
 //

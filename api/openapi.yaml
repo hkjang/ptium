@@ -920,6 +920,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /api/v1/presentations/{id}/rewrite:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: rewritePresentation
+      summary: Ask the model to rewrite a deck that already exists
+      description: |
+        Queues the deck for rewriting, the same way generation is queued: the
+        worker tells the two apart by whether the deck already has text.
+
+        The deck's facts are the author's and are kept — every number, name and
+        claim reappears unchanged. What changes is the craft: titles that say what
+        a slide argues, a lead that does not repeat the title, points that carry
+        one idea, speaker notes where there were none, and components where the
+        deck already states figures, a sequence or a table.
+
+        The previous version stays in the deck's history, so a rewrite can be
+        taken back.
+      tags: [Presentations]
+      responses:
+        '202':
+          description: The deck is queued for rewriting.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Presentation'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: |
+            The deck has nothing to rewrite, or this deployment has no AI provider
+            configured. Rewriting is the one thing the offline writer cannot stand
+            in for: it would replace the author's deck with a new one about the
+            brief.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/snippets:
     parameters:
       - $ref: '#/components/parameters/XRequestID'

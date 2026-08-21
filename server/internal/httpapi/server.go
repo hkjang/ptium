@@ -196,6 +196,9 @@ func (s *Server) Handler() http.Handler {
 	// Slides someone keeps and drops into other decks.
 	// A deck someone already has, read in as text and recompiled into a template.
 	api.Handle("POST /api/v1/presentations/import", requireScope("presentations:write", http.HandlerFunc(s.importPresentation)))
+	// The same queue as generation: a deck that already has text is rewritten
+	// rather than written.
+	api.Handle("POST /api/v1/presentations/{id}/rewrite", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.rewritePresentation))))
 	api.Handle("GET /api/v1/snippets", requireScope("presentations:read", http.HandlerFunc(s.listSnippets)))
 	api.Handle("POST /api/v1/snippets", requireScope("presentations:write", http.HandlerFunc(s.createSnippet)))
 	api.Handle("GET /api/v1/snippets/tags", requireScope("presentations:read", http.HandlerFunc(s.listSnippetTags)))
