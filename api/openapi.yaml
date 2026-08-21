@@ -3745,7 +3745,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 0.28.0
+            service.version: 0.29.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
