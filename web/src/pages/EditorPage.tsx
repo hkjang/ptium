@@ -9,13 +9,14 @@ import { AssetLibrary, type Asset } from '../components/AssetLibrary'
 import { FreeformCanvas } from '../components/FreeformCanvas'
 import { GridLibrary } from '../components/GridLibrary'
 import { PresentationView } from '../components/Presentation'
+import { SlideLibrary } from '../components/SlideLibrary'
 import { SlidePreview } from '../components/SlidePreview'
 import { ShortcutSheet, editorShortcuts, useShortcutSheet } from '../components/Shortcuts'
 import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type {
-  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, SlotFrame, SlotStyle,
+  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, Snippet, SlotFrame, SlotStyle,
   Template, TemplateLayout,
 } from '../types'
 import { displayError, relativeDate } from '../utils'
@@ -260,7 +261,7 @@ export function EditorPage({ id }: { id: string }) {
 	const [restoringRevision, setRestoringRevision] = useState('')
 	const [conflictOpen, setConflictOpen] = useState(false)
 	const [conflictKind, setConflictKind] = useState<'canvas' | 'source'>('canvas')
-  const [panel, setPanel] = useState<'content' | 'design' | 'notes' | 'images' | 'grids'>('content')
+  const [panel, setPanel] = useState<'content' | 'design' | 'notes' | 'images' | 'grids' | 'library'>('content')
   const [canvasMode, setCanvasMode] = useState<'edit' | 'preview' | 'source'>('edit')
   // The deck as text. It is the same deck the canvas shows: applying it
   // recompiles the slides, and opening it reads them back out.
@@ -1040,6 +1041,38 @@ export function EditorPage({ id }: { id: string }) {
     showToast(`${asset.name}을 현재 슬라이드에 배치했습니다.`)
   }
 
+  /**
+   * Puts a saved slide into this deck, after the one being edited.
+   *
+   * The server lays it out in this deck's template — the snippet is text, so the
+   * company introduction comes out in whatever design this deck wears — and the
+   * result is an ordinary slide from here on.
+   */
+  const insertSnippet = async (snippet: Snippet) => {
+    if (slides.length >= MAX_SLIDES) { showToast(`한 덱은 ${MAX_SLIDES}장까지입니다.`, 'error'); return }
+    if (dirty) await save().catch(() => { /* the snippet is compiled against the stored deck */ })
+    const rendered = await api.renderSnippet(snippet.id, id)
+    markEdited()
+    const at = active ? activeIndex + 1 : slides.length
+    const inserted = { ...rendered.slide, id: `new-${crypto.randomUUID()}` }
+    const next = [...slides.slice(0, at), inserted, ...slides.slice(at)].map((slide, index) => ({ ...slide, order: index + 1 }))
+    setSlides(next)
+    setActiveId(inserted.id)
+    setDirty(true)
+    setCanvasMode('edit')
+    showToast(rendered.warnings.length > 0
+      ? `${snippet.name}을 넣었습니다. ${rendered.warnings[0]}`
+      : `${snippet.name}을 넣었습니다.`)
+  }
+
+  /** Saves the slide being edited, as text, for use in any other deck. */
+  const saveSlideToLibrary = async (name: string) => {
+    if (!active) return
+    if (dirty) await save().catch(() => { /* what is stored is what gets saved */ })
+    const snippet = await api.saveSnippet({ name, presentationId: id, slide: activeIndex + 1 })
+    showToast(`"${snippet.name}"을 라이브러리에 저장했습니다. 다른 덱에서도 쓸 수 있어요.`)
+  }
+
   const exportDeck = async (format: 'pptx' | 'pdf') => {
     setExporting(true)
     try {
@@ -1197,7 +1230,7 @@ export function EditorPage({ id }: { id: string }) {
         </section>
 
         <aside className="inspector-panel">
-          <div className="inspector-tabs"><button className={panel === 'content' ? 'active' : ''} onClick={() => setPanel('content')}>내용</button><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>노트</button><button className={panel === 'grids' ? 'active' : ''} onClick={() => setPanel('grids')}>격자</button></div>
+          <div className="inspector-tabs"><button className={panel === 'content' ? 'active' : ''} onClick={() => setPanel('content')}>내용</button><button className={panel === 'design' ? 'active' : ''} onClick={() => setPanel('design')}>디자인</button><button className={panel === 'images' ? 'active' : ''} onClick={() => setPanel('images')}>이미지</button><button className={panel === 'library' ? 'active' : ''} onClick={() => setPanel('library')}>슬라이드</button><button className={panel === 'notes' ? 'active' : ''} onClick={() => setPanel('notes')}>노트</button><button className={panel === 'grids' ? 'active' : ''} onClick={() => setPanel('grids')}>격자</button></div>
           {panel === 'content' ? <div className="inspector-content">
             <section className="template-text-fields">
               <div className="inspector-section-head"><strong>템플릿 텍스트</strong><span className="inspector-hint">배경 레이어</span></div>
@@ -1244,6 +1277,18 @@ export function EditorPage({ id }: { id: string }) {
               <strong>격자 정의</strong>
               <p className="inspector-help">RACI·위험 매트릭스처럼 조직 고유의 표를 정의합니다. 소스에서는 <code>::grid 이름</code>으로 부릅니다. 색은 직접 쓰지 않고 역할만 고르므로, 같은 정의가 템플릿마다 그 회사 색으로 나옵니다.</p>
               <GridLibrary onInsert={insertGridReference} notify={showToast} />
+            </section>
+          </div> : panel === 'library' ? <div className="inspector-content">
+            <section>
+              <strong>저장한 슬라이드</strong>
+              <p className="inspector-help">회사 소개·팀·연락처처럼 매번 다시 만드는 슬라이드를 저장해 두고 어느 덱에나 넣습니다. 글로 저장하므로 <b>넣는 덱의 디자인</b>으로 다시 그려집니다.</p>
+              <SlideLibrary
+                presentationId={id}
+                currentTitle={active?.title}
+                onInsert={insertSnippet}
+                onSaveCurrent={active ? saveSlideToLibrary : undefined}
+                notify={showToast}
+              />
             </section>
           </div> : panel === 'images' ? <div className="inspector-content">
             <section>

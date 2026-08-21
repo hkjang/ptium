@@ -34,6 +34,12 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		if lead == "" {
 			lead = firstText(content.Fields[pptx.SlotSubtitle])
 		}
+		if lead == "" {
+			// A layout with no subtitle slot has the lead folded into a component's
+			// heading when the slide is compiled. Writing it back out as the lead is
+			// what makes that a round trip rather than a slow deletion.
+			lead = strandedHeading(content)
+		}
 		if lead != "" {
 			fmt.Fprintf(&builder, "> %s\n", escapeSourceLine(lead))
 		}
@@ -76,6 +82,27 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		}
 	}
 	return builder.String()
+}
+
+// strandedHeading is a component heading that nothing else will write down.
+//
+// A block carries both a caption (the words above it) and a heading (the slide's
+// lead, folded in when the layout has nowhere else to put it). Only the caption
+// is written with the component, so a heading that differs from it would be lost
+// unless it comes back out as the slide's lead — which is where it came from.
+func strandedHeading(content Content) string {
+	for _, slot := range bodySlotOrder(pptx.Layout{}, false, content) {
+		block, ok := content.Blocks[slot]
+		if !ok {
+			continue
+		}
+		heading := strings.TrimSpace(block.Heading)
+		caption := strings.TrimSpace(block.Caption)
+		if heading != "" && caption != "" && heading != caption {
+			return heading
+		}
+	}
+	return ""
 }
 
 // wroteBody reports whether any body region carried content, as opposed to the

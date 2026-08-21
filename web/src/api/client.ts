@@ -11,6 +11,7 @@ import type {
   ServerError,
   Slide,
   SlideBlock,
+  Snippet,
   SlideElement,
   SlideImage,
   SlideParagraph,
@@ -243,6 +244,22 @@ function normalizeAsset(value: Record<string, unknown>): Asset {
     lastUsed: String(value.lastUsed ?? value.last_used ?? '') || undefined,
     reused: Boolean(value.reused),
     createdAt: String(value.createdAt ?? value.created_at ?? ''),
+  }
+}
+
+/** One saved slide: its name, what it is filed under, and how much it is used. */
+function normalizeSnippet(value: Record<string, unknown>): Snippet {
+  return {
+    id: String(value.id ?? ''),
+    name: String(value.name ?? ''),
+    source: String(value.source ?? ''),
+    role: String(value.role ?? '') || undefined,
+    tags: Array.isArray(value.tags) ? value.tags.map(String) : [],
+    favorite: Boolean(value.favorite),
+    useCount: Number(value.useCount ?? value.use_count ?? 0),
+    lastUsed: String(value.lastUsed ?? value.last_used ?? '') || undefined,
+    createdAt: String(value.createdAt ?? value.created_at ?? ''),
+    updatedAt: String(value.updatedAt ?? value.updated_at ?? ''),
   }
 }
 
@@ -531,38 +548,47 @@ function normalizeStyles(raw: unknown): Record<string, SlotStyle> | undefined {
   return Object.keys(styles).length > 0 ? styles : undefined
 }
 
+/**
+ * One slide as the workspace holds it.
+ *
+ * The server sends a slide the same shape wherever it comes from — a stored
+ * deck, a compiled source, a saved slide being inserted — so it is read the same
+ * way in each case.
+ */
+function normalizeSlide(slide: Record<string, unknown>, index = 0): Slide {
+  const content = slide.content && typeof slide.content === 'object' ? slide.content as Record<string, unknown> : {}
+  const fields = normalizeFields(content.fields)
+  const bodySlot = bodySlots(fields)[0]
+  const bulletsFromFields = bodySlot ? fields[bodySlot] : undefined
+  const bullets = bulletsFromFields
+    ? bulletsFromFields.map((paragraph) => `${'  '.repeat(paragraph.level || 0)}${paragraph.text}`)
+    : (Array.isArray(slide.bullets) ? slide.bullets : Array.isArray(content.bullets) ? content.bullets : []).map(String)
+  return {
+    id: String(slide.id || `slide-${index + 1}`),
+    order: Number(slide.order ?? slide.position ?? index + 1),
+    layout: String(slide.layout || content.layout || 'content'),
+    layoutId: String(slide.layoutId || slide.layout_id || content.layoutId || '') || undefined,
+    title: String(slide.title || content.title || (fields.title?.[0]?.text ?? '')),
+    subtitle: String(slide.subtitle || content.subtitle || (fields.subtitle?.[0]?.text ?? '')) || undefined,
+    body: bullets.join('\n') || String(slide.body || content.body || content.text || '') || undefined,
+    bullets,
+    fields,
+    // Components and images travel with the slide so that editing its text
+    // cannot delete the drawings the generator made.
+    blocks: asRecord<SlideBlock>(content.blocks),
+    images: asRecord<SlideImage>(content.images),
+    elements: normalizeElements(content.elements),
+    frames: normalizeFrames(content.frames),
+    styles: normalizeStyles(content.styles),
+    speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
+    imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
+    accent: String(slide.accent || content.accent || '') || undefined,
+  }
+}
+
 function normalizePresentation(value: Presentation & Record<string, unknown>): Presentation {
   const rawSlides = Array.isArray(value.slides) ? value.slides as unknown as Array<Record<string, unknown>> : []
-  const slides = rawSlides.map((slide, index) => {
-    const content = slide.content && typeof slide.content === 'object' ? slide.content as Record<string, unknown> : {}
-    const fields = normalizeFields(content.fields)
-    const bodySlot = bodySlots(fields)[0]
-    const bulletsFromFields = bodySlot ? fields[bodySlot] : undefined
-    const bullets = bulletsFromFields
-      ? bulletsFromFields.map((paragraph) => `${'  '.repeat(paragraph.level || 0)}${paragraph.text}`)
-      : (Array.isArray(slide.bullets) ? slide.bullets : Array.isArray(content.bullets) ? content.bullets : []).map(String)
-    return {
-      id: String(slide.id || `slide-${index + 1}`),
-      order: Number(slide.order ?? slide.position ?? index + 1),
-      layout: String(slide.layout || content.layout || 'content'),
-      layoutId: String(slide.layoutId || slide.layout_id || content.layoutId || '') || undefined,
-      title: String(slide.title || content.title || (fields.title?.[0]?.text ?? '')),
-      subtitle: String(slide.subtitle || content.subtitle || (fields.subtitle?.[0]?.text ?? '')) || undefined,
-      body: bullets.join('\n') || String(slide.body || content.body || content.text || '') || undefined,
-      bullets,
-      fields,
-      // Components and images travel with the slide so that editing its text
-      // cannot delete the drawings the generator made.
-      blocks: asRecord<SlideBlock>(content.blocks),
-      images: asRecord<SlideImage>(content.images),
-      elements: normalizeElements(content.elements),
-      frames: normalizeFrames(content.frames),
-      styles: normalizeStyles(content.styles),
-      speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
-      imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
-      accent: String(slide.accent || content.accent || '') || undefined,
-    }
-  }).sort((a, b) => a.order - b.order)
+  const slides = rawSlides.map(normalizeSlide).sort((a, b) => a.order - b.order)
   const reportedSlideCount = Number(value.slideCount ?? value.slide_count ?? 0)
   return {
     ...value,
@@ -912,6 +938,59 @@ export const api = {
       throw new ApiError(errorMessage(body, `내보내기에 실패했습니다 (${response.status})`), response.status, response.headers.get('x-request-id') || undefined, body)
     }
     return response.blob()
+  },
+
+  /** Slides someone saved to use again. */
+  async snippets(query: { q?: string; tag?: string; favorite?: boolean; sort?: string; limit?: number } = {}) {
+    const search = new URLSearchParams({ limit: String(query.limit || 100) })
+    if (query.q) search.set('q', query.q)
+    if (query.tag) search.set('tag', query.tag)
+    if (query.favorite) search.set('favorite', 'true')
+    if (query.sort) search.set('sort', query.sort)
+    const raw = await request<unknown>(`/snippets?${search}`)
+    return unwrapList<Record<string, unknown>>(raw, ['snippets', 'items', 'data']).map(normalizeSnippet)
+  },
+  async snippetTags() {
+    const raw = await request<unknown>('/snippets/tags')
+    return unwrapList<Record<string, unknown>>(raw, ['tags', 'items', 'data'])
+      .map((value) => ({ name: String(value.name ?? ''), count: Number(value.count ?? 0) }))
+      .filter((tag) => tag.name !== '')
+  },
+  /** Saves one slide of a deck. The server writes it down as deck source. */
+  async saveSnippet(input: { name?: string; tags?: string[]; presentationId?: string; slide?: number; source?: string }) {
+    const raw = await request<unknown>('/snippets', { method: 'POST', body: JSON.stringify(input) })
+    return normalizeSnippet(unwrapOne<Record<string, unknown>>(raw, ['data']))
+  },
+  async updateSnippet(id: string, patch: { name?: string; tags?: string[]; source?: string }) {
+    const raw = await request<unknown>(`/snippets/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) })
+    return normalizeSnippet(unwrapOne<Record<string, unknown>>(raw, ['data']))
+  },
+  async deleteSnippet(id: string) {
+    await request<void>(`/snippets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  },
+  async favoriteSnippet(id: string, favorite: boolean) {
+    const raw = await request<unknown>(`/snippets/${encodeURIComponent(id)}/favorite`, {
+      method: 'PUT', body: JSON.stringify({ favorite }),
+    })
+    return normalizeSnippet(unwrapOne<Record<string, unknown>>(raw, ['data']))
+  },
+  /** Lays a saved slide out in a deck's template, ready to insert. */
+  async renderSnippet(id: string, presentationId: string) {
+    const raw = await request<unknown>(`/snippets/${encodeURIComponent(id)}/render`, {
+      method: 'POST', body: JSON.stringify({ presentationId }),
+    })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      slide: normalizeSlide(data.slide as Record<string, unknown>),
+      warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+      name: String(data.name ?? ''),
+    }
+  },
+  /** The saved slide drawn in a deck's template. */
+  snippetPreview(id: string, presentationId: string, width = 480) {
+    const query = new URLSearchParams({ width: String(width) })
+    if (presentationId) query.set('presentationId', presentationId)
+    return fetchImage(`/snippets/${encodeURIComponent(id)}/preview.svg?${query}`)
   },
 
   async templates() {

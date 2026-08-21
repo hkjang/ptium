@@ -282,3 +282,16 @@
 .asset-library.compact .asset-thumb { aspect-ratio:16/9; }
 .asset-library.compact .asset-actions { flex-wrap:wrap; }
 .asset-library.compact .asset-action-main { flex:1 1 100%; }
+/* Slides someone keeps, and the shelf they sit on. */
+.slide-library { display:flex; flex-direction:column; gap:12px; }
+.snippet-save-open { width:100%; justify-content:center; }
+.snippet-save { display:flex; align-items:center; gap:6px; }
+.snippet-save input { flex:1; min-width:0; padding:6px 9px; border:1px solid var(--violet); border-radius:8px; font-size:11px; outline:0; }
+.snippet-grid { list-style:none; display:grid; grid-template-columns:1fr; gap:10px; }
+.snippet-grid li { display:flex; flex-direction:column; gap:3px; padding:8px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+.snippet-grid li.favorite { border-color:#e3d9b4; background:#fffdf4; }
+.snippet-thumb { position:relative; overflow:hidden; border:1px solid var(--line); border-radius:7px; background:var(--surface-soft); aspect-ratio:16/9; }
+.snippet-thumb img, .snippet-thumb svg { width:100%; height:100%; object-fit:contain; display:block; }
+.snippet-grid strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.snippet-grid small { display:flex; align-items:center; gap:4px; color:var(--muted-2); font-size:9.5px; }
+.snippet-grid small b { color:var(--violet-dark); font-weight:600; }

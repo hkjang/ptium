@@ -12,6 +12,7 @@ import (
 const (
 	FavoriteAsset    = "asset"
 	FavoriteTemplate = "template"
+	FavoriteSnippet  = "snippet"
 )
 
 // SetFavorite pins or unpins one thing for one person.
@@ -20,7 +21,7 @@ const (
 // about their own workspace, and the row is removed with whatever it points at.
 func (s *Store) SetFavorite(ctx context.Context, ownerID, kind, refID string, on bool) error {
 	switch kind {
-	case FavoriteAsset, FavoriteTemplate:
+	case FavoriteAsset, FavoriteTemplate, FavoriteSnippet:
 	default:
 		return fmt.Errorf("unknown favourite kind %q", kind)
 	}

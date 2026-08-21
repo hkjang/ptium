@@ -845,6 +845,323 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/snippets:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listSnippets
+      summary: List the caller's saved slides
+      description: |
+        Slides someone keeps to use again — the company introduction, the team
+        page, the legal notice. Each is stored as deck source, so inserting one
+        lays it out in the template of the deck it lands in.
+      tags: [Presentations]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: q
+          in: query
+          description: Matches the name, the source text or any tag.
+          schema:
+            type: string
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: favorite
+          in: query
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [recent, lastUsed, used, name]
+            default: recent
+      responses:
+        '200':
+          description: The caller's saved slides.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Snippet'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createSnippet
+      summary: Save a slide for reuse
+      description: |
+        Send `source` directly, or name a deck and a slide position and the
+        server writes that slide down as source. Saving under a name that already
+        exists replaces it, which is how the company introduction is updated.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Defaults to the slide's own title.
+                tags:
+                  type: array
+                  items:
+                    type: string
+                source:
+                  type: string
+                presentationId:
+                  type: string
+                  format: uuid
+                slide:
+                  type: integer
+                  description: 1-based position of the slide to save.
+      responses:
+        '201':
+          description: The saved slide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Snippet'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: There was nothing to save.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/snippets/tags:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listSnippetTags
+      summary: List the tags the caller files saved slides under
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The caller's tags.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        count:
+                          type: integer
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/snippets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: getSnippet
+      summary: Read a saved slide
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The saved slide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Snippet'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateSnippet
+      summary: Rename, retag or rewrite a saved slide
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                source:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: The updated saved slide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Snippet'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Another saved slide already has that name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      operationId: deleteSnippet
+      summary: Remove a saved slide
+      description: Decks it was inserted into are untouched; they hold ordinary slides.
+      tags: [Presentations]
+      responses:
+        '204':
+          description: The saved slide has been removed.
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/snippets/{id}/favorite:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    put:
+      operationId: favoriteSnippet
+      summary: Star or unstar a saved slide
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        '200':
+          description: The saved slide, with its new state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Snippet'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/snippets/{id}/render:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: renderSnippet
+      summary: Lay a saved slide out in a deck's template
+      description: |
+        Compiles the saved source against the named deck's template and returns
+        the slide, ready to be inserted. The same saved page becomes a two-column
+        slide in one design and a full-bleed one in another, which is the point
+        of storing text rather than a drawing. Counts as a use.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [presentationId]
+              properties:
+                presentationId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The compiled slide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      slide:
+                        $ref: '#/components/schemas/Slide'
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                      name:
+                        type: string
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: The saved slide produced nothing.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/snippets/{id}/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: previewSnippet
+      summary: Draw a saved slide in a deck's design
+      tags: [Presentations]
+      parameters:
+        - name: presentationId
+          in: query
+          description: The deck whose template to draw it in. Without one, the caller's default design is used.
+          schema:
+            type: string
+            format: uuid
+        - name: width
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: The slide as SVG.
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/grids:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4047,6 +4364,42 @@ components:
           type: boolean
           description: Present on an upload that matched an image already stored.
         createdAt:
+          type: string
+          format: date-time
+
+    Snippet:
+      type: object
+      description: |
+        A slide someone saved to use again, kept as deck source so that inserting
+        it lays it out in the destination deck's template.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        source:
+          type: string
+          description: The slide as deck source.
+        role:
+          type: string
+          description: The kind of slide it was saved from.
+        tags:
+          type: array
+          items:
+            type: string
+        favorite:
+          type: boolean
+        useCount:
+          type: integer
+          description: How many times it has been inserted.
+        lastUsed:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
           type: string
           format: date-time
 

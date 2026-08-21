@@ -237,6 +237,25 @@ export interface Asset {
 
 export interface AssetTag { name: string; count: number }
 
+/**
+ * A slide someone saved to use again.
+ *
+ * It is kept as deck source, so inserting it into another deck lays it out in
+ * that deck's template rather than pasting a foreign design.
+ */
+export interface Snippet {
+  id: string
+  name: string
+  source: string
+  role?: string
+  tags: string[]
+  favorite: boolean
+  useCount: number
+  lastUsed?: string
+  createdAt: string
+  updatedAt: string
+}
+
 export interface TemplatePlaceholder {
   slot: string
   kind: string

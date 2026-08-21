@@ -99,6 +99,28 @@ type Asset struct {
 	Reused bool `json:"reused,omitempty"`
 }
 
+// Snippet is a slide someone saved to use again.
+//
+// It is kept as deck source, not as a drawn slide: the same saved page comes out
+// in whatever template it is inserted into, which is the only way a reusable
+// slide is worth having.
+type Snippet struct {
+	ID       string   `json:"id"`
+	OwnerID  string   `json:"ownerId,omitempty"`
+	Name     string   `json:"name"`
+	Source   string   `json:"source"`
+	Role     string   `json:"role,omitempty"`
+	Tags     []string `json:"tags"`
+	Favorite bool     `json:"favorite"`
+	// UseCount counts insertions, which are deliberate acts. Unlike an image on a
+	// slide there is nothing to count afterwards: once inserted, a snippet is an
+	// ordinary slide and stops being a copy of anything.
+	UseCount  int        `json:"useCount"`
+	LastUsed  *time.Time `json:"lastUsed,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+}
+
 // AssetTag is one of the words a person files their images under, and how many
 // carry it.
 type AssetTag struct {

@@ -219,6 +219,41 @@ func TestFormatRoundTripsThroughCompile(t *testing.T) {
 	}
 }
 
+// A layout with no subtitle slot has the slide's lead folded into a component's
+// heading. Writing the deck back out has to put it somewhere, or opening the
+// source and applying it deletes a line the author wrote.
+func TestFormatKeepsALeadFoldedIntoAComponent(t *testing.T) {
+	manifest := testManifest()
+	source := "# 회사 소개\n@two\n> 2015년 설립, 임직원 240명\n::kpi 한눈에\n- 설립 | 2015\n- 임직원 | 240명\n::\n- 클라우드 전환 전문\n"
+	first := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if len(first.Slides) != 1 {
+		t.Fatalf("compiled %d slides", len(first.Slides))
+	}
+	// The compiler had nowhere to put the lead but the component's heading.
+	content := Decode(first.Slides[0].Content)
+	heading := ""
+	for _, block := range content.Blocks {
+		heading = strings.TrimSpace(block.Heading)
+	}
+	if heading != "2015년 설립, 임직원 240명" {
+		t.Skipf("this template keeps the lead elsewhere (%q); nothing to round trip", heading)
+	}
+	formatted := Format(model.Presentation{Slides: first.Slides}, manifest)
+	if !strings.Contains(formatted, "> 2015년 설립, 임직원 240명") {
+		t.Fatalf("the lead was lost writing the deck back out:\n%s", formatted)
+	}
+	second := Compile(ParseSource(formatted), manifest, CompileOptions{Language: "ko"})
+	after := Decode(second.Slides[0].Content)
+	for _, block := range after.Blocks {
+		if strings.TrimSpace(block.Heading) != heading {
+			t.Fatalf("the lead did not survive a round trip: %q", block.Heading)
+		}
+		if strings.TrimSpace(block.Caption) != "한눈에" {
+			t.Fatalf("the component's caption changed: %q", block.Caption)
+		}
+	}
+}
+
 // TestFormatIsDeterministic runs Format repeatedly: a map iteration in the middle
 // of it would make the output vary.
 func TestFormatIsDeterministic(t *testing.T) {

@@ -220,6 +220,23 @@ var migrations = []string{
 	// Someone's own words for what an image is for: logo, 제품컷, 배경. Tags are
 	// how a library of two hundred pictures stays findable.
 	`ALTER TABLE assets ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}'`,
+	// Slides someone keeps: the company introduction, the team page, the legal
+	// notice, the roadmap they redraw every quarter. Stored as deck source rather
+	// than as a rendered slide, so inserting one into another deck lays it out in
+	// that deck's template instead of pasting a foreign design.
+	`CREATE TABLE IF NOT EXISTS snippets(
+		id uuid PRIMARY KEY,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		name text NOT NULL,
+		source text NOT NULL,
+		role text NOT NULL DEFAULT 'content',
+		tags text[] NOT NULL DEFAULT '{}',
+		use_count integer NOT NULL DEFAULT 0,
+		last_used_at timestamptz,
+		created_at timestamptz NOT NULL DEFAULT now(),
+		updated_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE UNIQUE INDEX IF NOT EXISTS snippets_owner_name_idx ON snippets(owner_id,lower(name))`,
+	`CREATE INDEX IF NOT EXISTS snippets_owner_used_idx ON snippets(owner_id,last_used_at DESC)`,
 }
 
 var defaultSettings = map[string]struct {
