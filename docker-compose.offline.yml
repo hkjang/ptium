@@ -5,7 +5,7 @@ name: ptium
 # cluster before starting.
 services:
   ptium:
-    image: ptium-${PTIUM_VERSION:-0.37.0}:latest
+    image: ptium-${PTIUM_VERSION:-0.38.0}:latest
     pull_policy: never
     restart: unless-stopped
     environment:
