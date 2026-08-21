@@ -38,11 +38,14 @@ type Content struct {
 	// Frames moves or resizes a template region on this slide alone. A slot with
 	// no entry keeps the layout's own geometry, so a deck stays inside its
 	// template until someone deliberately drags a region somewhere else.
-	Frames  map[string]SlotFrame `json:"frames,omitempty"`
-	Bullets []string             `json:"bullets,omitempty"`
-	Body    string               `json:"body,omitempty"`
-	Accent  string               `json:"accent,omitempty"`
-	Notes   string               `json:"notes,omitempty"`
+	Frames map[string]SlotFrame `json:"frames,omitempty"`
+	// Styles changes how a region's text is set on this slide: its size, colour,
+	// weight and alignment. A slot with no entry keeps the template's own type.
+	Styles  map[string]pptx.Style `json:"styles,omitempty"`
+	Bullets []string              `json:"bullets,omitempty"`
+	Body    string                `json:"body,omitempty"`
+	Accent  string                `json:"accent,omitempty"`
+	Notes   string                `json:"notes,omitempty"`
 }
 
 const MaxFreeformElements = 200
@@ -86,6 +89,43 @@ func ValidateSlotFrames(frames map[string]SlotFrame) error {
 	return nil
 }
 
+// ValidateSlotStyles bounds the typography a slide may override. Anything past
+// these is a client sending nonsense rather than a person setting type.
+func ValidateSlotStyles(styles map[string]pptx.Style) error {
+	if len(styles) > MaxSlotFrames {
+		return fmt.Errorf("a slide may restyle at most %d regions", MaxSlotFrames)
+	}
+	for slot, style := range styles {
+		if strings.TrimSpace(slot) == "" || utf8.RuneCountInString(slot) > 100 {
+			return fmt.Errorf("region style %q names an invalid slot", slot)
+		}
+		if math.IsNaN(style.Scale) || math.IsInf(style.Scale, 0) || style.Scale < 0 || style.Scale > 3 {
+			return fmt.Errorf("region style %q has an unsupported size", slot)
+		}
+		if style.Color != "" && !isHexColor(style.Color) {
+			return fmt.Errorf("region style %q has an invalid colour", slot)
+		}
+		if !oneOf(strings.ToLower(strings.TrimSpace(style.Align)), "", "left", "center", "right", "justify") {
+			return fmt.Errorf("region style %q has an unsupported alignment", slot)
+		}
+	}
+	return nil
+}
+
+// isHexColor accepts the RRGGBB the renderer writes into DrawingML.
+func isHexColor(value string) bool {
+	value = strings.TrimPrefix(strings.TrimSpace(value), "#")
+	if len(value) != 6 {
+		return false
+	}
+	for _, character := range value {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", character) {
+			return false
+		}
+	}
+	return true
+}
+
 // slotFramesInEMU converts the stored percentages to the renderer's units.
 func slotFramesInEMU(frames map[string]SlotFrame, slideWidth, slideHeight int) map[string]pptx.Frame {
 	if len(frames) == 0 {
@@ -101,6 +141,26 @@ func slotFramesInEMU(frames map[string]SlotFrame, slideWidth, slideHeight int) m
 		}
 	}
 	return converted
+}
+
+// normalizedStyles drops the entries that change nothing and the colours written
+// with a leading hash, which is how a browser hands them over.
+func normalizedStyles(styles map[string]pptx.Style) map[string]pptx.Style {
+	if len(styles) == 0 {
+		return nil
+	}
+	cleaned := make(map[string]pptx.Style, len(styles))
+	for slot, style := range styles {
+		style.Color = strings.ToUpper(strings.TrimPrefix(strings.TrimSpace(style.Color), "#"))
+		if style.Empty() {
+			continue
+		}
+		cleaned[slot] = style
+	}
+	if len(cleaned) == 0 {
+		return nil
+	}
+	return cleaned
 }
 
 // FreeformElement is one Google-Slides-style object on top of a template:
@@ -460,6 +520,7 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 		// A region someone dragged on the canvas moves for this slide only; the
 		// layout it came from is untouched, so every other slide keeps the design.
 		rendered.Frames = slotFramesInEMU(content.Frames, slideWidth, slideHeight)
+		rendered.Styles = normalizedStyles(content.Styles)
 		if images != nil {
 			for slot, placed := range content.Images {
 				if _, ok := layout.Slot(slot); !ok {

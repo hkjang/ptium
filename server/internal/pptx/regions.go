@@ -30,6 +30,8 @@ type Region struct {
 	// FontSize is in hundredths of a point, as the manifest records it.
 	FontSize int    `json:"fontSize,omitempty"`
 	Bold     bool   `json:"bold,omitempty"`
+	Italic   bool   `json:"italic,omitempty"`
+	Align    string `json:"align,omitempty"`
 	Color    string `json:"color,omitempty"`
 	Font     string `json:"font,omitempty"`
 	Name     string `json:"name,omitempty"`
@@ -73,6 +75,8 @@ func SlideRegions(layout Layout, slide Slide) []Region {
 			Layout:   Frame{X: original.X, Y: original.Y, Width: original.Width, Height: original.Height},
 			FontSize: placeholder.FontSize,
 			Bold:     placeholder.Bold,
+			Italic:   placeholder.Italic,
+			Align:    placeholder.Align,
 			Color:    placeholder.Color,
 			Font:     placeholder.Font,
 			Name:     placeholder.Name,

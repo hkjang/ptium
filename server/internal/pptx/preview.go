@@ -193,11 +193,23 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	if placeholder.Bold || placeholder.Slot == SlotTitle {
 		weight = "700"
 	}
+	// Alignment and italics are only ever set where a slide overrides them, so the
+	// default path draws exactly what it drew before.
+	anchor, slant := "", ""
 	x := (float64(placeholder.X) + 91440) * scale
+	switch placeholder.Align {
+	case "ctr":
+		anchor, x = ` text-anchor="middle"`, (float64(placeholder.X)+float64(placeholder.Width)/2)*scale
+	case "r":
+		anchor, x = ` text-anchor="end"`, (float64(placeholder.X+placeholder.Width)-91440)*scale
+	}
+	if placeholder.Italic {
+		slant = ` font-style="italic"`
+	}
 	y := (float64(placeholder.Y)+45720)*scale + fontSize
 	var builder strings.Builder
-	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve">`,
-		x, y, color, fontSize, weight, escapeAttribute(fallbackFamily(family)))
+	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s"%s%s font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve">`,
+		x, y, color, fontSize, weight, anchor, slant, escapeAttribute(fallbackFamily(family)))
 	line := 0
 	for _, paragraph := range paragraphs {
 		indent := float64(paragraph.Level) * fontSize
@@ -216,6 +228,11 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 			// indenting it made every wrapped title step to the right.
 			if index > 0 && prefix != "" {
 				offset += fontSize
+			}
+			if anchor != "" {
+				// A centred or right-set line hangs from its own edge; an indent
+				// would push it off that edge rather than in from it.
+				offset = 0
 			}
 			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+float64(line)*lineHeight, escapeText(wrapped))
 			line++

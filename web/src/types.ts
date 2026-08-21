@@ -89,6 +89,19 @@ export interface SlideBlock {
 export interface SlotFrame { x: number; y: number; width: number; height: number }
 
 /**
+ * What a slide changes about one region's type. Every field is optional: an
+ * author who only centres a line has not also chosen its size.
+ */
+export interface SlotStyle {
+  /** Multiplies the template's own size. Absent means unchanged. */
+  scale?: number
+  color?: string
+  bold?: boolean
+  italic?: boolean
+  align?: 'left' | 'center' | 'right' | 'justify'
+}
+
+/**
  * One region of a rendered slide, as the canvas needs it. This is what makes
  * generated content editable rather than a picture: the title the model wrote and
  * a text box the author added are the same kind of object to a click.
@@ -103,9 +116,14 @@ export interface CanvasRegion {
   paragraphs?: SlideParagraph[]
   block?: SlideBlock
   image?: SlideImage
-  /** Point size the template gives the region's text. */
+  /** Point size the region's text is set at, after any override. */
   fontSize?: number
   bold?: boolean
+  italic?: boolean
+  /** DrawingML alignment, set only where the slide overrides it. */
+  align?: string
+  /** What this slide changed about the region's type, if anything. */
+  style?: SlotStyle
   color?: string
   font?: string
   name?: string
@@ -181,6 +199,8 @@ export interface Slide {
   elements?: SlideElement[]
   /** Where a template region was dragged to, per slot, in slide percentages. */
   frames?: Record<string, SlotFrame>
+  /** How a template region's text is set, per slot, where it was changed. */
+  styles?: Record<string, SlotStyle>
   speakerNotes?: string
   imageUrl?: string
   accent?: string

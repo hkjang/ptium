@@ -23,12 +23,15 @@ type canvasRegion struct {
 	Frame       deck.SlotFrame     `json:"frame"`
 	Layout      deck.SlotFrame     `json:"layout"`
 	Moved       bool               `json:"moved"`
+	Style       *pptx.Style        `json:"style,omitempty"`
 	Text        string             `json:"text,omitempty"`
 	Paragraphs  []pptx.Paragraph   `json:"paragraphs,omitempty"`
 	Block       *pptx.Block        `json:"block,omitempty"`
 	Image       *deck.ContentImage `json:"image,omitempty"`
 	FontSize    float64            `json:"fontSize,omitempty"`
 	Bold        bool               `json:"bold,omitempty"`
+	Italic      bool               `json:"italic,omitempty"`
+	Align       string             `json:"align,omitempty"`
 	Color       string             `json:"color,omitempty"`
 	Font        string             `json:"font,omitempty"`
 	Name        string             `json:"name,omitempty"`
@@ -81,11 +84,16 @@ func (s *Server) slideRegions(writer http.ResponseWriter, request *http.Request)
 		converted := canvasRegion{
 			Slot: region.Slot, Kind: region.Kind, Frame: percent(region.Frame), Layout: percent(region.Layout),
 			Moved: region.Moved, Paragraphs: region.Paragraphs, Block: region.Block,
+			Align: region.Align, Italic: region.Italic,
 			FontSize: float64(region.FontSize) / 100, Bold: region.Bold, Color: region.Color, Font: region.Font,
 			Name: region.Name, Prompt: region.Prompt, AcceptsText: region.Accepts, SpannedBy: region.Spanned,
 		}
 		if region.Kind == pptx.RegionText {
 			converted.Text = region.Text()
+		}
+		if style, ok := content.Styles[region.Slot]; ok && !style.Empty() {
+			copied := style
+			converted.Style = &copied
 		}
 		if placed, ok := content.Images[region.Slot]; ok && region.Kind == pptx.RegionPicture {
 			copied := placed
@@ -216,12 +224,13 @@ func carryCanvasLayer(proposed, stored []byte) []byte {
 		return proposed
 	}
 	existing := deck.Decode(stored)
-	if len(existing.Elements) == 0 && len(existing.Frames) == 0 {
+	if len(existing.Elements) == 0 && len(existing.Frames) == 0 && len(existing.Styles) == 0 {
 		return proposed
 	}
 	content := deck.Decode(proposed)
 	content.Elements = existing.Elements
 	content.Frames = existing.Frames
+	content.Styles = existing.Styles
 	return content.Encode()
 }
 

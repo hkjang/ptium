@@ -13,7 +13,8 @@ import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea }
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type {
-  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, SlotFrame, Template, TemplateLayout,
+  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, SlotFrame, SlotStyle,
+  Template, TemplateLayout,
 } from '../types'
 import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
@@ -148,9 +149,10 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         blocks: slide.blocks || {},
         images: slide.images || {},
         elements: slide.elements || [],
-        // Where the author dragged a template region, if they did. An empty map
-        // is the deck sitting exactly where its template puts it.
+        // Where the author dragged a template region, and how they set its type.
+        // Empty maps are the deck sitting exactly as its template puts it.
         frames: slide.frames || {},
+        styles: slide.styles || {},
         bullets: slideBodyLines(slide),
         accent: slide.accent,
       },
@@ -171,6 +173,56 @@ function findingLabel(kind: string) {
     case 'repeat': return '같은 말을 두 번 함'
   }
   return kind
+}
+
+/**
+ * The measurement, in the workspace's language.
+ *
+ * The API states findings in English, because that is what an API and a log
+ * should say. A person reading their own deck should not have to. Anything this
+ * does not recognise is shown as the server wrote it, so a new measurement is
+ * never swallowed.
+ */
+const componentNames: Record<string, string> = {
+  kpi: '핵심 지표', hero: '대표 숫자', steps: '단계', timeline: '타임라인', comparison: '비교',
+  columnChart: '세로 막대 차트', barChart: '가로 막대 차트', lineChart: '추이 차트', shareBar: '비중 바',
+  meter: '달성률', table: '표', quote: '인용', callout: '강조', grid: '격자', bullets: '목록',
+  text: '텍스트', component: '컴포넌트', picture: '이미지',
+}
+const named = (value: string) => componentNames[value] || value
+
+function findingDetail(detail: string) {
+  const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
+    [/^(\w+) region extends ([\d.]+)cm past the slide edge$/,
+      (m) => `${named(m[1])} 영역이 슬라이드 밖으로 ${m[2]}cm 나갔습니다`],
+    [/^(\d+) lines of text in room for (\d+); it must shrink to (\d+)% of the template's size$/,
+      (m) => `${m[2]}줄 자리에 ${m[1]}줄이 들어가 템플릿 크기의 ${m[3]}%로 줄여야 합니다`],
+    [/^(\d+) lines of text in room for (\d+); it does not fit even at (\d+)%$/,
+      (m) => `${m[2]}줄 자리에 ${m[1]}줄이라 ${m[3]}%로 줄여도 들어가지 않습니다`],
+    [/^(\w+) overlaps (\w+) by (\d+)%$/, (m) => `${named(m[1])}이 ${m[2]} 영역과 ${m[3]}% 겹칩니다`],
+    [/^text covers (\d+)% of the layout's own (.+)$/, (m) => `글이 템플릿 자체의 ${m[2]}를 ${m[1]}% 덮습니다`],
+    [/^text (\w+) on (\w+) is ([\d.]+):1, below 4\.5:1$/,
+      (m) => `글자색 #${m[1]}과 배경 #${m[2]}의 대비가 ${m[3]}:1로, 기준 4.5:1에 못 미칩니다`],
+    [/^(\d+) points on one slide; past (\d+) an audience reads instead of listening$/,
+      (m) => `한 장에 요점이 ${m[1]}개입니다. ${m[2]}개를 넘으면 듣지 않고 읽습니다`],
+    [/^the region is (\d+)% full; a slide needs room to breathe$/,
+      (m) => `영역이 ${m[1]}% 찼습니다. 슬라이드에는 여백이 필요합니다`],
+    [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
+    [/^no speaker notes: .+$/, () => '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
+    [/^the last line holds (\d+)% of a line; .+$/,
+      (m) => `마지막 줄에 한 줄의 ${m[1]}%만 남았습니다. 조금 줄이거나 고쳐 쓰면 사라집니다`],
+    [/^(\w+) had too little room to draw anything$/, (m) => `${named(m[1])}을 그릴 자리가 없었습니다`],
+    [/^(\w+) draws "(.+)" ([\d.]+)cm taller than the room it reserved$/,
+      (m) => `${named(m[1])}의 "${m[2]}"가 확보한 자리보다 ${m[3]}cm 큽니다`],
+    [/^two lines of the (\w+) overlap$/, (m) => `${named(m[1])}의 두 줄이 서로 겹칩니다`],
+    [/^(\w+) draws ([\d.]+)cm past the slide edge$/, (m) => `${named(m[1])}이 슬라이드 밖으로 ${m[2]}cm 나갔습니다`],
+    [/^(\w+) draws ([\d.]+)cm outside its region$/, (m) => `${named(m[1])}이 자기 영역 밖으로 ${m[2]}cm 나갔습니다`],
+  ]
+  for (const [pattern, write] of rules) {
+    const match = detail.match(pattern)
+    if (match) return write(match)
+  }
+  return detail
 }
 
 function revisionReason(reason: string) {
@@ -393,6 +445,53 @@ export function EditorPage({ id }: { id: string }) {
   // The canvas edits the slide's own regions. Every change lands in the same
   // slide state the text editors use, so the two views never disagree.
   /**
+   * One undo stack for everything the canvas does.
+   *
+   * Objects had their own history and the regions had none, so dragging a title
+   * by accident could not be taken back — and Ctrl+Z quietly undid something
+   * else instead. A checkpoint is the whole slide before a change; a run of the
+   * same kind of change inside a second is one step, so typing is not thirty.
+   */
+  const undoStack = useRef<{ slideId: string; slide: Slide; reason: string; at: number }[]>([])
+  const redoStack = useRef<{ slideId: string; slide: Slide }[]>([])
+  const [historyDepth, setHistoryDepth] = useState({ undo: 0, redo: 0 })
+  const trackDepth = () => setHistoryDepth({ undo: undoStack.current.length, redo: redoStack.current.length })
+
+  const checkpoint = useCallback((reason: string) => {
+    const slide = editorState.current.slides.find((candidate) => candidate.id === activeId)
+    if (!slide) return
+    const top = undoStack.current[undoStack.current.length - 1]
+    const now = Date.now()
+    if (top && top.slideId === slide.id && top.reason === reason && now - top.at < 900) {
+      top.at = now
+      return
+    }
+    undoStack.current = [...undoStack.current.slice(-59), { slideId: slide.id, slide, reason, at: now }]
+    redoStack.current = []
+    trackDepth()
+  }, [activeId])
+
+  const stepHistory = (from: typeof undoStack, to: typeof redoStack) => {
+    const entry = from.current.pop()
+    if (!entry) return
+    const current = editorState.current.slides.find((candidate) => candidate.id === entry.slideId)
+    if (current) to.current.push({ slideId: entry.slideId, slide: current })
+    setActiveId(entry.slideId)
+    updateSlide(entry.slideId, entry.slide)
+    trackDepth()
+  }
+  const undoCanvas = () => stepHistory(undoStack, redoStack as unknown as typeof undoStack)
+  const redoCanvas = () => {
+    const entry = redoStack.current.pop()
+    if (!entry) return
+    const current = editorState.current.slides.find((candidate) => candidate.id === entry.slideId)
+    if (current) undoStack.current.push({ slideId: entry.slideId, slide: current, reason: 'redo', at: Date.now() })
+    setActiveId(entry.slideId)
+    updateSlide(entry.slideId, entry.slide)
+    trackDepth()
+  }
+
+  /**
    * Keeps the body textarea's slot and its text in step with the regions.
    *
    * Saving writes that textarea back to the slide's prose slot, and which slot
@@ -411,6 +510,7 @@ export function EditorPage({ id }: { id: string }) {
 
   const writeRegionText = (slot: string, text: string) => {
     if (!active) return
+    checkpoint(`text:${slot}`)
     const paragraphs = textToParagraphs(text)
     const fields = { ...(active.fields || {}) }
     if (paragraphs.length > 0) fields[slot] = paragraphs
@@ -428,11 +528,13 @@ export function EditorPage({ id }: { id: string }) {
   }
   const writeRegionBlock = (slot: string, block: SlideBlock) => {
     if (!active) return
+    checkpoint(`block:${slot}`)
     const blocks = { ...(active.blocks || {}), [slot]: block }
     updateActive(withProse({ ...active, blocks }, { blocks }))
   }
   const clearRegion = (slot: string) => {
     if (!active) return
+    checkpoint(`clear:${slot}`)
     const fields = { ...(active.fields || {}) }
     const blocks = { ...(active.blocks || {}) }
     const images = { ...(active.images || {}) }
@@ -441,7 +543,26 @@ export function EditorPage({ id }: { id: string }) {
     if (slot === 'subtitle') updates.subtitle = ''
     updateActive(withProse({ ...active, fields, blocks, images }, updates))
   }
-  const writeRegionFrames = (frames: Record<string, SlotFrame>) => updateActive({ frames })
+  const writeRegionFrames = (frames: Record<string, SlotFrame>) => {
+    checkpoint('frames')
+    updateActive({ frames })
+  }
+  /** Type a slide sets for one region: size, colour, weight, alignment. */
+  const writeRegionStyle = (slot: string, patch: SlotStyle | null) => {
+    if (!active) return
+    checkpoint(`style:${slot}`)
+    const styles = { ...(active.styles || {}) }
+    if (patch === null) delete styles[slot]
+    else {
+      const merged = { ...(styles[slot] || {}), ...patch }
+      for (const [key, value] of Object.entries(merged)) {
+        if (value === undefined) delete (merged as Record<string, unknown>)[key]
+      }
+      if (Object.keys(merged).length === 0) delete styles[slot]
+      else styles[slot] = merged
+    }
+    updateActive({ styles })
+  }
 
   const revisionSnapshot = useRef<Slide | null>(null)
   const [canUndoRevise, setCanUndoRevise] = useState(false)
@@ -649,6 +770,34 @@ export function EditorPage({ id }: { id: string }) {
 		}
 	}
 
+	// Every measured defect, handed to the model one slide at a time.
+	//
+	// A deck is judged as a deck, so fixing them one by one from the list is the
+	// tedious half of the same job. Slides are taken in order and each is a
+	// separate undo step, so a rewrite that went wrong can be taken back alone.
+	const [sweeping, setSweeping] = useState({ done: 0, total: 0 })
+	const fixEverythingWithAI = async () => {
+		const targets = [...new Set((deckFindings || []).filter((finding) => !canSafelyFix(finding))
+			.map((finding) => finding.slide))].sort((first, second) => first - second)
+		if (targets.length === 0 || sweeping.total > 0) return
+		setFindingsOpen(false)
+		setSweeping({ done: 0, total: targets.length })
+		try {
+			for (const [index, slide] of targets.entries()) {
+				const worst = (deckFindings || []).find((finding) => finding.slide === slide && !canSafelyFix(finding))
+				setSweeping({ done: index, total: targets.length })
+				await reviseSlideAt(slide - 1, {
+					action: worst?.kind === 'repeat' ? 'shorten' : worst?.kind === 'notes' ? 'notes' : 'fit',
+					instruction: worst ? `측정 결과: ${worst.detail}` : '',
+					slot: worst?.slot || '',
+				})
+			}
+			showToast(`${targets.length}장을 AI로 다시 썼습니다. 결과를 다시 측정합니다.`)
+		} finally {
+			setSweeping({ done: 0, total: 0 })
+		}
+	}
+
 	// Safe fixes never discard content: missing notes receive a draft, while a
 	// crowded prose slide is split and every line moves to one of the two slides.
 	const safelyFixFinding = (finding: DeckFinding) => {
@@ -803,8 +952,29 @@ export function EditorPage({ id }: { id: string }) {
 
   const chooseLayout = (layout: TemplateLayout) => updateActive({ layoutId: layout.id, layout: String(layout.role) })
 
+  // A region waiting for a picture. Choosing one then fills that region rather
+  // than dropping a floating image on top of the slide.
+  const [imageTarget, setImageTarget] = useState('')
+  const pickImageFor = (slot: string) => {
+    setImageTarget(slot)
+    setPanel('images')
+    showToast('이미지를 고르면 선택한 영역에 넣습니다.')
+  }
+
   const placeImage = (asset: Asset) => {
     if (!active) return
+    if (imageTarget) {
+      checkpoint(`image:${imageTarget}`)
+      const fields = { ...(active.fields || {}) }
+      const blocks = { ...(active.blocks || {}) }
+      delete fields[imageTarget]; delete blocks[imageTarget]
+      const images = { ...(active.images || {}), [imageTarget]: { assetId: asset.id, name: asset.name, caption: asset.name } }
+      updateActive(withProse({ ...active, fields, blocks, images }, { fields, blocks, images }))
+      setImageTarget('')
+      setCanvasMode('edit')
+      showToast(`${asset.name}을 ${imageTarget} 영역에 넣었습니다.`)
+      return
+    }
     const ratio = asset.width > 0 && asset.height > 0 ? asset.width / asset.height : 16 / 9
     const width = 30
     const height = Math.min(45, Math.max(8, width * (16 / 9) / ratio))
@@ -857,7 +1027,9 @@ export function EditorPage({ id }: { id: string }) {
             onClick={() => setFindingsOpen(true)}
             disabled={deckFindings === null}
             title="그려진 슬라이드를 측정한 결과입니다"
-          >{deckFindings === null
+          >{sweeping.total > 0
+            ? <><LoaderCircle className="spin" size={13} /> AI 수정 {sweeping.done + 1}/{sweeping.total}</>
+            : deckFindings === null
             ? <><LoaderCircle className="spin" size={13} /> 측정 중</>
             : defects.length > 0
               ? <><CircleAlert size={13} /> 결함 {defects.length}</>
@@ -904,12 +1076,20 @@ export function EditorPage({ id }: { id: string }) {
               slideId={active.id}
               elements={active.elements || []}
               frames={active.frames || {}}
+              styles={active.styles || {}}
               baseVersion={`${activeIndex}-${railVersion}`}
               onChange={(elements) => updateActive({ elements })}
               onRegionText={writeRegionText}
               onRegionBlock={writeRegionBlock}
               onRegionFrames={writeRegionFrames}
+              onRegionStyle={writeRegionStyle}
+              onPickImage={pickImageFor}
               onRegionClear={clearRegion}
+              onCheckpoint={checkpoint}
+              onUndo={undoCanvas}
+              onRedo={redoCanvas}
+              canUndo={historyDepth.undo > 0}
+              canRedo={historyDepth.redo > 0}
               onRevise={reviseActiveSlide}
               onUndoRevise={undoRevise}
               canUndoRevise={canUndoRevise}
@@ -1045,7 +1225,14 @@ export function EditorPage({ id }: { id: string }) {
         onClose={() => setFindingsOpen(false)}
         title="그려진 슬라이드 측정 결과"
         description="결함은 잘못 그려진 것, 다듬을 곳은 제대로 그려졌지만 더 좋아질 수 있는 것입니다."
-        footer={<Button variant="secondary" onClick={() => setFindingsOpen(false)}>닫기</Button>}
+        footer={<>
+          {(deckFindings || []).some((finding) => !canSafelyFix(finding)) && (
+            <Button variant="secondary" disabled={sweeping.total > 0} onClick={() => void fixEverythingWithAI()}>
+              <WandSparkles size={14} /> 전부 AI로 고치기
+            </Button>
+          )}
+          <Button variant="secondary" onClick={() => setFindingsOpen(false)}>닫기</Button>
+        </>}
       >
         {(deckFindings || []).length === 0
           ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
@@ -1054,7 +1241,7 @@ export function EditorPage({ id }: { id: string }) {
 				<button type="button" className="finding-target" onClick={() => { const target = slides[finding.slide - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
 				  <strong>{finding.slide}번 슬라이드</strong>
 				  <span>{findingLabel(finding.kind)}</span>
-				  <small>{finding.detail}</small>
+				  <small>{findingDetail(finding.detail)}</small>
 				</button>
 				{canSafelyFix(finding)
 				  ? <button type="button" className="finding-safe-fix" onClick={() => safelyFixFinding(finding)}><WandSparkles size={13} /> 안전 수정</button>

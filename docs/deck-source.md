@@ -274,11 +274,21 @@ and a PPTX can both be given without conversion. `only` and `exclude` exist so
 the canvas can lift a region off the page and drag the real drawing rather than
 an outline over a stale copy of it.
 
-A region the author drags is stored per slide, in `content.frames`:
+A region the author drags is stored per slide, in `content.frames`, and the type
+they set for it in `content.styles`:
 
 ```json
-"frames": { "body2": { "x": 12.5, "y": 30, "width": 70, "height": 45 } }
+"frames": { "body2": { "x": 12.5, "y": 30, "width": 70, "height": 45 } },
+"styles": { "title": { "scale": 1.2, "align": "center", "bold": true } }
 ```
+
+A style states only what changed. `scale` multiplies the template's own size —
+larger type holds fewer lines, and autofit is told so — and the exported slide
+writes out that much and no more, because a placeholder that says nothing
+inherits the layout's type, which is what keeps a deck inside its template. The
+typeface is deliberately not settable: a deck with three typefaces in it is not a
+design, it is an accident. Styles apply to a region's words; a component draws
+its own type from the template's design system.
 
 The layout it came from is untouched, so every other slide keeps the design. A
 moved region carries its capacity with it — a taller box holds more lines — and

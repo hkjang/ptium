@@ -14,6 +14,7 @@ import type {
   SlideImage,
   SlideParagraph,
   SlotFrame,
+  SlotStyle,
   Template,
   TemplateLayout,
   TemplatePalette,
@@ -487,6 +488,25 @@ function normalizeFrames(raw: unknown): Record<string, SlotFrame> | undefined {
   return Object.keys(frames).length > 0 ? frames : undefined
 }
 
+/** Region typography, kept only where it changes something. */
+function normalizeStyles(raw: unknown): Record<string, SlotStyle> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const styles: Record<string, SlotStyle> = {}
+  for (const [slot, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!value || typeof value !== 'object') continue
+    const entry = value as Record<string, unknown>
+    const style: SlotStyle = {}
+    const scale = Number(entry.scale)
+    if (Number.isFinite(scale) && scale > 0) style.scale = scale
+    if (typeof entry.color === 'string' && entry.color) style.color = entry.color
+    if (typeof entry.bold === 'boolean') style.bold = entry.bold
+    if (typeof entry.italic === 'boolean') style.italic = entry.italic
+    if (typeof entry.align === 'string' && entry.align) style.align = entry.align as SlotStyle['align']
+    if (Object.keys(style).length > 0) styles[slot] = style
+  }
+  return Object.keys(styles).length > 0 ? styles : undefined
+}
+
 function normalizePresentation(value: Presentation & Record<string, unknown>): Presentation {
   const rawSlides = Array.isArray(value.slides) ? value.slides as unknown as Array<Record<string, unknown>> : []
   const slides = rawSlides.map((slide, index) => {
@@ -513,6 +533,7 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
       images: asRecord<SlideImage>(content.images),
       elements: normalizeElements(content.elements),
       frames: normalizeFrames(content.frames),
+      styles: normalizeStyles(content.styles),
       speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
       imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
       accent: String(slide.accent || content.accent || '') || undefined,

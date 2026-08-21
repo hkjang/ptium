@@ -36,13 +36,50 @@ type Slide struct {
 	// keeps the template's own geometry, which is what lets a deck be rearranged
 	// by hand without losing the design it was built from.
 	Frames map[string]Frame `json:"frames,omitempty"`
+	// Styles overrides how a region's text is set — its size, colour, weight and
+	// alignment. Like Frames, a slot with no entry keeps the template's own
+	// styling, so a deck looks like its template until someone decides otherwise.
+	Styles map[string]Style `json:"styles,omitempty"`
 	Notes  string           `json:"notes,omitempty"`
+}
+
+// Style is what a slide changes about one region's type. Every field is
+// optional: an author who only centres a line has not also chosen its size.
+type Style struct {
+	// Scale multiplies the template's own size. Zero means unchanged.
+	Scale  float64 `json:"scale,omitempty"`
+	Color  string  `json:"color,omitempty"`
+	Bold   *bool   `json:"bold,omitempty"`
+	Italic *bool   `json:"italic,omitempty"`
+	// Align is left, center, right or justify. Empty keeps the template's.
+	Align string `json:"align,omitempty"`
+}
+
+// Empty reports whether the style changes nothing.
+func (s Style) Empty() bool {
+	return s.Scale == 0 && s.Color == "" && s.Bold == nil && s.Italic == nil && s.Align == ""
+}
+
+// alignment maps an author's word to the DrawingML attribute.
+func (s Style) alignment() string {
+	switch strings.ToLower(strings.TrimSpace(s.Align)) {
+	case "center", "ctr":
+		return "ctr"
+	case "right", "r", "end":
+		return "r"
+	case "justify", "just":
+		return "just"
+	case "left", "l", "start":
+		return "l"
+	}
+	return ""
 }
 
 // Place returns the placeholder as this slide positions it. A moved region
 // carries its capacity with it: a taller box holds more lines, and autofit has to
 // know that or it shrinks text that now fits.
 func (s Slide) Place(placeholder Placeholder) Placeholder {
+	placeholder = s.style(placeholder)
 	frame, ok := s.Frames[placeholder.Slot]
 	if !ok || frame.Width <= 0 || frame.Height <= 0 {
 		return placeholder
@@ -64,6 +101,44 @@ func (s Slide) Place(placeholder Placeholder) Placeholder {
 	}
 	if placeholder.LineEm > 0 {
 		placeholder.LineEm = placeholder.LineEm * horizontal
+	}
+	return placeholder
+}
+
+// style applies a slide's own typography to a region. Setting text larger means
+// less of it fits on a line, and autofit has to be told that or it lets the text
+// spill instead of shrinking it back.
+func (s Slide) style(placeholder Placeholder) Placeholder {
+	style, ok := s.Styles[placeholder.Slot]
+	if !ok || style.Empty() {
+		return placeholder
+	}
+	if style.Scale > 0 && math.Abs(style.Scale-1) > 0.001 {
+		scale := min(max(style.Scale, 0.4), 3)
+		if placeholder.FontSize > 0 {
+			placeholder.FontSize = max(400, int(math.Round(float64(placeholder.FontSize)*scale)))
+		}
+		if placeholder.MaxChars > 0 {
+			placeholder.MaxChars = max(1, int(math.Round(float64(placeholder.MaxChars)/scale)))
+		}
+		if placeholder.MaxLines > 0 {
+			placeholder.MaxLines = max(1, int(math.Round(float64(placeholder.MaxLines)/scale)))
+		}
+		if placeholder.LineEm > 0 {
+			placeholder.LineEm = placeholder.LineEm / scale
+		}
+	}
+	if style.Color != "" {
+		placeholder.Color = style.Color
+	}
+	if style.Bold != nil {
+		placeholder.Bold = *style.Bold
+	}
+	if style.Italic != nil {
+		placeholder.Italic = *style.Italic
+	}
+	if aligned := style.alignment(); aligned != "" {
+		placeholder.Align = aligned
 	}
 	return placeholder
 }
@@ -467,7 +542,8 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 			continue
 		}
 		_, moved := slide.Frames[placeholder.Slot]
-		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language, moved))
+		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language, moved,
+			slide.Styles[placeholder.Slot]))
 		shapeID++
 	}
 	for _, element := range slide.Elements {
@@ -485,7 +561,8 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapes.String() + components.String() + freeform.String() + `</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 
-func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string, moved bool) string {
+func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string,
+	moved bool, style Style) string {
 	name := placeholder.Name
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s %d", capitalize(placeholder.Slot), shapeID-1)
@@ -500,7 +577,8 @@ func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Para
 	reference += `/>`
 	body := ""
 	if placeholder.AcceptsText() {
-		body = `<p:txBody>` + bodyPropertiesXML(placeholder, paragraphs) + `<a:lstStyle/>` + paragraphsXML(paragraphs, language) + `</p:txBody>`
+		body = `<p:txBody>` + bodyPropertiesXML(placeholder, paragraphs) + `<a:lstStyle/>` +
+			styledParagraphsXML(paragraphs, language, placeholder, style) + `</p:txBody>`
 	}
 	// A placeholder normally inherits its box from the layout, which is what keeps
 	// a deck inside its template. A region the author dragged has to say where it
@@ -655,28 +733,75 @@ func autofit(placeholder Placeholder, paragraphs []Paragraph) (scale float64, li
 }
 
 func paragraphsXML(paragraphs []Paragraph, language string) string {
+	return styledParagraphsXML(paragraphs, language, Placeholder{}, Style{})
+}
+
+// styledParagraphsXML writes the paragraphs of a placeholder, stating only what
+// the slide overrides.
+//
+// A placeholder that says nothing inherits its type from the layout, which is
+// what keeps a deck inside its template — so nothing is written out unless
+// somebody changed it, and then only the part they changed.
+func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Placeholder, style Style) string {
 	if len(paragraphs) == 0 {
 		return `<a:p><a:endParaRPr lang="` + language + `"/></a:p>`
 	}
+	aligned := style.alignment()
 	var builder strings.Builder
 	for _, paragraph := range paragraphs {
+		level := min(max(paragraph.Level, 0), 8)
 		properties := ""
-		if paragraph.Level > 0 {
-			level := paragraph.Level
-			if level > 8 {
-				level = 8
+		if level > 0 || aligned != "" {
+			properties = `<a:pPr`
+			if level > 0 {
+				properties += ` lvl="` + strconv.Itoa(level) + `"`
 			}
-			properties = `<a:pPr lvl="` + strconv.Itoa(level) + `"/>`
+			if aligned != "" {
+				properties += ` algn="` + aligned + `"`
+			}
+			properties += `/>`
 		}
 		text := strings.TrimSpace(paragraph.Text)
 		if text == "" {
 			builder.WriteString(`<a:p>` + properties + `<a:endParaRPr lang="` + language + `"/></a:p>`)
 			continue
 		}
-		builder.WriteString(`<a:p>` + properties + `<a:r><a:rPr lang="` + language + `" dirty="0"/><a:t>` +
+		run := styleRunXML(language, placeholder, style, level)
+		builder.WriteString(`<a:p>` + properties + `<a:r>` + run + `<a:t>` +
 			escapeText(text) + `</a:t></a:r><a:endParaRPr lang="` + language + `" dirty="0"/></a:p>`)
 	}
 	return builder.String()
+}
+
+// styleRunXML is the run properties for one paragraph: the language alone when
+// the template's own type is kept, plus whatever the slide changed.
+func styleRunXML(language string, placeholder Placeholder, style Style, level int) string {
+	properties := `<a:rPr lang="` + language + `" dirty="0"`
+	if style.Scale > 0 && placeholder.FontSize > 0 {
+		size := placeholder.FontSize
+		// A sub-bullet steps down the way a designed template sets it.
+		for range level {
+			size = size * 88 / 100
+		}
+		properties += ` sz="` + strconv.Itoa(max(size, 400)) + `"`
+	}
+	if style.Bold != nil {
+		properties += ` b="` + boolAttribute(*style.Bold) + `"`
+	}
+	if style.Italic != nil {
+		properties += ` i="` + boolAttribute(*style.Italic) + `"`
+	}
+	if style.Color == "" {
+		return properties + `/>`
+	}
+	return properties + `><a:solidFill><a:srgbClr val="` + escapeAttribute(style.Color) + `"/></a:solidFill></a:rPr>`
+}
+
+func boolAttribute(value bool) string {
+	if value {
+		return "1"
+	}
+	return "0"
 }
 
 func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture) string {

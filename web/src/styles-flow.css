@@ -90,10 +90,17 @@
    background, in the template's own colour, so typing shows what will print. */
 .canvas-region-input::selection{background:rgba(114,91,214,.35)}
 .canvas-region-draft{pointer-events:none;opacity:.75}
+/* An alignment guide: what one dragged thing has just lined up with. */
+.canvas-guide{position:absolute;z-index:10001;pointer-events:none;background:#ff3d81;box-shadow:0 0 0 .5px rgba(255,61,129,.35)}
+.canvas-guide.x{top:-2%;bottom:-2%;width:1px}
+.canvas-guide.y{left:-2%;right:-2%;height:1px}
 .canvas-region-sprite{position:absolute;z-index:2;inset:0;width:100%;height:100%;pointer-events:none;object-fit:fill}
 .canvas-region-sprite.pending{opacity:.45}
 .freeform-selection.region{border-style:dashed;border-color:#4e3e98}
 .region-properties.empty{color:var(--muted)}
+.region-properties .region-scale{min-width:34px;color:var(--ink);text-align:center;font-variant-numeric:tabular-nums}
+.region-properties label button{height:21px;min-width:19px;padding:0;font-size:11px;line-height:1}
+.region-properties .region-note{color:var(--muted);font-size:8px;white-space:nowrap}
 .region-properties .region-hint{display:inline-flex;align-items:center;gap:5px;font-size:9px}
 .region-properties .region-chip{display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 8px;border-radius:999px;color:#4e3e98;background:#efeaff;font-size:9px;font-weight:700;white-space:nowrap}
 .region-properties .region-divider{width:1px;height:18px;background:var(--line)}

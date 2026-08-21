@@ -3162,7 +3162,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 0.15.0
+            service.version: 0.16.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -3827,11 +3827,11 @@ components:
         either paragraphs or a component, never both. Unknown keys are ignored,
         so clients may round-trip content they do not understand.
 
-        Updating a slide without mentioning `blocks`, `images`, `elements` or `frames`
-        keeps whatever the slide already carries: a client that only edits text
-        cannot delete the components and pictures a generated deck is largely made
-        of. Send `"blocks": {}`, `"images": {}`, `"elements": []` or `"frames": {}`
-        to clear them.
+        Updating a slide without mentioning `blocks`, `images`, `elements`, `frames`
+        or `styles` keeps whatever the slide already carries: a client that only
+        edits text cannot delete the components, pictures and layout a generated
+        deck is largely made of. Send `"blocks": {}`, `"images": {}`,
+        `"elements": []`, `"frames": {}` or `"styles": {}` to clear them.
       properties:
         type:
           type: string
@@ -3883,6 +3883,15 @@ components:
             resized it on the canvas. A slot with no entry keeps the layout's own
             geometry, so a deck stays inside its template until a region is
             deliberately dragged somewhere else. The layout itself is untouched.
+        styles:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/SlotStyle'
+          description: |
+            How a template region's text is set on this slide, where the author
+            changed it. A slot with no entry keeps the template's own type, and a
+            style states only what changed. Applies to a region's words; a
+            component draws its own type from the template's design system.
         bullets:
           type: array
           items:
@@ -3903,6 +3912,28 @@ components:
         y: { type: number, minimum: -100, maximum: 200 }
         width: { type: number, minimum: 1, maximum: 300 }
         height: { type: number, minimum: 1, maximum: 300 }
+
+    SlotStyle:
+      type: object
+      description: |
+        What a slide changes about one region's type. Every field is optional: an
+        author who only centres a line has not also chosen its size. The typeface
+        is deliberately not settable — a deck with three typefaces in it is an
+        accident rather than a design.
+      properties:
+        scale:
+          type: number
+          minimum: 0.4
+          maximum: 3
+          description: Multiplies the template's own size. Absent means unchanged.
+        color:
+          type: string
+          description: RRGGBB.
+        bold: { type: boolean }
+        italic: { type: boolean }
+        align:
+          type: string
+          enum: [left, center, right, justify]
 
     CanvasRegion:
       type: object
@@ -3941,6 +3972,14 @@ components:
           type: number
           description: Point size the template gives the region's text.
         bold: { type: boolean }
+        italic: { type: boolean }
+        align:
+          type: string
+          description: DrawingML alignment, present only where the slide overrides it.
+        style:
+          allOf:
+            - $ref: '#/components/schemas/SlotStyle'
+          description: What this slide changed about the region's type, if anything.
         color: { type: string }
         font: { type: string }
         name: { type: string }

@@ -83,9 +83,13 @@ type Placeholder struct {
 	Region   string  `json:"region,omitempty"`
 	Vertical bool    `json:"vertical,omitempty"`
 	Bold     bool    `json:"bold,omitempty"`
+	Italic   bool    `json:"italic,omitempty"`
 	Color    string  `json:"color,omitempty"`
 	Font     string  `json:"font,omitempty"`
-	Prompt   string  `json:"prompt,omitempty"`
+	// Align is set only where a slide overrides it. Empty means the region keeps
+	// whatever alignment the template's own layout gives it.
+	Align  string `json:"align,omitempty"`
+	Prompt string `json:"prompt,omitempty"`
 	// Synthetic marks a region Ptium derived from the layout's free space because
 	// the layout has no text placeholder of its own. The renderer draws a real
 	// text box for it, styled from the template's theme, instead of filling a

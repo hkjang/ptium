@@ -128,3 +128,38 @@ func TestRepeatedPointIsReported(t *testing.T) {
 		t.Fatalf("parallel lines must not be reported: %v", findings)
 	}
 }
+
+func TestRegionStyleOverridesTheTemplate(t *testing.T) {
+	manifest, layout := regionFixture()
+	yes := true
+	slide := Slide{LayoutID: "content",
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "가운데로 크게"}}},
+		Styles: map[string]Style{SlotTitle: {Scale: 1.5, Color: "FF0055", Bold: &yes, Align: "center"}},
+	}
+	placed := slide.Place(layout.Placeholders[0])
+	if placed.FontSize != 4800 || placed.Color != "FF0055" || !placed.Bold || placed.Align != "ctr" {
+		t.Fatalf("the slide's own type is applied: %+v", placed)
+	}
+	// Bigger type holds less text, and autofit has to know.
+	if placed.MaxChars >= layout.Placeholders[0].MaxChars {
+		t.Fatalf("a larger size fits fewer characters: %d", placed.MaxChars)
+	}
+
+	xml := slideXML(layout, slide, "ko", NewDesign(manifest), nil)
+	for _, want := range []string{`algn="ctr"`, `sz="4800"`, `b="1"`, `val="FF0055"`} {
+		if !strings.Contains(xml, want) {
+			t.Fatalf("the exported slide is missing %s:\n%s", want, xml)
+		}
+	}
+	svg := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 960})
+	if !strings.Contains(svg, `text-anchor="middle"`) || !strings.Contains(svg, "FF0055") {
+		t.Fatalf("the preview does not match the export:\n%s", svg)
+	}
+
+	// A region nobody restyled still inherits everything from the template.
+	plain := Slide{LayoutID: "content", Fields: map[string][]Paragraph{SlotTitle: {{Text: "그대로"}}}}
+	if plainXML := slideXML(layout, plain, "ko", NewDesign(manifest), nil); strings.Contains(plainXML, "algn=") ||
+		strings.Contains(plainXML, "sz=") || strings.Contains(plainXML, "solidFill") {
+		t.Fatalf("an untouched region states nothing of its own:\n%s", plainXML)
+	}
+}

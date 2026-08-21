@@ -77,3 +77,27 @@ func TestCanvasLayerSurvivesASourceApply(t *testing.T) {
 		t.Fatal("the slide that kept its title keeps its objects")
 	}
 }
+
+func TestAnUpdateThatOnlyEditsTextKeepsTheCanvasLayer(t *testing.T) {
+	stored := json.RawMessage(`{"type":"template","fields":{"title":[{"text":"A"}]},` +
+		`"blocks":{"body":{"kind":"kpi"}},"images":{"body2":{"assetId":"x"}},` +
+		`"elements":[{"id":"e1","kind":"text","x":1,"y":1,"width":9,"height":9}],` +
+		`"frames":{"body":{"x":5,"y":40,"width":60,"height":30}},` +
+		`"styles":{"title":{"scale":1.4,"align":"center"}}}`)
+	incoming := json.RawMessage(`{"type":"template","fields":{"title":[{"text":"B"}]}}`)
+	merged := deck.Decode(preserveDrawing(incoming, stored))
+	if len(merged.Blocks) != 1 || len(merged.Images) != 1 || len(merged.Elements) != 1 || len(merged.Frames) != 1 {
+		t.Fatalf("a text-only edit kept nothing: %+v", merged)
+	}
+	if style, ok := merged.Styles["title"]; !ok || style.Scale != 1.4 || style.Align != "center" {
+		t.Fatalf("the region's own type was lost: %+v", merged.Styles)
+	}
+	if merged.Fields["title"][0].Text != "B" {
+		t.Fatalf("the edit itself must land: %+v", merged.Fields)
+	}
+	// Clearing is still possible, deliberately.
+	cleared := deck.Decode(preserveDrawing(json.RawMessage(`{"type":"template","styles":{}}`), stored))
+	if len(cleared.Styles) != 0 {
+		t.Fatalf("an explicit empty map clears: %+v", cleared.Styles)
+	}
+}
