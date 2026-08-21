@@ -121,6 +121,29 @@ func (e Element) locksXML() string {
 	return `<a:spLocks noMove="1" noResize="1" noRot="1"/>`
 }
 
+// An object can be aligned in the words a browser uses or in the words
+// DrawingML uses. The workspace already converts between them when it lifts a
+// template region onto the canvas, so both are read here — and a value that is
+// neither is refused on the way in rather than drawn quietly at the left.
+var horizontalAligns = map[string]string{
+	"center": "ctr", "ctr": "ctr", "right": "r", "r": "r",
+	"justify": "just", "just": "just", "left": "", "l": "", "": "",
+}
+
+var verticalAnchors = map[string]string{
+	"middle": "ctr", "center": "ctr", "ctr": "ctr",
+	"bottom": "b", "b": "b", "top": "t", "t": "t", "": "t",
+}
+
+// AlignmentIsKnown reports whether an object's alignment is one the renderer
+// understands, so a caller hears about a typo instead of finding its text at
+// the left of the shape.
+func AlignmentIsKnown(align, verticalAlign string) bool {
+	_, horizontal := horizontalAligns[strings.ToLower(strings.TrimSpace(align))]
+	_, vertical := verticalAnchors[strings.ToLower(strings.TrimSpace(verticalAlign))]
+	return horizontal && vertical
+}
+
 // drawingML emits an editable PowerPoint shape or text box. Images are emitted
 // by freeformPictureXML after their relationship id has been allocated.
 func (e Element) drawingML(shapeID int) string {
@@ -256,11 +279,11 @@ func (e Element) tableCellXML(text string, header bool) string {
 }
 
 func (e Element) textBodyXML() string {
-	anchor := map[string]string{"middle": "ctr", "center": "ctr", "bottom": "b"}[strings.ToLower(e.VerticalAlign)]
+	anchor := verticalAnchors[strings.ToLower(strings.TrimSpace(e.VerticalAlign))]
 	if anchor == "" {
 		anchor = "t"
 	}
-	align := map[string]string{"center": "ctr", "right": "r", "justify": "just"}[strings.ToLower(e.Align)]
+	align := horizontalAligns[strings.ToLower(strings.TrimSpace(e.Align))]
 	if align == "" {
 		align = "l"
 	}
@@ -507,18 +530,18 @@ func (e Element) textSVG(x, y, width, height, scale float64) string {
 	}
 	blockHeight := float64(len(wrapped)) * lineHeight
 	top := y + math.Max(2, height*.04)
-	switch strings.ToLower(e.VerticalAlign) {
-	case "middle", "center":
+	switch verticalAnchors[strings.ToLower(strings.TrimSpace(e.VerticalAlign))] {
+	case "ctr":
 		top = y + (height-blockHeight)/2
-	case "bottom":
+	case "b":
 		top = y + height - blockHeight - math.Max(2, height*.04)
 	}
 	anchor := "start"
 	textX := x + math.Max(3, width*.025)
-	switch strings.ToLower(e.Align) {
-	case "center":
+	switch horizontalAligns[strings.ToLower(strings.TrimSpace(e.Align))] {
+	case "ctr":
 		anchor, textX = "middle", x+width/2
-	case "right":
+	case "r":
 		anchor, textX = "end", x+width-math.Max(3, width*.025)
 	}
 	weight := "400"

@@ -244,6 +244,9 @@ func ValidateFreeformElements(elements []FreeformElement) error {
 			utf8.RuneCountInString(element.Name) > 300 {
 			return fmt.Errorf("freeform element %d text exceeds its allowed length", position)
 		}
+		if !pptx.AlignmentIsKnown(element.Align, element.VerticalAlign) {
+			return fmt.Errorf("freeform element %d has an unsupported alignment", position)
+		}
 		if element.Kind == "table" {
 			if len(element.Cells) == 0 || len(element.Cells) > 50 {
 				return fmt.Errorf("freeform table %d must contain between 1 and 50 rows", position)

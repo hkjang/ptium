@@ -74,3 +74,25 @@ func TestFreeformLineExportsArrowheadsAndDash(t *testing.T) {
 		t.Fatalf("line SVG is not well formed: %v", err)
 	}
 }
+
+// An object arrives aligned in the words a browser uses or in the words
+// DrawingML uses — the workspace converts between them when it lifts a template
+// region onto the canvas. Both are drawn the same way, and a value that is
+// neither is not an alignment.
+func TestAnObjectIsAlignedInEitherVocabulary(t *testing.T) {
+	for _, pair := range [][2]string{{"center", "middle"}, {"ctr", "ctr"}} {
+		element := Element{ID: "s1", Kind: "shape", Shape: "roundRect", Text: "도형 안의 글",
+			Frame: Frame{X: 0, Y: 0, Width: 2000000, Height: 1000000},
+			Align: pair[0], VerticalAlign: pair[1]}
+		markup := element.drawingML(2)
+		if !strings.Contains(markup, `anchor="ctr"`) || !strings.Contains(markup, `algn="ctr"`) {
+			t.Errorf("%v was not centred:\n%s", pair, markup)
+		}
+	}
+	if !AlignmentIsKnown("right", "bottom") || !AlignmentIsKnown("r", "b") || !AlignmentIsKnown("", "") {
+		t.Error("a known alignment was refused")
+	}
+	if AlignmentIsKnown("middle", "") || AlignmentIsKnown("", "justify") {
+		t.Error("an alignment the renderer cannot draw was accepted")
+	}
+}
