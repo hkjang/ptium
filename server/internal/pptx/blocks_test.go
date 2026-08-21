@@ -232,3 +232,28 @@ func TestFormatNumberReadsLikeASlide(t *testing.T) {
 		}
 	}
 }
+
+// A model asked for a comparison writes a two-column table as often as it writes
+// two options. Drawn as cards, its header row became a card of its own — this is
+// the block a live model produced for "단일 공급사 68% → 목표 40%".
+func TestTwoRowComparisonWithNamedSidesIsAMatrix(t *testing.T) {
+	block := Block{Kind: BlockComparison, Rows: [][]string{
+		{"현재", "목표"},
+		{"단일 공급사 의존도 68%", "목표 의존도 40%"},
+	}}
+	if !IsComparisonMatrix(block) {
+		t.Fatal("a first row that names the sides is a header, not an option")
+	}
+	rows := comparisonMatrix(block)
+	if !tabularHeader(rows) {
+		t.Fatalf("the header row should be drawn as a header: %v", rows)
+	}
+	// Two options with real names still read as cards.
+	cards := Block{Kind: BlockComparison, Rows: [][]string{
+		{"현행 유지", "연 4.2억 · 장애 리스크 누적"},
+		{"단계 전환", "연 3.4억 · 1차 12개만 이관"},
+	}}
+	if IsComparisonMatrix(cards) {
+		t.Fatal("two named options are cards")
+	}
+}

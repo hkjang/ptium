@@ -1008,7 +1008,11 @@ func comparisonMatrix(block Block) [][]string {
 	if len(rows) < 2 {
 		return nil
 	}
-	if widest >= 3 || len(rows) > 3 {
+	// A first row that names the sides is a header, whatever follows it. Drawn as
+	// cards, "현재 | 목표" becomes two cards headed 현재 and 목표 with the real
+	// comparison crammed into the second one — which is what a model writing a
+	// two-column table actually produced.
+	if widest >= 3 || len(rows) > 3 || namesSides(rows[0]) {
 		return rows
 	}
 	return nil
@@ -1052,11 +1056,16 @@ func namesSides(row []string) bool {
 // holding data. Two independent signals agree on this in practice: a generic
 // first cell, and cells markedly shorter than the rows beneath them.
 func tabularHeader(rows [][]string) bool {
-	if len(rows) < 3 {
+	if len(rows) < 2 {
 		return false
 	}
 	if genericColumnNames[strings.ToLower(strings.TrimSpace(rows[0][0]))] || namesSides(rows[0]) {
 		return true
+	}
+	// Below three rows there is not enough underneath a header to measure it
+	// against, so only the names above count.
+	if len(rows) < 3 {
+		return false
 	}
 	header, body, cells := 0, 0, 0
 	for _, cell := range rows[0] {
