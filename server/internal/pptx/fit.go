@@ -164,6 +164,17 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 	block.Attribute = truncate(strings.TrimSpace(block.Attribute), 80)
 	block.Unit = truncate(strings.TrimSpace(block.Unit), 8)
 
+	// A quote or a callout written as a single entry is a statement, not a label:
+	// the label cap is a fraction of a sentence, and a pull quote cut at sixty
+	// characters ends mid-thought.
+	if (kind == BlockQuote || kind == BlockCallout) && strings.TrimSpace(block.Text) == "" && len(block.Items) == 1 {
+		statement := strings.TrimSpace(block.Items[0].Label + " " + block.Items[0].Value)
+		if statement != "" {
+			block.Text = truncate(statement, 300)
+			block.Items = nil
+		}
+	}
+
 	items := make([]Item, 0, len(block.Items))
 	for _, item := range block.Items {
 		item.Label = truncate(strings.TrimSpace(item.Label), 60)

@@ -257,3 +257,48 @@ func TestTwoRowComparisonWithNamedSidesIsAMatrix(t *testing.T) {
 		t.Fatal("two named options are cards")
 	}
 }
+
+// Six figures used to be four: a row of tiles was capped, and the numbers past
+// the cap were dropped without a word. A long row folds instead.
+func TestEveryFigureOfAKPIRowIsDrawn(t *testing.T) {
+	_, design, _ := testDesign(t, "")
+	block := Block{Kind: BlockKPI, Heading: "전체 지표", Items: []Item{
+		{Label: "매출", Value: "1,240억"}, {Label: "이익률", Value: "9.8%"}, {Label: "신규 고객", Value: "128개사"},
+		{Label: "이탈률", Value: "2.4%"}, {Label: "재구매", Value: "61%"}, {Label: "객단가", Value: "38만원"}}}
+	component := RenderBlock(design, Frame{X: 0, Y: 0, Width: 10000000, Height: 3000000}, block)
+	drawn := ""
+	for _, primitive := range component.Primitives {
+		for _, paragraph := range primitive.Lines {
+			drawn += paragraph.Text + "\n"
+		}
+	}
+	for _, item := range block.Items {
+		if !strings.Contains(drawn, item.Value) {
+			t.Errorf("%s (%s) is not on the slide:\n%s", item.Label, item.Value, drawn)
+		}
+	}
+	// Folded into two rows, not squeezed into six slivers on one.
+	rows := map[int]bool{}
+	for _, primitive := range component.Primitives {
+		if primitive.Kind == shapeRounded {
+			rows[primitive.Frame.Y] = true
+		}
+	}
+	if len(rows) != 2 {
+		t.Errorf("six figures were drawn in %d row(s)", len(rows))
+	}
+}
+
+// A pull quote is a sentence. Carried as an entry's label it was cut at sixty
+// characters, which ends a statement mid-thought.
+func TestAQuoteKeepsItsWholeSentence(t *testing.T) {
+	statement := "데이터 처리 속도는 단순한 기술 지표가 아니라 시장 변화에 얼마나 빠르게 대응할 수 있는지를 결정하는 핵심 경쟁력입니다"
+	placeholder := Placeholder{Slot: SlotBody, MaxLines: 6, MaxChars: 200, Width: 8000000, Height: 3000000}
+	sanitized, ok := SanitizeBlock(Block{Kind: BlockQuote, Items: []Item{{Label: statement}}}, placeholder)
+	if !ok {
+		t.Fatal("the quote was rejected")
+	}
+	if sanitized.Text != statement {
+		t.Errorf("the quote reads %q", sanitized.Text)
+	}
+}

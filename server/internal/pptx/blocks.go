@@ -264,73 +264,95 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 	if len(items) == 0 {
 		return nil
 	}
+	// Five figures on one line are five slivers, so a long row folds. Two rows of
+	// three is how a person would set six figures — and dropping the ones that
+	// did not fit, which is what a single row did, throws away numbers the author
+	// went and found.
+	columns, rows := len(items), 1
 	if len(items) > 4 {
-		items = items[:4]
+		columns, rows = (len(items)+1)/2, 2
 	}
 	valueSize := d.Display
-	if len(items) > 2 {
+	if columns > 2 {
 		valueSize = d.Title
 	}
 	// A label as long as "목표 가용성" wraps inside a narrow card, and a card that
 	// reserved one line for it drew the second line straight through the number.
 	// The tile is sized for the label it actually has.
-	cardWidth := (frame.Width - d.Unit*2*(len(items)-1)) / max(len(items), 1)
+	cardWidth := (frame.Width - d.Unit*2*(columns-1)) / max(columns, 1)
 	labelLines := 1
 	for _, item := range items {
 		labelLines = max(labelLines, min(cellLines(item.Label, d.Small, cardWidth-d.Unit*4), 2))
 	}
+	tileHeightFor := func(size int) int {
+		height := d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(size)
+		if hasDetail(items) {
+			height += d.Unit/2 + lineHeightFor(d.Small)
+		}
+		return height
+	}
 	// A tile is as tall as what it holds; stretching it to the placeholder
 	// leaves a bank of empty boxes down the slide.
-	tileHeight := d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(valueSize)
-	if hasDetail(items) {
-		tileHeight += d.Unit/2 + lineHeightFor(d.Small)
+	gap := d.Unit * 2
+	available := frame.Height
+	if rows > 1 {
+		available = (frame.Height - gap) / rows
 	}
+	tileHeight := tileHeightFor(valueSize)
 	// If the room will not take the taller card, the number gives way rather than
 	// the label: a wrapped label with a smaller figure still reads, and a figure
 	// with a label through it does not.
-	if tileHeight > frame.Height {
+	if tileHeight > available {
 		if labelLines > 1 && valueSize > d.Heading {
 			valueSize = d.Heading
-			tileHeight = d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(valueSize)
-			if hasDetail(items) {
-				tileHeight += d.Unit/2 + lineHeightFor(d.Small)
-			}
+			tileHeight = tileHeightFor(valueSize)
 		}
-		if tileHeight > frame.Height {
-			tileHeight = frame.Height
+		if tileHeight > available {
+			tileHeight = available
 		}
 	}
-	row := Frame{X: frame.X, Y: frame.Y, Width: frame.Width, Height: tileHeight}
 	var primitives []Primitive
-	for index, tile := range row.Columns(len(items), d.Unit*2) {
-		item := items[index]
-		inner := tile.Inset(d.Unit * 2)
-		primitives = append(primitives, rounded(tile, d.SurfaceRaised, d.Unit))
-		primitives = append(primitives, filled(Frame{X: tile.X, Y: tile.Y, Width: d.Unit / 2, Height: tile.Height}, d.Series(index)))
-		cursor := inner.Y
-		labelHeight := lineHeightFor(d.Small) * labelLines
-		primitives = append(primitives, text(
-			Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: labelHeight},
-			line(item.Label), textOptions{Size: d.Small, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
-		cursor += labelHeight + d.Unit/2
-
-		valueHeight := lineHeightFor(valueSize)
-		primitives = append(primitives, text(
-			Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: valueHeight},
-			line(item.Display(block.Unit)), textOptions{Size: valueSize, Color: d.InkPrimary, Bold: true, Font: d.Major}))
-		cursor += valueHeight
-
-		if detail := strings.TrimSpace(item.Delta + " " + item.Detail); strings.TrimSpace(detail) != "" {
-			color := d.InkMuted
-			switch strings.ToLower(item.Trend) {
-			case "up", "good", "positive":
-				color = d.Positive
-			case "down", "bad", "negative":
-				color = d.Negative
+	for row := 0; row < rows; row++ {
+		first := row * columns
+		if first >= len(items) {
+			break
+		}
+		band := Frame{X: frame.X, Y: frame.Y + row*(tileHeight+gap), Width: frame.Width, Height: tileHeight}
+		tiles := band.Columns(columns, gap)
+		for offset, tile := range tiles {
+			index := first + offset
+			if index >= len(items) {
+				break
 			}
+			item := items[index]
+			inner := tile.Inset(d.Unit * 2)
+			primitives = append(primitives, rounded(tile, d.SurfaceRaised, d.Unit))
+			primitives = append(primitives, filled(Frame{X: tile.X, Y: tile.Y, Width: d.Unit / 2, Height: tile.Height}, d.Series(index)))
+			cursor := inner.Y
+			labelHeight := lineHeightFor(d.Small) * labelLines
 			primitives = append(primitives, text(
-				Frame{X: inner.X, Y: cursor + d.Unit/2, Width: inner.Width, Height: lineHeightFor(d.Small)},
-				line(strings.TrimSpace(detail)), textOptions{Size: d.Small, Color: color, Font: d.Minor, Wrap: true}))
+				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: labelHeight},
+				line(item.Label), textOptions{Size: d.Small, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
+			cursor += labelHeight + d.Unit/2
+
+			valueHeight := lineHeightFor(valueSize)
+			primitives = append(primitives, text(
+				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: valueHeight},
+				line(item.Display(block.Unit)), textOptions{Size: valueSize, Color: d.InkPrimary, Bold: true, Font: d.Major}))
+			cursor += valueHeight
+
+			if detail := strings.TrimSpace(item.Delta + " " + item.Detail); strings.TrimSpace(detail) != "" {
+				color := d.InkMuted
+				switch strings.ToLower(item.Trend) {
+				case "up", "good", "positive":
+					color = d.Positive
+				case "down", "bad", "negative":
+					color = d.Negative
+				}
+				primitives = append(primitives, text(
+					Frame{X: inner.X, Y: cursor + d.Unit/2, Width: inner.Width, Height: lineHeightFor(d.Small)},
+					line(strings.TrimSpace(detail)), textOptions{Size: d.Small, Color: color, Font: d.Minor, Wrap: true}))
+			}
 		}
 	}
 	return primitives
