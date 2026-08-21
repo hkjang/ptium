@@ -242,6 +242,11 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		if len(slide.Bullets) > 0 {
 			distributeBullets(&content, layout, claimed, slide.Bullets, options.Language, &result.Warnings, where)
 		}
+		// A caption an author wrote for a photograph is theirs, and it was only
+		// being carried as alternative text. When the layout still has a text
+		// region free — which is exactly what a picture layout keeps beside the
+		// picture — the caption is written there, where a caption belongs.
+		placeImageCaptions(&content, layout, claimed, options.Language)
 
 		notes := strings.TrimSpace(slide.Notes)
 		result.Slides = append(result.Slides, model.Slide{
@@ -920,4 +925,57 @@ func truncate(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit])
+}
+
+// placeImageCaptions writes the caption of each placed image into a free text
+// region, as a caption rather than as a point: no bullet, one line.
+//
+// It runs after the points, so a slide that has something to say keeps saying
+// it; the caption fills a region that would otherwise be empty.
+func placeImageCaptions(content *Content, layout pptx.Layout, claimed map[string]bool, language string) {
+	for _, slot := range sortedSlots(content.Images) {
+		caption := strings.TrimSpace(content.Images[slot].Caption)
+		if caption == "" {
+			continue
+		}
+		placeholder, found := freeTextSlot(*content, layout, claimed)
+		if !found {
+			return
+		}
+		content.SetField(placeholder.Slot, fit(placeholder, []pptx.Paragraph{{Text: caption, Lead: true}}, language))
+		claimed[placeholder.Slot] = true
+	}
+}
+
+// freeTextSlot is a body region with nothing in it at all. The points are
+// distributed before this runs and do not mark the regions they fill, so asking
+// only what is claimed would write a caption over what a slide already says.
+func freeTextSlot(content Content, layout pptx.Layout, claimed map[string]bool) (pptx.Placeholder, bool) {
+	for _, placeholder := range layout.BodySlots() {
+		if claimed[placeholder.Slot] || !placeholder.AcceptsText() {
+			continue
+		}
+		if len(content.Fields[placeholder.Slot]) > 0 {
+			continue
+		}
+		if _, taken := content.Blocks[placeholder.Slot]; taken {
+			continue
+		}
+		if _, taken := content.Images[placeholder.Slot]; taken {
+			continue
+		}
+		return placeholder, true
+	}
+	return pptx.Placeholder{}, false
+}
+
+// sortedSlots is the slots of a map in a stable order, so a deck compiles the
+// same way twice.
+func sortedSlots(images map[string]ContentImage) []string {
+	slots := make([]string, 0, len(images))
+	for slot := range images {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	return slots
 }

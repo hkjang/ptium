@@ -891,3 +891,50 @@ func TestALeadInTheBodyStaysALead(t *testing.T) {
 		t.Errorf("the lead came back as a point:\n%s", written)
 	}
 }
+
+// A caption an author writes for a photograph is theirs. It was carried only as
+// alternative text, so a region beside the picture stared back at the room while
+// the words that belonged in it were invisible.
+func TestAnImageCaptionFillsAFreeRegion(t *testing.T) {
+	manifest := testManifest()
+	images := func(reference string) (ContentImage, bool) {
+		return ContentImage{AssetID: "asset-1", Name: reference}, true
+	}
+	options := CompileOptions{Language: "ko", ResolveImage: images}
+
+	// A layout with a second region free: the caption goes there, as a caption
+	// rather than as a point.
+	result := Compile(ParseSource("# 제목\n@two\n::image 로고 | 지난달 문을 연 신규 매장입니다\n"), manifest, options)
+	content := Decode(result.Slides[0].Content)
+	caption := ""
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle || len(paragraphs) == 0 {
+			continue
+		}
+		caption = paragraphs[0].Text
+		if !paragraphs[0].Lead {
+			t.Error("a caption is not one of the slide's points")
+		}
+	}
+	if caption != "지난달 문을 연 신규 매장입니다" {
+		t.Errorf("the caption is not on the slide: %+v", content.Fields)
+	}
+
+	// And it never writes over what the slide already says.
+	withPoints := Compile(ParseSource("# 제목\n@two\n::image 로고 | 캡션\n- 첫 요점\n- 두 번째 요점\n"), manifest, options)
+	said := Decode(withPoints.Slides[0].Content)
+	points := 0
+	for slot, paragraphs := range said.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			if strings.Contains(paragraph.Text, "요점") {
+				points++
+			}
+		}
+	}
+	if points != 2 {
+		t.Errorf("the slide kept %d of its two points: %+v", points, said.Fields)
+	}
+}
