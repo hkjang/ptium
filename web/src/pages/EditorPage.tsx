@@ -3,7 +3,7 @@ import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
   Copy, Download, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
 } from 'lucide-react'
-import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding } from '../api/client'
+import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
 import { FreeformCanvas } from '../components/FreeformCanvas'
@@ -164,6 +164,17 @@ function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
 }
 
 // findingLabel names a measured defect in the workspace's language.
+/** The axes of the score, in the words the measurement uses. */
+function scoreDimensionLabel(key: string) {
+  switch (key) {
+    case 'readability': return '가독성'
+    case 'structure': return '구성'
+    case 'visual': return '시각'
+    case 'accessibility': return '접근성'
+  }
+  return key
+}
+
 function findingLabel(kind: string) {
   switch (kind) {
     case 'overflow': return '텍스트 넘침'
@@ -254,6 +265,9 @@ export function EditorPage({ id }: { id: string }) {
   const [railVersion, setRailVersion] = useState(0)
   const [savedSlideCount, setSavedSlideCount] = useState(0)
   const [deckFindings, setDeckFindings] = useState<DeckFinding[] | null>(null)
+  // The same measurements, scored. A list says what to fix; the score says
+  // whether the deck is ready, which is what anyone asks first.
+  const [deckScore, setDeckScore] = useState<DeckScore | null>(null)
   const [findingsOpen, setFindingsOpen] = useState(false)
 	const [historyOpen, setHistoryOpen] = useState(false)
 	const [historyLoading, setHistoryLoading] = useState(false)
@@ -296,8 +310,8 @@ export function EditorPage({ id }: { id: string }) {
     if (railVersion === 0 || savedSlideCount === 0) return
     let active = true
     api.inspectPresentation(id)
-      .then((result) => { if (active) setDeckFindings(result.findings) })
-      .catch(() => { if (active) setDeckFindings(null) })
+      .then((result) => { if (active) { setDeckFindings(result.findings); setDeckScore(result.score) } })
+      .catch(() => { if (active) { setDeckFindings(null); setDeckScore(null) } })
     return () => { active = false }
   }, [id, railVersion, savedSlideCount])
 
@@ -312,7 +326,7 @@ export function EditorPage({ id }: { id: string }) {
       // What the deck looks like once drawn, so a finished deck says whether it is
       // actually finished rather than only that generation ended.
       if ((data.slides || []).length > 0) {
-        api.inspectPresentation(id).then((result) => setDeckFindings(result.findings)).catch(() => setDeckFindings(null))
+        api.inspectPresentation(id).then((result) => { setDeckFindings(result.findings); setDeckScore(result.score) }).catch(() => { setDeckFindings(null); setDeckScore(null) })
       }
       if (data.templateId) {
         api.template(data.templateId).then(setTemplate).catch(() => setTemplate(null))
@@ -894,7 +908,7 @@ export function EditorPage({ id }: { id: string }) {
 			setLastSaved(new Date())
 			setHistory(await api.presentationRevisions(id))
 			if (restored.templateId) api.template(restored.templateId).then(setTemplate).catch(() => setTemplate(null))
-			api.inspectPresentation(id).then((result) => setDeckFindings(result.findings)).catch(() => setDeckFindings(null))
+			api.inspectPresentation(id).then((result) => { setDeckFindings(result.findings); setDeckScore(result.score) }).catch(() => { setDeckFindings(null); setDeckScore(null) })
 			showToast(`버전 ${checkpoint.version}의 내용으로 복원했습니다.`)
 		} catch (err) { showToast(displayError(err), 'error') } finally { setRestoringRevision('') }
 	}
@@ -1150,10 +1164,10 @@ export function EditorPage({ id }: { id: string }) {
             : deckFindings === null
             ? <><LoaderCircle className="spin" size={13} /> 측정 중</>
             : defects.length > 0
-              ? <><CircleAlert size={13} /> 결함 {defects.length}</>
+              ? <><CircleAlert size={13} /> 품질 {deckScore ? deckScore.total : '—'} · 결함 {defects.length}</>
               : advisories.length > 0
-                ? <><AlertTriangle size={13} /> 다듬을 곳 {advisories.length}</>
-                : <><Check size={13} /> 결함 없음</>}
+                ? <><AlertTriangle size={13} /> 품질 {deckScore ? deckScore.total : '—'} · 다듬을 곳 {advisories.length}</>
+                : <><Check size={13} /> 품질 {deckScore ? deckScore.total : 100}</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
 		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
@@ -1359,6 +1373,20 @@ export function EditorPage({ id }: { id: string }) {
           <Button variant="secondary" onClick={() => setFindingsOpen(false)}>닫기</Button>
         </>}
       >
+        {deckScore && <div className="deck-score">
+          <div className="deck-score-total"><strong>{deckScore.total}</strong><span>측정된 품질</span></div>
+          <ul className="deck-score-dimensions">{deckScore.dimensions.map((dimension) => (
+            <li key={dimension.key}>
+              <span>{scoreDimensionLabel(dimension.key)}</span>
+              <i><b style={{ width: `${Math.max(2, dimension.score)}%` }} /></i>
+              <small>{dimension.score}</small>
+            </li>
+          ))}</ul>
+          {deckScore.weakest > 0 && <button type="button" className="deck-score-weakest" onClick={() => { const target = slides[deckScore.weakest - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
+            가장 낮은 슬라이드: {deckScore.weakest}번 ({deckScore.slides[deckScore.weakest - 1]?.score ?? 0}점)
+          </button>}
+          <p className="deck-score-note">점수는 <b>그려진 것</b>을 잰 결과입니다. 논지가 설득력 있는지는 재지 않습니다.</p>
+        </div>}
         {(deckFindings || []).length === 0
           ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
           : <ul className="deck-findings">{(deckFindings || []).map((finding) => (

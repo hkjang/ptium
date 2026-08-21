@@ -358,6 +358,31 @@ export interface DeckFinding {
   advisory: boolean
 }
 
+/** A measured deck, scored: the same findings, answered as "is this ready". */
+export interface DeckScore {
+  total: number
+  dimensions: { key: string; score: number; counted: number }[]
+  slides: { slide: number; score: number; worst?: string }[]
+  weakest: number
+}
+
+function normalizeScore(raw: unknown): DeckScore | null {
+  if (!raw || typeof raw !== 'object') return null
+  const data = raw as Record<string, unknown>
+  const dimensions = Array.isArray(data.dimensions) ? data.dimensions as Record<string, unknown>[] : []
+  const slides = Array.isArray(data.slides) ? data.slides as Record<string, unknown>[] : []
+  return {
+    total: Number(data.total ?? 0),
+    dimensions: dimensions.map((entry) => ({
+      key: String(entry.key ?? ''), score: Number(entry.score ?? 0), counted: Number(entry.counted ?? 0),
+    })),
+    slides: slides.map((entry) => ({
+      slide: Number(entry.slide ?? 0), score: Number(entry.score ?? 0), worst: entry.worst ? String(entry.worst) : undefined,
+    })),
+    weakest: Number(data.weakest ?? 0),
+  }
+}
+
 function normalizeFindings(raw: unknown): DeckFinding[] {
   if (!Array.isArray(raw)) return []
   return (raw as Record<string, unknown>[]).map((entry) => ({
@@ -786,7 +811,7 @@ export const api = {
   async inspectPresentation(id: string) {
     const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/inspect`)
     const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
-    return { clean: Boolean(data.clean), findings: normalizeFindings(data.findings) }
+    return { clean: Boolean(data.clean), findings: normalizeFindings(data.findings), score: normalizeScore(data.score) }
   },
   /** Clears the session cookie. Safe to call when already signed out. */
   async logout() {

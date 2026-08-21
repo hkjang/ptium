@@ -311,5 +311,8 @@ func (s *Server) inspectPresentation(writer http.ResponseWriter, request *http.R
 		// clean is about the drawing. A deck can be drawn correctly and still be
 		// unfinished, and saying so in one boolean would hide both.
 		"clean": len(defects) == 0, "defects": len(defects), "advisories": len(findings) - len(defects),
+		// The same measurements, scored: a list answers "what should I fix" and a
+		// score answers "is this ready", which is the question people ask first.
+		"score": pptx.ScoreDeck(findings, len(presentation.Slides)),
 	})
 }

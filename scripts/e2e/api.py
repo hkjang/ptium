@@ -167,6 +167,17 @@ if not (regions or {}).get("regions"):
     failures.append("slide 2 reports no editable regions")
 call("GET", f"/presentations/{deck_id}/slides/99/regions", expect=404)
 
+print("── quality score ──")
+measured = data_of(call("GET", f"/presentations/{deck_id}/inspect", expect=200)) or {}
+score = measured.get("score") or {}
+if not (0 <= int(score.get("total", -1)) <= 100):
+    failures.append(f"the deck's quality score is {score.get('total')!r}")
+if len(score.get("slides") or []) != measured.get("slides"):
+    failures.append(f"the score covers {len(score.get('slides') or [])} of {measured.get('slides')} slides")
+if {entry.get("key") for entry in (score.get("dimensions") or [])} != {"readability", "structure", "visual", "accessibility"}:
+    failures.append(f"the score's dimensions are {score.get('dimensions')!r}")
+print(f"   score {score.get('total')} weakest slide {score.get('weakest')}")
+
 print("── images ──")
 asset = data_of(call("POST", "/assets", files={"file": (f"logo-{RUN}.png", png(rgb=(int(RUN[-3:]) % 255, 120, 60)), "image/png")}, expect=201))
 asset_id = asset["id"]

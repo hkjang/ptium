@@ -2016,6 +2016,8 @@ paths:
                         type: array
                         items:
                           $ref: '#/components/schemas/DeckFinding'
+                      score:
+                        $ref: '#/components/schemas/DeckScore'
                   requestId:
                     $ref: '#/components/schemas/RequestID'
         '401':
@@ -4433,6 +4435,49 @@ components:
         legend:
           type: boolean
 
+    DeckScore:
+      type: object
+      description: |
+        The same measurements, scored. A list of findings answers "what should I
+        fix"; the score answers "is this ready", which is the question people ask
+        first. Every slide starts at a hundred and pays the weight of what was
+        measured on it; a dimension is the average of the slides in that
+        dimension, and the deck's total is the average of its slides.
+
+        The score measures the drawing, not the argument. A deck of well-set
+        slides saying nothing scores a hundred.
+      properties:
+        total:
+          type: integer
+          description: 0-100, the average of the deck's slide scores.
+        dimensions:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+                enum: [readability, structure, visual, accessibility]
+              score:
+                type: integer
+              counted:
+                type: integer
+                description: How many findings this dimension stands on, so a low score can be traced.
+        slides:
+          type: array
+          items:
+            type: object
+            properties:
+              slide:
+                type: integer
+              score:
+                type: integer
+              worst:
+                type: string
+                description: The kind of the heaviest finding on the slide.
+        weakest:
+          type: integer
+          description: The slide to open first. Zero when every slide measured clean.
     DeckFinding:
       type: object
       description: One defect measured in a drawn slide.
