@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Check, Search, Shapes, X } from 'lucide-react'
+import { Check, Search, Shapes, Star, X } from 'lucide-react'
 import { api } from '../api/client'
 import { SlidePreview } from './SlidePreview'
 import type { Template } from '../types'
@@ -48,10 +48,15 @@ export function templateTagGroups(templates: Template[]) {
  * silhouettes in the first twelve tiles.
  */
 export function orderTemplates(templates: Template[]) {
-  const mine = templates.filter((template) => template.kind === 'uploaded')
+  // Pinned designs and the ones this person keeps building on lead, ahead of
+  // even their own uploads: a library that does not learn is a catalogue.
+  const personal = templates.filter((template) => template.favorite || (template.usageCount || 0) > 0)
+    .sort((first, second) => Number(Boolean(second.favorite)) - Number(Boolean(first.favorite))
+      || (second.usageCount || 0) - (first.usageCount || 0))
+  const mine = [...personal, ...templates.filter((template) => template.kind === 'uploaded' && !personal.includes(template))]
   const groups = new Map<string, Template[]>()
   for (const template of templates) {
-    if (template.kind === 'uploaded') continue
+    if (mine.includes(template)) continue
     const structure = (template.tags || []).find((tag) => structureTags.includes(tag)) || 'etc'
     groups.set(structure, [...(groups.get(structure) || []), template])
   }
@@ -116,6 +121,11 @@ export function recommendTemplates(templates: Template[], brief: { prompt: strin
     const tags = template.tags || []
     let points = 0
     if (template.kind === 'uploaded') points += 100
+    // What this person pinned, and what they have actually built decks with.
+    // Someone who made nine decks in one design is telling us something no
+    // keyword in the brief can.
+    if (template.favorite) points += 40
+    points += Math.min(24, (template.usageCount || 0) * 8)
     for (const tag of tags) if (wanted.has(tag)) points += 10
     if (brief.tone === 'academic' && tags.includes('세리프')) points += 6
     if ((brief.tone === 'inspiring' || brief.tone === 'persuasive') && template.dark) points += 4
@@ -174,44 +184,63 @@ export function TemplateFilterChips({ groups, active, onToggle, onClear, showCle
   </div>
 }
 
-/** One design in a grid: its cover, its name, what it is for. */
-export function TemplateTile({ template, selected, onSelect, size = 420 }: {
+/** One design in a grid: its cover, its name, what it is for, and whether this
+ * person keeps coming back to it. */
+export function TemplateTile({ template, selected, onSelect, onFavorite, size = 420 }: {
   template: Template
   selected: boolean
   onSelect: () => void
+  /** Pins the design for this person. Omitted where pinning makes no sense. */
+  onFavorite?: (favorite: boolean) => void
   size?: number
 }) {
+  const used = template.usageCount || 0
   return (
-    <button
-      type="button"
-      className={`template-tile ${selected ? 'selected' : ''}`}
-      onClick={onSelect}
-      aria-pressed={selected}
-      title={template.description || template.name}
-    >
-      <SlidePreview cacheKey={`tile-${template.id}-${size}`} alt={`${template.name} 표지`}
-        load={() => api.templateLayoutPreview(template.id, '', size)} />
-      <div>
-        <strong>{template.name}</strong>
-        <span>{(template.tags || []).slice(0, 3).join(' · ') || `레이아웃 ${template.layoutCount}개`}</span>
-      </div>
-      {selected && <em><Check size={13} /></em>}
-    </button>
+    <div className={`template-tile-wrap ${template.favorite ? 'favorite' : ''}`}>
+      <button
+        type="button"
+        className={`template-tile ${selected ? 'selected' : ''}`}
+        onClick={onSelect}
+        aria-pressed={selected}
+        title={template.description || template.name}
+      >
+        <SlidePreview cacheKey={`tile-${template.id}-${size}`} alt={`${template.name} 표지`}
+          load={() => api.templateLayoutPreview(template.id, '', size)} />
+        <div>
+          <strong>{template.name}</strong>
+          <span>{(template.tags || []).slice(0, 3).join(' · ') || `레이아웃 ${template.layoutCount}개`}</span>
+        </div>
+        {selected && <em><Check size={13} /></em>}
+      </button>
+      {used > 0 && <span className="template-tile-used" title={`이 디자인으로 만든 덱 ${used}개`}>덱 {used}</span>}
+      {onFavorite && <button type="button" className={`template-tile-star ${template.favorite ? 'on' : ''}`}
+        onClick={(event) => { event.stopPropagation(); onFavorite(!template.favorite) }}
+        aria-pressed={Boolean(template.favorite)}
+        title={template.favorite ? '즐겨찾기 해제' : '즐겨찾기에 넣기'}><Star size={13} /></button>}
+    </div>
   )
 }
 
 /** The whole library, narrowable. Used inside the create flow and on its page. */
-export function TemplateBrowser({ templates, selectedId, onSelect, pageSize = 12 }: {
+export function TemplateBrowser({ templates, selectedId, onSelect, onFavorite, pageSize = 12 }: {
   templates: Template[]
   selectedId: string
   onSelect: (template: Template) => void
+  onFavorite?: (template: Template, favorite: boolean) => void
   pageSize?: number
 }) {
   const [query, setQuery] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [mineOnly, setMineOnly] = useState(false)
   const [shown, setShown] = useState(pageSize)
   const available = useMemo(() => templateTagGroups(templates), [templates])
-  const matching = useMemo(() => orderTemplates(filterTemplates(templates, query, tags)), [templates, query, tags])
+  const personal = useMemo(
+    () => templates.filter((template) => template.favorite || (template.usageCount || 0) > 0),
+    [templates])
+  const matching = useMemo(() => {
+    const pool = mineOnly ? personal : templates
+    return orderTemplates(filterTemplates(pool, query, tags))
+  }, [templates, personal, mineOnly, query, tags])
   const toggle = (tag: string) => {
     setShown(pageSize)
     setTags((current) => current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag])
@@ -226,14 +255,24 @@ export function TemplateBrowser({ templates, selectedId, onSelect, pageSize = 12
         {query && <button type="button" onClick={() => setQuery('')} aria-label="검색어 지우기"><X size={13} /></button>}
       </label>
     </div>
-    <TemplateFilterChips groups={available} active={tags} onToggle={toggle} onClear={() => { setTags([]); setQuery('') }} showClear={tags.length > 0 || Boolean(query)} />
+    {personal.length > 0 && <div className="template-chips">
+      <div className="template-filter-group">
+        <b>내 것</b>
+        <button type="button" className={mineOnly ? 'active' : ''} onClick={() => { setMineOnly((value) => !value); setShown(pageSize) }}>
+          <Star size={11} /> 즐겨찾기·사용한 디자인 {personal.length}
+        </button>
+      </div>
+    </div>}
+    <TemplateFilterChips groups={available} active={tags} onToggle={toggle} onClear={() => { setTags([]); setQuery(''); setMineOnly(false) }} showClear={tags.length > 0 || Boolean(query) || mineOnly} />
     <p className="template-browser-count"><Shapes size={13} /> {matching.length}개 디자인{tags.length > 0 || query ? ` · 전체 ${templates.length}개 중` : ''}</p>
     {matching.length === 0
       ? <p className="template-browser-empty">조건에 맞는 디자인이 없습니다. 필터를 지우고 다시 찾아보세요.</p>
       : <>
         <div className="template-tiles">
           {matching.slice(0, shown).map((template) => (
-            <TemplateTile key={template.id} template={template} selected={template.id === selectedId} onSelect={() => onSelect(template)} />
+            <TemplateTile key={template.id} template={template} selected={template.id === selectedId}
+              onSelect={() => onSelect(template)}
+              onFavorite={onFavorite ? (favorite) => onFavorite(template, favorite) : undefined} />
           ))}
         </div>
         {matching.length > shown && (

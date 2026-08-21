@@ -535,12 +535,37 @@ paths:
       operationId: listAssets
       summary: List the images available to a deck
       description: |
-        Images a deck can place on its slides, newest first. Bytes are not
-        included; fetch one image to read them.
+        Images a deck can place on its slides. Bytes are not included; fetch one
+        image to read them.
+
+        The list is a person's own library, so it answers the four ways anyone
+        looks for a picture: starred, recently used, most used, or by name.
+        Starred images lead every ordering.
       tags: [Presentations]
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
+        - name: q
+          in: query
+          description: Matches the name or any tag.
+          schema:
+            type: string
+        - name: tag
+          in: query
+          description: Only images carrying this tag.
+          schema:
+            type: string
+        - name: favorite
+          in: query
+          description: Only starred images.
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [recent, lastUsed, used, name]
+            default: recent
       responses:
         '200':
           description: The caller's images.
@@ -561,6 +586,9 @@ paths:
         name that already exists replaces it — so a logo is changed in one place.
 
         PNG, JPEG, GIF and SVG are accepted, up to 16 MiB each.
+
+        Uploading bytes already in the library returns that image with
+        `reused: true` and status 200 rather than storing it twice.
       tags: [Presentations]
       requestBody:
         required: true
@@ -577,6 +605,17 @@ paths:
                   type: string
                   description: What deck source calls the image. Defaults to the filename.
       responses:
+        '200':
+          description: The library already held these bytes; this is that image.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Asset'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '201':
           description: The stored image.
           content:
@@ -636,6 +675,49 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateAsset
+      summary: Rename or retag an image
+      description: |
+        The name is what deck source calls the picture, so it stays unique per
+        person; decks hold the id and keep working across a rename. Tags are the
+        owner's own words, at most eight.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: The updated image.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Asset'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Another image of theirs already has that name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
     delete:
       operationId: deleteAsset
       summary: Remove an image
@@ -646,6 +728,118 @@ paths:
       responses:
         '204':
           description: The image has been removed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/assets/tags:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAssetTags
+      summary: List the tags the caller files images under
+      description: |
+        Each tag with how many images carry it, most used first, so a picker can
+        offer the words this person already writes.
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The caller's tags.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        count:
+                          type: integer
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/assets/{id}/favorite:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    put:
+      operationId: favoriteAsset
+      summary: Star or unstar an image
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        '200':
+          description: The image, with its new state.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Asset'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/templates/{id}/favorite:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    put:
+      operationId: favoriteTemplate
+      summary: Star or unstar a design for the caller
+      description: |
+        A note about the caller's own workspace: it needs no write access to the
+        template and changes nobody else's copy. Starred designs lead the
+        library and weigh on what is recommended.
+      tags: [Templates]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [favorite]
+              properties:
+                favorite:
+                  type: boolean
+      responses:
+        '200':
+          description: The design's new state for this caller.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      favorite:
+                        type: boolean
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -3521,8 +3715,14 @@ components:
           example: '16:9'
         usageCount:
           type: integer
-          minimum: 0
-          description: Number of presentations currently bound to the template. List responses only.
+          description: How many of the caller's own decks were built on this design.
+        favorite:
+          type: boolean
+          description: Starred by the caller.
+        lastUsed:
+          type: string
+          format: date-time
+          description: When the caller last saved a deck built on it. List responses only.
         manifest:
           $ref: '#/components/schemas/TemplateManifest'
         createdAt:
@@ -3826,6 +4026,26 @@ components:
           type: integer
         checksum:
           type: string
+        tags:
+          type: array
+          description: The owner's own words for what the image is for.
+          items:
+            type: string
+        favorite:
+          type: boolean
+          description: Starred by its owner; starred images lead every ordering.
+        deckCount:
+          type: integer
+          description: |
+            How many of the owner's decks place this image. Counted from the
+            decks themselves whenever slides are saved, so removing an image from
+            a deck lowers it at once.
+        lastUsed:
+          type: string
+          format: date-time
+        reused:
+          type: boolean
+          description: Present on an upload that matched an image already stored.
         createdAt:
           type: string
           format: date-time

@@ -188,13 +188,19 @@ func (s *Server) Handler() http.Handler {
 	// Images a deck places on its slides.
 	api.Handle("GET /api/v1/assets", requireScope("presentations:read", http.HandlerFunc(s.listAssets)))
 	api.Handle("POST /api/v1/assets", requireScope("presentations:write", http.HandlerFunc(s.createAsset)))
+	api.Handle("GET /api/v1/assets/tags", requireScope("presentations:read", http.HandlerFunc(s.listAssetTags)))
 	api.Handle("GET /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.getAsset))))
+	api.Handle("PATCH /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.patchAsset))))
+	api.Handle("PUT /api/v1/assets/{id}/favorite", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.favoriteAsset))))
 	api.Handle("DELETE /api/v1/assets/{id}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deleteAsset))))
 	api.Handle("GET /api/v1/templates", requireScope("templates:read", http.HandlerFunc(s.listTemplates)))
 	api.Handle("POST /api/v1/templates", requireScope("templates:write", http.HandlerFunc(s.createTemplate)))
 	api.Handle("GET /api/v1/templates/{id}", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.getTemplate))))
 	api.Handle("PATCH /api/v1/templates/{id}", requireUUIDPath(requireScope("templates:write", http.HandlerFunc(s.patchTemplate))))
 	api.Handle("DELETE /api/v1/templates/{id}", requireUUIDPath(requireScope("templates:write", http.HandlerFunc(s.deleteTemplate))))
+	// Pinning a design is a note about one's own workspace, not a change to a
+	// template someone else owns, so it needs no write access to the template.
+	api.Handle("PUT /api/v1/templates/{id}/favorite", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.favoriteTemplate))))
 	api.Handle("GET /api/v1/templates/{id}/download", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.downloadTemplate))))
 	api.Handle("GET /api/v1/templates/{id}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))
 	api.Handle("GET /api/v1/templates/{id}/layouts/{layoutId}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))

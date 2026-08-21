@@ -146,8 +146,40 @@
 .asset-actions { display:flex; align-items:center; gap:5px; margin-top:3px; }
 .asset-actions button { display:inline-flex; align-items:center; gap:4px; padding:3px 6px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--muted); font-size:9.5px; cursor:pointer; }
 .asset-actions button:hover:not(:disabled) { border-color:#cdc6e4; color:var(--ink); }
-.asset-actions button:first-child { flex:1; justify-content:center; }
+.asset-actions .asset-action-main { flex:1; justify-content:center; }
 .asset-actions button.danger:hover { border-color:#e2a2a2; color:#9b2c2c; }
+/* A library rather than a list of uploads: search, shelves and the counts that
+   say which picture this person actually reaches for. */
+.asset-toolbar { display:flex; flex-direction:column; gap:7px; }
+.asset-search { display:flex; align-items:center; gap:7px; padding:6px 9px; border:1px solid var(--line); border-radius:9px; background:#fff; }
+.asset-search svg { flex:0 0 auto; color:var(--muted-2); }
+.asset-search input { flex:1; min-width:0; border:0; outline:0; background:none; font-size:11px; color:var(--ink); }
+.asset-search button { display:flex; border:0; background:none; color:var(--muted-2); cursor:pointer; }
+.asset-filters, .asset-tags { display:flex; flex-wrap:wrap; align-items:center; gap:4px; }
+.asset-tags > svg { color:var(--muted-2); margin-right:2px; }
+.asset-filters button, .asset-tags button { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border:1px solid var(--line); border-radius:99px; background:#fff; color:var(--muted); font-size:9.5px; cursor:pointer; }
+.asset-filters button:hover, .asset-tags button:hover { border-color:var(--line-strong); color:var(--ink); }
+.asset-filters button.active, .asset-tags button.active { border-color:var(--violet); background:var(--violet-soft); color:var(--violet-dark); font-weight:600; }
+.asset-tags button i { color:var(--muted-2); font-style:normal; font-size:8.5px; }
+.asset-grid li.favorite { border-color:#e3d9b4; background:#fffdf4; }
+.asset-thumb { position:relative; }
+.asset-star { position:absolute; right:5px; top:5px; display:flex; padding:4px; border:1px solid var(--line); border-radius:7px; background:rgba(255,255,255,.9); color:var(--muted-2); cursor:pointer; }
+.asset-star:hover { color:#b8860b; }
+.asset-star.on { border-color:#e0c86a; background:#fff6d8; color:#b8860b; }
+.asset-star.on svg { fill:currentColor; }
+.asset-grid small b { color:var(--violet-dark); font-weight:600; }
+.asset-used { display:flex; align-items:center; gap:4px; color:var(--muted-2); }
+.asset-rename { width:100%; padding:4px 6px; border:1px solid var(--violet); border-radius:6px; font-size:11px; outline:0; }
+.asset-chiplist { display:flex; flex-wrap:wrap; gap:4px; margin-top:2px; }
+.asset-chiplist button { padding:2px 6px; border:1px solid var(--line); border-radius:99px; background:var(--surface-soft); color:var(--muted); font-size:8.5px; cursor:pointer; }
+.asset-chiplist button:hover { border-color:var(--violet); color:var(--violet-dark); }
+.asset-foot { display:flex; align-items:center; gap:5px; color:var(--muted-2); font-size:9px; }
+.asset-foot code { font-size:9px; }
+/* The full page has room to show more of each picture. */
+.asset-library.full .asset-grid { grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px; }
+.asset-library.full .asset-grid li { padding:10px; gap:4px; }
+.asset-library.full .asset-dropzone { padding:16px; }
+@media (max-width:700px){ .asset-library.full .asset-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 .source-editor-advisory { color:var(--muted); }
 
 /* Grid definitions an organisation edits for itself */
@@ -224,3 +256,29 @@
 .template-filter-group{display:flex;flex-wrap:wrap;align-items:center;gap:5px}
 .template-filter-group>b{margin-right:2px;color:var(--muted);font-size:9px;font-weight:700}
 .template-filter-more{height:28px;padding:0 10px;border:1px dashed var(--line-strong);border-radius:999px;color:var(--muted);background:#fff;font-size:10px;cursor:pointer}
+.page-note { display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border:1px solid var(--line); border-radius:99px; background:#fff; color:var(--muted); font-size:10px; }
+.page-intro { max-width:760px; margin-bottom:16px; color:var(--muted); font-size:11px; line-height:1.85; }
+.page-intro a { color:var(--violet-dark); }
+/* A design someone pinned, and how much they have actually used it. */
+.template-card.favorite { border-color:#e3d9b4; background:#fffdf4; }
+.template-card-star, .template-tile-star { display:flex; padding:4px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--muted-2); cursor:pointer; }
+.template-card-star:hover, .template-tile-star:hover { color:#b8860b; border-color:#e0c86a; }
+.template-card-star.on, .template-tile-star.on { border-color:#e0c86a; background:#fff6d8; color:#b8860b; }
+.template-card-star.on svg, .template-tile-star.on svg { fill:currentColor; }
+.template-card-title { display:flex; align-items:center; gap:7px; }
+.template-card-title strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.template-tile-wrap { position:relative; }
+.template-tile-wrap.favorite .template-tile { border-color:#e0c86a; }
+.template-tile-star { position:absolute; right:7px; top:7px; }
+.template-tile-used { position:absolute; left:7px; top:7px; padding:3px 7px; border-radius:99px; background:rgba(38,37,43,.72); color:#fff; font-size:8.5px; }
+.section-note { margin:-4px 0 12px; color:var(--muted); font-size:10.5px; }
+.template-picker-group-label { display:flex; align-items:center; gap:5px; }
+/* The editor's panel is 230px wide: two columns of cards there is four words a
+   line and buttons broken mid-syllable. One column, and nothing wraps. */
+.asset-library.compact .asset-grid { grid-template-columns:1fr; }
+.asset-library.compact .asset-dropzone { flex-direction:column; align-items:stretch; gap:8px; }
+.asset-library.compact .asset-dropzone > div { text-align:left; }
+.asset-actions button { white-space:nowrap; }
+.asset-library.compact .asset-thumb { aspect-ratio:16/9; }
+.asset-library.compact .asset-actions { flex-wrap:wrap; }
+.asset-library.compact .asset-action-main { flex:1 1 100%; }

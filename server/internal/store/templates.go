@@ -103,8 +103,16 @@ func (s *Store) ListTemplates(ctx context.Context, ownerID string, limit, offset
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM templates WHERE `+visible, ownerID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	// The counts are this person's own decks, not everyone's. A library is only
+	// useful if it learns what this person reaches for; how popular a design is
+	// across the company is a different question, and not the one being asked
+	// while choosing one.
 	rows, err := s.Pool.Query(ctx, `SELECT `+templateColumns+`,
-		(SELECT count(*)::int FROM presentations p WHERE p.template_id=templates.id AND p.deleted_at IS NULL)
+		(SELECT count(*)::int FROM presentations p
+			WHERE p.template_id=templates.id AND p.owner_id=$1 AND p.deleted_at IS NULL),
+		(SELECT max(p.updated_at) FROM presentations p
+			WHERE p.template_id=templates.id AND p.owner_id=$1 AND p.deleted_at IS NULL),
+		EXISTS(SELECT 1 FROM favorites f WHERE f.owner_id=$1 AND f.kind='template' AND f.ref_id=templates.id)
 		FROM templates WHERE `+visible+`
 		ORDER BY kind='builtin', (owner_id=$1) DESC, updated_at DESC LIMIT $2 OFFSET $3`, ownerID, limit, offset)
 	if err != nil {
@@ -114,7 +122,7 @@ func (s *Store) ListTemplates(ctx context.Context, ownerID string, limit, offset
 	result := make([]model.Template, 0)
 	for rows.Next() {
 		var template model.Template
-		if err := rows.Scan(append(templateScan(&template), &template.UsageCount)...); err != nil {
+		if err := rows.Scan(append(templateScan(&template), &template.UsageCount, &template.LastUsed, &template.Favorite)...); err != nil {
 			return nil, 0, err
 		}
 		decorateTemplate(&template)

@@ -176,6 +176,30 @@ type templatePatchRequest struct {
 	Scope       *string `json:"scope"`
 }
 
+// favoriteTemplate pins a design for one person.
+//
+// It needs no write access to the template: pinning the company deck template is
+// a note about one's own workspace, and nobody else's copy changes.
+func (s *Server) favoriteTemplate(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var body struct {
+		Favorite bool `json:"favorite"`
+	}
+	if !decodeJSON(writer, request, &body) {
+		return
+	}
+	id := request.PathValue("id")
+	if _, err := s.store.GetTemplate(request.Context(), id, user.ID, user.IsAdmin); err != nil {
+		s.handleStoreError(writer, request, err, "template_read_failed")
+		return
+	}
+	if err := s.store.SetFavorite(request.Context(), user.ID, store.FavoriteTemplate, id, body.Favorite); err != nil {
+		s.internalError(writer, request, "template_favorite_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, map[string]any{"id": id, "favorite": body.Favorite})
+}
+
 func (s *Server) patchTemplate(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	current, err := s.store.GetTemplate(request.Context(), request.PathValue("id"), user.ID, false)

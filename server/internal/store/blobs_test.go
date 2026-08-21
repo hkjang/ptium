@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +98,55 @@ func TestFileBlobsLeavesNoTemporaryFiles(t *testing.T) {
 	})
 	if len(files) != 1 || files[0] != sampleID {
 		t.Fatalf("files under the volume = %v", files)
+	}
+}
+
+// Tags are how a library of two hundred pictures stays findable, so the list has
+// to stay short, trimmed and free of repeats however it is typed.
+func TestNormalizeTagsKeepsAListSomeoneCanScan(t *testing.T) {
+	got := normalizeTags([]string{" 로고 ", "로고", "Logo", "logo", "", "   ", "제품컷", "배경", "a", "b", "c", "d", "e", "f"})
+	if len(got) != 8 {
+		t.Fatalf("tags = %v", got)
+	}
+	// Trimmed, in the order they were written, and never the same word twice.
+	if got[0] != "로고" || got[1] != "Logo" || got[2] != "제품컷" {
+		t.Fatalf("tags lost their order or their trimming: %v", got)
+	}
+	seen := map[string]bool{}
+	for _, tag := range got {
+		if seen[strings.ToLower(tag)] {
+			t.Fatalf("the same word was kept twice in different case: %v", got)
+		}
+		seen[strings.ToLower(tag)] = true
+	}
+	// A tag nobody could read in a chip is not a tag.
+	if got := normalizeTags([]string{strings.Repeat("가", 30), "짧음"}); len(got) != 1 || got[0] != "짧음" {
+		t.Fatalf("an overlong tag was kept: %v", got)
+	}
+}
+
+// The usage table is written from stored slide content, so what counts as "this
+// deck places that image" is decided here.
+func TestAssetsInContentFindsBothPlacedAndDrawnImages(t *testing.T) {
+	content := []byte(`{
+		"images": {"picture": {"assetId": "11111111-1111-1111-1111-111111111111", "name": "logo.png"},
+		           "empty": {"name": "gone.png"}},
+		"elements": [{"kind": "image", "assetId": "22222222-2222-2222-2222-222222222222"},
+		             {"kind": "text", "text": "no image here"},
+		             {"kind": "image", "assetId": "  "}]
+	}`)
+	got := assetsInContent(content)
+	sort.Strings(got)
+	want := []string{"11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("assets = %v, want %v", got, want)
+	}
+	// Content written before images existed, and content that is not JSON at all,
+	// must not fail a save.
+	if got := assetsInContent([]byte(`{"fields":{}}`)); len(got) != 0 {
+		t.Fatalf("old content produced %v", got)
+	}
+	if got := assetsInContent([]byte("not json")); len(got) != 0 {
+		t.Fatalf("unreadable content produced %v", got)
 	}
 }

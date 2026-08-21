@@ -63,24 +63,47 @@ type Template struct {
 	// Tags and Dark describe a template in the terms someone choosing one thinks
 	// in. They are derived when a template is read, not stored: they follow the
 	// design, and the design can change with a release.
-	Tags       []string  `json:"tags,omitempty"`
-	Dark       bool      `json:"dark,omitempty"`
-	UsageCount int       `json:"usageCount,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	Tags []string `json:"tags,omitempty"`
+	Dark bool     `json:"dark,omitempty"`
+	// UsageCount is how many of this person's own decks were built on it, and
+	// Favorite is whether they pinned it. Both are personal: a library is only
+	// useful if it learns what this person reaches for.
+	UsageCount int        `json:"usageCount"`
+	Favorite   bool       `json:"favorite"`
+	LastUsed   *time.Time `json:"lastUsed,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 // Asset is an image a deck can place on a slide.
 type Asset struct {
-	ID          string    `json:"id"`
-	OwnerID     string    `json:"ownerId,omitempty"`
-	Name        string    `json:"name"`
-	ContentType string    `json:"contentType"`
-	SizeBytes   int       `json:"sizeBytes"`
-	Width       int       `json:"width,omitempty"`
-	Height      int       `json:"height,omitempty"`
-	Checksum    string    `json:"checksum,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID          string `json:"id"`
+	OwnerID     string `json:"ownerId,omitempty"`
+	Name        string `json:"name"`
+	ContentType string `json:"contentType"`
+	SizeBytes   int    `json:"sizeBytes"`
+	Width       int    `json:"width,omitempty"`
+	Height      int    `json:"height,omitempty"`
+	Checksum    string `json:"checksum,omitempty"`
+	// Tags are the owner's own words for what the image is for, and Favorite is
+	// the shelf they keep it on. DeckCount and LastUsed are counted from the
+	// decks that place it, so "the one I always use" is a fact rather than a
+	// guess.
+	Tags      []string   `json:"tags"`
+	Favorite  bool       `json:"favorite"`
+	DeckCount int        `json:"deckCount"`
+	LastUsed  *time.Time `json:"lastUsed,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	// Reused says an upload matched an image already in the library, so the
+	// workspace can say so rather than showing what looks like a duplicate.
+	Reused bool `json:"reused,omitempty"`
+}
+
+// AssetTag is one of the words a person files their images under, and how many
+// carry it.
+type AssetTag struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
 }
 
 type Presentation struct {

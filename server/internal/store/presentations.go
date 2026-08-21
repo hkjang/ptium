@@ -196,6 +196,9 @@ func (s *Store) UpdatePresentationWithSlides(ctx context.Context, id, ownerID st
 				return model.Presentation{}, fmt.Errorf("save slide %d: %w", index+1, err)
 			}
 		}
+		if err := syncAssetUsageTx(ctx, tx, id); err != nil {
+			return model.Presentation{}, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return model.Presentation{}, err
@@ -280,6 +283,9 @@ func (s *Store) DuplicatePresentation(ctx context.Context, id, ownerID, title st
 	if _, err := tx.Exec(ctx, `INSERT INTO slides(id,presentation_id,position,title,subtitle,content,speaker_notes,layout,layout_id)
 		SELECT gen_random_uuid(),$2,position,title,subtitle,content,speaker_notes,layout,layout_id
 		FROM slides WHERE presentation_id=$1 ORDER BY position`, id, copyID); err != nil {
+		return model.Presentation{}, err
+	}
+	if err := syncAssetUsageTx(ctx, tx, copyID); err != nil {
 		return model.Presentation{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -432,6 +438,9 @@ func (s *Store) RestorePresentationRevision(ctx context.Context, id, revisionID,
 			return model.Presentation{}, fmt.Errorf("restore revision slide %d: %w", index+1, err)
 		}
 	}
+	if err := syncAssetUsageTx(ctx, tx, id); err != nil {
+		return model.Presentation{}, err
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return model.Presentation{}, err
 	}
@@ -519,6 +528,9 @@ func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.
 			return fmt.Errorf("insert slide %d: %w", i+1, err)
 		}
 	}
+	if err := syncAssetUsageTx(ctx, tx, id); err != nil {
+		return err
+	}
 	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,source=$3,
 		error_message='',generation_ended_at=now(),version=version+1,updated_at=now()
 		WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, outline, source)
@@ -572,6 +584,9 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 			newID(), id, index+1, slide.Title, slide.Subtitle, slide.Content, slide.SpeakerNotes, slide.Layout, slide.LayoutID); err != nil {
 			return fmt.Errorf("insert slide %d: %w", index+1, err)
 		}
+	}
+	if err := syncAssetUsageTx(ctx, tx, id); err != nil {
+		return err
 	}
 	return tx.Commit(ctx)
 }

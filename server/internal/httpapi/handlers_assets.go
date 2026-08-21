@@ -18,16 +18,92 @@ import (
 // said: into PostgreSQL by default, so an air-gapped install has one thing to
 // back up, or onto a mounted volume when ASSET_STORAGE=filesystem.
 
-// listAssets returns the caller's images.
+// listAssets returns the caller's images, in the order they asked for.
+//
+// A picture library is searched four ways — I starred it, I used it recently, I
+// use it constantly, I remember its name — and all four are this one endpoint.
 func (s *Server) listAssets(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	limit, offset := pagination(request)
-	items, total, err := s.store.ListAssets(request.Context(), user.ID, limit, offset)
+	query := request.URL.Query()
+	items, total, err := s.store.ListAssets(request.Context(), user.ID, store.AssetQuery{
+		Search:   query.Get("q"),
+		Tag:      query.Get("tag"),
+		Favorite: query.Get("favorite") == "true",
+		Sort:     query.Get("sort"),
+		Limit:    limit,
+		Offset:   offset,
+	})
 	if err != nil {
 		s.internalError(writer, request, "assets_read_failed", err)
 		return
 	}
 	writeList(writer, request, items, total, limit, offset)
+}
+
+// listAssetTags returns the words this person files images under.
+func (s *Server) listAssetTags(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	tags, err := s.store.AssetTags(request.Context(), user.ID)
+	if err != nil {
+		s.internalError(writer, request, "asset_tags_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, tags)
+}
+
+// patchAsset renames or retags an image.
+func (s *Server) patchAsset(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var body struct {
+		Name *string   `json:"name"`
+		Tags *[]string `json:"tags"`
+	}
+	if !decodeJSON(writer, request, &body) {
+		return
+	}
+	asset, err := s.store.UpdateAsset(request.Context(), request.PathValue("id"), user.ID,
+		store.AssetPatch{Name: body.Name, Tags: body.Tags})
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeError(writer, request, http.StatusConflict, "asset_name_taken",
+				"이미 같은 이름의 이미지가 있습니다", nil)
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(writer, request, http.StatusNotFound, "not_found", "The requested resource was not found", nil)
+			return
+		}
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
+		return
+	}
+	writeData(writer, request, http.StatusOK, asset)
+}
+
+// favoriteAsset pins an image to the top of its owner's library.
+func (s *Server) favoriteAsset(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var body struct {
+		Favorite bool `json:"favorite"`
+	}
+	if !decodeJSON(writer, request, &body) {
+		return
+	}
+	id := request.PathValue("id")
+	if _, err := s.store.GetAsset(request.Context(), id, user.ID); err != nil {
+		s.handleStoreError(writer, request, err, "asset_read_failed")
+		return
+	}
+	if err := s.store.SetFavorite(request.Context(), user.ID, store.FavoriteAsset, id, body.Favorite); err != nil {
+		s.internalError(writer, request, "asset_favorite_failed", err)
+		return
+	}
+	asset, err := s.store.GetAsset(request.Context(), id, user.ID)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "asset_read_failed")
+		return
+	}
+	writeData(writer, request, http.StatusOK, asset)
 }
 
 // createAsset stores an uploaded image.
@@ -78,6 +154,12 @@ func (s *Server) createAsset(writer http.ResponseWriter, request *http.Request) 
 			return
 		}
 		s.internalError(writer, request, "asset_create_failed", err)
+		return
+	}
+	if asset.Reused {
+		// Not created: this is the picture they already had. 200 says so, and the
+		// workspace tells them rather than showing what looks like a duplicate.
+		writeData(writer, request, http.StatusOK, asset)
 		return
 	}
 	s.store.Audit(request.Context(), &user.ID, "asset.create", "asset", asset.ID, nil)

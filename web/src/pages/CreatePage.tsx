@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, Check, ChevronRight,
-  LayoutTemplate, LoaderCircle, MessageSquareText, Palette, Shapes, Sparkles, Upload, WandSparkles,
+  LayoutTemplate, LoaderCircle, MessageSquareText, Palette, Shapes, Sparkles, Star, Upload, WandSparkles,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { BrandMark, useBrand } from '../branding/BrandContext'
@@ -70,6 +70,20 @@ export function CreatePage() {
     setTemplateId(template.id)
     if (template.paletteKey) setTheme(template.paletteKey)
   }
+  // Pinning answers at once and is put back if the server disagrees.
+  const favorite = (template: Template, on: boolean) => {
+    setTemplates((current) => current.map((item) => item.id === template.id ? { ...item, favorite: on } : item))
+    void api.favoriteTemplate(template.id, on).catch((err) => {
+      setTemplates((current) => current.map((item) => item.id === template.id ? { ...item, favorite: !on } : item))
+      showToast(displayError(err), 'error')
+    })
+  }
+  // What this person already reaches for: pinned first, then most built on.
+  const familiar = useMemo(() => templates
+    .filter((template) => template.favorite || (template.usageCount || 0) > 0)
+    .sort((first, second) => Number(Boolean(second.favorite)) - Number(Boolean(first.favorite))
+      || (second.usageCount || 0) - (first.usageCount || 0))
+    .slice(0, 4), [templates])
   const examples = useMemo(() => {
     const pitchSlides = Math.min(10, maxSlides)
     return [
@@ -173,10 +187,13 @@ export function CreatePage() {
           </div>
           <TemplatePicker
             templates={templates}
-            recommended={recommended}
+            // A design already on the shelf above does not need suggesting again.
+            recommended={recommended.filter((template) => !familiar.some((item) => item.id === template.id))}
+            familiar={familiar}
             selectedId={templateId}
             loading={defaultsLoading}
             onSelect={choose}
+            onFavorite={favorite}
             onBrowse={() => setBrowseOpen(true)}
           />
         </div>
@@ -196,7 +213,8 @@ export function CreatePage() {
         wide
         footer={<Button variant="secondary" onClick={() => setBrowseOpen(false)}>닫기</Button>}
       >
-        <TemplateBrowser templates={templates} selectedId={templateId} onSelect={(template) => { choose(template); setBrowseOpen(false) }} />
+        <TemplateBrowser templates={templates} selectedId={templateId} onFavorite={favorite}
+          onSelect={(template) => { choose(template); setBrowseOpen(false) }} />
       </Modal>
     </main>
   )
@@ -207,12 +225,15 @@ export function CreatePage() {
  * whole library one click away. Scrolling forty covers to start writing is not a
  * choice anyone wanted to make.
  */
-function TemplatePicker({ templates, recommended, selectedId, loading, onSelect, onBrowse }: {
+function TemplatePicker({ templates, recommended, familiar, selectedId, loading, onSelect, onFavorite, onBrowse }: {
   templates: Template[]
   recommended: Template[]
+  /** Pinned or already built on: the shortest path for someone with a habit. */
+  familiar: Template[]
   selectedId: string
   loading: boolean
   onSelect: (template: Template) => void
+  onFavorite: (template: Template, favorite: boolean) => void
   onBrowse: () => void
 }) {
   const selected = templates.find((template) => template.id === selectedId)
@@ -238,11 +259,20 @@ function TemplatePicker({ templates, recommended, selectedId, loading, onSelect,
                 {(selected.tags || []).length > 0 && <em>{(selected.tags || []).join(' · ')}</em>}
               </div>
             </div>}
+            {familiar.length > 0 && <div className="template-picker-group">
+              <span className="template-picker-group-label"><Star size={11} /> 자주 쓰는 디자인</span>
+              <div className="template-suggestions">{familiar.map((template) => (
+                <TemplateTile key={template.id} template={template} size={300}
+                  selected={template.id === selectedId} onSelect={() => onSelect(template)}
+                  onFavorite={(favorite) => onFavorite(template, favorite)} />
+              ))}</div>
+            </div>}
             <div className="template-picker-group">
               <span className="template-picker-group-label">이 주제에 어울리는 디자인</span>
               <div className="template-suggestions">{recommended.map((template) => (
                 <TemplateTile key={template.id} template={template} size={300}
-                  selected={template.id === selectedId} onSelect={() => onSelect(template)} />
+                  selected={template.id === selectedId} onSelect={() => onSelect(template)}
+                  onFavorite={(favorite) => onFavorite(template, favorite)} />
               ))}</div>
             </div>
             <button type="button" className="template-picker-browse" onClick={onBrowse}>

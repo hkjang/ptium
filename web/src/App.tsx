@@ -8,6 +8,7 @@ import { AdminSettingsPage } from './pages/AdminSettingsPage'
 import { AdminUsersPage } from './pages/AdminUsersPage'
 import { ApiKeysPage } from './pages/ApiKeysPage'
 import { ApiDocsPage } from './pages/ApiDocsPage'
+import { AssetsPage } from './pages/AssetsPage'
 import { CreatePage } from './pages/CreatePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EditorPage } from './pages/EditorPage'
@@ -31,6 +32,7 @@ export function App() {
   if (pathname === '/' || pathname === '/dashboard') return <DashboardPage />
   if (pathname === '/presentations') return <PresentationsPage />
   if (pathname === '/templates') return <TemplatesPage />
+  if (pathname === '/images') return <AssetsPage />
   if (pathname === '/create') return <CreatePage />
   const editorMatch = pathname.match(/^\/presentations\/([^/]+)\/editor$/)
   if (editorMatch) return <EditorPage id={decodeURIComponent(editorMatch[1])} />

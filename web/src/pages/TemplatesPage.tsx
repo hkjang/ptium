@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Check, Download, Globe, LayoutTemplate, Lock, Plus, Search, Shapes, Trash2, Upload, X,
+  Check, Download, Globe, LayoutTemplate, Lock, Plus, Search, Shapes, Star, Trash2, Upload, X,
 } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
@@ -10,7 +10,7 @@ import { Badge, Button, EmptyState, ErrorState, Field, Input, LoadingState, Moda
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type { Template, TemplateLayout } from '../types'
-import { displayError } from '../utils'
+import { displayError, relativeDate } from '../utils'
 
 const roleLabels: Record<string, string> = {
   title: '표지', section: '구역', content: '본문', twoContent: '2단',
@@ -83,7 +83,21 @@ export function TemplatesPage() {
     } catch (err) { showToast(displayError(err), 'error') }
   }
 
+  const favorite = (template: Template, on: boolean) => {
+    setTemplates((current) => current.map((item) => item.id === template.id ? { ...item, favorite: on } : item))
+    void api.favoriteTemplate(template.id, on).catch((err) => {
+      setTemplates((current) => current.map((item) => item.id === template.id ? { ...item, favorite: !on } : item))
+      showToast(displayError(err), 'error')
+    })
+  }
+
   const mine = useMemo(() => templates.filter((template) => template.kind === 'uploaded'), [templates])
+  // The shelf someone builds for themselves: pinned designs and the ones they
+  // keep making decks with, whoever wrote them.
+  const familiar = useMemo(() => templates
+    .filter((template) => template.favorite || (template.usageCount || 0) > 0)
+    .sort((first, second) => Number(Boolean(second.favorite)) - Number(Boolean(first.favorite))
+      || (second.usageCount || 0) - (first.usageCount || 0)), [templates])
   const builtin = useMemo(() => templates.filter((template) => template.kind === 'builtin'), [templates])
   const availableTags = useMemo(() => templateTagGroups(builtin), [builtin])
   const matching = useMemo(() => orderTemplates(filterTemplates(builtin, query, activeTags)), [builtin, query, activeTags])
@@ -100,6 +114,15 @@ export function TemplatesPage() {
       </p>
 
       {loading ? <LoadingState label="템플릿을 불러오는 중…" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : <>
+        {familiar.length > 0 && <section className="template-section">
+          <div className="section-head"><h2>자주 쓰는 디자인</h2><span>{familiar.length}개</span></div>
+          <p className="section-note">별표를 눌러 둔 디자인과, 실제로 덱을 만든 디자인입니다. 새로 만들기에서도 먼저 보여 줍니다.</p>
+          <div className="template-grid">{familiar.slice(0, 6).map((template) => (
+            <TemplateCard key={`familiar-${template.id}`} template={template} onOpen={() => void openDetail(template)}
+              onFavorite={(on) => favorite(template, on)} />
+          ))}</div>
+        </section>}
+
         <section className="template-section">
           <div className="section-head"><h2>내 템플릿</h2><span>{mine.length}개</span></div>
           {mine.length === 0
@@ -110,7 +133,9 @@ export function TemplatesPage() {
                 action={<Button onClick={() => setUploadOpen(true)}><Plus size={15} /> 첫 템플릿 업로드</Button>}
               />
             : <div className="template-grid">{mine.map((template) => (
-                <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)} onToggleScope={() => void toggleScope(template)} onDelete={() => void remove(template)} />
+                <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)}
+                  onFavorite={(on) => favorite(template, on)}
+                  onToggleScope={() => void toggleScope(template)} onDelete={() => void remove(template)} />
               ))}</div>}
         </section>
 
@@ -138,7 +163,8 @@ export function TemplatesPage() {
             ? <p className="template-browser-empty">조건에 맞는 디자인이 없습니다. 필터를 지우고 다시 찾아보세요.</p>
             : <>
               <div className="template-grid">{matching.slice(0, shown).map((template) => (
-                <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)} />
+                <TemplateCard key={template.id} template={template} onOpen={() => void openDetail(template)}
+                  onFavorite={(on) => favorite(template, on)} />
               ))}</div>
               {matching.length > shown && <button type="button" className="template-browser-more" onClick={() => setShown((value) => value + 12)}>
                 {matching.length - shown}개 더 보기
@@ -159,14 +185,15 @@ export function TemplatesPage() {
   )
 }
 
-function TemplateCard({ template, onOpen, onToggleScope, onDelete }: {
+function TemplateCard({ template, onOpen, onFavorite, onToggleScope, onDelete }: {
   template: Template
   onOpen: () => void
+  onFavorite?: (favorite: boolean) => void
   onToggleScope?: () => void
   onDelete?: () => void
 }) {
   return (
-    <article className="template-card">
+    <article className={`template-card ${template.favorite ? 'favorite' : ''}`}>
       <button className="template-card-preview" onClick={onOpen} aria-label={`${template.name} 레이아웃 보기`}>
         <SlidePreview cacheKey={`${template.id}-card`} alt={`${template.name} 표지 레이아웃`} load={() => api.templateLayoutPreview(template.id, '', 520)} />
       </button>
@@ -174,6 +201,9 @@ function TemplateCard({ template, onOpen, onToggleScope, onDelete }: {
         <div className="template-card-title">
           <strong>{template.name}</strong>
           {template.kind === 'builtin' ? <Badge tone="info">기본</Badge> : template.scope === 'shared' ? <Badge tone="success">공유</Badge> : <Badge>개인</Badge>}
+          {onFavorite && <button type="button" className={`template-card-star ${template.favorite ? 'on' : ''}`}
+            onClick={() => onFavorite(!template.favorite)} aria-pressed={Boolean(template.favorite)}
+            title={template.favorite ? '즐겨찾기 해제' : '즐겨찾기에 넣기'}><Star size={14} /></button>}
         </div>
         {(template.tags || []).length > 0 && <div className="template-card-tags">
           {(template.tags || []).map((tag) => <span key={tag}>{tag}</span>)}
@@ -183,7 +213,8 @@ function TemplateCard({ template, onOpen, onToggleScope, onDelete }: {
           <li><Shapes size={13} /> 레이아웃 {template.layoutCount}개</li>
           {template.aspectRatio && <li>{template.aspectRatio}</li>}
           <li>{formatBytes(template.sizeBytes)}</li>
-          {(template.usageCount ?? 0) > 0 && <li>사용 {template.usageCount}회</li>}
+          {(template.usageCount ?? 0) > 0 && <li>내 덱 {template.usageCount}개</li>}
+          {template.lastUsed && <li>{relativeDate(template.lastUsed)} 사용</li>}
         </ul>
       </div>
       <div className="template-card-actions">

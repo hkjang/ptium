@@ -1,6 +1,7 @@
 import type {
   AdminUser,
   ApiKey,
+  Asset,
   AuthConfig,
   CanvasRegion,
   Incident,
@@ -226,6 +227,25 @@ function normalizeProfile(value: Record<string, unknown>): ProfilePreferences {
   }
 }
 
+/** One image as the library shows it: what it is, and how this person uses it. */
+function normalizeAsset(value: Record<string, unknown>): Asset {
+  return {
+    id: String(value.id ?? ''),
+    name: String(value.name ?? ''),
+    contentType: String(value.contentType ?? value.content_type ?? ''),
+    sizeBytes: Number(value.sizeBytes ?? value.size_bytes ?? 0),
+    width: Number(value.width ?? 0),
+    height: Number(value.height ?? 0),
+    checksum: String(value.checksum ?? '') || undefined,
+    tags: Array.isArray(value.tags) ? value.tags.map(String) : [],
+    favorite: Boolean(value.favorite),
+    deckCount: Number(value.deckCount ?? value.deck_count ?? 0),
+    lastUsed: String(value.lastUsed ?? value.last_used ?? '') || undefined,
+    reused: Boolean(value.reused),
+    createdAt: String(value.createdAt ?? value.created_at ?? ''),
+  }
+}
+
 function normalizeTemplate(value: Template & Record<string, unknown>): Template {
   const manifest = value.manifest && typeof value.manifest === 'object' ? value.manifest as Record<string, unknown> : {}
   const rawLayouts = Array.isArray(manifest.layouts) ? manifest.layouts as Array<Record<string, unknown>> : []
@@ -256,6 +276,8 @@ function normalizeTemplate(value: Template & Record<string, unknown>): Template 
     dark: Boolean(value.dark),
     aspectRatio: String(value.aspectRatio || value.aspect_ratio || '') || undefined,
     usageCount: Number(value.usageCount ?? value.usage_count ?? 0),
+    favorite: Boolean(value.favorite),
+    lastUsed: String(value.lastUsed || value.last_used || '') || undefined,
     ownerId: String(value.ownerId || value.owner_id || '') || undefined,
     layouts: layouts.length > 0 ? layouts : undefined,
     palette: normalizeTemplatePalette(value.palette),
@@ -685,18 +707,36 @@ export const api = {
   async deleteGrid(name: string) {
     await request<void>(`/grids/${encodeURIComponent(name)}`, { method: 'DELETE' })
   },
-  /** Images a deck can place on its slides. */
-  async assets() {
-    const raw = await request<unknown>('/assets?limit=100')
-    return unwrapList<Record<string, unknown>>(raw, ['assets', 'items', 'data']).map((value) => ({
-      id: String(value.id ?? ''),
-      name: String(value.name ?? ''),
-      contentType: String(value.contentType ?? value.content_type ?? ''),
-      sizeBytes: Number(value.sizeBytes ?? value.size_bytes ?? 0),
-      width: Number(value.width ?? 0),
-      height: Number(value.height ?? 0),
-      createdAt: String(value.createdAt ?? value.created_at ?? ''),
-    }))
+  /** Images a deck can place on its slides, in the order asked for. */
+  async assets(query: { q?: string; tag?: string; favorite?: boolean; sort?: string; limit?: number } = {}) {
+    const search = new URLSearchParams({ limit: String(query.limit || 100) })
+    if (query.q) search.set('q', query.q)
+    if (query.tag) search.set('tag', query.tag)
+    if (query.favorite) search.set('favorite', 'true')
+    if (query.sort) search.set('sort', query.sort)
+    const raw = await request<unknown>(`/assets?${search}`)
+    return unwrapList<Record<string, unknown>>(raw, ['assets', 'items', 'data']).map(normalizeAsset)
+  },
+  /** The words this person files images under, most used first. */
+  async assetTags() {
+    const raw = await request<unknown>('/assets/tags')
+    return unwrapList<Record<string, unknown>>(raw, ['tags', 'items', 'data'])
+      .map((value) => ({ name: String(value.name ?? ''), count: Number(value.count ?? 0) }))
+      .filter((tag) => tag.name !== '')
+  },
+  /** Renames or retags an image. */
+  async updateAsset(id: string, patch: { name?: string; tags?: string[] }) {
+    const raw = await request<unknown>(`/assets/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(patch),
+    })
+    return normalizeAsset(unwrapOne<Record<string, unknown>>(raw, ['data']))
+  },
+  /** Pins an image to the top of the library. */
+  async favoriteAsset(id: string, favorite: boolean) {
+    const raw = await request<unknown>(`/assets/${encodeURIComponent(id)}/favorite`, {
+      method: 'PUT', body: JSON.stringify({ favorite }),
+    })
+    return normalizeAsset(unwrapOne<Record<string, unknown>>(raw, ['data']))
   },
   /** Uploads an image. A second upload under the same name replaces it. */
   async uploadAsset(file: File, name?: string) {
@@ -704,15 +744,10 @@ export const api = {
     form.append('file', file)
     if (name && name.trim()) form.append('name', name.trim())
     const raw = await request<unknown>('/assets', { method: 'POST', body: form })
-    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
     // The pixel size comes back with the upload, and placing an image without it
-    // would guess the aspect ratio of something already measured.
-    return {
-      id: String(data.id ?? ''), name: String(data.name ?? ''),
-      contentType: String(data.contentType ?? data.content_type ?? ''),
-      sizeBytes: Number(data.sizeBytes ?? data.size_bytes ?? 0),
-      width: Number(data.width ?? 0), height: Number(data.height ?? 0),
-    }
+    // would guess the aspect ratio of something already measured. `reused` says
+    // the same bytes were already in the library and this is that image.
+    return normalizeAsset(unwrapOne<Record<string, unknown>>(raw, ['data']))
   },
   async deleteAsset(id: string) {
     await request<void>(`/assets/${encodeURIComponent(id)}`, { method: 'DELETE' })
@@ -900,6 +935,12 @@ export const api = {
     return normalizeTemplate(unwrapOne<Template & Record<string, unknown>>(raw, ['template', 'data']))
   },
   deleteTemplate: (id: string) => request<void>(`/templates/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Pins a design for this person. It changes nobody else's copy. */
+  async favoriteTemplate(id: string, favorite: boolean) {
+    await request<unknown>(`/templates/${encodeURIComponent(id)}/favorite`, {
+      method: 'PUT', body: JSON.stringify({ favorite }),
+    })
+  },
   templateLayoutPreview(id: string, layoutId: string, width = 640) {
     const path = layoutId
       ? `/templates/${encodeURIComponent(id)}/layouts/${encodeURIComponent(layoutId)}/preview.svg`

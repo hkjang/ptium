@@ -198,6 +198,28 @@ var migrations = []string{
 	// deployment can keep its database small and back the pictures up separately.
 	// A null column means "the bytes are on the volume".
 	`ALTER TABLE assets ALTER COLUMN data DROP NOT NULL`,
+	// What someone marked as theirs to reach for again. One table for every kind
+	// of thing a workspace collects, because "favourite" means the same thing
+	// each time and a per-kind table would say it three ways.
+	`CREATE TABLE IF NOT EXISTS favorites(
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind text NOT NULL,
+		ref_id uuid NOT NULL,
+		created_at timestamptz NOT NULL DEFAULT now(),
+		PRIMARY KEY(owner_id,kind,ref_id))`,
+	`CREATE INDEX IF NOT EXISTS favorites_owner_kind_idx ON favorites(owner_id,kind,created_at DESC)`,
+	// Which decks place which image. Written whenever a deck's slides are saved,
+	// so "used in five decks" is counted rather than remembered: an image dropped
+	// from a deck stops counting the moment it is dropped, and no counter drifts.
+	`CREATE TABLE IF NOT EXISTS asset_usage(
+		asset_id uuid NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+		presentation_id uuid NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+		updated_at timestamptz NOT NULL DEFAULT now(),
+		PRIMARY KEY(asset_id,presentation_id))`,
+	`CREATE INDEX IF NOT EXISTS asset_usage_asset_idx ON asset_usage(asset_id,updated_at DESC)`,
+	// Someone's own words for what an image is for: logo, 제품컷, 배경. Tags are
+	// how a library of two hundred pictures stays findable.
+	`ALTER TABLE assets ADD COLUMN IF NOT EXISTS tags text[] NOT NULL DEFAULT '{}'`,
 }
 
 var defaultSettings = map[string]struct {

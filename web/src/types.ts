@@ -210,6 +210,33 @@ export type LayoutRole =
   | 'title' | 'section' | 'content' | 'twoContent' | 'comparison'
   | 'quote' | 'picture' | 'table' | 'chart' | 'closing' | 'blank'
 
+/**
+ * An image in someone's library.
+ *
+ * The last four fields are what turn a list of uploads into a library: what it
+ * is for, whether they pinned it, and how much they actually use it.
+ */
+export interface Asset {
+  id: string
+  name: string
+  contentType: string
+  sizeBytes: number
+  width: number
+  height: number
+  /** The bytes' hash; a picture replaced under the same name gets a new one. */
+  checksum?: string
+  tags: string[]
+  favorite: boolean
+  /** How many of this person's decks place it. */
+  deckCount: number
+  lastUsed?: string
+  /** The upload matched an image already in the library, and this is that one. */
+  reused?: boolean
+  createdAt: string
+}
+
+export interface AssetTag { name: string; count: number }
+
 export interface TemplatePlaceholder {
   slot: string
   kind: string
@@ -249,7 +276,10 @@ export interface Template {
   /** What the design looks like and what it is for, for narrowing a gallery. */
   tags?: string[]
   dark?: boolean
+  /** How many of this person's own decks were built on it. */
   usageCount?: number
+  favorite?: boolean
+  lastUsed?: string
   ownerId?: string
   layouts?: TemplateLayout[]
   palette?: TemplatePalette

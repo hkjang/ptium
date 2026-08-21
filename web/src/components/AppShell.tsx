@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity, BookOpen, ChevronDown, CircleUserRound, Gauge, Info, KeyRound, LayoutDashboard,
-  LayoutTemplate, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
+  Images, LayoutTemplate, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { api } from '../api/client'
@@ -14,6 +14,7 @@ const workspaceNav: NavItem[] = [
   { label: '홈', to: '/dashboard', icon: <LayoutDashboard size={18} /> },
   { label: '프레젠테이션', to: '/presentations', icon: <BookOpen size={18} /> },
   { label: '템플릿', to: '/templates', icon: <LayoutTemplate size={18} /> },
+  { label: '내 이미지', to: '/images', icon: <Images size={18} /> },
   { label: '새로 만들기', to: '/create', icon: <Sparkles size={18} /> },
 ]
 
