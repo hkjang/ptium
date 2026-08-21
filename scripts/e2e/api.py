@@ -57,7 +57,13 @@ def png(rgb=(200, 120, 60), size=8):
         body = kind + payload
         return struct.pack(">I", len(payload)) + body + struct.pack(">I", zlib.crc32(body) & 0xffffffff)
     rows = b"".join(b"\x00" + bytes(rgb) * size for _ in range(size))
+    # Uploading identical bytes is a reuse, by design. Two runs a while apart
+    # used to produce the same picture — the colour came from three digits of the
+    # clock — and the later run then worked on the earlier run's image, under the
+    # earlier run's name. The run's own text goes in a comment so every run
+    # uploads a picture no other run has.
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+            + chunk(b"tEXt", b"ptium-run\x00" + RUN.encode())
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
 print("── identity and settings ──")
