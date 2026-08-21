@@ -250,12 +250,18 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	var builder strings.Builder
 	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s"%s%s font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve">`,
 		x, y, color, fontSize, weight, anchor, slant, escapeAttribute(fallbackFamily(family)))
-	line := 0
+	// A line's worth of position, in lines: a lead keeps a little air under it,
+	// the same air the exported file gives it.
+	position := 0.0
 	for _, paragraph := range paragraphs {
 		indent := float64(paragraph.Level) * fontSize
 		prefix := ""
 		if paragraph.Level > 0 || (placeholder.Slot != SlotTitle && placeholder.Slot != SlotSubtitle) {
 			prefix = "• "
+		}
+		if paragraph.Lead {
+			// The slide's own sentence, not one of its points.
+			prefix = ""
 		}
 		available := lineEm - float64(paragraph.Level)*2
 		if available < 1 {
@@ -274,13 +280,20 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 				// would push it off that edge rather than in from it.
 				offset = 0
 			}
-			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+float64(line)*lineHeight, escapeText(wrapped))
-			line++
+			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+position*lineHeight, escapeText(wrapped))
+			position++
+		}
+		if paragraph.Lead {
+			position += leadSpacing
 		}
 	}
 	builder.WriteString(`</text>`)
 	return builder.String()
 }
+
+// leadSpacing is the air under a lead, in lines. It matches the six points the
+// exported file sets, so the preview and the file space the slide alike.
+const leadSpacing = 0.3
 
 func previewEmptySlot(placeholder Placeholder, theme Theme, scale float64) string {
 	label := map[string]string{

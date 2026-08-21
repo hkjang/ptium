@@ -36,9 +36,13 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		}
 		if lead == "" {
 			// A layout with no subtitle slot has the lead folded into a component's
-			// heading when the slide is compiled. Writing it back out as the lead is
-			// what makes that a round trip rather than a slow deletion.
+			// heading, or set at the head of the body, when the slide is compiled.
+			// Writing it back out as the lead is what makes that a round trip rather
+			// than a slow deletion.
 			lead = strandedHeading(content)
+		}
+		if lead == "" {
+			lead = leadParagraph(content)
 		}
 		if lead != "" {
 			fmt.Fprintf(&builder, "> %s\n", escapeSourceLine(lead))
@@ -58,7 +62,8 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 			}
 			for _, paragraph := range content.Fields[slot] {
 				text := strings.TrimSpace(paragraph.Text)
-				if text == "" {
+				if text == "" || paragraph.Lead {
+					// The lead was written above, as the lead.
 					continue
 				}
 				fmt.Fprintf(&builder, "%s- %s\n", strings.Repeat("  ", paragraph.Level), escapeSourceLine(text))
@@ -315,6 +320,21 @@ func firstText(paragraphs []pptx.Paragraph) string {
 	for _, paragraph := range paragraphs {
 		if text := strings.TrimSpace(paragraph.Text); text != "" {
 			return text
+		}
+	}
+	return ""
+}
+
+// leadParagraph is the slide's lead when it lives at the head of a body region,
+// which is where a layout with no subtitle keeps one.
+func leadParagraph(content Content) string {
+	for _, paragraphs := range content.Fields {
+		for _, paragraph := range paragraphs {
+			if paragraph.Lead {
+				if text := strings.TrimSpace(paragraph.Text); text != "" {
+					return text
+				}
+			}
 		}
 	}
 	return ""

@@ -1,8 +1,10 @@
 package pptx
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/xml"
+	"io"
 	"regexp"
 	"strings"
 	"testing"
@@ -608,5 +610,50 @@ func TestImportedLayoutsKeepTheirKind(t *testing.T) {
 			t.Errorf("roleForLayoutType(%q, %q) = %q, want %q",
 				testCase.layoutType, testCase.name, got, testCase.want)
 		}
+	}
+}
+
+// A lead placed in a body region is the slide's own sentence. A placeholder
+// inherits its bullets from the template, so the lead has to say it wants none
+// — otherwise it arrives as the first point, which is not what it is.
+func TestALeadIsNotDrawnAsAPoint(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	pkg, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	layout, _ := manifest.LayoutForRole(RoleContent)
+	rendered, err := Render(pkg, manifest, Deck{Language: "ko", Title: "리드", Slides: []Slide{{
+		LayoutID: layout.ID,
+		Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "요점"}},
+			SlotBody:  {{Text: "이 장의 한 줄 요약입니다", Lead: true}, {Text: "첫 번째 요점"}},
+		},
+	}}})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(rendered), int64(len(rendered)))
+	if err != nil {
+		t.Fatalf("read package: %v", err)
+	}
+	slide := ""
+	for _, file := range archive.File {
+		if file.Name != "ppt/slides/slide1.xml" {
+			continue
+		}
+		opened, _ := file.Open()
+		content, _ := io.ReadAll(opened)
+		opened.Close()
+		slide = string(content)
+	}
+	if !strings.Contains(slide, `<a:pPr marL="0" indent="0"><a:spcAft><a:spcPts val="600"/></a:spcAft><a:buNone/></a:pPr><a:r>`) {
+		t.Errorf("the lead carries no paragraph properties of its own:\n%s", slide)
+	}
+	if strings.Count(slide, "<a:buNone/>") != 1 {
+		t.Errorf("only the lead asks for no bullet:\n%s", slide)
 	}
 }

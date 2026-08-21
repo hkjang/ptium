@@ -229,8 +229,13 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 				}
 			default:
 				// No subtitle region and no component: the lead leads the points,
-				// which is where it belongs and stops it being dropped.
-				slide.Bullets = append([]pptx.Paragraph{{Text: lead}}, slide.Bullets...)
+				// which is where it belongs and stops it being dropped. It is marked
+				// as the lead so it is drawn as one — without a bullet — and so a
+				// round trip writes it back out as the lead rather than demoting it
+				// to a point.
+				// The slide keeps no subtitle of its own here: a renderer that found
+				// one would write the line twice, once in each place.
+				slide.Bullets = append([]pptx.Paragraph{{Text: lead, Lead: true}}, slide.Bullets...)
 			}
 		}
 

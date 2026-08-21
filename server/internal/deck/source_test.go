@@ -852,3 +852,42 @@ func TestSpeakerNotesAreTidiedToo(t *testing.T) {
 		t.Errorf("title = %q, lead = %q", slide.Title, slide.Lead)
 	}
 }
+
+// A lead is the slide's one sentence, not one of its points. A layout with no
+// subtitle region keeps it at the head of the body — and it used to arrive there
+// with a bullet in front of it, reading as the first point, and came back out of
+// a round trip as one.
+func TestALeadInTheBodyStaysALead(t *testing.T) {
+	manifest := testManifest()
+	source := "# 제목\n@two\n> 한 줄 리드\n- 첫 요점\n- 두 번째 요점\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	found := false
+	for _, paragraphs := range content.Fields {
+		for index, paragraph := range paragraphs {
+			if paragraph.Text != "한 줄 리드" {
+				continue
+			}
+			found = true
+			if !paragraph.Lead {
+				t.Error("the lead is not marked as one, so it is drawn as a point")
+			}
+			if index != 0 {
+				t.Errorf("the lead is at position %d of its region", index)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("the lead is not on the slide: %+v", content.Fields)
+	}
+
+	// And it comes back out as the lead.
+	presentation := model.Presentation{Language: "ko", Slides: result.Slides}
+	written := Format(presentation, manifest)
+	if !strings.Contains(written, "> 한 줄 리드\n") {
+		t.Errorf("the lead came back as something else:\n%s", written)
+	}
+	if strings.Contains(written, "- 한 줄 리드") {
+		t.Errorf("the lead came back as a point:\n%s", written)
+	}
+}

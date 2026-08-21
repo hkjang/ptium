@@ -17,6 +17,10 @@ import (
 type Paragraph struct {
 	Text  string `json:"text"`
 	Level int    `json:"level,omitempty"`
+	// Lead marks the slide's one-line summary, kept in a body region because the
+	// layout has no region of its own for it. It is drawn without a bullet: it is
+	// what the slide says, not one of the points that support it.
+	Lead bool `json:"lead,omitempty"`
 }
 
 // Slide is one rendered slide bound to a template layout. A slot carries
@@ -780,9 +784,14 @@ func composedParagraphsXML(placeholder Placeholder, paragraphs []Paragraph, lang
 		if level > 0 {
 			properties += ` lvl="` + strconv.Itoa(level) + `"`
 		}
-		if placeholder.Slot == SlotTitle || placeholder.Slot == SlotSubtitle {
+		switch {
+		case placeholder.Slot == SlotTitle || placeholder.Slot == SlotSubtitle:
 			properties += `><a:buNone/></a:pPr>`
-		} else {
+		case paragraph.Lead:
+			// A lead sits flush with the region and keeps a little air under it, so
+			// the points that follow read as its support rather than as its equals.
+			properties += ` marL="0" indent="0"><a:spcAft><a:spcPts val="600"/></a:spcAft><a:buNone/></a:pPr>`
+		default:
 			properties += ` indent="-171450" marL="` + strconv.Itoa(228600+level*228600) + `"><a:buChar char="•"/></a:pPr>`
 		}
 		if text == "" {
@@ -871,7 +880,7 @@ func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Pl
 	for _, paragraph := range paragraphs {
 		level := min(max(paragraph.Level, 0), 8)
 		properties := ""
-		if level > 0 || aligned != "" {
+		if level > 0 || aligned != "" || paragraph.Lead {
 			properties = `<a:pPr`
 			if level > 0 {
 				properties += ` lvl="` + strconv.Itoa(level) + `"`
@@ -879,7 +888,14 @@ func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Pl
 			if aligned != "" {
 				properties += ` algn="` + aligned + `"`
 			}
-			properties += `/>`
+			if paragraph.Lead {
+				// A placeholder inherits its bullets from the template, so a lead has
+				// to say it wants none — and it keeps a little air under it, so the
+				// points that follow read as its support rather than as its equals.
+				properties += ` marL="0" indent="0"><a:spcAft><a:spcPts val="600"/></a:spcAft><a:buNone/></a:pPr>`
+			} else {
+				properties += `/>`
+			}
 		}
 		text := strings.TrimSpace(paragraph.Text)
 		if text == "" {

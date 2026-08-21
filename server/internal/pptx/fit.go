@@ -92,7 +92,7 @@ func FitParagraphsReport(paragraphs []Paragraph, placeholder Placeholder, langua
 			report.Shortened++
 		}
 		used += LineCount(text, placeholder, paragraph.Level)
-		result = append(result, Paragraph{Text: text, Level: paragraph.Level})
+		result = append(result, Paragraph{Text: text, Level: paragraph.Level, Lead: paragraph.Lead})
 	}
 	return result, report
 }
