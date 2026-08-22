@@ -326,3 +326,42 @@ func TestTopicsAreShortEnoughToWriteWith(t *testing.T) {
 		}
 	}
 }
+
+// A brief writes its figures with thousands separators and its list of subjects
+// with commas. Splitting on both cut "매출 1,240억 원" in half and gave a board
+// deck a slide titled "240억 원".
+func TestAThousandsSeparatorIsNotTheEndOfATopic(t *testing.T) {
+	outline := outlinePrompt("매출 1,240억 원, 영업이익 210억 원, 신규 고객 312곳의 분기 실적을 이사회에 보고",
+		"실적 보고", localizedCopy("ko"))
+	for _, topic := range outline.Topics {
+		if strings.HasPrefix(topic.Name, "240") || topic.Name == "매출 1" {
+			t.Fatalf("a number was split into topics: %+v", outline.Topics)
+		}
+		if strings.HasSuffix(topic.Name, "이사회에") {
+			t.Fatalf("the room the deck is for became part of its subject: %q", topic.Name)
+		}
+	}
+}
+
+// "장애 원인과 재발 방지책을 세 장으로" says how many slides in words. Left in the
+// subject, the instruction became a slide title: "재발 방지책을 세 장".
+func TestASlideCountWrittenInWordsIsNotPartOfTheSubject(t *testing.T) {
+	outline := outlinePrompt("장애 원인과 재발 방지책을 세 장으로", "", localizedCopy("ko"))
+	for _, topic := range outline.Topics {
+		if strings.Contains(topic.Name, "세 장") || strings.Contains(topic.Name, "장으로") {
+			t.Fatalf("the slide count leaked into a subject: %+v", outline.Topics)
+		}
+	}
+}
+
+// In English the purpose comes first and the subject follows it. "A board
+// update on X" left whole made every title in the deck read as the brief.
+func TestAnEnglishPurposePhraseIsNotTheSubject(t *testing.T) {
+	outline := outlinePrompt("A board update on making the domestic payment system redundant",
+		"Payment resilience", localizedCopy("en"))
+	for _, topic := range outline.Topics {
+		if strings.Contains(strings.ToLower(topic.Name), "board update") {
+			t.Fatalf("the purpose became the subject: %+v", outline.Topics)
+		}
+	}
+}

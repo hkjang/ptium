@@ -259,7 +259,7 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 			section.Points = []string{
 				"현재 상태와 이 논의가 다루는 범위",
 				"확인된 문제와 그렇게 된 원인",
-				fmt.Sprintf("%s 지금 결정이 필요한 이유", josa(name, "에", "에")),
+				"지금 결정이 필요한 이유",
 			}
 			section.Notes = fmt.Sprintf("%s 체감하는 문제부터 말하고, 원인을 한 단계 더 파고듭니다.", josa(audience, "이", "가"))
 		}
@@ -310,7 +310,7 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 			section.Block = "steps"
 			section.Items = []string{
 				"Prepare | Scope, owners and budget agreed",
-				fmt.Sprintf("Execute | %s, stage by stage", name),
+				"Execute | Stage by stage, with completion criteria",
 				"Stabilise | Handover to operations, with exit criteria",
 			}
 			section.Notes = "State the completion condition for each stage, and why they cannot run at once."
@@ -359,11 +359,14 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 			}
 			section.Notes = "Three measures at most. A target without a method is not a target."
 		default:
-			section.Lead = fmt.Sprintf("Where %s stands today.", name)
+			// The title already names the subject. Repeating it in the lead and
+			// again in a point reads as a deck written by filling in a form —
+			// and on a long brief it reads as the brief pasted three times.
+			section.Lead = "Where this stands today."
 			section.Points = []string{
 				"Current state, and the scope of this discussion",
 				"The problem observed, and what causes it",
-				fmt.Sprintf("Why %s needs a decision now", name),
+				"Why it needs a decision now",
 			}
 			section.Notes = fmt.Sprintf("Open with the problem %s feels, then go one level into the cause.", audience)
 		}

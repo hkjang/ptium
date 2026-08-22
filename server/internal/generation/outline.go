@@ -74,17 +74,29 @@ var frameMarkers = []struct {
 // audience. They are stripped from the subject so a slide title does not read
 // "…를 3장으로 만들어줘".
 var instructionPattern = regexp.MustCompile(
-	`(?i)(\d{1,3}\s*(장|매|쪽|페이지|slides?|pages?)(짜리|정도|이내|분량)?(로|으로|의)?)|` +
+	// A count can be written in words as easily as in digits — "세 장으로" is how
+	// anyone actually asks — and an instruction left in the subject travels into
+	// a slide title: "재발 방지책을 세 장".
+	`(?i)((\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|slides?|pages?)(짜리|정도|이내|분량)?(로|으로|의)?)|` +
 		// "임원 보고용으로", "고객 발표용", "for the board": who it is for is a
 		// setting, not part of the subject. The address itself goes with it —
 		// stripping "에게 보고" out of "임원에게 보고" leaves a stray "임원" that then
 		// travels into the deck's title.
+		// "이사회에 보고" addresses the room with 에 rather than 에게, and leaving
+		// it in ended a slide title with "…이사회에" and then wrote "이사회에에".
 		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?)|` +
+		`([가-힣]{2,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?)|` +
 		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)\s*(용|자료)?(으로|로|에)?)|` +
 		`(자료(로|를)?\s*(만들|작성|정리))|` +
 		`(만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
 		`please|make me|create|generate|write|prepare|summari[sz]e|` +
+		// "A board update on …", "An update for the team on …": in English the
+		// purpose comes first and the subject follows it. Left in, the purpose
+		// became the subject, and every slide in the deck was titled with the
+		// whole brief.
+		`^\s*(?:an?|the)?\s*(?:board|executive|management|quarterly|monthly|weekly|internal|short|brief)?\s*` +
+		`(?:update|report|deck|presentation|briefing|overview|summary|slides?)\s+(?:on|about|for|covering)\s+|` +
 		// "for the executive team", "for our board": in English the audience sits
 		// at the end of the sentence, and half of it left behind — "…two regions
 		// team" — is what a slide title used to read.
@@ -146,7 +158,7 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	}
 	outline.Subject = subject
 
-	for _, candidate := range topicSplitter.Split(subject, -1) {
+	for _, candidate := range splitTopics(subject) {
 		// "목표 가용성 99.95%" is a figure the deck should show, not a subject it
 		// should argue. Treating one as a topic gave it its own slides — and a
 		// twelve-slide deck came out with the same step diagram three times.
@@ -172,6 +184,26 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	}
 	return outline
 }
+
+// splitTopics divides a brief into the things it is about.
+//
+// A thousands separator is a comma, and the brief's own list separator is a
+// comma. Splitting on both turned "매출 1,240억 원" into "매출 1" and "240억 원",
+// and a board deck came out with a slide titled "240억 원". The separators
+// inside numbers are hidden before the split and put back after it.
+func splitTopics(subject string) []string {
+	const shield = "\uE000"
+	guarded := insideNumber.ReplaceAllString(subject, "${1}"+shield+"${2}")
+	clauses := topicSplitter.Split(guarded, -1)
+	for index, clause := range clauses {
+		clauses[index] = strings.ReplaceAll(clause, shield, ",")
+	}
+	return clauses
+}
+
+// insideNumber is a separator between two digits: part of the number, not a
+// break between clauses.
+var insideNumber = regexp.MustCompile(`(\d)[,，](\d)`)
 
 // figureClause reports whether a clause is one of the numbers the prompt gave
 // rather than something the deck is about.
