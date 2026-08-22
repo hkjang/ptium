@@ -4,6 +4,7 @@ package export
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
@@ -63,6 +64,9 @@ func PreviewSlideSVG(presentation model.Presentation, manifest pptx.Manifest, po
 	layout, slide, err := PreviewSlide(presentation, manifest, position, images)
 	if err != nil {
 		return "", err
+	}
+	if strings.TrimSpace(options.Language) == "" {
+		options.Language = presentation.Language
 	}
 	return pptx.PreviewSVG(manifest, layout, slide, options), nil
 }

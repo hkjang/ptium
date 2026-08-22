@@ -18,6 +18,10 @@ type PreviewOptions struct {
 	// from photographs previews as an empty slide, which reads as the design
 	// having been thrown away.
 	Media MediaResolver
+	// Language is the deck's, for the few things the preview writes in words
+	// rather than copying from the slide — the source line at its foot. Empty
+	// reads as Korean, which is what the rest of the renderer assumes.
+	Language string
 	// Bare drops the template's background and artwork, drawing only what the
 	// slide itself puts on the page. The canvas uses it to lift one region off a
 	// slide as a transparent sprite it can drag, so what moves under the pointer
@@ -125,6 +129,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 	for _, element := range slide.Elements {
 		builder.WriteString(element.SVG(scale))
 	}
+	builder.WriteString(previewSourceNote(slideSourceNote(layout, slide, options.Language), manifest.Theme, scale))
 	builder.WriteString(previewSlideNumber(layout, slide, manifest.Theme, scale))
 	return builder.String()
 }
@@ -236,12 +241,12 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	// Alignment and italics are only ever set where a slide overrides them, so the
 	// default path draws exactly what it drew before.
 	anchor, slant := "", ""
-	x := (float64(placeholder.X) + 91440) * scale
+	x := (float64(placeholder.X) + float64(placeholder.TextInset())) * scale
 	switch placeholder.Align {
 	case "ctr":
 		anchor, x = ` text-anchor="middle"`, (float64(placeholder.X)+float64(placeholder.Width)/2)*scale
 	case "r":
-		anchor, x = ` text-anchor="end"`, (float64(placeholder.X+placeholder.Width)-91440)*scale
+		anchor, x = ` text-anchor="end"`, (float64(placeholder.X+placeholder.Width)-float64(placeholder.TextInset()))*scale
 	}
 	if placeholder.Italic {
 		slant = ` font-style="italic"`

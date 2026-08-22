@@ -639,7 +639,7 @@ func parseCitation(value string, line int) (SourceCitation, bool) {
 			}
 		} else {
 			citation.Title = fields[0]
-			citation.Locator = strings.Join(fields[1:], " ")
+			citation.Locator = strings.Join(fields[1:], ", ")
 		}
 	}
 	if strings.TrimSpace(citation.Title) == "" {
@@ -650,13 +650,23 @@ func parseCitation(value string, line int) (SourceCitation, bool) {
 
 // isCitationMarker reports whether a field is the short mark a claim carries
 // rather than the source's name.
+//
+// Outside the Latin alphabet a mark is one character. "가" is a mark; "통계청"
+// is the national statistics office, and reading a three-syllable Korean
+// publisher as a footnote marker loses the one word the audience asked for.
+// Korean, Japanese and Chinese institutions are named in two and three
+// characters — that is the normal case there, not the exception.
 func isCitationMarker(value string) bool {
 	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || utf8.RuneCountInString(trimmed) > 3 {
+	length := utf8.RuneCountInString(trimmed)
+	if trimmed == "" || length > 3 {
 		return false
 	}
 	for _, symbol := range trimmed {
 		if !unicode.IsDigit(symbol) && !unicode.IsLetter(symbol) && symbol != '*' && symbol != '†' {
+			return false
+		}
+		if symbol > unicode.MaxASCII && length > 1 {
 			return false
 		}
 	}

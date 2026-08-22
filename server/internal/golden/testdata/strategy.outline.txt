@@ -605,7 +605,7 @@ p:notes
             a:r
               a:rPr dirty=0 lang=ko-KR
               a:t
-                "통계청. 2026 소비 동향 — 표 3"
+                "통계청 — 2026 소비 동향, 표 3"
             a:endParaRPr dirty=0 lang=ko-KR
   p:clrMapOvr
     a:masterClrMapping
@@ -1948,7 +1948,34 @@ p:sld
             a:endParaRPr dirty=0 lang=ko-KR
       p:sp
         p:nvSpPr
-          p:cNvPr id=4 name=Slide Number Placeholder
+          p:cNvPr descr=출처: 통계청, 2026 소비 동향, 표 3 id=4 name=Source Note
+          p:cNvSpPr txBox=1
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=6172200
+            a:ext cx=8442960 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+          a:noFill
+        p:txBody
+          a:bodyPr anchor=ctr bIns=0 lIns=0 rIns=0 tIns=0 wrap=none
+          a:lstStyle
+          a:p
+            a:pPr algn=l
+              a:buNone
+            a:r
+              a:rPr dirty=0 lang=ko-KR sz=1100
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+              a:t
+                "출처: 통계청, 2026 소비 동향, 표 3"
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=5 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2236,7 +2263,7 @@ p:sld
                     a:noFill
       p:sp
         p:nvSpPr
-          p:cNvPr id=6 name=Slide Number Placeholder
+          p:cNvPr id=7 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2344,7 +2371,7 @@ p:sld
             c:chart r:id=rId3
       p:sp
         p:nvSpPr
-          p:cNvPr id=6 name=Slide Number Placeholder
+          p:cNvPr id=7 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr

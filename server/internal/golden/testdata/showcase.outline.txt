@@ -312,7 +312,7 @@ p:notes
             a:r
               a:rPr dirty=0 lang=ko-KR
               a:t
-                "1. 내부 인터뷰 — 운영팀 8인 2026-03"
+                "내부 인터뷰 — 운영팀 8인, 2026-03"
             a:endParaRPr dirty=0 lang=ko-KR
   p:clrMapOvr
     a:masterClrMapping
@@ -1787,7 +1787,7 @@ p:sld
             a:endParaRPr dirty=0 lang=ko-KR
       p:sp
         p:nvSpPr
-          p:cNvPr id=3 name=Slide Number Placeholder
+          p:cNvPr id=4 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -1904,7 +1904,34 @@ p:sld
                   "배포 하나에 이틀이 걸립니다. 그동안 아무도 다른 일을 못 합니다."
       p:sp
         p:nvSpPr
-          p:cNvPr id=6 name=Slide Number Placeholder
+          p:cNvPr descr=출처: 내부 인터뷰, 운영팀 8인, 2026-03 id=6 name=Source Note
+          p:cNvSpPr txBox=1
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=914400 y=6172200
+            a:ext cx=8991600 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+          a:noFill
+        p:txBody
+          a:bodyPr anchor=ctr bIns=0 lIns=0 rIns=0 tIns=0 wrap=none
+          a:lstStyle
+          a:p
+            a:pPr algn=l
+              a:buNone
+            a:r
+              a:rPr dirty=0 lang=ko-KR sz=1100
+                a:solidFill
+                  a:srgbClr val=B4B4B4
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+              a:t
+                "출처: 내부 인터뷰, 운영팀 8인, 2026-03"
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=7 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2164,7 +2191,7 @@ p:sld
                   "자동화된 CI/CD"
       p:sp
         p:nvSpPr
-          p:cNvPr id=12 name=Slide Number Placeholder
+          p:cNvPr id=13 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2357,7 +2384,7 @@ p:sld
               a:endParaRPr lang=ko-KR
       p:sp
         p:nvSpPr
-          p:cNvPr id=9 name=Slide Number Placeholder
+          p:cNvPr id=10 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2736,7 +2763,7 @@ p:sld
                   "온라인  17"
       p:sp
         p:nvSpPr
-          p:cNvPr id=17 name=Slide Number Placeholder
+          p:cNvPr id=18 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2833,7 +2860,7 @@ p:sld
             a:avLst
       p:sp
         p:nvSpPr
-          p:cNvPr id=5 name=Slide Number Placeholder
+          p:cNvPr id=6 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr
@@ -2915,7 +2942,7 @@ p:sld
             a:endParaRPr dirty=0 lang=ko-KR
       p:sp
         p:nvSpPr
-          p:cNvPr id=4 name=Slide Number Placeholder
+          p:cNvPr id=5 name=Slide Number Placeholder
           p:cNvSpPr
             a:spLocks noGrp=1
           p:nvPr

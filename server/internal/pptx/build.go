@@ -639,7 +639,8 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 	}
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		shapes.String() + components.String() + freeform.String() +
-		slideNumberXML(shapeID, layout, slide, language) +
+		sourceNoteXML(shapeID, slideSourceNote(layout, slide, language), language) +
+		slideNumberXML(shapeID+1, layout, slide, language) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`, charts
 }
 
@@ -1277,11 +1278,14 @@ func notesWithSources(slide Slide, language string) string {
 	}
 	lines = append(lines, heading)
 	for index, source := range slide.Sources {
-		mark := strings.TrimSpace(source.Marker)
-		if mark == "" {
-			mark = strconv.Itoa(index + 1)
+		entry := strings.TrimSpace(source.Title)
+		// One unmarked source needs no number: "1." in front of the only line
+		// there is refers to nothing on the slide.
+		if mark := strings.TrimSpace(source.Marker); mark != "" {
+			entry = mark + ". " + entry
+		} else if len(slide.Sources) > 1 {
+			entry = strconv.Itoa(index+1) + ". " + entry
 		}
-		entry := mark + ". " + strings.TrimSpace(source.Title)
 		if locator := strings.TrimSpace(source.Locator); locator != "" {
 			entry += " — " + locator
 		}

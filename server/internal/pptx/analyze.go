@@ -273,6 +273,7 @@ func analyzeLayout(pkg *Package, part, masterPart string, parent master, theme T
 				}
 			}
 		}
+		placeholder.Inset = textInset(shape)
 		placeholder.MaxChars, placeholder.MaxLines, placeholder.LineEm = capacity(placeholder)
 		layout.Placeholders = append(layout.Placeholders, placeholder)
 	}
@@ -527,6 +528,28 @@ func resolveTypeface(typeface, phType string, theme Theme) string {
 // capacity measures how much text fits in a placeholder. The line width is
 // kept in em units so fitting stays script-aware; maxChars is derived from it
 // with a mixed-script average purely as a number a writer can reason about.
+// textInset is the left padding inside a placeholder's text box. PowerPoint's
+// default is a tenth of an inch, which is what a template that says nothing
+// means; a design that starts its text at the box edge says lIns="0", and the
+// preview has to draw it there too or the screen and the file disagree about
+// where every line begins.
+func textInset(shape rawShape) int {
+	value := strings.TrimSpace(shape.TxBody.BodyPr.LIns)
+	if value == "" {
+		return DefaultTextInset
+	}
+	inset, err := strconv.Atoi(value)
+	if err != nil || inset < 0 {
+		return DefaultTextInset
+	}
+	if inset == 0 {
+		// Zero is a real answer, and zero also means "unknown" in a stored
+		// manifest. One EMU is a fifth of a thousandth of a millimetre.
+		return 1
+	}
+	return inset
+}
+
 func capacity(placeholder Placeholder) (maxChars, maxLines int, lineEm float64) {
 	size := placeholder.FontSize
 	if size <= 0 {

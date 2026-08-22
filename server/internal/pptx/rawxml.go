@@ -279,6 +279,7 @@ type rawTxBody struct {
 	BodyPr struct {
 		Vert   string `xml:"vert,attr"`
 		Anchor string `xml:"anchor,attr"`
+		LIns   string `xml:"lIns,attr"`
 	} `xml:"bodyPr"`
 	LstStyle rawTextStyle   `xml:"lstStyle"`
 	Para     []rawParagraph `xml:"p"`

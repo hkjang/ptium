@@ -118,3 +118,37 @@ func TestALastSlideCarryingAComponentIsNotAClosingSlide(t *testing.T) {
 		t.Fatalf("the closing slide landed on %q", said.Slides[2].Layout)
 	}
 }
+
+// "!source 통계청 | 2026 소비 동향 | 표 3" names the office that published the
+// figure. A marker is "1" or "*" — a mark the claim carries — and Korean,
+// Japanese and Chinese institutions are named in two and three characters, so
+// reading the first field as a marker by its length alone threw away the one
+// word the audience asked for.
+func TestAShortKoreanPublisherIsTheSourceNotAMarker(t *testing.T) {
+	parsed := ParseSource("# 핵심 진단\n- 이탈 고객의 62%가 온보딩에서 발생\n" +
+		"!source 통계청 | 2026 소비 동향 | 표 3\n")
+	if len(parsed.Slides) != 1 || len(parsed.Slides[0].Sources) != 1 {
+		t.Fatalf("parsed %+v", parsed.Slides)
+	}
+	source := parsed.Slides[0].Sources[0]
+	if source.Title != "통계청" {
+		t.Fatalf("the publisher is not the source's name: %+v", source)
+	}
+	if source.Marker != "" {
+		t.Fatalf("the publisher was read as a marker: %+v", source)
+	}
+	if source.Locator != "2026 소비 동향, 표 3" {
+		t.Fatalf("the rest of the citation reads %q", source.Locator)
+	}
+
+	// A real mark is still a mark, in either alphabet.
+	for _, mark := range []string{"1", "a", "*", "†", "가"} {
+		marked := ParseSource("# 제목\n!source " + mark + " | 통계청 2026 소비 동향\n")
+		if len(marked.Slides) != 1 || len(marked.Slides[0].Sources) != 1 {
+			t.Fatalf("%q: parsed %+v", mark, marked.Slides)
+		}
+		if got := marked.Slides[0].Sources[0]; got.Marker != mark || got.Title != "통계청 2026 소비 동향" {
+			t.Fatalf("%q was not read as a marker: %+v", mark, got)
+		}
+	}
+}

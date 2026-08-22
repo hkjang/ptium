@@ -102,11 +102,33 @@ type Placeholder struct {
 	// whatever alignment the template's own layout gives it.
 	Align  string `json:"align,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
+	// Inset is the left padding inside the text box, in EMU. PowerPoint's own
+	// default is 91440 and most templates keep it; a design that sets it to zero
+	// starts its text at the box edge, and the preview has to know which, or the
+	// screen puts every line a tenth of an inch to the right of where the file
+	// will. Zero from an older manifest means unknown, not none.
+	Inset int `json:"inset,omitempty"`
 	// Synthetic marks a region Ptium derived from the layout's free space because
 	// the layout has no text placeholder of its own. The renderer draws a real
 	// text box for it, styled from the template's theme, instead of filling a
 	// placeholder that does not exist.
 	Synthetic bool `json:"synthetic,omitempty"`
+}
+
+// DefaultTextInset is the left padding PowerPoint gives a text box that does
+// not say otherwise: a tenth of an inch.
+const DefaultTextInset = 91440
+
+// TextInset is the placeholder's left padding, with an older manifest's silence
+// read as PowerPoint's default rather than as none.
+func (p Placeholder) TextInset() int {
+	if p.Inset <= 0 {
+		return DefaultTextInset
+	}
+	if p.Inset == 1 {
+		return 0
+	}
+	return p.Inset
 }
 
 // AcceptsText reports whether the generator may write text into the slot.
@@ -285,7 +307,7 @@ type Manifest struct {
 
 // ManifestVersion is bumped whenever the analyzer changes in a way that makes
 // previously stored manifests stale.
-const ManifestVersion = 4
+const ManifestVersion = 5
 
 // Layout finds a layout by identifier.
 func (m Manifest) Layout(id string) (Layout, bool) {
