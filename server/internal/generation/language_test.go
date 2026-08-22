@@ -192,3 +192,16 @@ func TestASpacelessFigureLabelIsWholeCharacters(t *testing.T) {
 		t.Fatalf("figures = %#v", outline.Figures)
 	}
 }
+
+// Stripping the instruction out of a brief can leave the punctuation that
+// followed it — "…사업 계획을 . 매출 목표 1조" — and that went onto the cover.
+func TestATitleStopsAtTheSentenceItLostItsVerbTo(t *testing.T) {
+	outline := outlinePrompt("회사 소개와 2026년 사업 계획을 임원에게 보고. 매출 목표 1조.", "", koreanCopy)
+	title := outline.deckTitle("", "회사 소개와 2026년 사업 계획을 임원에게 보고. 매출 목표 1조.", " · ")
+	if strings.Contains(title, ".") || strings.Contains(title, "계획을") {
+		t.Errorf("the cover is titled %q", title)
+	}
+	if !strings.Contains(title, "사업 계획") {
+		t.Errorf("the cover lost the subject: %q", title)
+	}
+}

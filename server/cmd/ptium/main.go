@@ -18,6 +18,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/httpapi"
 	"github.com/hkjang/ptium/server/internal/keys"
+	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/mcp"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
@@ -122,6 +123,25 @@ func main() {
 	}
 
 	generator := generation.New(settingService)
+	// A company's fixed slides live in each person's library. Generation looks
+	// there before writing its own version of one, which is what keeps the
+	// company introduction the same introduction in every deck.
+	generator.Library = func(ctx context.Context, ownerID string) []library.Entry {
+		snippets, _, err := dataStore.ListSnippets(ctx, ownerID, store.SnippetQuery{Limit: 200, Sort: "used"})
+		if err != nil {
+			return nil
+		}
+		entries := make([]library.Entry, 0, len(snippets))
+		for _, snippet := range snippets {
+			entries = append(entries, library.Entry{
+				ID: snippet.ID, Name: snippet.Name, Aliases: snippet.Tags, Source: snippet.Source,
+			})
+		}
+		return entries
+	}
+	generator.Used = func(ctx context.Context, ownerID, snippetID string) {
+		dataStore.MarkSnippetUsed(ctx, snippetID, ownerID)
+	}
 	worker := generation.NewWorker(dataStore, generator, logger, applicationConfig.WorkerPollInterval)
 	workerContext, cancelWorker := context.WithCancel(rootContext)
 	defer cancelWorker()

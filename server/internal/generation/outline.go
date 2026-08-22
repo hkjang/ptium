@@ -479,6 +479,11 @@ func (outline promptOutline) subjectPhrase() string {
 // at the audience instead ("…을 실무진에게 …" → "결제 시스템 이중화 계획").
 func titlePhrase(subject string) (string, bool) {
 	const limit = 30
+	// Stripping the instruction can take the words in front of a full stop and
+	// leave the stop behind: "…사업 계획을 임원에게 보고. 매출 목표 1조" becomes
+	// "…사업 계획을 . 매출 목표 1조". What follows that stop was a different
+	// sentence, and a title is one thought.
+	subject = beforeStrandedStop(subject)
 	if latinPhrase(subject) {
 		// Latin script puts the head noun first, so an over-long phrase gives way
 		// at the end rather than at the front.
@@ -797,3 +802,18 @@ func cjkHeadPhrase(name string, limit int) string {
 
 // sentenceEnds are where one thought finishes and the next begins.
 var sentenceEnds = map[rune]bool{'。': true, '！': true, '？': true}
+
+// strandedStop is a full stop standing on its own, which is what a stripped
+// instruction leaves behind.
+var strandedStop = regexp.MustCompile(`\s+[.。!?]+(\s|$)`)
+
+// beforeStrandedStop keeps the first thought of a subject whose sentence lost
+// its verb to the instruction pattern.
+func beforeStrandedStop(subject string) string {
+	if match := strandedStop.FindStringIndex(subject); match != nil {
+		if head := strings.TrimSpace(subject[:match[0]]); utf8.RuneCountInString(head) >= 4 {
+			return head
+		}
+	}
+	return subject
+}

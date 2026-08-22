@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -630,5 +631,40 @@ func TestGeneratorAsksAgainWhenTheModelOnlyThinks(t *testing.T) {
 	}
 	if !strings.HasPrefix(prompts[1], "/no_think") {
 		t.Fatalf("the retry should say so plainly: %q", prompts[1][:20])
+	}
+}
+
+// A company's fixed slides are already written and agreed. A deck that writes
+// its own version of one is how a company's decks drift apart, so generation
+// looks in the library first — and says which slides it took.
+func TestGenerationUsesTheLibraryItWasGiven(t *testing.T) {
+	template := testTemplate(t)
+	generator := New(testSettings{"ai.provider": "fallback"})
+	registered := library.Entry{ID: "snippet-1", Name: "회사 소개",
+		Source: "# 회사 소개\n@content\n> 2003년 설립\n- 임직원 1,240명\n- 매출 8,200억\n"}
+	generator.Library = func(context.Context, string) []library.Entry { return []library.Entry{registered} }
+	marked := ""
+	generator.Used = func(_ context.Context, _, id string) { marked = id }
+
+	presentation := model.Presentation{OwnerID: "owner", Language: "ko", RequestedSlideCount: 6,
+		Prompt: "회사 소개와 2026년 사업 계획을 임원에게 보고"}
+	generated, err := generator.Generate(context.Background(), presentation, model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if !strings.Contains(generated.Source, "- 임직원 1,240명") {
+		t.Errorf("the deck wrote its own company introduction:\n%s", generated.Source)
+	}
+	if marked != "snippet-1" {
+		t.Errorf("the registered slide was not counted as used (%q)", marked)
+	}
+	said := false
+	for _, warning := range generated.Warnings {
+		if strings.Contains(warning, "라이브러리") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("the deck did not say it used a registered slide: %v", generated.Warnings)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -34,6 +35,13 @@ type Generator struct {
 	// repairs bounds how many slides a generation may send back to the model
 	// after measuring them. Zero turns the repair pass off.
 	repairs int
+	// Library reads the slides this owner registered, and Used records that one
+	// was put into a deck. A company's fixed slides — the introduction, the org
+	// chart, the security architecture — are already written and agreed, and a
+	// deck that writes its own version of them is how a company's decks drift
+	// apart. Both are optional: without them nothing changes.
+	Library func(ctx context.Context, ownerID string) []library.Entry
+	Used    func(ctx context.Context, ownerID, snippetID string)
 }
 
 // Deck is the generator's output: the outline shown in the workspace plus the
@@ -120,7 +128,8 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 			// would replace the author's deck with a new one about the brief.
 			return Deck{}, errors.New("rewriting a deck needs an AI provider; ask an administrator to configure one")
 		}
-		return Fallback(presentation, profile, template), nil
+		return g.fromLibrary(ctx, presentation, profile, template,
+			Fallback(presentation, profile, template)), nil
 	}
 	if provider != "openai-compatible" && provider != "openai" {
 		return Deck{}, fmt.Errorf("unsupported AI provider %q", provider)
@@ -136,7 +145,11 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	// narrative for it would throw away the thing being improved.
 	if material := strings.TrimSpace(presentation.Source); material != "" && rewrite {
 		request.Material = material
-		return g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+		written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+		if err != nil {
+			return Deck{}, err
+		}
+		return g.fromLibrary(ctx, presentation, profile, template, written), nil
 	}
 	outlinePass := true
 	_ = g.settings.Get(ctx, "generation.outline_pass", &outlinePass)
@@ -147,7 +160,48 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 		}
 		request.Plan = plan
 	}
-	return g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+	written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)
+	if err != nil {
+		return Deck{}, err
+	}
+	return g.fromLibrary(ctx, presentation, profile, template, written), nil
+}
+
+// fromLibrary puts the owner's registered slides into a deck that wrote its own
+// versions of them.
+//
+// The substitution happens on the source, before anything is drawn, so a
+// registered slide arrives the way it was written and is compiled into this
+// deck's template like every other slide. What was replaced is said out loud:
+// a deck that quietly swapped a slide would be worse than one that did not.
+func (g *Generator) fromLibrary(ctx context.Context, presentation model.Presentation,
+	profile model.Profile, template Template, written Deck) Deck {
+	if g.Library == nil || strings.TrimSpace(written.Source) == "" {
+		return written
+	}
+	entries := g.Library(ctx, presentation.OwnerID)
+	if len(entries) == 0 {
+		return written
+	}
+	source, used := library.Substitute(written.Source, entries)
+	if len(used) == 0 {
+		return written
+	}
+	rebuilt := CompileGenerated(source, presentation, profile, template)
+	if len(rebuilt.Slides) == 0 {
+		// The library slide did not compile into this template. Keeping the deck
+		// that does is better than a deck that does not.
+		return written
+	}
+	for _, entry := range used {
+		if g.Used != nil {
+			g.Used(ctx, presentation.OwnerID, entry.ID)
+		}
+		rebuilt.Warnings = append(rebuilt.Warnings,
+			fmt.Sprintf("%q 슬라이드는 라이브러리에 등록된 %q을(를) 그대로 썼습니다", entry.Title, entry.Name))
+	}
+	rebuilt.Warnings = append(rebuilt.Warnings, written.Warnings...)
+	return rebuilt
 }
 
 // applyProviderSettings reads the knobs a self-hosted provider needs.

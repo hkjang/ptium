@@ -183,6 +183,30 @@ if document_id:
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
      note="a file nothing here can read must say so")
 
+print("── the library comes first ──")
+registered = data_of(call("POST", "/snippets", {
+    "name": f"회사 소개 {RUN}",
+    "source": f"# 회사 소개 {RUN}\n@content\n> 2003년 설립\n- 임직원 1,240명\n- 매출 8,200억\n",
+    "tags": ["표준"],
+}, expect=201)) or {}
+queued = data_of(call("POST", "/presentations/generate", {
+    "prompt": f"회사 소개 {RUN}와 2026년 사업 계획을 임원에게 보고", "requestedSlideCount": 6, "language": "ko",
+}, expect=202)) or {}
+library_deck = queued.get("id", "")
+for _ in range(40):
+    state = data_of(call("GET", f"/presentations/{library_deck}")) or {}
+    if state.get("status") not in ("queued", "generating"):
+        break
+    time.sleep(1)
+written = (data_of(call("GET", f"/presentations/{library_deck}/source", expect=200)) or {}).get("source", "")
+if "임직원 1,240명" not in written:
+    failures.append("generation wrote its own version of a slide the library already had")
+used = [s for s in (data_of(call("GET", "/snippets?limit=100")) or []) if s["id"] == registered.get("id")]
+if not used or used[0].get("useCount", 0) < 1:
+    failures.append(f"the registered slide was not counted as used: {used!r}")
+else:
+    print(f"   the deck took the registered slide (used {used[0]['useCount']}x)")
+
 print("── commanding the deck ──")
 plan = data_of(call("POST", f"/presentations/{deck_id}/command", {"text": "2번과 3번 합쳐줘", "dryRun": True}, expect=200)) or {}
 if not (plan.get("plan") or []):
