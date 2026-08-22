@@ -245,15 +245,15 @@ func (p Picture) extension() string {
 
 // Deck is the complete input to Render.
 type Deck struct {
-	Title    string  `json:"title"`
-	Subject  string  `json:"subject,omitempty"`
-	Author   string  `json:"author,omitempty"`
-	Language string
+	Title    string `json:"title"`
+	Subject  string `json:"subject,omitempty"`
+	Author   string `json:"author,omitempty"`
+	Language string `json:"language,omitempty"`
 	// Source is the text the deck was written from. It is carried in the
 	// exported file so that importing a Ptium deck restores what was written
 	// rather than reading it back off the drawing.
-	Source string  `json:"language,omitempty"`
-	Slides   []Slide `json:"slides"`
+	Source string  `json:"source,omitempty"`
+	Slides []Slide `json:"slides"`
 }
 
 // Render rebuilds a template package into a finished deck. Masters, layouts,

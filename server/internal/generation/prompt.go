@@ -113,6 +113,10 @@ Writing craft:
 - Never make the same point twice in different words. A slide with three real
   points is finished; a fourth line restating the first is padding, and it reads
   as generated. If there is nothing further to say, stop writing.
+- Never invent a figure. Every number on a slide — in a bullet, in a lead line,
+  in the notes — comes from the brief or follows arithmetically from it. A target
+  nobody set, a percentage nobody measured, a saving nobody counted: write the
+  point without the number instead. The room asks about the number first.
 - Notes are two or three sentences of what to say, not a repeat of the bullets.
 - When the brief says where a figure came from — a report, a survey, a system,
   a date — put it on that slide with !source. It is printed at the foot of the

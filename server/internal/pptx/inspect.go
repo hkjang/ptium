@@ -425,6 +425,14 @@ func statesFigure(text string) bool {
 	return statedFigure.MatchString(aDate.ReplaceAllString(text, " "))
 }
 
+// StatedFigures lists the figures in a line of text, by the same reading the
+// measurement uses: money, shares and counts, never dates or durations.
+// Generation asks this of a written deck to find the numbers the brief never
+// gave it.
+func StatedFigures(text string) []string {
+	return statedFigure.FindAllString(aDate.ReplaceAllString(text, " "), -1)
+}
+
 // carriesArgument reports whether a slide makes a point, as opposed to opening or
 // dividing the deck.
 func carriesArgument(slide Slide, layout Layout) bool {

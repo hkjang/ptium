@@ -425,6 +425,16 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 	if g.repairs > 0 {
 		result = g.repairDeck(ctx, request, result, writing)
 	}
+	// A figure the brief never gave cannot be cut out of the sentence it sits in,
+	// so the deck keeps it and names it. The room will ask about it. Measured
+	// after repair, because a rewrite states figures too.
+	if figures := figuresNotInBrief(deckSourceOf(result, source), request.Presentation.Prompt+" "+
+		request.Presentation.Title+" "+request.Material); len(figures) > 0 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("the model states %d figure(s) the brief does not: %s",
+				len(figures), strings.Join(figures, ", ")))
+		result.Notes = append(result.Notes, inventedFigureNote(figures, request.Presentation.Language))
+	}
 	if requested := request.Presentation.RequestedSlideCount; requested > 0 && len(result.Slides) != requested {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("the model wrote %d slides for a request of %d", len(result.Slides), requested))
