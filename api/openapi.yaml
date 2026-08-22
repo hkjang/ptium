@@ -3958,6 +3958,18 @@ components:
         templateName:
           type: string
           description: Read-only display name of the selected template.
+        generationNotes:
+          type: array
+          readOnly: true
+          items:
+            type: string
+          description: |
+            What generation did differently from what was asked, written in the
+            deck's own language for the person who asked. The usual case is a
+            deck shorter than the requested slide count: a brief naming one
+            subject cannot fill twenty slides without repeating pages, and
+            saying so is better than padding. Empty when the deck is what was
+            requested.
         theme:
           type: string
           minLength: 1

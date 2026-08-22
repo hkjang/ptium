@@ -136,6 +136,11 @@ type Presentation struct {
 	Status              string  `json:"status"`
 	TemplateID          *string `json:"templateId,omitempty"`
 	TemplateName        string  `json:"templateName,omitempty"`
+	// GenerationNotes is what generation had to change about what was asked
+	// for: a deck shorter than the count requested, a layout that could not
+	// hold a component, a figure with no source. The person who asked is the
+	// one who needs to know, so it travels with the deck rather than to a log.
+	GenerationNotes []string `json:"generationNotes,omitempty"`
 	Theme               string  `json:"theme"`
 	Language            string  `json:"language"`
 	Audience            string  `json:"audience"`

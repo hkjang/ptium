@@ -74,6 +74,11 @@ export function EditorPage({ id }: { id: string }) {
   const [sourceLoaded, setSourceLoaded] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([])
+  // What generation did differently from what was asked — a deck shorter than
+  // the count requested, most often. It is the answer to "why is this only nine
+  // slides", and the person who asked is the only one who can act on it, so it
+  // stands above the deck until they have read it.
+  const [generationNotes, setGenerationNotes] = useState<string[]>([])
   const [sourceFindings, setSourceFindings] = useState<DeckFinding[]>([])
   const [sourceSlide, setSourceSlide] = useState(1)
   const [sourcePreview, setSourcePreview] = useState<{ url: string; slide: number; count: number } | null>(null)
@@ -110,6 +115,7 @@ export function EditorPage({ id }: { id: string }) {
     try {
       const data = await api.presentation(id)
       setPresentation(data); setSlides(data.slides || []); setActiveId(data.slides?.[0]?.id || '')
+      setGenerationNotes(data.generationNotes || [])
 			setDirty(false)
 			setSourceLoaded(false)
       setSavedSlideCount((data.slides || []).length)
@@ -129,7 +135,7 @@ export function EditorPage({ id }: { id: string }) {
   useEffect(() => {
     if (presentation?.status !== 'generating') return
     const interval = window.setInterval(async () => {
-      try { const data = await api.presentation(id); setPresentation(data); if (data.slides?.length) { setSlides(data.slides); setActiveId((current) => data.slides!.some((slide) => slide.id === current) ? current : data.slides![0].id) } } catch { /* polling resumes */ }
+      try { const data = await api.presentation(id); setPresentation(data); setGenerationNotes(data.generationNotes || []); if (data.slides?.length) { setSlides(data.slides); setActiveId((current) => data.slides!.some((slide) => slide.id === current) ? current : data.slides![0].id) } } catch { /* polling resumes */ }
     }, 3000)
     return () => window.clearInterval(interval)
   }, [id, presentation?.status])
@@ -973,6 +979,11 @@ export function EditorPage({ id }: { id: string }) {
 		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setCommandPlan(null); setCommandOpen(true) }} title="말로 시킵니다. 예: 3번과 4번 합쳐줘 · 5번 삭제 · 10분 발표로 맞춰줘"><MessageSquare size={16} /> 명령</Button><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
+      {generationNotes.length > 0 && <div className="generation-notes" role="status">
+        <AlertTriangle size={15} />
+        <div>{generationNotes.map((note) => <p key={note}>{note}</p>)}</div>
+        <button className="icon-button" aria-label="안내 닫기" onClick={() => setGenerationNotes([])}><X size={15} /></button>
+      </div>}
       <div className="editor-workspace">
         <aside className="slide-rail">
           <div className="slide-rail-head"><strong>슬라이드</strong><span>{slides.length} / {MAX_SLIDES}</span></div>

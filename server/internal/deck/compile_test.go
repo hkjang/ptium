@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
@@ -149,6 +150,36 @@ func TestAShortKoreanPublisherIsTheSourceNotAMarker(t *testing.T) {
 		}
 		if got := marked.Slides[0].Sources[0]; got.Marker != mark || got.Title != "통계청 2026 소비 동향" {
 			t.Fatalf("%q was not read as a marker: %+v", mark, got)
+		}
+	}
+}
+
+// A closing page carries the deck's ask. On a layout with no body region its
+// points share the subtitle with the lead — and replacing the field instead of
+// adding to it dropped the lead off the one slide that cannot afford to lose it.
+func TestAClosingPageKeepsItsLeadAndItsPoints(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 시작\n@cover\n\n# 본론\n- 한 줄\n\n# 다음 단계\n@closing\n> 결정과 실행을 분리해 요청합니다.\n" +
+		"- 오늘 요청하는 결정 한 가지\n- 결정 후 30일 안에 진행할 일\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	built := Build(model.Presentation{Title: "확인", Language: "ko", Slides: result.Slides}, manifest, "")
+	closing := built.Slides[len(built.Slides)-1]
+	said := ""
+	for _, paragraphs := range closing.Fields {
+		for _, paragraph := range paragraphs {
+			said += paragraph.Text + "\n"
+		}
+	}
+	for _, wanted := range []string{"결정과 실행을 분리해 요청합니다.", "오늘 요청하는 결정 한 가지", "결정 후 30일 안에 진행할 일"} {
+		if !strings.Contains(said, wanted) {
+			t.Fatalf("the closing page lost %q:\n%s", wanted, said)
 		}
 	}
 }

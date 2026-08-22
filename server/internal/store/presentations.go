@@ -34,6 +34,7 @@ func presentationColumns(prefix string) string {
 		prefix + `generation_started_at,` + prefix + `generation_ended_at,` + prefix + `template_id::text,` +
 		`COALESCE(` + prefix + `source,''),` +
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
+		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
 		prefix + `version,` + prefix + `deleted_at`
 }
 
@@ -507,7 +508,8 @@ func (s *Store) ClaimGeneration(ctx context.Context) (model.Presentation, error)
 
 // CompleteGeneration stores a finished deck: its source, its outline and its
 // slides, in one transaction.
-func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.RawMessage, slides []model.Slide, source string) error {
+func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.RawMessage, slides []model.Slide,
+	source string, notes []string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -531,9 +533,13 @@ func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.
 	if err := syncAssetUsageTx(ctx, tx, id); err != nil {
 		return err
 	}
+	recorded, err := json.Marshal(notes)
+	if err != nil || len(notes) == 0 {
+		recorded = []byte(`[]`)
+	}
 	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,source=$3,
-		error_message='',generation_ended_at=now(),version=version+1,updated_at=now()
-		WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, outline, source)
+		generation_notes=$4,error_message='',generation_ended_at=now(),version=version+1,updated_at=now()
+		WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, outline, source, recorded)
 	if err != nil {
 		return err
 	}
@@ -605,5 +611,6 @@ func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
 func presentationScan(p *model.Presentation) []any {
 	return []any{&p.ID, &p.OwnerID, &p.Title, &p.Prompt, &p.Status, &p.Theme, &p.Language, &p.Audience, &p.Tone,
 		&p.RequestedSlideCount, &p.Outline, &p.ErrorMessage, &p.CreatedAt, &p.UpdatedAt,
-		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.Source, &p.TemplateName, &p.Version, &p.DeletedAt}
+		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.Source, &p.TemplateName,
+		&p.GenerationNotes, &p.Version, &p.DeletedAt}
 }

@@ -38,9 +38,14 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 	// angles and the closing questions are asked once, and past that a deck can
 	// only repeat itself. Saying so is better than padding it with filler.
 	if short := count - len(result.Slides); short > 0 {
-		result.Warnings = append(result.Warnings, fmt.Sprintf(
+		note := fmt.Sprintf(
 			"%d slide(s) were asked for and %d were written: the brief names %d subject(s), and stretching them further would repeat pages",
-			count, len(result.Slides), len(outline.Topics)))
+			count, len(result.Slides), len(outline.Topics))
+		if phrases.ShortDeckNote != nil {
+			note = phrases.ShortDeckNote(count, len(result.Slides), len(outline.Topics))
+		}
+		result.Warnings = append(result.Warnings, note)
+		result.Notes = append(result.Notes, note)
 	}
 	return result
 }
@@ -287,6 +292,9 @@ type languageCopy struct {
 	Language        string
 	DefaultTopic    string
 	DefaultAudience string
+	// ShortDeckNote says why a deck came back shorter than the count asked for.
+	// It is read by the person who asked, so it is written in their language.
+	ShortDeckNote func(asked, written, subjects int) string
 }
 
 func localizedCopy(language string) languageCopy {
@@ -354,10 +362,38 @@ func isSettingKey(value string) bool {
 	return value != ""
 }
 
-var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", DefaultAudience: "일반 청중"}
+var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", DefaultAudience: "일반 청중",
+	ShortDeckNote: func(asked, written, subjects int) string {
+		if subjects <= 0 {
+			return fmt.Sprintf("%d장을 요청하셨고 %d장이 나왔습니다. 브리프에 주제를 더 적어 주시면 그만큼 늘어납니다.", asked, written)
+		}
+		return fmt.Sprintf("%d장을 요청하셨고 %d장을 썼습니다. 브리프가 다루는 주제가 %d개라 더 늘리면 같은 내용을 되풀이하게 됩니다. "+
+			"주제를 더 적어 주시면 그만큼 늘어납니다.", asked, written, subjects)
+	}}
 
-var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", DefaultAudience: "a general audience"}
+var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", DefaultAudience: "a general audience",
+	ShortDeckNote: func(asked, written, subjects int) string {
+		if subjects <= 0 {
+			return fmt.Sprintf("You asked for %d slides and this deck has %d. Naming more subjects in the brief makes it longer.", asked, written)
+		}
+		return fmt.Sprintf("You asked for %d slides and this deck has %d. The brief names %d subject(s), "+
+			"and going further would repeat pages. Naming more subjects makes the deck longer.", asked, written, subjects)
+	}}
 
-var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆"}
+var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆",
+	ShortDeckNote: func(asked, written, subjects int) string {
+		if subjects <= 0 {
+			return fmt.Sprintf("%d枚のご依頼に対して%d枚になりました。ブリーフに主題を追加いただければその分増えます。", asked, written)
+		}
+		return fmt.Sprintf("%d枚のご依頼に対して%d枚を作成しました。ブリーフが扱う主題が%d件のため、"+
+			"これ以上増やすと同じ内容の繰り返しになります。主題を追加いただければその分増えます。", asked, written, subjects)
+	}}
 
-var chineseCopy = languageCopy{Language: "zh", DefaultTopic: "提案主题", DefaultAudience: "一般听众"}
+var chineseCopy = languageCopy{Language: "zh", DefaultTopic: "提案主题", DefaultAudience: "一般听众",
+	ShortDeckNote: func(asked, written, subjects int) string {
+		if subjects <= 0 {
+			return fmt.Sprintf("您要求 %d 页，本稿共 %d 页。在简报中补充更多主题后页数会相应增加。", asked, written)
+		}
+		return fmt.Sprintf("您要求 %d 页，本稿共 %d 页。简报涉及 %d 个主题，再增加只会重复内容。"+
+			"补充更多主题后页数会相应增加。", asked, written, subjects)
+	}}

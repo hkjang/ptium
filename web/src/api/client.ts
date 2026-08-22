@@ -628,6 +628,8 @@ function normalizePresentation(value: Presentation & Record<string, unknown>): P
 		deletedAt: String(value.deletedAt || value.deleted_at || '') || undefined,
     thumbnailUrl: String(value.thumbnailUrl || value.thumbnail_url || '') || undefined,
     errorMessage: String(value.errorMessage || value.error_message || '') || undefined,
+    generationNotes: Array.isArray(value.generationNotes) ? value.generationNotes.map(String)
+      : Array.isArray(value.generation_notes) ? (value.generation_notes as unknown[]).map(String) : undefined,
     slideCount: slides.length > 0 ? slides.length : Number.isFinite(reportedSlideCount) ? reportedSlideCount : 0,
     slides,
   }

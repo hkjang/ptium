@@ -55,8 +55,14 @@ type Deck struct {
 	Source string `json:"source,omitempty"`
 	// Warnings record what compiling adjusted — a layout that does not exist, a
 	// component that did not fit — without failing a generation someone is
-	// waiting for.
+	// waiting for. They are written for whoever is reading the deck source or
+	// the server log.
 	Warnings []string `json:"warnings,omitempty"`
+	// Notes are for the person who asked: what the deck does differently from
+	// what was requested, in the language the deck is written in. A deck that
+	// comes back shorter than the count asked for has to say so on the screen,
+	// not in a log nobody reads.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // Template is the design a deck is written into. The manifest tells the model
@@ -318,6 +324,11 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 	if requested := request.Presentation.RequestedSlideCount; requested > 0 && len(result.Slides) != requested {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("the model wrote %d slides for a request of %d", len(result.Slides), requested))
+		// The person who asked for twenty slides and is looking at nine should be
+		// told by the deck, not by a log.
+		if phrases := localizedCopy(request.Presentation.Language); len(result.Slides) < requested && phrases.ShortDeckNote != nil {
+			result.Notes = append(result.Notes, phrases.ShortDeckNote(requested, len(result.Slides), 0))
+		}
 		if len(result.Slides) > requested {
 			// Extra slides are dropped from the end, where a deck's weakest
 			// material sits, rather than failing a generation someone waits for.

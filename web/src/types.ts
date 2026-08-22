@@ -53,6 +53,8 @@ export interface Presentation {
 	deletedAt?: string
   slides?: Slide[]
   errorMessage?: string
+  /** What generation did differently from what was asked, in the deck's language. */
+  generationNotes?: string[]
 }
 
 export interface PresentationRevision {

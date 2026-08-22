@@ -480,7 +480,11 @@ func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 					paragraphs = append(paragraphs, pptx.Paragraph{Text: trimmed, Level: indentLevel(bullet)})
 				}
 				if len(paragraphs) > 0 {
-					rendered.Fields[target] = paragraphs
+					// A layout with no body region gives the subtitle as the target,
+					// and the subtitle already holds the slide's lead. Replacing it
+					// dropped the lead off a closing page — the one slide whose ask
+					// nobody can afford to lose — so the points follow it instead.
+					rendered.Fields[target] = append(rendered.Fields[target], paragraphs...)
 				}
 			}
 		}

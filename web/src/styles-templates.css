@@ -295,3 +295,13 @@
 .snippet-grid strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
 .snippet-grid small { display:flex; align-items:center; gap:4px; color:var(--muted-2); font-size:9.5px; }
 .snippet-grid small b { color:var(--violet-dark); font-weight:600; }
+
+/* What generation did differently from what was asked. It sits above the deck
+   because it answers a question the person is already asking — "why is this
+   only nine slides" — and it closes once they have read it. */
+.generation-notes { display:flex; align-items:flex-start; gap:10px; margin:0 16px 10px; padding:10px 12px;
+  border:1px solid #f0d9a8; background:#fdf7e8; border-radius:8px; color:#7a5a10; font-size:12.5px; line-height:1.6; }
+.generation-notes svg { flex:0 0 auto; margin-top:2px; }
+.generation-notes div { flex:1 1 auto; display:flex; flex-direction:column; gap:4px; }
+.generation-notes p { margin:0; }
+.generation-notes .icon-button { flex:0 0 auto; color:inherit; }

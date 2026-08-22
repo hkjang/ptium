@@ -74,7 +74,8 @@ func (w *Worker) processOne(ctx context.Context) error {
 	if err != nil {
 		return w.fail(ctx, presentation, err)
 	}
-	if err := w.store.CompleteGeneration(ctx, presentation.ID, generated.Outline, generated.Slides, generated.Source); err != nil {
+	if err := w.store.CompleteGeneration(ctx, presentation.ID, generated.Outline, generated.Slides,
+		generated.Source, generated.Notes); err != nil {
 		return w.fail(ctx, presentation, err)
 	}
 	w.logger.Info("presentation generated", "presentation_id", presentation.ID,

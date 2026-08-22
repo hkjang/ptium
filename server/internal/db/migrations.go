@@ -174,6 +174,9 @@ var migrations = []string{
 	// A deck's source is the text it was written as. Storing it makes the deck
 	// editable as text and recompilable into the same slides.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT ''`,
+	// What generation changed about what was asked for. It used to go to the
+	// server log, where the person who asked cannot read it.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_notes jsonb NOT NULL DEFAULT '[]'::jsonb`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash bytea`,
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS password_updated_at timestamptz`,
 	// Safe iteration: soft deletion makes an accidental delete recoverable, a
