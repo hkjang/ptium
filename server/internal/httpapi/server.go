@@ -198,6 +198,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("POST /api/v1/presentations/import", requireScope("presentations:write", http.HandlerFunc(s.importPresentation)))
 	// The same queue as generation: a deck that already has text is rewritten
 	// rather than written.
+	api.Handle("POST /api/v1/presentations/{id}/command", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.runPresentationCommand))))
 	api.Handle("POST /api/v1/presentations/{id}/rewrite", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.rewritePresentation))))
 	api.Handle("GET /api/v1/snippets", requireScope("presentations:read", http.HandlerFunc(s.listSnippets)))
 	api.Handle("POST /api/v1/snippets", requireScope("presentations:write", http.HandlerFunc(s.createSnippet)))

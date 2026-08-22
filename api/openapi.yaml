@@ -947,6 +947,88 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
 
+  /api/v1/presentations/{id}/command:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: commandPresentation
+      summary: Tell the deck what to do, in words
+      description: |
+        Reads a sentence into edits and performs them: merging, splitting,
+        moving, duplicating, deleting slides, and trimming a deck to a number of
+        slides or to a presentation length.
+
+        No model is involved. Those edits have one right answer, so reading the
+        sentence is faster and more reliable than asking a model to guess — and
+        it works the same in a deployment with no provider at all. Rewriting a
+        slide's words is the model's job and lives at `/rewrite`.
+
+        `dryRun` returns the plan without changing anything. The plan says, in
+        the language the sentence was typed in, what it understood — a command
+        nobody can check is a command nobody should run. Applying writes a
+        version checkpoint, so it can be undone from the deck's history.
+
+        A trim drops the slides that measured worst, never the first or last,
+        and says which ones it dropped. A merge carries the second slide's
+        points, speaker notes and sources into the first.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  example: 3번과 4번 합쳐줘
+                dryRun:
+                  type: boolean
+      responses:
+        '200':
+          description: What the command did, or would do.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      applied:
+                        type: boolean
+                      slides:
+                        type: integer
+                      slidesAfter:
+                        type: integer
+                      plan:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum: [delete, move, duplicate, merge, split, trim]
+                            slides:
+                              type: array
+                              items:
+                                type: integer
+                            to:
+                              type: integer
+                            count:
+                              type: integer
+                            reason:
+                              type: string
+                      notes:
+                        type: array
+                        items:
+                          type: string
+                      presentation:
+                        $ref: '#/components/schemas/Presentation'
+        '422':
+          description: The sentence named no edit this endpoint performs.
   /api/v1/presentations/{id}/rewrite:
     parameters:
       - $ref: '#/components/parameters/PresentationID'

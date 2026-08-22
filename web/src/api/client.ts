@@ -1019,6 +1019,29 @@ export const api = {
   },
 
   /**
+   * Tells the deck what to do, in words: "3번과 4번 합쳐줘".
+   *
+   * The value is the translation, not the conversation — a sentence with one
+   * right answer becomes an edit, which is why it works with no model at all.
+   * A dry run returns the plan without changing anything, and the plan says in
+   * the caller's own language what it understood.
+   */
+  async commandPresentation(id: string, text: string, dryRun: boolean) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/command`, {
+      method: 'POST', body: JSON.stringify({ text, dryRun }),
+    })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    const plan = Array.isArray(data.plan) ? data.plan as Record<string, unknown>[] : []
+    return {
+      applied: Boolean(data.applied),
+      slides: Number(data.slides ?? 0),
+      slidesAfter: Number(data.slidesAfter ?? 0),
+      notes: Array.isArray(data.notes) ? (data.notes as unknown[]).map(String) : [],
+      plan: plan.map((entry) => ({ kind: String(entry.kind ?? ''), reason: String(entry.reason ?? '') })),
+    }
+  },
+
+  /**
    * Asks the model to rewrite a deck that already exists — its facts kept, its
    * craft improved. Queued like generation, because it is the same round trip.
    */

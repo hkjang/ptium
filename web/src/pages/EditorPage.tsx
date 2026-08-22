@@ -1,7 +1,8 @@
+import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
+  Copy, Download, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X,
 } from 'lucide-react'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
@@ -12,7 +13,7 @@ import { PresentationView } from '../components/Presentation'
 import { SlideLibrary } from '../components/SlideLibrary'
 import { SlidePreview } from '../components/SlidePreview'
 import { ShortcutSheet, editorShortcuts, useShortcutSheet } from '../components/Shortcuts'
-import { Button, EmptyState, ErrorState, LoadingState, Modal, Select, Textarea } from '../components/UI'
+import { Button, EmptyState, ErrorState, Input, LoadingState, Modal, Select, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type {
@@ -270,6 +271,12 @@ export function EditorPage({ id }: { id: string }) {
   // The same measurements, scored. A list says what to fix; the score says
   // whether the deck is ready, which is what anyone asks first.
   const [deckScore, setDeckScore] = useState<DeckScore | null>(null)
+  // Telling the deck what to do, in words. The plan is shown before anything
+  // changes: a command nobody can check is a command nobody should run.
+  const [commandOpen, setCommandOpen] = useState(false)
+  const [commandText, setCommandText] = useState('')
+  const [commandBusy, setCommandBusy] = useState(false)
+  const [commandPlan, setCommandPlan] = useState<{ plan: { kind: string; reason: string }[]; notes: string[]; slides: number; slidesAfter: number } | null>(null)
   const [findingsOpen, setFindingsOpen] = useState(false)
 	const [historyOpen, setHistoryOpen] = useState(false)
 	const [historyLoading, setHistoryLoading] = useState(false)
@@ -697,6 +704,31 @@ export function EditorPage({ id }: { id: string }) {
       return current + separator + directive + '\n'
     })
     showToast(`::grid ${name} 예시를 코드 끝에 넣었습니다.`)
+  }
+
+  const planCommand = async () => {
+    if (!commandText.trim()) return
+    setCommandBusy(true)
+    try {
+      setCommandPlan(await api.commandPresentation(id, commandText, true))
+    } catch (err) {
+      setCommandPlan(null)
+      showToast(displayError(err), 'error')
+    } finally { setCommandBusy(false) }
+  }
+
+  const runCommand = async () => {
+    setCommandBusy(true)
+    try {
+      const result = await api.commandPresentation(id, commandText, false)
+      showToast([`${result.slides}장 → ${result.slidesAfter}장.`, ...result.notes].join(' '), 'success')
+      setCommandOpen(false); setCommandText(''); setCommandPlan(null)
+      setDirty(false)
+      editorState.current = { ...editorState.current, dirty: false }
+      await load()
+    } catch (err) {
+      showToast(displayError(err), 'error')
+    } finally { setCommandBusy(false) }
   }
 
   const applySource = async (dryRun: boolean) => {
@@ -1171,7 +1203,7 @@ export function EditorPage({ id }: { id: string }) {
                 ? <><AlertTriangle size={13} /> 품질 {deckScore ? deckScore.total : '—'} · 다듬을 곳 {advisories.length}</>
                 : <><Check size={13} /> 품질 {deckScore ? deckScore.total : 100}</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
-		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
+		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setCommandPlan(null); setCommandOpen(true) }} title="말로 시킵니다. 예: 3번과 4번 합쳐줘 · 5번 삭제 · 10분 발표로 맞춰줘"><MessageSquare size={16} /> 명령</Button><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()}><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }}><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       <div className="editor-workspace">
@@ -1361,6 +1393,39 @@ export function EditorPage({ id }: { id: string }) {
         startIndex={presentIndex}
         onClose={() => setPresenting(false)}
       />}
+      <Modal
+        open={commandOpen}
+        onClose={() => { setCommandOpen(false); setCommandPlan(null) }}
+        title="덱에 명령하기"
+        description="문장에서 할 일을 읽어 그대로 실행합니다. 모델을 쓰지 않으므로 폐쇄망에서도 같습니다."
+        footer={<>
+          {commandPlan
+            ? <Button disabled={commandBusy} onClick={() => void runCommand()}>{commandBusy ? '적용 중…' : '적용'}</Button>
+            : <Button disabled={commandBusy || !commandText.trim()} onClick={() => void planCommand()}>{commandBusy ? '읽는 중…' : '무엇을 할지 보기'}</Button>}
+          <Button variant="secondary" onClick={() => { setCommandOpen(false); setCommandPlan(null) }}>닫기</Button>
+        </>}
+      >
+        <Input
+          autoFocus
+          value={commandText}
+          placeholder="예: 3번과 4번 합쳐줘"
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) => { setCommandText(event.target.value); setCommandPlan(null) }}
+          onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') { event.preventDefault(); void (commandPlan ? runCommand() : planCommand()) } }}
+        />
+        {commandPlan
+          ? <div className="command-plan">
+              <ul>{commandPlan.plan.map((entry, index) => <li key={index}>{entry.reason}</li>)}</ul>
+              {commandPlan.notes.map((note, index) => <small key={index}>{note}</small>)}
+              <p>{commandPlan.slides}장 → <b>{commandPlan.slidesAfter}장</b></p>
+            </div>
+          : <ul className="command-examples">
+              <li>3번과 4번 합쳐줘</li>
+              <li>5번 삭제 · 2번과 5번 지워줘</li>
+              <li>2번을 두 장으로 나눠줘</li>
+              <li>6번을 2번으로 옮겨줘</li>
+              <li>8장으로 줄여줘 · 10분 발표로 맞춰줘 <small>(측정 점수가 가장 낮은 장부터 빠집니다)</small></li>
+            </ul>}
+      </Modal>
       <Modal
         open={findingsOpen}
         onClose={() => setFindingsOpen(false)}

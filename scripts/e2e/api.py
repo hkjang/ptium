@@ -183,6 +183,17 @@ if document_id:
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
      note="a file nothing here can read must say so")
 
+print("── commanding the deck ──")
+plan = data_of(call("POST", f"/presentations/{deck_id}/command", {"text": "2번과 3번 합쳐줘", "dryRun": True}, expect=200)) or {}
+if not (plan.get("plan") or []):
+    failures.append(f"a command was understood as nothing: {plan!r}")
+elif plan.get("applied"):
+    failures.append("a dry run changed the deck")
+else:
+    print(f"   plan: {plan['plan'][0].get('reason')} ({plan.get('slides')} -> {plan.get('slidesAfter')})")
+call("POST", f"/presentations/{deck_id}/command", {"text": "이 덱 어때?"}, expect=422,
+     note="a sentence that names no edit must say so rather than guessing")
+
 print("── quality score ──")
 measured = data_of(call("GET", f"/presentations/{deck_id}/inspect", expect=200)) or {}
 score = measured.get("score") or {}
