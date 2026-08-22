@@ -449,3 +449,61 @@ func TestAGridCanBeNamedDirectly(t *testing.T) {
 		t.Fatalf("an unknown fence was not reported: %v", unknown.Warnings)
 	}
 }
+
+// A model writing a comparison puts each side's name on its own line, before
+// any point: "> 투자" then "> 유지" then the points to share out. Joined with a
+// space, the left column was headed "투자 유지" — a heading that says nothing —
+// and the right column was headed nothing at all. This is the deck the model
+// actually wrote, cut to size.
+func TestTwoHeadingsOnTheirOwnLinesNameTheTwoColumns(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 투자 대비 위험 비용\n@comparison\n> 투자\n> 유지\n" +
+		"- 12억 원 초기 비용\n- 안정성 확보 및 신뢰도 상승\n" +
+		"- 추가 투자 없이 현재 상태 유지\n- 장애 리스크 지속 및 확대\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	regions := map[string]string{}
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			regions[slot] += paragraph.Text + "\n"
+		}
+	}
+	var invest, hold string
+	for _, text := range regions {
+		if strings.Contains(text, "투자\n") {
+			invest = text
+		}
+		if strings.Contains(text, "유지\n") {
+			hold = text
+		}
+	}
+	if invest == "" || hold == "" || invest == hold {
+		t.Fatalf("the two headings did not become two columns: %+v", regions)
+	}
+	if !strings.Contains(invest, "12억 원 초기 비용") || !strings.Contains(hold, "장애 리스크 지속") {
+		t.Fatalf("the points did not follow their side: %+v", regions)
+	}
+	for _, text := range regions {
+		if strings.Contains(text, "투자 유지") {
+			t.Fatalf("the two headings were glued into one: %+v", regions)
+		}
+	}
+
+	// Two lines of a sentence are still one lead. Only a pair of names is a pair
+	// of columns.
+	sentence := ParseSource("# 비교\n@two\n> 매출과 비용을 같은 기준으로 나누어\n" +
+		"> 분기별로 자세히 살펴봅니다\n- 한 줄\n- 다른 줄\n")
+	if lead := sentence.Slides[0].Lead; strings.Contains(lead, "|") {
+		t.Fatalf("a two-line sentence was read as two columns: %q", lead)
+	}
+}

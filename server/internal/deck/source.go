@@ -288,11 +288,20 @@ func ParseSource(source string) Source {
 			// gluing the two headings into one sentence, which is what happened
 			// before, puts both of them over the left column and leaves the right
 			// one bare.
-			if current.Lead == "" {
+			switch {
+			case current.Lead == "":
 				current.Lead = lead
-			} else if len(current.Bullets) > 0 {
+			case len(current.Bullets) > 0:
 				current.Groups = append(current.Groups, SourceGroup{Heading: lead, From: len(current.Bullets)})
-			} else {
+			case !strings.Contains(current.Lead, "|") && !strings.Contains(lead, "|") &&
+				columnName(current.Lead) && columnName(lead):
+				// Two headings on consecutive lines, before any point, are the two
+				// sides of a comparison: "> 투자" then "> 유지" then eight points to
+				// share out. It is the same slide as "> 투자 | 유지", so it is read
+				// as that one — joined with a space instead, the left column was
+				// headed "투자 유지" and the right column was headed nothing at all.
+				current.Lead += " | " + lead
+			default:
 				current.Lead += " " + lead
 			}
 
