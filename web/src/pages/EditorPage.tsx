@@ -30,6 +30,8 @@ import {
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel } from './editor/model/findings'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { QualityDialog } from './editor/QualityDialog'
+import { HistoryDialog } from './editor/HistoryDialog'
+import { ExportDialog } from './editor/ExportDialog'
 
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
@@ -1195,22 +1197,15 @@ export function EditorPage({ id }: { id: string }) {
         onFixEverything={() => void fixEverythingWithAI()}
         onClose={() => setFindingsOpen(false)}
       />
-		<Modal
-			open={historyOpen}
-			onClose={() => { if (!restoringRevision) setHistoryOpen(false) }}
-			title="버전 이력"
-			description="자동 편집은 5분 단위로 묶고, 코드 적용·재생성·복원 전에는 별도 체크포인트를 남깁니다. 복원 직전 상태도 다시 기록됩니다."
-			footer={<Button variant="secondary" disabled={Boolean(restoringRevision)} onClick={() => setHistoryOpen(false)}>닫기</Button>}
-		>
-			{historyLoading ? <LoadingState compact label="버전 이력을 불러오는 중…" /> : history.length === 0 ? <EmptyState icon={<History size={24} />} title="아직 이전 버전이 없습니다" description="첫 변경을 저장하면 복원 가능한 체크포인트가 만들어집니다." /> : <ol className="revision-list">
-				<li className="revision-current"><span><Check size={14} /></span><div><strong>현재 버전 {presentation.version}</strong><small>지금 편집 중인 내용</small></div></li>
-				{history.map((checkpoint) => <li key={checkpoint.id}>
-					<span><History size={14} /></span>
-					<div><strong>버전 {checkpoint.version} · {revisionReason(checkpoint.reason)}</strong><small>{checkpoint.slideCount}장 · {relativeDate(checkpoint.createdAt)}</small></div>
-					<Button variant="secondary" size="small" disabled={Boolean(restoringRevision)} onClick={() => void restoreRevision(checkpoint)}>{restoringRevision === checkpoint.id ? <LoaderCircle className="spin" size={13} /> : <RotateCcw size={13} />} 복원</Button>
-				</li>)}
-			</ol>}
-		</Modal>
+      <HistoryDialog
+        open={historyOpen}
+        loading={historyLoading}
+        version={presentation.version}
+        history={history}
+        restoring={restoringRevision}
+        onRestore={(checkpoint) => void restoreRevision(checkpoint)}
+        onClose={() => setHistoryOpen(false)}
+      />
 		<Modal
 			open={conflictOpen}
 			onClose={() => setConflictOpen(false)}
@@ -1220,7 +1215,12 @@ export function EditorPage({ id }: { id: string }) {
 		>
 			<p className="modal-note">두 버전을 모두 보존하려면 먼저 내 변경을 유지한 뒤 버전 이력에서 이전 체크포인트를 확인할 수 있습니다.</p>
 		</Modal>
-      <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="프레젠테이션 내보내기" description="사용할 형식을 선택하세요." footer={<Button variant="secondary" onClick={() => setExportOpen(false)}>취소</Button>}><div className="export-options"><button disabled={exporting} onClick={() => void exportDeck('pptx')}><span className="export-icon ppt"><FileText size={22} /></span><div><strong>PowerPoint (.pptx)</strong><p>Microsoft PowerPoint와 호환되는 편집 가능한 파일</p></div><Download size={18} /></button><button disabled title="받은 PPTX를 PowerPoint·LibreOffice에서 PDF로 저장하세요"><span className="export-icon pdf"><FileText size={22} /></span><div><strong>PDF 문서 (.pdf)</strong><p>아직 제공하지 않습니다. 받은 PPTX를 PowerPoint나 LibreOffice에서 PDF로 저장하면 글꼴이 정확합니다.</p></div></button></div>{exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}</Modal>
+      <ExportDialog
+        open={exportOpen}
+        exporting={exporting}
+        onExport={(format) => void exportDeck(format)}
+        onClose={() => setExportOpen(false)}
+      />
     </main>
   )
 }
