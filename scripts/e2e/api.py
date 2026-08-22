@@ -201,11 +201,14 @@ for _ in range(40):
 written = (data_of(call("GET", f"/presentations/{library_deck}/source", expect=200)) or {}).get("source", "")
 if "임직원 1,240명" not in written:
     failures.append("generation wrote its own version of a slide the library already had")
-used = [s for s in (data_of(call("GET", "/snippets?limit=100")) or []) if s["id"] == registered.get("id")]
-if not used or used[0].get("useCount", 0) < 1:
+# Asked for by id: a workspace with more than a page of favourites pushes a new
+# slide off the front of the list, and reading only the front page reported the
+# product broken when it was the listing that had moved on.
+used = data_of(call("GET", f"/snippets/{registered.get('id')}", expect=200)) or {}
+if used.get("useCount", 0) < 1:
     failures.append(f"the registered slide was not counted as used: {used!r}")
 else:
-    print(f"   the deck took the registered slide (used {used[0]['useCount']}x)")
+    print(f"   the deck took the registered slide (used {used.get('useCount')}x)")
 
 print("── commanding the deck ──")
 plan = data_of(call("POST", f"/presentations/{deck_id}/command", {"text": "2번과 3번 합쳐줘", "dryRun": True}, expect=200)) or {}

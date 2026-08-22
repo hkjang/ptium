@@ -205,6 +205,11 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		// A slide written as two columns heads each one itself, so its first lead
 		// is that column's heading rather than the slide's subtitle.
 		_, twoColumns := columnGroups(slide, layout, claimed)
+		// An agenda whose first item was written on the lead line is not a slide
+		// with a lead: it is a list missing its first item. Drawn as written, "1."
+		// sits above the list without a bullet and "2." to "5." look like the
+		// whole list, which is the one thing a contents slide must not look like.
+		slide = withNumberedLeadAsPoint(slide)
 		lead := strings.TrimSpace(slide.Lead)
 		// A slide that says its own lead again as a bullet says it twice on the
 		// page. The model does this often enough to be worth removing here: the
@@ -384,6 +389,65 @@ func withGroupHeadings(slide SourceSlide) []pptx.Paragraph {
 		previous = at
 	}
 	return append(folded, slide.Bullets[previous:]...)
+}
+
+// withNumberedLeadAsPoint moves a lead that is the first item of a numbered
+// list back into the list.
+//
+// A model writing a contents slide put "1. 시장 성장과 시스템 리스크" on the lead
+// line and "2." to "5." below it as points. Every item is the same kind of
+// thing, so drawing one of them differently — no bullet, in the lead's own
+// size, or worse, alone in the layout's subtitle region — breaks the numbering
+// on the one slide whose whole job is the numbering.
+func withNumberedLeadAsPoint(slide SourceSlide) SourceSlide {
+	lead := strings.TrimSpace(slide.Lead)
+	if lead == "" || len(slide.Bullets) == 0 || len(slide.Groups) > 0 {
+		return slide
+	}
+	if itemNumber(lead) != 1 || itemNumber(slide.Bullets[0].Text) != 2 {
+		return slide
+	}
+	slide.Lead = ""
+	slide.Bullets = append([]pptx.Paragraph{{Text: lead}}, slide.Bullets...)
+	return slide
+}
+
+// itemNumber reads the number a line begins with — "3.", "3)", "③" — and
+// reports 0 when it begins with none. Only a small number counts: "2026년" is a
+// year and "12억" is money.
+func itemNumber(text string) int {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return 0
+	}
+	first := []rune(trimmed)[0]
+	for index, circled := range []rune("①②③④⑤⑥⑦⑧⑨") {
+		if circled == first {
+			return index + 1
+		}
+	}
+	digits := 0
+	for digits < len(trimmed) && trimmed[digits] >= '0' && trimmed[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 || digits > 2 || digits >= len(trimmed) {
+		return 0
+	}
+	switch trimmed[digits] {
+	case '.', ')', ':':
+	default:
+		return 0
+	}
+	// "1.5배 늘었다" is a figure, not an item.
+	if rest := strings.TrimSpace(trimmed[digits+1:]); rest == "" ||
+		(rest[0] >= '0' && rest[0] <= '9') {
+		return 0
+	}
+	number := 0
+	for _, symbol := range trimmed[:digits] {
+		number = number*10 + int(symbol-'0')
+	}
+	return number
 }
 
 // column is one side of a two-column slide: its heading and its points.

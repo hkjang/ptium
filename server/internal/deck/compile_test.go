@@ -507,3 +507,70 @@ func TestTwoHeadingsOnTheirOwnLinesNameTheTwoColumns(t *testing.T) {
 		t.Fatalf("a two-line sentence was read as two columns: %q", lead)
 	}
 }
+
+// A model writing a contents slide put the first item on the lead line and the
+// rest below it as points. Drawn as written, "1." sits above the list without a
+// bullet — and on a layout with a subtitle region it lands in the subtitle,
+// separated from "2." to "5." altogether. The numbering breaks on the one slide
+// whose whole job is the numbering.
+func TestTheFirstItemOfAListIsNotALead(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 목차\n@content\n> 1. 시장 성장과 시스템 리스크\n- 2. 장애 현황 및 영향 분석\n" +
+		"- 3. 이중화 투자 계획\n- 4. 투자 대비 위험 비용 비교\n- 5. 승인 요청 및 일정\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	items := 0
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			items++
+			if paragraph.Lead {
+				t.Fatalf("%q was drawn as a lead among its own list", paragraph.Text)
+			}
+		}
+	}
+	if items != 5 {
+		t.Fatalf("the list has %d items, wanted all 5 together: %+v", items, content.Fields)
+	}
+
+	// A lead that is not the first of a list still leads. "1인당 매출" is not an
+	// item number, and neither is a lead whose points do not continue it.
+	for _, kept := range []string{
+		"# 성장의 근거\n@content\n> 세 가지로 좁혀 말씀드립니다\n- 채널이 늘었습니다\n- 단가가 올랐습니다\n",
+		"# 목표\n@content\n> 1. 배경\n- 시장이 커졌습니다\n- 경쟁이 늘었습니다\n",
+	} {
+		compiled := Decode(Compile(ParseSource(kept), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+		lead := false
+		for slot, paragraphs := range compiled.Fields {
+			if slot == pptx.SlotTitle {
+				continue
+			}
+			for _, paragraph := range paragraphs {
+				lead = lead || paragraph.Lead
+			}
+		}
+		if !lead && len(compiled.Fields) < 3 {
+			t.Fatalf("a real lead was demoted into the list: %+v", compiled.Fields)
+		}
+	}
+}
+
+func TestItemNumberReadsOnlyItemNumbers(t *testing.T) {
+	cases := map[string]int{
+		"1. 시장 성장": 1, "2) 장애 현황": 2, "③ 투자 계획": 3, "12. 마지막 항목": 12,
+		"1.5배 늘었다": 0, "2026년 상반기": 0, "12억 원 요청": 0, "": 0, "성장": 0, "1.": 0,
+	}
+	for text, want := range cases {
+		if got := itemNumber(text); got != want {
+			t.Fatalf("itemNumber(%q) = %d, wanted %d", text, got, want)
+		}
+	}
+}
