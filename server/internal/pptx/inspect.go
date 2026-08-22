@@ -48,9 +48,12 @@ const (
 // are about that rather than about drawing: too much on one slide, and nothing
 // prepared to say. Both are measurable, so both are measured.
 const (
-	// maximumPoints is the most top-level points one region should carry. Past
-	// this an audience reads instead of listening.
-	maximumPoints = 6
+	// MaximumPoints is the most top-level points one region should carry. Past
+	// this an audience reads instead of listening. Exported because what the
+	// measurement asks for and what a rewrite is asked to do must be the same
+	// number: a slide told only to "shorten" comes back with eleven shorter
+	// lines.
+	MaximumPoints = 6
 	// crowdedCapacity is the share of a region's lines above which a slide is
 	// full rather than composed.
 	crowdedCapacity = 0.92
@@ -202,10 +205,10 @@ func inspectDensity(placeholder Placeholder, paragraphs []Paragraph) []Finding {
 			points++
 		}
 	}
-	if points > maximumPoints {
+	if points > MaximumPoints {
 		return []Finding{{Slot: placeholder.Slot, Kind: FindingDensity, Advisory: true,
-			Detail: fmt.Sprintf("%d points on one slide; past %d an audience reads instead of listening",
-				points, maximumPoints)}}
+			Detail: fmt.Sprintf("%d points in one region; past %d an audience reads instead of listening",
+				points, MaximumPoints)}}
 	}
 	// A region filled to its last line has no air in it, even when every line fits.
 	if placeholder.MaxLines > 3 {

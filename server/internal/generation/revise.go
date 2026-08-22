@@ -140,7 +140,15 @@ func revisionPrompt(revision Revision) string {
 func revisionTask(revision Revision) string {
 	switch revision.Action {
 	case ReviseShorten:
-		return "Task: cut this slide to its point. Fewer words per line, the same number of lines or fewer. A line that only restates another one goes. Keep the points the slide already makes, in the order it makes them; do not bring in a point from elsewhere in the deck.\n"
+		// The measurement that asks for this counts points, so the instruction
+		// names the same number. "Shorten" alone came back as eleven shorter
+		// lines, measured no better, and was rejected — a round trip spent on
+		// nothing.
+		return fmt.Sprintf("Task: this slide carries more than a room can take in. Cut it to at most %d "+
+			"top-level points — fewer if it has less to say — by merging lines that make one point together "+
+			"and dropping any that only restate another. Fewer words per line as well. Keep the argument the "+
+			"slide actually makes, in the order it makes it; do not bring in a point from elsewhere in the deck.\n",
+			pptx.MaximumPoints)
 	case ReviseExpand:
 		return "Task: this slide is thin. Add the evidence a reader would ask for, from the brief and from what the slide already says. Do not pad it with adjectives.\n"
 	case ReviseComponent:

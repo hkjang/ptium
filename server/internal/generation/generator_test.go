@@ -934,3 +934,23 @@ func TestTheModelIsToldHowToCiteASource(t *testing.T) {
 		t.Fatal("the model is not told how to write a two-column slide")
 	}
 }
+
+// The measurement that asks a slide to be cut counts points, so the rewrite is
+// asked for the same number. Told only to "shorten", a model came back with
+// eleven shorter lines — measured no better, rejected, a round trip spent on
+// nothing.
+func TestTheShortenTaskNamesTheNumberOfPoints(t *testing.T) {
+	task := revisionTask(Revision{Action: ReviseShorten})
+	if !strings.Contains(task, fmt.Sprintf("%d", pptx.MaximumPoints)) {
+		t.Fatalf("the task does not name the maximum: %q", task)
+	}
+	for _, wanted := range []string{"top-level points", "merging", "restate"} {
+		if !strings.Contains(task, wanted) {
+			t.Fatalf("the task does not say how to cut: %q", task)
+		}
+	}
+	// Fitting is a different job and still asks for every point to be kept.
+	if fit := revisionTask(Revision{Action: ReviseFit}); !strings.Contains(fit, "keeping every point") {
+		t.Fatalf("the fit task changed: %q", fit)
+	}
+}
