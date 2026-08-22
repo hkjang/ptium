@@ -22,6 +22,7 @@ import type {
   TemplatePalette,
   User,
 } from '../types'
+import { errorText } from './errors'
 
 const configuredBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api/v1'
 export const API_BASE = configuredBase.replace(/\/$/, '')
@@ -83,7 +84,11 @@ function errorMessage(body: unknown, fallback: string) {
   if (!body || typeof body !== 'object') return fallback
   const value = body as Record<string, unknown>
   const nested = value.error && typeof value.error === 'object' ? value.error as Record<string, unknown> : null
-  return String(value.message || nested?.message || nested?.code || (typeof value.error === 'string' ? value.error : '') || value.detail || fallback)
+  const said = String(value.message || nested?.message || (typeof value.error === 'string' ? value.error : '') || value.detail || '')
+  const code = String(nested?.code || value.code || '')
+  // The API answers in English, for whoever is reading a request log. The
+  // person in the workspace reads it as a toast.
+  return errorText(code, said) || String(nested?.code || fallback)
 }
 
 export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
