@@ -21,14 +21,41 @@ type deckWriter struct {
 	tables   [][][]string
 	slides   int
 	warnings []string
+	// coverWritten says whether the deck's first slide has been written. It is
+	// held back until the first section is known.
+	coverWritten bool
 	// dropped counts what a long document left behind, so the reader is told.
 	dropped int
 }
 
 func newDeckWriter(filename, title string) *deckWriter {
-	writer := &deckWriter{filename: filename, title: title}
-	fmt.Fprintf(&writer.builder, "# %s\n@cover\n> %s\n\n", escapeLine(title), escapeLine(filename))
-	return writer
+	return &deckWriter{filename: filename, title: title}
+}
+
+// cover writes the deck's first slide, once the writer has seen enough of the
+// document to know what to call it.
+//
+// A report names itself on its first line. Calling the deck "report" after the
+// file, and then giving the document's own title a slide with nothing under it,
+// is how an import announces that nobody read the document — so the first
+// heading becomes the deck's name when it is the document's name, and the
+// sentence under it becomes the line beneath.
+func (w *deckWriter) cover() {
+	if w.coverWritten {
+		return
+	}
+	w.coverWritten = true
+	title := w.title
+	if heading := strings.TrimSpace(w.heading); heading != "" {
+		title = heading
+		w.title = heading
+		if len(w.points) == 0 && len(w.tables) == 0 {
+			// A title on a line of its own is the document's name, not a slide
+			// with nothing on it.
+			w.heading = ""
+		}
+	}
+	fmt.Fprintf(&w.builder, "# %s\n@cover\n> %s\n\n", escapeLine(title), escapeLine(w.filename))
 }
 
 // slide ends the slide being written and starts another.
@@ -69,6 +96,14 @@ func (w *deckWriter) table(rows [][]string) {
 func (w *deckWriter) flush() {
 	if w.heading == "" && len(w.points) == 0 && len(w.tables) == 0 {
 		return
+	}
+	if !w.coverWritten {
+		// The first section with anything in it decides what the deck is called,
+		// and may turn out to be the cover itself rather than a slide.
+		w.cover()
+		if w.heading == "" && len(w.points) == 0 && len(w.tables) == 0 {
+			return
+		}
 	}
 	if w.slides >= maximumSlides {
 		w.dropped++
@@ -112,6 +147,7 @@ func (w *deckWriter) flush() {
 // document ends the writing and returns what was written.
 func (w *deckWriter) document() (Document, error) {
 	w.flush()
+	w.cover()
 	if w.slides == 0 {
 		return Document{}, fmt.Errorf("이 문서에서 슬라이드로 만들 내용을 찾지 못했습니다")
 	}

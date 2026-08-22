@@ -134,3 +134,64 @@ func TestAWordReportBecomesSlides(t *testing.T) {
 		}
 	}
 }
+
+// A report names itself on its first line. Calling the deck after the file, and
+// then giving the document's own title a slide with nothing under it, is how an
+// import announces that nobody read the document.
+func TestTheDocumentNamesTheDeckRatherThanTheFile(t *testing.T) {
+	read, err := Read("report.md", []byte("# 결제 시스템 이중화 이행 보고\n\n## 지금의 문제\n\n단일 리전에 의존하고 있습니다.\n\n## 요청\n\n예산 승인을 요청드립니다.\n"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if read.Title != "결제 시스템 이중화 이행 보고" {
+		t.Fatalf("the deck is called %q", read.Title)
+	}
+	if !strings.HasPrefix(read.Source, "# 결제 시스템 이중화 이행 보고\n@cover\n> report.md\n") {
+		t.Fatalf("the cover is not the document's own title:\n%s", read.Source)
+	}
+	// And the title does not also appear as a slide with nothing on it.
+	if strings.Count(read.Source, "# 결제 시스템 이중화 이행 보고") != 1 {
+		t.Fatalf("the document's title became a slide as well as the deck's name:\n%s", read.Source)
+	}
+	for _, line := range []string{"# 지금의 문제", "- 단일 리전에 의존하고 있습니다.", "# 요청", "- 예산 승인을 요청드립니다."} {
+		if !strings.Contains(read.Source, line) {
+			t.Fatalf("the import lost %q:\n%s", line, read.Source)
+		}
+	}
+}
+
+// A first section that carries something keeps its slide, and its citation with
+// it: moving its sentences onto the cover would leave them with nothing saying
+// where they came from.
+func TestAFirstSectionWithContentKeepsItsSlide(t *testing.T) {
+	read, err := Read("전략.md", []byte("# 2026 채널 전략\n\n직영 채널이 성장을 이끌고 있습니다.\n\n## 현황\n\n대리점은 3분기 연속 감소했습니다.\n"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if read.Title != "2026 채널 전략" {
+		t.Fatalf("the deck is called %q", read.Title)
+	}
+	for _, line := range []string{
+		"- 직영 채널이 성장을 이끌고 있습니다.",
+		"!source 전략.md | 2026 채널 전략",
+		"# 현황", "- 대리점은 3분기 연속 감소했습니다.",
+	} {
+		if !strings.Contains(read.Source, line) {
+			t.Fatalf("the import lost %q:\n%s", line, read.Source)
+		}
+	}
+}
+
+// A spreadsheet has no title of its own, so the file names the deck.
+func TestASpreadsheetIsNamedAfterItsFile(t *testing.T) {
+	read, err := Read("quarterly.csv", []byte("채널,4분기,1분기\n직영,420,468\n대리점,310,287\n"))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if read.Title != "quarterly" {
+		t.Fatalf("the deck is called %q", read.Title)
+	}
+	if !strings.Contains(read.Source, "- 직영 | 420 | 468") {
+		t.Fatalf("the table did not come across:\n%s", read.Source)
+	}
+}
