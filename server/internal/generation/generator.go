@@ -42,6 +42,10 @@ type Generator struct {
 	// apart. Both are optional: without them nothing changes.
 	Library func(ctx context.Context, ownerID string) []library.Entry
 	Used    func(ctx context.Context, ownerID, snippetID string)
+	// Now is what day it is, for the brief. A model has no clock, and a brief
+	// that says "하반기" without a year makes it guess one — a deck written this
+	// week came back titled 2024. Injected so a test can hold the date still.
+	Now func() time.Time
 }
 
 // Deck is the generator's output: the outline shown in the workspace plus the
@@ -90,6 +94,7 @@ func New(settings SettingReader) *Generator {
 		maxOutputTokens: defaultOutputTokens,
 		reasoning:       reasoningAuto,
 		repairs:         maximumRepairs,
+		Now:             time.Now,
 	}
 }
 
@@ -145,7 +150,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	if err != nil {
 		return Deck{}, err
 	}
-	request := writingRequest{Presentation: presentation, Profile: profile, Template: template}
+	request := writingRequest{Presentation: presentation, Profile: profile, Template: template, Today: g.today()}
 	// A deck that already has slides is being rewritten, not invented. Its own
 	// text is the material, its structure is already decided, and planning a new
 	// narrative for it would throw away the thing being improved.
@@ -159,18 +164,107 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	}
 	outlinePass := true
 	_ = g.settings.Get(ctx, "generation.outline_pass", &outlinePass)
+	planNote := ""
 	if outlinePass && presentation.RequestedSlideCount > 2 {
 		plan, err := g.plan(ctx, endpoint, modelName, apiKey, request)
-		if err != nil {
+		switch {
+		case err == nil:
+			request.Plan = plan
+		case modelCouldNotAnswer(err):
+			// Planning the narrative is the first of two passes, and on a slow
+			// model it is where the clock runs out. Giving up here hands the deck
+			// to the offline writer when the model could still have written it —
+			// less well planned, but written by the model the customer chose. So
+			// the pass is dropped and the writing goes ahead.
+			planNote = AuthorMessage(err, presentation.Language)
+		default:
 			return Deck{}, err
 		}
-		request.Plan = plan
 	}
 	written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)
 	if err != nil {
-		return Deck{}, err
+		return g.withoutTheModel(ctx, presentation, profile, template, err)
 	}
-	return g.fromLibrary(ctx, presentation, profile, template, written), nil
+	result := g.fromLibrary(ctx, presentation, profile, template, written)
+	if planNote != "" {
+		result.Warnings = append(result.Warnings, "the narrative pass was skipped: "+planNote)
+		if phrases := localizedCopy(presentation.Language); phrases.NoPlanNote != nil {
+			result.Notes = append(result.Notes, phrases.NoPlanNote(planNote))
+		}
+	}
+	return result, nil
+}
+
+// withoutTheModel writes the deck offline when the model could not write it.
+//
+// Somebody asked for a deck and waited five minutes; handing them a failure
+// screen leaves them with nothing, and the offline writer — the one an
+// air-gapped deployment runs on — produces a deck a person can actually
+// present. So it stands in, and the deck says so: what happened, and that
+// trying again puts the model back on it.
+//
+// Not for every failure. A template that will not load stops both writers, and
+// a rewrite must never be replaced by a deck written from the brief — that is
+// the one case where standing in would throw away the author's own work.
+func (g *Generator) withoutTheModel(ctx context.Context, presentation model.Presentation,
+	profile model.Profile, template Template, cause error) (Deck, error) {
+	if !modelCouldNotAnswer(cause) {
+		return Deck{}, cause
+	}
+	result := g.fromLibrary(ctx, presentation, profile, template, Fallback(presentation, profile, template))
+	if len(result.Slides) == 0 {
+		return Deck{}, cause
+	}
+	phrases := localizedCopy(presentation.Language)
+	if phrases.ModelStoodDownNote != nil {
+		result.Notes = append(result.Notes, phrases.ModelStoodDownNote(AuthorMessage(cause, presentation.Language)))
+	}
+	result.Warnings = append(result.Warnings, "the model did not write this deck: "+cause.Error())
+	return result, nil
+}
+
+// modelCouldNotAnswer separates a model that was not available from one that is
+// set up wrong.
+//
+// Not available — it timed out, the host refused the connection, it was too busy
+// — is a moment in time: the author should get their deck and the model gets the
+// next one. Set up wrong — the key is rejected, the model returns reasoning and
+// no answer, the endpoint answers something that is not a completion — is a
+// thing an administrator has to fix, and it has to reach them. Standing in for
+// that failure would hide it: generation would succeed, no incident would be
+// recorded, and every deck would quietly come out written offline.
+func modelCouldNotAnswer(cause error) bool {
+	if cause == nil {
+		return false
+	}
+	var rejected rejectedRequest
+	if errors.As(cause, &rejected) {
+		// Too busy, or broken at their end. A rejected key is not this.
+		return rejected.status == 429 || rejected.status >= 500
+	}
+	if errors.Is(cause, context.DeadlineExceeded) {
+		return true
+	}
+	text := strings.ToLower(cause.Error())
+	for _, mark := range []string{
+		"timeout", "deadline exceeded", "connection refused", "no such host",
+		"dial tcp", "network is unreachable", "connection reset", "eof",
+	} {
+		if strings.Contains(text, mark) {
+			return true
+		}
+	}
+	return false
+}
+
+// today is the date the brief carries, so a deck about "the second half" is
+// about this year's second half.
+func (g *Generator) today() string {
+	now := time.Now
+	if g.Now != nil {
+		now = g.Now
+	}
+	return now().Format("2006-01-02")
 }
 
 // fromLibrary puts the owner's registered slides into a deck that wrote its own

@@ -20,6 +20,10 @@ type writingRequest struct {
 	// wording, its titles and the shape of its argument are what the model is
 	// asked for.
 	Material string
+	// Today is the date the deck is being written on, as YYYY-MM-DD. A model has
+	// no clock; without it, "the second half" is whichever year the model
+	// remembers.
+	Today string
 }
 
 // deckPlan is the narrative design produced by the first pass.
@@ -274,6 +278,12 @@ func writeBrief(builder *strings.Builder, request writingRequest) {
 	fmt.Fprintf(builder, "Deck title: %s\n", presentation.Title)
 	if strings.TrimSpace(presentation.Prompt) != "" {
 		fmt.Fprintf(builder, "Brief: %s\n", presentation.Prompt)
+	}
+	if today := strings.TrimSpace(request.Today); today != "" {
+		// A model has no clock. Without this line a brief that says "second half"
+		// or "next quarter" gets whatever year the model's training left it with,
+		// and a deck written this week came back titled 2024.
+		fmt.Fprintf(builder, "Today: %s. Any period the brief names without a year is this year's.\n", today)
 	}
 	fmt.Fprintf(builder, "Language: %s\nAudience: %s\nTone: %s\nSlides: %d\n",
 		presentation.Language, presentation.Audience, presentation.Tone, presentation.RequestedSlideCount)

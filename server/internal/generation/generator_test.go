@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/library"
@@ -666,5 +667,135 @@ func TestGenerationUsesTheLibraryItWasGiven(t *testing.T) {
 	}
 	if !said {
 		t.Errorf("the deck did not say it used a registered slide: %v", generated.Warnings)
+	}
+}
+
+// A model has no clock. A brief that says "the second half" without a year got
+// whatever year the model remembered — a deck written in 2026 came back titled
+// 2024 — so the brief says what day it is.
+func TestTheBriefSaysWhatDayItIs(t *testing.T) {
+	template := testTemplate(t)
+	var briefs []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		briefs = append(briefs, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"# 하반기 전략\n- 한 줄\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	generator.Now = func() time.Time { return time.Date(2026, 8, 22, 9, 0, 0, 0, time.UTC) }
+	if _, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "전략", Prompt: "하반기 전략", Language: "ko", RequestedSlideCount: 3},
+		model.Profile{}, template); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if len(briefs) == 0 {
+		t.Fatal("the model was never asked anything")
+	}
+	if !strings.Contains(briefs[0], "2026-08-22") {
+		t.Fatalf("the brief does not say what day it is:\n%s", briefs[0])
+	}
+}
+
+// A model that was not available is a moment in time: the author gets the deck
+// Ptium can write offline, and the deck says so. A model that is set up wrong
+// is an administrator's problem and has to reach them, so it still fails.
+func TestAModelThatTimesOutDoesNotCostTheAuthorTheirDeck(t *testing.T) {
+	template := testTemplate(t)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = writer.Write([]byte(`{"error":{"message":"upstream is down"}}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	deck, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "결제 이중화 계획", Language: "ko", RequestedSlideCount: 5},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("an unavailable model cost the author their deck: %v", err)
+	}
+	if len(deck.Slides) == 0 {
+		t.Fatal("no slides were written")
+	}
+	said := strings.Join(deck.Notes, " ")
+	if !strings.Contains(said, "Ptium이 대신 썼습니다") {
+		t.Fatalf("the deck does not say who wrote it: %q", said)
+	}
+
+	// A rejected key is not a moment in time. It stays a failure, so that it
+	// reaches the error centre and an administrator.
+	refusing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+		_, _ = writer.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer refusing.Close()
+	strict := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": refusing.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	strict.client = refusing.Client()
+	if _, err := strict.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "결제 이중화", Language: "ko", RequestedSlideCount: 5},
+		model.Profile{}, template); err == nil {
+		t.Fatal("a rejected key was hidden behind an offline deck")
+	}
+}
+
+// Planning the narrative is the first of two passes, and on a slow model it is
+// where the clock runs out. Giving up there hands the deck to the offline
+// writer when the model could still have written it, so the pass is dropped and
+// the writing goes ahead — with the deck saying that it did.
+func TestASlowPlanningPassDoesNotCostTheModelTheDeck(t *testing.T) {
+	template := testTemplate(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		calls++
+		if calls == 1 {
+			// The narrative pass: too slow for this deployment.
+			writer.WriteHeader(http.StatusGatewayTimeout)
+			_, _ = writer.Write([]byte(`{"error":{"message":"timeout"}}`))
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"# 결제 이중화\n@cover\n\n# 지금의 문제\n- 단일 리전에 의존합니다\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": true,
+		"generation.repair_passes": 0,
+	})
+	generator.client = server.Client()
+	deck, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "결제 이중화 계획", Language: "ko", RequestedSlideCount: 6},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("a slow planning pass cost the model the deck: %v", err)
+	}
+	if calls < 2 {
+		t.Fatalf("the writing pass was never attempted (%d calls)", calls)
+	}
+	said := strings.Join(deck.Notes, " ")
+	if !strings.Contains(said, "건너뛰고") {
+		t.Fatalf("the deck does not say the planning pass was skipped: %q", said)
+	}
+	// And it is the model's deck, not the offline writer's.
+	if strings.Contains(said, "Ptium이 대신 썼습니다") {
+		t.Fatalf("the deck was handed to the offline writer anyway: %q", said)
+	}
+	if !strings.Contains(deck.Source, "단일 리전에 의존합니다") {
+		t.Fatalf("the model's own text is not in the deck:\n%s", deck.Source)
 	}
 }

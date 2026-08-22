@@ -295,6 +295,12 @@ type languageCopy struct {
 	// ShortDeckNote says why a deck came back shorter than the count asked for.
 	// It is read by the person who asked, so it is written in their language.
 	ShortDeckNote func(asked, written, subjects int) string
+	// ModelStoodDownNote says that the model could not write this deck and that
+	// Ptium wrote it instead, with the reason in the same sentence.
+	ModelStoodDownNote func(reason string) string
+	// NoPlanNote says the deck was written without the narrative pass, which is
+	// what happens when a slow model runs out of clock on the first of the two.
+	NoPlanNote func(reason string) string
 }
 
 func localizedCopy(language string) languageCopy {
@@ -363,6 +369,14 @@ func isSettingKey(value string) bool {
 }
 
 var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", DefaultAudience: "일반 청중",
+	ModelStoodDownNote: func(reason string) string {
+		return "AI 모델이 이 덱을 쓰지 못해 Ptium이 대신 썼습니다. " + reason +
+			" 다시 생성하면 모델이 다시 시도합니다."
+	},
+	NoPlanNote: func(reason string) string {
+		return "구성을 먼저 설계하는 단계를 건너뛰고 바로 썼습니다. " + reason +
+			" 관리자가 서비스 설정에서 제한 시간을 늘리면 설계 단계까지 거칩니다."
+	},
 	ShortDeckNote: func(asked, written, subjects int) string {
 		if subjects <= 0 {
 			return fmt.Sprintf("%d장을 요청하셨고 %d장이 나왔습니다. 브리프에 주제를 더 적어 주시면 그만큼 늘어납니다.", asked, written)
@@ -372,6 +386,14 @@ var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", Def
 	}}
 
 var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", DefaultAudience: "a general audience",
+	ModelStoodDownNote: func(reason string) string {
+		return "The AI model could not write this deck, so Ptium wrote it. " + reason +
+			" Generating again puts the model back on it."
+	},
+	NoPlanNote: func(reason string) string {
+		return "This deck was written without the pass that plans its narrative first. " + reason +
+			" An administrator can raise the timeout in service settings to get that pass back."
+	},
 	ShortDeckNote: func(asked, written, subjects int) string {
 		if subjects <= 0 {
 			return fmt.Sprintf("You asked for %d slides and this deck has %d. Naming more subjects in the brief makes it longer.", asked, written)
@@ -381,6 +403,14 @@ var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", Def
 	}}
 
 var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆",
+	ModelStoodDownNote: func(reason string) string {
+		return "AIモデルがこのデッキを作成できなかったため、Ptiumが作成しました。" + reason +
+			" もう一度生成するとモデルが再挑戦します。"
+	},
+	NoPlanNote: func(reason string) string {
+		return "構成を先に設計する工程を省いて作成しました。" + reason +
+			" 管理者がサービス設定で制限時間を延ばすと設計工程も実行されます。"
+	},
 	ShortDeckNote: func(asked, written, subjects int) string {
 		if subjects <= 0 {
 			return fmt.Sprintf("%d枚のご依頼に対して%d枚になりました。ブリーフに主題を追加いただければその分増えます。", asked, written)
@@ -390,6 +420,12 @@ var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ",
 	}}
 
 var chineseCopy = languageCopy{Language: "zh", DefaultTopic: "提案主题", DefaultAudience: "一般听众",
+	ModelStoodDownNote: func(reason string) string {
+		return "AI 模型未能撰写本稿，改由 Ptium 撰写。" + reason + " 重新生成会再次交给模型。"
+	},
+	NoPlanNote: func(reason string) string {
+		return "本稿跳过了先规划叙事结构的步骤直接撰写。" + reason + " 管理员在服务设置中调大超时后会恢复该步骤。"
+	},
 	ShortDeckNote: func(asked, written, subjects int) string {
 		if subjects <= 0 {
 			return fmt.Sprintf("您要求 %d 页，本稿共 %d 页。在简报中补充更多主题后页数会相应增加。", asked, written)
