@@ -675,3 +675,112 @@ func TestAPairedFirstPointNamesTheColumns(t *testing.T) {
 		t.Fatalf("a sentence with a bar was taken for a pair of column names: %+v", kept.Fields)
 	}
 }
+
+// A hero is one number, and layoutHero draws items[0] — so a hero written with
+// two figures lost one silently. The model was told a hero is one number and
+// wrote two anyway; a row of indicators keeps both, which is what the author
+// asked for.
+func TestAHeroWithTwoFiguresKeepsBoth(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 투자 비용 및 회수 기간\n@content\n::hero 투자\n- 총 투자액 | 24억 원\n- 회수 기간 | 3년\n::\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	var block pptx.Block
+	for _, candidate := range content.Blocks {
+		block = candidate
+	}
+	if block.Kind != pptx.BlockKPI {
+		t.Fatalf("the block is %q, wanted a row that holds both figures", block.Kind)
+	}
+	if len(block.Items) != 2 {
+		t.Fatalf("the block holds %d figures, wanted 2: %+v", len(block.Items), block.Items)
+	}
+	said := false
+	for _, warning := range result.Warnings {
+		said = said || strings.Contains(warning, "a hero draws one figure")
+	}
+	if !said {
+		t.Fatalf("nothing said the component was changed: %v", result.Warnings)
+	}
+
+	// One figure is still a hero.
+	one := Compile(ParseSource("# 투자\n@content\n::hero 투자\n- 총 투자액 | 24억 원\n::\n"),
+		manifest, CompileOptions{Language: "ko"})
+	for _, candidate := range Decode(one.Slides[0].Content).Blocks {
+		if candidate.Kind != pptx.BlockHero {
+			t.Fatalf("a single figure was not drawn as a hero: %q", candidate.Kind)
+		}
+	}
+}
+
+// The points of a comparison often say which side they are on. Split down the
+// middle, "자동화: 0.1% 목표" landed under the heading "현재" — a slide arguing
+// for the opposite of what it says.
+func TestPointsThatNameTheirSideGoToThatSide(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 자동화 도입 전후 비교\n@comparison\n> 현재 | 자동화\n" +
+		"- 현재: 0.8% 오배송, 인력 비용 증가\n- 자동화: 0.1% 목표, 인력 30% 절감\n- 처리 속도 2배 향상 기대\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	regions := map[string][]string{}
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			regions[slot] = append(regions[slot], paragraph.Text)
+		}
+	}
+	var now, after []string
+	for _, lines := range regions {
+		if lines[0] == "현재" {
+			now = lines
+		}
+		if lines[0] == "자동화" {
+			after = lines
+		}
+	}
+	if len(now) == 0 || len(after) == 0 {
+		t.Fatalf("the sides were not named: %+v", regions)
+	}
+	if strings.Join(now, " ") != "현재 0.8% 오배송, 인력 비용 증가" {
+		t.Fatalf("the current side holds %q", now)
+	}
+	// The unprefixed point follows the one before it, which is about automation.
+	if len(after) != 3 || !strings.Contains(after[2], "처리 속도 2배") {
+		t.Fatalf("the automation side holds %q", after)
+	}
+	for _, lines := range regions {
+		for _, line := range lines {
+			if strings.HasPrefix(line, "현재:") || strings.HasPrefix(line, "자동화:") {
+				t.Fatalf("the side's name is repeated inside its own column: %q", line)
+			}
+		}
+	}
+
+	// Only one side naming itself says nothing about the other, so the even split
+	// stands.
+	half := "# 비교\n@comparison\n> 현재 | 자동화\n- 현재: 느립니다\n- 빨라집니다\n- 정확해집니다\n- 싸집니다\n"
+	compiled := Decode(Compile(ParseSource(half), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	for slot, paragraphs := range compiled.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		if len(paragraphs) > 1 && paragraphs[0].Text == "현재" && len(paragraphs) != 3 {
+			t.Fatalf("the split changed with only one side named: %+v", compiled.Fields)
+		}
+	}
+}

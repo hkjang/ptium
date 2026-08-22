@@ -139,6 +139,16 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			if block.Kind == pptx.BlockLine {
 				assembled.Series, assembled.Labels = seriesFromRows(block.Rows)
 			}
+			// A hero is one number, and the model is told so. When it writes two,
+			// drawing the first and dropping the rest loses a figure the author
+			// asked for without saying so; a row of indicators keeps them all and
+			// is what two labelled figures are.
+			if assembled.Kind == pptx.BlockHero && len(assembled.Items) > 1 {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("%s: a hero draws one figure and %d were written, so they were drawn as %s",
+						blockWhere(where, block), len(assembled.Items), pptx.BlockKPI))
+				assembled.Kind = pptx.BlockKPI
+			}
 			sanitized, usable := pptx.SanitizeBlock(assembled, placeholder)
 			if !usable {
 				// A chart whose values are not numbers — "Q3 | 1시간" — cannot be
@@ -578,11 +588,69 @@ func pairedLead(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) 
 	if len(slots) < 2 {
 		return nil, false
 	}
+	// The points often say which side they are on — "현재: 0.8% 오배송" under a
+	// slide headed "현재 | 자동화". Splitting those down the middle put a point
+	// about one side under the other's heading, which is worse than not naming
+	// the sides at all: the slide reads as an argument for the opposite thing.
+	if sided, ok := bulletsBySide(slide.Bullets, left, right); ok {
+		return sided, true
+	}
 	halves := splitEvenly(slide.Bullets, 2)
 	if len(halves) != 2 || len(halves[0]) == 0 || len(halves[1]) == 0 {
 		return nil, false
 	}
 	return []column{{Heading: left, Bullets: halves[0]}, {Heading: right, Bullets: halves[1]}}, true
+}
+
+// bulletsBySide sorts points that name their own side into that side.
+//
+// A point with no prefix follows the one before it, which is how a list like
+// "자동화: 0.1% 목표" then "처리 속도 2배 향상 기대" is read by anyone: the second
+// line is still about automation. It reports false unless both sides claim a
+// point, since one side's name on every line says nothing about the other.
+func bulletsBySide(bullets []pptx.Paragraph, left, right string) ([]column, bool) {
+	columns := []column{{Heading: left}, {Heading: right}}
+	claimed := [2]bool{}
+	side := -1
+	for _, bullet := range bullets {
+		if text, ok := withoutSidePrefix(bullet.Text, left); ok {
+			side, bullet.Text = 0, text
+			claimed[0] = true
+		} else if text, ok := withoutSidePrefix(bullet.Text, right); ok {
+			side, bullet.Text = 1, text
+			claimed[1] = true
+		} else if side < 0 {
+			return nil, false
+		}
+		columns[side].Bullets = append(columns[side].Bullets, bullet)
+	}
+	if !claimed[0] || !claimed[1] {
+		return nil, false
+	}
+	return columns, true
+}
+
+// withoutSidePrefix removes "현재:" or "현재 -" from the front of a point.
+func withoutSidePrefix(text, side string) (string, bool) {
+	trimmed := strings.TrimSpace(text)
+	if side == "" || !strings.HasPrefix(trimmed, side) {
+		return text, false
+	}
+	rest := strings.TrimSpace(trimmed[len(side):])
+	if rest == "" {
+		return text, false
+	}
+	switch rest[0] {
+	case ':', '-', 0xEF:
+		// ':' and '-' in either width; 0xEF starts the full-width colon "：".
+	default:
+		return text, false
+	}
+	rest = strings.TrimSpace(strings.TrimLeft(rest, ":-： "))
+	if rest == "" {
+		return text, false
+	}
+	return rest, true
 }
 
 // columnName reports whether a phrase is the kind of thing that heads a column.
