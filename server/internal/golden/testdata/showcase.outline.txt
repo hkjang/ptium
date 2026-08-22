@@ -2006,7 +2006,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=685800
+              a:off x=4895088 y=2267204
               a:ext cx=3089656 cy=2094992
             a:prstGeom prst=roundRect
               a:avLst
@@ -2027,7 +2027,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=685800
+              a:off x=4895088 y=2267204
               a:ext cx=3089656 cy=50800
             a:prstGeom prst=rect
               a:avLst
@@ -2047,7 +2047,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=5098288 y=939800
+              a:off x=5098288 y=2521204
               a:ext cx=2683256 cy=512064
             a:prstGeom prst=rect
               a:avLst
@@ -2074,7 +2074,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=5098288 y=1451864
+              a:off x=5098288 y=3033268
               a:ext cx=2683256 cy=1024128
             a:prstGeom prst=rect
               a:avLst
@@ -2101,7 +2101,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8187944 y=685800
+              a:off x=8187944 y=2267204
               a:ext cx=3089656 cy=2094992
             a:prstGeom prst=roundRect
               a:avLst
@@ -2122,7 +2122,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8187944 y=685800
+              a:off x=8187944 y=2267204
               a:ext cx=3089656 cy=50800
             a:prstGeom prst=rect
               a:avLst
@@ -2142,7 +2142,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8391144 y=939800
+              a:off x=8391144 y=2521204
               a:ext cx=2683256 cy=512064
             a:prstGeom prst=rect
               a:avLst
@@ -2169,7 +2169,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8391144 y=1451864
+              a:off x=8391144 y=3033268
               a:ext cx=2683256 cy=1024128
             a:prstGeom prst=rect
               a:avLst
@@ -2266,7 +2266,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=685800
+              a:off x=4895088 y=2989072
               a:ext cx=6382512 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2293,7 +2293,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=928624
+              a:off x=4895088 y=3231896
               a:ext cx=4786884 cy=256032
             a:prstGeom prst=rect
               a:avLst
@@ -2320,7 +2320,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=9681972 y=928624
+              a:off x=9681972 y=3231896
               a:ext cx=1595628 cy=256032
             a:prstGeom prst=rect
               a:avLst
@@ -2347,7 +2347,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=1235456
+              a:off x=4895088 y=3538728
               a:ext cx=6382512 cy=101600
             a:prstGeom prst=roundRect
               a:avLst
@@ -2368,7 +2368,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=1235456
+              a:off x=4895088 y=3538728
               a:ext cx=4340108 cy=101600
             a:prstGeom prst=roundRect
               a:avLst
@@ -2459,7 +2459,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=685800
+              a:off x=4895088 y=2741676
               a:ext cx=6382512 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2486,7 +2486,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=928624
+              a:off x=4895088 y=2984500
               a:ext cx=3299856 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2506,7 +2506,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=928624
+              a:off x=4895088 y=2984500
               a:ext cx=3299856 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2533,7 +2533,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8213994 y=928624
+              a:off x=8213994 y=2984500
               a:ext cx=1959528 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2553,7 +2553,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=8213994 y=928624
+              a:off x=8213994 y=2984500
               a:ext cx=1959528 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2580,7 +2580,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=10192572 y=928624
+              a:off x=10192572 y=2984500
               a:ext cx=1065978 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2600,7 +2600,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=10192572 y=928624
+              a:off x=10192572 y=2984500
               a:ext cx=1065978 cy=508000
             a:prstGeom prst=rect
               a:avLst
@@ -2627,7 +2627,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=4895088 y=1687830
+              a:off x=4895088 y=3743706
               a:ext cx=101600 cy=101600
             a:prstGeom prst=ellipse
               a:avLst
@@ -2647,7 +2647,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=5098288 y=1639824
+              a:off x=5098288 y=3695700
               a:ext cx=1788837 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2674,7 +2674,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=7090325 y=1687830
+              a:off x=7090325 y=3743706
               a:ext cx=101600 cy=101600
             a:prstGeom prst=ellipse
               a:avLst
@@ -2694,7 +2694,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=7293525 y=1639824
+              a:off x=7293525 y=3695700
               a:ext cx=1788837 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2721,7 +2721,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=9285562 y=1687830
+              a:off x=9285562 y=3743706
               a:ext cx=101600 cy=101600
             a:prstGeom prst=ellipse
               a:avLst
@@ -2741,7 +2741,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=9488762 y=1639824
+              a:off x=9488762 y=3695700
               a:ext cx=1788837 cy=192024
             a:prstGeom prst=rect
               a:avLst

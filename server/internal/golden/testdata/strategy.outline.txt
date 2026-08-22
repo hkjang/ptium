@@ -2050,7 +2050,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=1280160 y=1659636
+              a:off x=1280160 y=2786951
               a:ext cx=9814560 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2077,7 +2077,7 @@ p:sld
             a:graphicFrameLocks noGrp=1
           p:nvPr
         p:xfrm
-          a:off x=1280160 y=1902460
+          a:off x=1280160 y=3029775
           a:ext cx=9814560 cy=1776984
         a:graphic
           a:graphicData uri=http://schemas.openxmlformats.org/drawingml/2006/table
@@ -2338,7 +2338,7 @@ p:sld
             p:nvPr
           p:spPr
             a:xfrm
-              a:off x=1280160 y=1659636
+              a:off x=1280160 y=1755648
               a:ext cx=9814560 cy=192024
             a:prstGeom prst=rect
               a:avLst
@@ -2364,7 +2364,7 @@ p:sld
           p:cNvGraphicFramePr
           p:nvPr
         p:xfrm
-          a:off x=1280160 y=1902460
+          a:off x=1280160 y=1998472
           a:ext cx=9814560 cy=4041140
         a:graphic
           a:graphicData uri=http://schemas.openxmlformats.org/drawingml/2006/chart
