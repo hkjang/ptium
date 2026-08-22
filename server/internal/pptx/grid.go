@@ -303,7 +303,7 @@ func (d Design) gridLegend(frame Frame, spec *GridSpec) []Primitive {
 		if meaning == "" {
 			continue
 		}
-		label := chipLabel(value, key) + " " + meaning
+		label := legendEntry(chipLabel(value, key), meaning)
 		width := textWidth(label, d.Small) + d.Unit*4
 		if cursor+width > frame.Right() {
 			break
@@ -316,6 +316,19 @@ func (d Design) gridLegend(frame Frame, spec *GridSpec) []Primitive {
 		cursor += width + d.Unit
 	}
 	return primitives
+}
+
+// legendEntry joins a chip's label to what it means, unless one already says
+// the other: "진행" and "진행 중" read as "진행 진행 중" in a legend nobody would
+// write that way.
+func legendEntry(label, meaning string) string {
+	switch {
+	case strings.HasPrefix(meaning, label):
+		return meaning
+	case strings.HasPrefix(label, meaning):
+		return label
+	}
+	return label + " " + meaning
 }
 
 // valueOrder lists a definition's values deterministically: a legend that

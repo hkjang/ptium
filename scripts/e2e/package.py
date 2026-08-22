@@ -9,7 +9,7 @@ make python-pptx raise here first.
     pip install python-pptx
     python3 scripts/e2e/package.py
 """
-import json, os, sys, time, urllib.request, urllib.error
+import html, json, os, re, sys, time, urllib.request, urllib.error
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 SECRET = os.environ.get("PTIUM_DEV_SECRET", "devsecret-devsecret-devsecret-devsecret")
@@ -165,6 +165,66 @@ if noted < 1:
     failures.append("no slide carries speaker notes")
 if len(titles) != 5:
     failures.append(f"read {len(titles)} slide titles, expected 5")
+
+# The preview is what the author judges the deck by and the file is what the
+# room sees. Every fix of the last week was checked in the preview alone, so
+# the two are compared here line by line: a component drawn in one and missing
+# from the other is a deck that changes on the way out.
+print("── the preview and the file say the same thing ──")
+
+
+def texts_in(shapes):
+    """Every line of text a slide draws, groups included."""
+    found = []
+    for shape in shapes:
+        if getattr(shape, "shape_type", None) is not None and str(shape.shape_type).startswith("GROUP"):
+            found.extend(texts_in(shape.shapes))
+            continue
+        if shape.has_text_frame:
+            for paragraph in shape.text_frame.paragraphs:
+                line = "".join(run.text for run in paragraph.runs).strip()
+                if line:
+                    found.append(line)
+        if getattr(shape, "has_chart", False) and shape.has_chart:
+            # A real chart keeps its labels in the chart part rather than in
+            # shape text, which is the whole point of it being a real chart.
+            for plot in shape.chart.plots:
+                found.extend(str(category) for category in plot.categories)
+                for series in plot.series:
+                    found.extend(format(value, "g") for value in series.values if value is not None)
+        if getattr(shape, "has_table", False) and shape.has_table:
+            for row in shape.table.rows:
+                for cell in row.cells:
+                    if cell.text.strip():
+                        found.append(cell.text.strip())
+    return found
+
+
+def preview_lines(presentation_id, position):
+    svg = call("GET", f"/presentations/{presentation_id}/preview.svg?slide={position}&width=1200", raw=True).decode()
+    lines = []
+    for block in re.findall(r"<text[^>]*>(.*?)</text>", svg, re.S):
+        for piece in re.split(r"</?tspan[^>]*>", block):
+            piece = re.sub(r"<[^>]+>", "", piece).strip()
+            if piece:
+                lines.append(html.unescape(piece))
+    return lines
+
+
+for index, slide in enumerate(read.slides, 1):
+    in_file = {line.replace(" ", "") for line in texts_in(slide.shapes)}
+    # The preview draws the bullet mark; the file leaves it to PowerPoint's own
+    # list formatting, which is the same line either way.
+    drawn_clean = lambda line: line.lstrip("•▪-–— ").replace(" ", "")
+    drawn = preview_lines(deck["id"], index)
+    missing = [line for line in drawn
+               if not any(drawn_clean(line) in packed for packed in in_file)]
+    # The page number is drawn by the preview and written as a placeholder the
+    # renderer fills, so it is not compared.
+    missing = [line for line in missing if line.strip() != str(index)]
+    if missing:
+        failures.append(f"slide {index} draws {missing[:4]} in the preview and not in the file")
+print(f"   compared {len(read.slides)} slides")
 
 print()
 print(f"{len(failures)} failures")
