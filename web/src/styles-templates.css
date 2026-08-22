@@ -305,3 +305,6 @@
 .generation-notes div { flex:1 1 auto; display:flex; flex-direction:column; gap:4px; }
 .generation-notes p { margin:0; }
 .generation-notes .icon-button { flex:0 0 auto; color:inherit; }
+
+/* "더 보기" under a library that has more than one screen. */
+.load-more { display:flex; justify-content:center; padding:18px 0 4px; }

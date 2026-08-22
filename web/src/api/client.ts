@@ -837,6 +837,26 @@ export const api = {
 		const path = deleted ? '/presentations?deleted=true' : '/presentations'
     return (await requestAllPages<Presentation & Record<string, unknown>>(path, ['presentations', 'items', 'data'])).map(normalizePresentation)
   },
+  /**
+   * One page of decks, searched by the server.
+   *
+   * The whole-account fetch above is what the dashboard's few cards want. A
+   * library of six hundred decks wants a page and a search box that asks the
+   * server, which is the difference between a front page that opens and one
+   * that downloads a megabyte first.
+   */
+  async presentationPage({ deleted = false, q = '', limit = 60, offset = 0 } = {}) {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (deleted) params.set('deleted', 'true')
+    if (q.trim()) params.set('q', q.trim())
+    const raw = await request<unknown>(`/presentations?${params.toString()}`)
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+    const meta = record.meta && typeof record.meta === 'object' ? record.meta as Record<string, unknown> : {}
+    const items = unwrapList<Presentation & Record<string, unknown>>(raw, ['presentations', 'items', 'data'])
+      .map(normalizePresentation)
+    const total = Number(meta.total)
+    return { items, total: Number.isFinite(total) ? total : items.length }
+  },
   async presentation(id: string) {
     return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(`/presentations/${encodeURIComponent(id)}`), ['presentation', 'data']))
   },

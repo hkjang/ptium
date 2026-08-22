@@ -118,14 +118,11 @@ func (s *Server) listPresentations(writer http.ResponseWriter, request *http.Req
 	user, _ := UserFromContext(request.Context())
 	limit, offset := pagination(request)
 	deleted := request.URL.Query().Get("deleted") == "true" || request.URL.Query().Get("deleted") == "1"
-	var items []model.Presentation
-	var total int
-	var err error
-	if deleted {
-		items, total, err = s.store.ListDeletedPresentations(request.Context(), user.ID, false, limit, offset)
-	} else {
-		items, total, err = s.store.ListPresentations(request.Context(), user.ID, false, limit, offset)
-	}
+	// Searching happens here rather than in the browser. A front page that
+	// filters by fetching every deck first is fine at ten decks and a megabyte
+	// of JSON at six hundred.
+	items, total, err := s.store.SearchPresentations(request.Context(), user.ID, false, deleted,
+		request.URL.Query().Get("q"), limit, offset)
 	if err != nil {
 		s.internalError(writer, request, "presentations_read_failed", err)
 		return

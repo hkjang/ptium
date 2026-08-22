@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -20,6 +21,27 @@ type PresentationInput struct {
 	Tone       string
 	SlideCount int
 	TemplateID *string
+}
+
+// presentationListColumns is the projection for a list of decks.
+//
+// It is presentationColumns without the two heavy fields: the deck's own source
+// and its outline. A list shows a title, a status and a date, and sending the
+// full text of every deck to draw that made the front page of an account with
+// six hundred decks a megabyte of JSON — most of it text nothing on the page
+// reads. A deck that is opened is fetched on its own, with everything.
+func presentationListColumns(prefix string) string {
+	if prefix != "" {
+		prefix += "."
+	}
+	return prefix + `id::text,` + prefix + `owner_id::text,` + prefix + `title,` + prefix + `prompt,` + prefix + `status,` +
+		prefix + `theme,` + prefix + `language,` + prefix + `audience,` + prefix + `tone,` + prefix + `requested_slide_count,` +
+		`NULL::jsonb,` + prefix + `error_message,` + prefix + `created_at,` + prefix + `updated_at,` +
+		prefix + `generation_started_at,` + prefix + `generation_ended_at,` + prefix + `template_id::text,` +
+		`''::text,` +
+		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
+		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
+		prefix + `version,` + prefix + `deleted_at`
 }
 
 // presentationColumns builds the projection used by every presentation query.
@@ -57,41 +79,51 @@ func (s *Store) CreateAndQueuePresentation(ctx context.Context, ownerID string, 
 }
 
 func (s *Store) ListPresentations(ctx context.Context, ownerID string, admin bool, limit, offset int) ([]model.Presentation, int, error) {
-	return s.listPresentations(ctx, ownerID, admin, false, limit, offset)
+	return s.listPresentations(ctx, ownerID, admin, false, "", limit, offset)
+}
+
+// SearchPresentations is ListPresentations narrowed to the decks whose title or
+// brief contains what was typed.
+//
+// Searching belongs here rather than in the browser: the front page used to
+// fetch every deck the account had in order to filter a list of titles, which
+// is fine at ten decks and a megabyte of JSON at six hundred.
+func (s *Store) SearchPresentations(ctx context.Context, ownerID string, admin, deleted bool,
+	search string, limit, offset int) ([]model.Presentation, int, error) {
+	return s.listPresentations(ctx, ownerID, admin, deleted, search, limit, offset)
 }
 
 // ListDeletedPresentations returns only items in the caller's recycle bin.
 func (s *Store) ListDeletedPresentations(ctx context.Context, ownerID string, admin bool, limit, offset int) ([]model.Presentation, int, error) {
-	return s.listPresentations(ctx, ownerID, admin, true, limit, offset)
+	return s.listPresentations(ctx, ownerID, admin, true, "", limit, offset)
 }
 
-func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, deleted bool, limit, offset int) ([]model.Presentation, int, error) {
+func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, deleted bool,
+	search string, limit, offset int) ([]model.Presentation, int, error) {
 	limit, offset = clampPage(limit, offset)
 	deletedClause := "deleted_at IS NULL"
 	if deleted {
 		deletedClause = "deleted_at IS NOT NULL"
 	}
 	where := "WHERE owner_id=$1 AND " + deletedClause
-	args := []any{ownerID, limit, offset}
+	filterArgs := []any{ownerID}
 	if admin && ownerID == "" {
 		where = "WHERE " + deletedClause
-		args = []any{limit, offset}
+		filterArgs = nil
+	}
+	if wanted := strings.ToLower(strings.TrimSpace(search)); wanted != "" {
+		filterArgs = append(filterArgs, "%"+wanted+"%")
+		where += fmt.Sprintf(" AND (lower(title) LIKE $%d OR lower(prompt) LIKE $%d)", len(filterArgs), len(filterArgs))
 	}
 	var total int
-	countSQL := `SELECT count(*) FROM presentations ` + where
-	countArgs := args[:1]
-	if admin && ownerID == "" {
-		countArgs = nil
-	}
-	if err := s.Pool.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM presentations `+where, filterArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	projection := `SELECT ` + presentationColumns("presentations") + `,
+	args := append(append([]any{}, filterArgs...), limit, offset)
+	projection := `SELECT ` + presentationListColumns("presentations") + `,
 		(SELECT count(*)::int FROM slides s WHERE s.presentation_id=presentations.id) FROM presentations `
-	query := projection + where + ` ORDER BY presentations.updated_at DESC LIMIT $2 OFFSET $3`
-	if admin && ownerID == "" {
-		query = projection + where + ` ORDER BY presentations.updated_at DESC LIMIT $1 OFFSET $2`
-	}
+	query := projection + where + fmt.Sprintf(` ORDER BY presentations.updated_at DESC LIMIT $%d OFFSET $%d`,
+		len(args)-1, len(args))
 	rows, err := s.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err

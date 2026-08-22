@@ -26,16 +26,39 @@ export function PresentationsPage() {
   const { showToast } = useToast()
   const trash = filter === 'trash'
 
-  const load = useCallback(async () => {
+  // What the account holds, and what is on screen. The server counts and
+  // searches; the page asks for one screenful at a time and for more when the
+  // reader asks for more.
+  const [total, setTotal] = useState(0)
+  const [more, setMore] = useState(false)
+  const load = useCallback(async (search: string) => {
     setLoading(true); setError('')
-    try { setItems(await api.presentations(trash)) } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
+    try {
+      const page = await api.presentationPage({ deleted: trash, q: search })
+      setItems(page.items); setTotal(page.total)
+    } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
   }, [trash])
-  useEffect(() => { void load() }, [load])
+  // A search runs when the typing stops, not on every keystroke.
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void load(query) }, query ? 250 : 0)
+    return () => window.clearTimeout(timer)
+  }, [load, query])
   useEffect(() => { setQuery(new URLSearchParams(location.search).get('q') || '') }, [location.search])
 
+  const loadMore = useCallback(async () => {
+    setMore(true)
+    try {
+      const page = await api.presentationPage({ deleted: trash, q: query, offset: items.length })
+      setItems((current) => {
+        const seen = new Set(current.map((item) => item.id))
+        return [...current, ...page.items.filter((item) => !seen.has(item.id))]
+      })
+      setTotal(page.total)
+    } catch (err) { setError(displayError(err)) } finally { setMore(false) }
+  }, [trash, query, items.length])
+
   const filtered = useMemo(() => items.filter((item) =>
-    (trash || filter === 'all' || item.status === filter) &&
-    `${item.title} ${item.prompt || ''}`.toLowerCase().includes(query.toLowerCase())), [items, filter, query, trash])
+    trash || filter === 'all' || item.status === filter), [items, filter, trash])
 
   const duplicate = async (presentation: Presentation) => {
     setWorking(true)
@@ -107,14 +130,19 @@ export function PresentationsPage() {
       <div className="library-toolbar">
         <div className="search-box"><Search size={17} /><Input placeholder="제목과 프롬프트 검색" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
         <div className="filter-tabs" role="tablist">
-          <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>전체 {!trash && <span>{items.length}</span>}</button>
+          <button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>전체 {!trash && <span>{total || items.length}</span>}</button>
           <button className={filter === 'ready' ? 'active' : ''} onClick={() => setFilter('ready')}>완료</button>
           <button className={filter === 'draft' ? 'active' : ''} onClick={() => setFilter('draft')}>초안</button>
           <button className={filter === 'generating' ? 'active' : ''} onClick={() => setFilter('generating')}>생성 중</button>
           <button className={filter === 'trash' ? 'active' : ''} onClick={() => setFilter('trash')}><Trash2 size={13} /> 휴지통</button>
         </div>
       </div>
-      {loading ? <div className="presentation-grid">{[1,2,3,4,5,6].map((item) => <div key={item} className="presentation-card skeleton-card"><span /><i /><i /></div>)}</div> : error ? <ErrorState message={error} onRetry={() => void load()} /> : filtered.length === 0 ? <EmptyState icon={trash ? <ArchiveRestore size={25} /> : undefined} title={trash ? '휴지통이 비어 있습니다' : query ? '검색 결과가 없습니다' : '아직 프레젠테이션이 없습니다'} description={trash ? '삭제한 프레젠테이션을 이곳에서 복원할 수 있습니다.' : query ? '다른 검색어나 필터를 사용해 보세요.' : '첫 번째 아이디어를 Ptium과 함께 완성해 보세요.'} action={!trash && !query ? <Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button> : undefined} /> : <div className="presentation-grid library-grid">{filtered.map((item) => <PresentationCard key={item.id} presentation={item} onDuplicate={trash || working ? undefined : duplicate} onDelete={trash || working ? undefined : (entry) => askDelete(entry)} onRestore={!trash || working ? undefined : restore} onDeleteForever={!trash || working ? undefined : (entry) => askDelete(entry, true)} />)}</div>}
+      {loading ? <div className="presentation-grid">{[1,2,3,4,5,6].map((item) => <div key={item} className="presentation-card skeleton-card"><span /><i /><i /></div>)}</div> : error ? <ErrorState message={error} onRetry={() => void load(query)} /> : filtered.length === 0 ? <EmptyState icon={trash ? <ArchiveRestore size={25} /> : undefined} title={trash ? '휴지통이 비어 있습니다' : query ? '검색 결과가 없습니다' : '아직 프레젠테이션이 없습니다'} description={trash ? '삭제한 프레젠테이션을 이곳에서 복원할 수 있습니다.' : query ? '다른 검색어나 필터를 사용해 보세요.' : '첫 번째 아이디어를 Ptium과 함께 완성해 보세요.'} action={!trash && !query ? <Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button> : undefined} /> : <div className="presentation-grid library-grid">{filtered.map((item) => <PresentationCard key={item.id} presentation={item} onDuplicate={trash || working ? undefined : duplicate} onDelete={trash || working ? undefined : (entry) => askDelete(entry)} onRestore={!trash || working ? undefined : restore} onDeleteForever={!trash || working ? undefined : (entry) => askDelete(entry, true)} />)}</div>}
+      {!loading && !error && items.length < total && <div className="load-more">
+        <Button variant="secondary" disabled={more} onClick={() => void loadMore()}>
+          {more ? '불러오는 중…' : `더 보기 (${items.length} / ${total})`}
+        </Button>
+      </div>}
       <Modal open={Boolean(target)} onClose={() => { if (!working) setTarget(null) }} title={deleteForever ? '영구 삭제할까요?' : '휴지통으로 이동할까요?'} description={deleteForever ? '프레젠테이션과 모든 버전 이력이 삭제되며 복구할 수 없습니다.' : '휴지통에서 언제든 다시 복원할 수 있습니다.'} footer={<><Button variant="secondary" disabled={working} onClick={() => setTarget(null)}>취소</Button><Button variant="danger" disabled={working} onClick={() => void remove()}><Trash2 size={15} /> {working ? '처리 중…' : deleteForever ? '영구 삭제' : '휴지통으로 이동'}</Button></>}><div className="delete-preview"><strong>{target?.title}</strong><span>{target?.slideCount || 0}개 슬라이드</span></div></Modal>
     </AppShell>
   )

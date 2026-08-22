@@ -1531,9 +1531,19 @@ paths:
           in: query
           schema: { type: boolean, default: false }
           description: When true, return only presentations in the recycle bin.
+        - name: q
+          in: query
+          schema: { type: string, maxLength: 200 }
+          description: |
+            Narrows the list to decks whose title or brief contains this text,
+            case-insensitively. The count in the envelope is the number of
+            matches, so a client can page through them.
       responses:
         '200':
-          description: Owner-scoped presentations ordered by most recently updated.
+          description: |
+            Owner-scoped presentations ordered by most recently updated. A list
+            omits each deck's source and outline — a deck that is opened is
+            fetched on its own, with everything.
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestID'
