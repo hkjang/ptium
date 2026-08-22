@@ -365,6 +365,17 @@ func TestACoverIsNotAskedWhereItsYearCameFrom(t *testing.T) {
 		t.Fatal("a slide stating 1,240억 was not asked where it came from")
 	}
 
+	// Nor is a schedule. "첫 2주에 할 일" is when something happens, and a room
+	// does not ask where a plan's own timetable came from.
+	schedule := Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID, Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "실행 준비 상태"}},
+		SlotBody:  {{Text: "첫 2주에 할 일"}, {Text: "6개월 안에 확인할 지표와 목표"}}}}}}
+	for _, finding := range InspectDeck(manifest, schedule) {
+		if finding.Kind == FindingSource {
+			t.Fatalf("a schedule was read as a claim: %s", finding.String())
+		}
+	}
+
 	// A year on a content slide is still not a figure on its own.
 	dateOnly := Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID, Fields: map[string][]Paragraph{
 		SlotTitle: {{Text: "일정"}}, SlotBody: {{Text: "2026년 상반기에 이관을 마칩니다"}}}}}}

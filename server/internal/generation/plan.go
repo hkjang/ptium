@@ -202,16 +202,16 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 		section := sectionPlan{Title: partTitle("ko", headingName(name), topic.Frame, part, share), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:
-			section.Lead = fmt.Sprintf("%s 순서대로 나눠 봅니다.", josa(name, "을", "를"))
+			section.Lead = "순서와 각 단계의 완료 조건을 나눠 적었습니다."
 			section.Block = "steps"
 			section.Items = []string{
 				"준비 | 범위 · 조직 · 예산을 확정",
-				fmt.Sprintf("이행 | %s 단계별로 적용", josa(name, "을", "를")),
+				"이행 | 단계별로 적용하고 완료 조건을 확인",
 				"안정화 | 운영 이관과 점검 기준 확정",
 			}
 			section.Notes = "각 단계의 완료 조건을 한 문장으로 말하고, 병행할 수 없는 이유를 덧붙입니다."
 		case frameCase:
-			section.Lead = fmt.Sprintf("%s 비용과 효과를 같은 기준으로 비교합니다.", josa(name, "의", "의"))
+			section.Lead = "투입과 회수를 같은 기준으로 놓고 봅니다."
 			section.Points = []string{
 				"투입: 인력 · 라이선스 · 이관 비용",
 				"회수: 절감액과 회수 시점",
@@ -255,7 +255,7 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 			}
 			section.Notes = "지표는 세 개를 넘기지 않습니다. 측정 방법이 없는 목표는 목표가 아닙니다."
 		default:
-			section.Lead = fmt.Sprintf("%s 지금 어디까지 와 있는지 정리합니다.", josa(name, "이", "가"))
+			section.Lead = "지금 어디까지 와 있는지 정리합니다."
 			section.Points = []string{
 				"현재 상태와 이 논의가 다루는 범위",
 				"확인된 문제와 그렇게 된 원인",

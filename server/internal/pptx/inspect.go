@@ -370,11 +370,15 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 
 // figurePattern is a number worth asking about: one with a unit, a percentage
 // or a thousands separator. A page number or a step count is not a claim.
-// aYear is a date, not a claim. "2026년 상반기" is when the deck is about, and
-// asking it for a source teaches people to ignore the question.
-var aYear = regexp.MustCompile(`(19|20)\d{2}\s*(년|年|년도)?`)
+// aDate is a date or a duration, not a claim. "2026년 상반기" is when the deck is about, and
+// asking it for a source teaches people to ignore the question. Durations are
+// the same when a plan says when it will happen — "첫 2주에 할 일", "6개월 안에
+// 확인할 지표" — so the units of time are not in the pattern below at all. The
+// question is asked of money, shares and counts, which is what a room actually
+// asks it of.
+var aDate = regexp.MustCompile(`(19|20)\d{2}\s*(년|年|년도)?|\d[\d,.]*\s*(개월|시간|주일|분기|주차|일차|년|주|일|분|초)`)
 
-var statedFigure = regexp.MustCompile(`\d[\d,.]*\s*(%|억|만|천|원|달러|명|건|개|배|시간|일|주|년|개월|퍼센트|` +
+var statedFigure = regexp.MustCompile(`\d[\d,.]*\s*(%|억|만|천|원|달러|명|건|개|배|퍼센트|` +
 	`억원|만원|亿|億|円|元|USD|KRW|EUR|JPY|[kmb]n?\b)|\d{1,3}(,\d{3})+`)
 
 // statesFigures reports whether a slide puts numbers in front of a room.
@@ -415,7 +419,7 @@ func statesFigures(slide Slide) bool {
 // statesFigure reports whether one piece of text puts a number in front of a
 // room, with dates read as dates.
 func statesFigure(text string) bool {
-	return statedFigure.MatchString(aYear.ReplaceAllString(text, " "))
+	return statedFigure.MatchString(aDate.ReplaceAllString(text, " "))
 }
 
 // carriesArgument reports whether a slide makes a point, as opposed to opening or

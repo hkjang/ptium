@@ -2,7 +2,6 @@ package pptx
 
 import (
 	"strings"
-	"unicode/utf8"
 )
 
 // FitParagraphs trims paragraphs to what a slot can hold, so an exported slide
@@ -97,8 +96,6 @@ func FitParagraphsReport(paragraphs []Paragraph, placeholder Placeholder, langua
 	return result, report
 }
 
-// trimToWidth shortens text at a word boundary and marks the cut so an editor
-// can see something was dropped.
 // budgetChars scales a character budget measured for a reference language to the
 // language actually being written.
 func budgetChars(limit int, language string) int {
@@ -112,17 +109,12 @@ func budgetChars(limit int, language string) int {
 	return int(scaled)
 }
 
+// trimToWidth shortens text at a word boundary and marks the cut so an editor
+// can see something was dropped. It counted the boundary in bytes and compared
+// it against a limit in characters, which in Korean is three times too
+// generous — the guard against cutting away most of a line never fired.
 func trimToWidth(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	cut := string(runes[:limit])
-	if index := strings.LastIndexAny(cut, " ,·"); index > limit/2 {
-		cut = cut[:index]
-	}
-	return strings.TrimSpace(cut) + "…"
+	return truncate(strings.TrimSpace(value), limit)
 }
 
 // avoidOrphan shortens a heading at a word boundary when its wrap would leave a
@@ -178,7 +170,7 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 	items := make([]Item, 0, len(block.Items))
 	for _, item := range block.Items {
 		item.Label = truncate(strings.TrimSpace(item.Label), 60)
-		item.Value = truncate(strings.TrimSpace(item.Value), 24)
+		item.Value = truncate(strings.TrimSpace(item.Value), valueLimit(kind))
 		item.Delta = truncate(strings.TrimSpace(item.Delta), 24)
 		item.Detail = truncate(strings.TrimSpace(item.Detail), 120)
 		item.Trend = strings.ToLower(strings.TrimSpace(item.Trend))
@@ -294,9 +286,43 @@ func knownBlockKind(kind string) bool {
 	return false
 }
 
+// truncate cuts a value that is longer than a component can hold.
+//
+// It cuts between words and says that it cut. A hard cut at the character count
+// produced "…을 단계별로 적" on a slide — half of 적용, with nothing to show that
+// anything was dropped — which is worse than losing the line, because a reader
+// cannot tell whether the deck is wrong or the product is.
 func truncate(value string, limit int) string {
-	if utf8.RuneCountInString(value) <= limit {
+	runes := []rune(value)
+	if limit <= 0 || len(runes) <= limit {
 		return value
 	}
-	return string([]rune(value)[:limit])
+	cut := runes[:limit]
+	if index := lastBreak(cut); index > limit/2 {
+		cut = cut[:index]
+	}
+	return strings.TrimRight(strings.TrimSpace(string(cut)), " ,·-—/") + "…"
+}
+
+// lastBreak is the rune index of the last place a phrase can be cut without
+// splitting a word.
+func lastBreak(runes []rune) int {
+	for index := len(runes) - 1; index > 0; index-- {
+		switch runes[index] {
+		case ' ', '\t', ',', '·', '/', '—', '-', '、':
+			return index
+		}
+	}
+	return -1
+}
+
+// valueLimit is how long a component's value may be. In a figure component the
+// value is a number and a unit; in a process or a comparison it is a phrase,
+// and cutting a phrase at the width of a number turns the slide into nonsense.
+func valueLimit(kind string) int {
+	switch kind {
+	case BlockSteps, BlockTimeline, BlockComparison, BlockGrid:
+		return 60
+	}
+	return 24
 }
