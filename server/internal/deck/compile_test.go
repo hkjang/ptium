@@ -287,3 +287,71 @@ func TestTwoColumnsSurviveTheRoundTrip(t *testing.T) {
 		t.Fatalf("a second round trip changed the deck:\n%s\n---\n%s", written, rewritten)
 	}
 }
+
+// "성장 채널 | 위축 채널" is how a comparison slide names its two sides when the
+// points below are one list. The bar is the same separator every component uses
+// for a row; printed whole it landed as a stray line above the left column and
+// left the right one unnamed.
+func TestALeadWrittenAsTwoSidesNamesBothColumns(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 채널별 실적 분화\n@two\n> 성장 채널 | 위축 채널\n" +
+		"- 직영은 468억으로 11.4% 성장\n- 온라인은 212억으로 28.5% 성장\n" +
+		"- 대리점은 287억으로 7.4% 감소\n- 대리점 마진율 하락이 이어짐\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	regions := map[string]string{}
+	for slot, paragraphs := range content.Fields {
+		for _, paragraph := range paragraphs {
+			regions[slot] += paragraph.Text + "\n"
+		}
+	}
+	var growth, decline string
+	for slot, text := range regions {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		if strings.Contains(text, "성장 채널") {
+			growth = text
+		}
+		if strings.Contains(text, "위축 채널") {
+			decline = text
+		}
+	}
+	if growth == "" || decline == "" {
+		t.Fatalf("the two sides did not become two columns: %+v", regions)
+	}
+	if growth == decline {
+		t.Fatalf("both names landed in one region: %+v", regions)
+	}
+	if !strings.Contains(growth, "직영은 468억") || !strings.Contains(decline, "대리점 마진율") {
+		t.Fatalf("the points did not follow their side: %+v", regions)
+	}
+	// The whole lead must not also appear as one line anywhere.
+	for _, text := range regions {
+		if strings.Contains(text, "성장 채널 | 위축 채널") {
+			t.Fatalf("the lead was printed whole: %+v", regions)
+		}
+	}
+
+	// A sentence that merely contains a bar is not two column names.
+	sentence := Compile(ParseSource("# 비교\n@two\n> 매출과 비용을 같은 기준으로 | 분기별로 나누어 자세히 살펴봅니다\n"+
+		"- 한 줄\n- 다른 줄\n"), manifest, CompileOptions{Language: "ko"})
+	whole := strings.TrimSpace(sentence.Slides[0].Subtitle)
+	for _, paragraphs := range Decode(sentence.Slides[0].Content).Fields {
+		for _, paragraph := range paragraphs {
+			if strings.Contains(paragraph.Text, "매출과 비용을 같은 기준으로 | 분기별로") {
+				whole = paragraph.Text
+			}
+		}
+	}
+	if whole == "" {
+		t.Fatalf("a sentence with a bar in it was cut in half: %+v", Decode(sentence.Slides[0].Content))
+	}
+}

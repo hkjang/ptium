@@ -204,7 +204,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 
 		// A slide written as two columns heads each one itself, so its first lead
 		// is that column's heading rather than the slide's subtitle.
-		twoColumns := len(slide.Groups) > 0 && len(freeBodySlots(layout, claimed)) > len(slide.Groups)
+		_, twoColumns := columnGroups(slide, layout, claimed)
 		lead := strings.TrimSpace(slide.Lead)
 		// A slide that says its own lead again as a bullet says it twice on the
 		// page. The model does this often enough to be worth removing here: the
@@ -400,7 +400,7 @@ type column struct {
 // as a sentence that lost its verb.
 func columnGroups(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) ([]column, bool) {
 	if len(slide.Groups) == 0 {
-		return nil, false
+		return pairedLead(slide, layout, claimed)
 	}
 	columns := []column{{Heading: strings.TrimSpace(slide.Lead)}}
 	starts := append([]SourceGroup{}, slide.Groups...)
@@ -421,6 +421,47 @@ func columnGroups(slide SourceSlide, layout pptx.Layout, claimed map[string]bool
 		return nil, false
 	}
 	return columns, true
+}
+
+// pairedLead reads a lead written as two headings — "성장 채널 | 위축 채널" — which
+// is how a comparison slide names its sides when the points below are one list.
+//
+// The bar is the same separator the components use for a row, and on a slide
+// with two regions it means the same thing: this is the left one and that is
+// the right one. Printed whole it lands as a stray line above the left column
+// and the right column is left unnamed, which is what a model's comparison
+// slide looked like.
+func pairedLead(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) ([]column, bool) {
+	sides := strings.Split(slide.Lead, "|")
+	if len(sides) != 2 {
+		return nil, false
+	}
+	left, right := strings.TrimSpace(sides[0]), strings.TrimSpace(sides[1])
+	if !columnName(left) || !columnName(right) {
+		return nil, false
+	}
+	slots := freeBodySlots(layout, claimed)
+	if len(slots) < 2 {
+		return nil, false
+	}
+	halves := splitEvenly(slide.Bullets, 2)
+	if len(halves) != 2 || len(halves[0]) == 0 || len(halves[1]) == 0 {
+		return nil, false
+	}
+	return []column{{Heading: left, Bullets: halves[0]}, {Heading: right, Bullets: halves[1]}}, true
+}
+
+// columnName reports whether a phrase is the kind of thing that heads a column.
+//
+// A heading is a label — "성장 채널", "Growth channels" — not a clause. Three
+// words is the line: past that the bar is punctuation inside a sentence
+// somebody wrote, and splitting it would cut their sentence in half.
+func columnName(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > 24 {
+		return false
+	}
+	return len(strings.Fields(trimmed)) <= 3
 }
 
 // placeColumns writes each column into its own region, its heading above its

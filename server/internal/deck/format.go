@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -352,9 +353,22 @@ func firstText(paragraphs []pptx.Paragraph) string {
 
 // leadParagraph is the slide's lead when it lives at the head of a body region,
 // which is where a layout with no subtitle keeps one.
+// leadParagraph is the lead a compiled slide folded into a region, for a layout
+// with no subtitle of its own.
+//
+// It walks the regions in a fixed order. Walking the map instead meant that a
+// slide whose columns each carry their own heading — which is what a
+// two-column slide is — got whichever heading the map happened to yield first
+// written out as the slide's lead, and the two headings changed places between
+// one writing and the next.
 func leadParagraph(content Content) string {
-	for _, paragraphs := range content.Fields {
-		for _, paragraph := range paragraphs {
+	slots := make([]string, 0, len(content.Fields))
+	for slot := range content.Fields {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		for _, paragraph := range content.Fields[slot] {
 			if paragraph.Lead {
 				if text := strings.TrimSpace(paragraph.Text); text != "" {
 					return text
