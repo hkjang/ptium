@@ -21,3 +21,16 @@ func TestTheBriefNamesTheDensityCeiling(t *testing.T) {
 		}
 	}
 }
+
+// The brief must ask for the same locator the citation check enforces: one the
+// brief itself gives, or none.
+func TestTheBriefSaysWhereALocatorComesFrom(t *testing.T) {
+	for _, wanted := range []string{
+		`The part of !source after "|" is where in the source it is`,
+		"If the brief does not say where, write the\n  name alone.",
+	} {
+		if !strings.Contains(sourceSystemPrompt, wanted) {
+			t.Fatalf("the writing brief does not say %q", wanted)
+		}
+	}
+}

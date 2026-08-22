@@ -123,6 +123,10 @@ Writing craft:
   slide and listed in the speaker notes, and it is the first thing a room asks
   about a number. Never invent one: a figure the brief states without a source
   gets no !source line.
+- The part of !source after "|" is where in the source it is — a table, a page,
+  a period the brief itself names. If the brief does not say where, write the
+  name alone. A real system with a made-up month on it is worse than the name
+  by itself, because the half that checks out is what makes the rest believed.
 - Write in the requested language and tone. No markdown, asterisks or emoji.
 
 Every slide begins with a line starting "# ". A component's rows go between its
