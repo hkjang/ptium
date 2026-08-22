@@ -19,8 +19,8 @@ describe('a measurement in the reader’s words', () => {
         '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
       ['kpi had too little room to draw anything', '핵심 지표를 그릴 자리가 없었습니다'],
       ['two lines of the quote overlap', '인용의 두 줄이 서로 겹칩니다'],
-      ['figures with no source: nothing on this slide says where its numbers came from',
-        '숫자가 있는데 출처가 없습니다. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
+      ['figures with no source: 28.5%, 1,200건',
+        '브리프에 없는 숫자에 출처가 없습니다: 28.5%, 1,200건. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
     ]
     for (const [measured, written] of cases) {
       expect(findingDetail(measured), measured).toBe(written)
@@ -55,7 +55,7 @@ describe('a measurement in the reader’s words', () => {
       density: '9 points in one region; past 6 an audience reads instead of listening',
       notes: 'no speaker notes: nothing is written down to say over this slide',
       repeat: 'the same point twice: "매출이 늘었다" and "매출 증가"',
-      source: 'figures with no source: nothing on this slide says where its numbers came from',
+      source: 'figures with no source: 28.5%, 1,200건',
     }
     for (const [kind, detail] of Object.entries(measured)) {
       expect(findingDetail(detail).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, ''), kind).not.toMatch(/[a-z]{3,}/)

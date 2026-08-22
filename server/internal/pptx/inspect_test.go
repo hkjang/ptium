@@ -385,3 +385,48 @@ func TestACoverIsNotAskedWhereItsYearCameFrom(t *testing.T) {
 		}
 	}
 }
+
+// A deck that asks a board for 12억 원 states that number on every slide about
+// the ask, and the author is the source: the brief is where it came from. The
+// deck's own writing rule forbids putting a !source on it, so asking for one
+// made obeying the rule cost a mark. What the brief never said is a different
+// matter — that is what the room asks about.
+func TestTheAuthorsOwnFigureIsNotAskedForASource(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	slide := func(title, body string) Slide {
+		return Slide{LayoutID: content.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: title}}, SlotBody: {{Text: body}}}}
+	}
+	deck := Deck{Language: "ko",
+		Brief: "결제 이중화 투자 12억 원을 이사회에 요청. 내부 결제 로그 기준 지난 12개월 장애 2회.",
+		Slides: []Slide{
+			slide("이중화 투자 계획", "구축 비용 12억 원 요청"),
+			slide("시장 성장", "온라인 거래액이 28.5% 늘었습니다"),
+		}}
+	asked := map[int]string{}
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingSource {
+			asked[finding.Slide] = finding.Detail
+		}
+	}
+	if detail, ok := asked[1]; ok {
+		t.Fatalf("the author was asked to cite their own request: %s", detail)
+	}
+	if !strings.Contains(asked[2], "28.5%") {
+		t.Fatalf("the figure the brief never gave was not named: %q", asked[2])
+	}
+
+	// With no brief — an imported deck, or one written by hand — every figure is
+	// still asked about, because there is nothing to say it came from the author.
+	deck.Brief = ""
+	unbriefed := 0
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingSource {
+			unbriefed++
+		}
+	}
+	if unbriefed != 2 {
+		t.Fatalf("a deck with no brief had %d slides asked, wanted 2", unbriefed)
+	}
+}

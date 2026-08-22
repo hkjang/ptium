@@ -2,7 +2,6 @@ package generation
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -20,7 +19,6 @@ import (
 // a sentence, and cutting it would leave the sentence saying something else. So
 // the deck keeps it and says which numbers it introduced, and the author decides.
 func figuresNotInBrief(source, brief string) []string {
-	haystack := digitsOnly(brief)
 	seen := map[string]bool{}
 	var missing []string
 	for _, line := range strings.Split(source, "\n") {
@@ -32,13 +30,8 @@ func figuresNotInBrief(source, brief string) []string {
 			// A locator is a page or a table number, not a claim.
 			continue
 		}
-		for _, figure := range pptx.StatedFigures(trimmed) {
-			figure = strings.TrimSpace(figure)
-			number := digitsOnly(leadingNumber.FindString(figure))
-			if number == "" || seen[figure] {
-				continue
-			}
-			if strings.Contains(haystack, number) {
+		for _, figure := range pptx.FiguresNotIn(brief, trimmed) {
+			if seen[figure] {
 				continue
 			}
 			seen[figure] = true
@@ -46,15 +39,6 @@ func figuresNotInBrief(source, brief string) []string {
 		}
 	}
 	return missing
-}
-
-var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)
-
-// digitsOnly makes "1,200" and "1200" the same number, which is the only
-// difference between how a brief writes a figure and how a deck does.
-func digitsOnly(value string) string {
-	value = strings.ReplaceAll(value, ",", "")
-	return strings.TrimSuffix(strings.TrimSpace(value), ".")
 }
 
 // inventedFigureNote is what the deck says about the numbers it introduced.

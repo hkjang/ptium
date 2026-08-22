@@ -252,7 +252,12 @@ type Deck struct {
 	// Source is the text the deck was written from. It is carried in the
 	// exported file so that importing a Ptium deck restores what was written
 	// rather than reading it back off the drawing.
-	Source string  `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
+	// Brief is what the deck was asked for, in the author's own words. It is
+	// not drawn; it is how measuring can tell a figure the author supplied —
+	// the budget they are asking for — from one the deck states about the
+	// world and cannot source.
+	Brief  string  `json:"brief,omitempty"`
 	Slides []Slide `json:"slides"`
 }
 

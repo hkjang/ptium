@@ -539,6 +539,7 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 	result := pptx.Deck{
 		Title:    presentation.Title,
 		Subject:  presentation.Prompt,
+		Brief:    presentation.Prompt,
 		Author:   author,
 		Language: presentation.Language,
 		// The exported file carries the text the deck was written from, so

@@ -341,6 +341,7 @@ func sameStem(first, second string) bool {
 // InspectDeck reports the defects of a whole deck.
 func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	design := NewDesign(manifest)
+	briefFigures := digitsOnly(strings.ToLower(deck.Brief))
 	var findings []Finding
 	for index, slide := range deck.Slides {
 		layout, ok := manifest.Layout(slide.LayoutID)
@@ -363,9 +364,15 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
 		}
-		if len(slide.Sources) == 0 && carriesArgument(slide, layout) && statesFigures(slide) {
+		// Only the figures the brief did not give are asked about. A deck that
+		// asks a board for 12억 원 states that number on every slide about the
+		// ask, and the author is the source: telling them to cite their own
+		// request teaches them to ignore the question. What the brief never
+		// said is what the room will ask about.
+		if unsourced := unbriefedFigures(slide, briefFigures); len(slide.Sources) == 0 &&
+			carriesArgument(slide, layout) && len(unsourced) > 0 {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingSource, Advisory: true,
-				Detail: "figures with no source: nothing on this slide says where its numbers came from"})
+				Detail: "figures with no source: " + strings.Join(unsourced, ", ")})
 		}
 	}
 	return findings
@@ -423,6 +430,68 @@ func statesFigures(slide Slide) bool {
 // room, with dates read as dates.
 func statesFigure(text string) bool {
 	return statedFigure.MatchString(aDate.ReplaceAllString(text, " "))
+}
+
+// unbriefedFigures lists the figures a slide states that the brief did not.
+//
+// briefDigits is the brief with its thousands separators removed, so that
+// "1,200" in a deck matches "1200" in a brief and the other way round.
+func unbriefedFigures(slide Slide, briefDigits string) []string {
+	seen := map[string]bool{}
+	var missing []string
+	consider := func(text string) {
+		for _, figure := range figuresNotIn(briefDigits, text) {
+			if seen[figure] {
+				continue
+			}
+			seen[figure] = true
+			missing = append(missing, figure)
+		}
+	}
+	for _, block := range slide.Blocks {
+		consider(block.Caption)
+		for _, item := range block.Items {
+			consider(item.Label + " " + item.Value + " " + item.Detail)
+		}
+		for _, row := range block.Rows {
+			consider(strings.Join(row, " "))
+		}
+	}
+	for _, paragraphs := range slide.Fields {
+		for _, paragraph := range paragraphs {
+			consider(paragraph.Text)
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
+// FiguresNotIn lists the figures in text that the brief does not state. It is
+// how generation tells a number the author supplied from one the model brought
+// in by itself.
+func FiguresNotIn(brief, text string) []string {
+	return figuresNotIn(digitsOnly(strings.ToLower(brief)), text)
+}
+
+func figuresNotIn(briefDigits, text string) []string {
+	var missing []string
+	for _, figure := range StatedFigures(text) {
+		figure = strings.TrimSpace(figure)
+		number := digitsOnly(leadingNumber.FindString(figure))
+		if figure == "" || number == "" || strings.Contains(briefDigits, number) {
+			continue
+		}
+		missing = append(missing, figure)
+	}
+	return missing
+}
+
+var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)
+
+// digitsOnly makes "1,200" and "1200" the same number, which is the only
+// difference between how a brief writes a figure and how a deck does.
+func digitsOnly(value string) string {
+	return strings.TrimSuffix(strings.TrimSpace(strings.ReplaceAll(value, ",", "")), ".")
 }
 
 // StatedFigures lists the figures in a line of text, by the same reading the
