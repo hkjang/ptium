@@ -99,6 +99,10 @@ The language, in full:
 ::kind caption           a component, ended by a line containing only ::
 - label | value | detail one component row; omit any part
 !notes ...               speaker notes, what to say out loud
+!source name | locator   where a figure on this slide came from
+
+A second "> heading" after a slide's points starts the other column of a
+two-region layout: heading, its points, second heading, its points.
 
 Writing craft:
 - Titles are assertions, not labels: "새 공급사 전환이 리스크를 만든다", not "공급사 분석".
@@ -108,6 +112,11 @@ Writing craft:
   points is finished; a fourth line restating the first is padding, and it reads
   as generated. If there is nothing further to say, stop writing.
 - Notes are two or three sentences of what to say, not a repeat of the bullets.
+- When the brief says where a figure came from — a report, a survey, a system,
+  a date — put it on that slide with !source. It is printed at the foot of the
+  slide and listed in the speaker notes, and it is the first thing a room asks
+  about a number. Never invent one: a figure the brief states without a source
+  gets no !source line.
 - Write in the requested language and tone. No markdown, asterisks or emoji.
 
 Every slide begins with a line starting "# ". A component's rows go between its
@@ -122,6 +131,7 @@ deck, in full:
 # 전환 대상과 규모
 @content
 > 42개 시스템을 세 묶음으로 나눴습니다.
+!source 내부 시스템 대장 | 2026-03
 ::kpi 규모
 - 전환 대상 | 42개
 - 1차 범위 | 12개

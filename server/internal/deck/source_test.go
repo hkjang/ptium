@@ -972,3 +972,41 @@ func TestASlideCitesWhereItsFiguresCameFrom(t *testing.T) {
 		}
 	}
 }
+
+// "!notes이 성장세는 부하로 이어집니다" is the directive and a sentence, written
+// without the space between them — which is what happens when the next word
+// begins with a Korean particle. Reading it as one token dropped the 이.
+func TestADirectiveWithAWordStuckToItKeepsTheWord(t *testing.T) {
+	parsed := ParseSource("# 시장 성장\n- 온라인 거래액 28.5% 증가\n" +
+		"!notes 통계청 발표에 따릅니다.\n!notes이 성장세는 부하로 이어집니다.\n")
+	if len(parsed.Warnings) != 0 {
+		t.Fatalf("a stuck directive warned: %v", parsed.Warnings)
+	}
+	notes := parsed.Slides[0].Notes
+	if !strings.Contains(notes, "이 성장세는 부하로 이어집니다") {
+		t.Fatalf("the word was lost: %q", notes)
+	}
+	if !strings.Contains(notes, "통계청 발표에 따릅니다") {
+		t.Fatalf("the first note was lost: %q", notes)
+	}
+
+	// A source written the same way keeps its first word too.
+	cited := ParseSource("# 실적\n- 매출 1,240억\n!source통계청 | 2026 소비 동향 | 표 3\n")
+	if len(cited.Slides[0].Sources) != 1 {
+		t.Fatalf("the citation was not read: %+v", cited)
+	}
+	if got := cited.Slides[0].Sources[0]; got.Title != "통계청" {
+		t.Fatalf("the source reads %+v", got)
+	}
+
+	// A word that could be part of a directive's own name is not split off: only
+	// text that cannot belong to a directive name — Korean, a digit — is.
+	latin := ParseSource("# 제목\n!notesomething 한 줄\n")
+	if strings.Contains(latin.Slides[0].Notes, "omething") {
+		t.Fatalf("a Latin word was cut in half: %q", latin.Slides[0].Notes)
+	}
+	digits := ParseSource("# 제목\n!notes2026년 계획을 말합니다\n")
+	if !strings.Contains(digits.Slides[0].Notes, "2026년 계획을 말합니다") {
+		t.Fatalf("a note beginning with a year lost it: %q", digits.Slides[0].Notes)
+	}
+}

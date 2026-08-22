@@ -897,3 +897,40 @@ func TestTheBriefSaysWhichGridsThisDeploymentDraws(t *testing.T) {
 		}
 	}
 }
+
+// The inspector marks a slide that states figures and says nowhere they came
+// from — 160 times across the decks in one account — and the model was never
+// told it could write a source at all. Measuring something nobody asked for is
+// not a measurement.
+func TestTheModelIsToldHowToCiteASource(t *testing.T) {
+	template := testTemplate(t)
+	var asked []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		asked = append(asked, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"# 실적\n- 한 줄\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	if _, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "실적", Prompt: "통계청 2026 소비 동향에 따르면 매출 1,240억", Language: "ko", RequestedSlideCount: 3},
+		model.Profile{}, template); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	brief := strings.Join(asked, "\n")
+	for _, wanted := range []string{"!source", "Never invent one"} {
+		if !strings.Contains(brief, wanted) {
+			t.Fatalf("the model is not told about %q", wanted)
+		}
+	}
+	// And about the second column, which the language grew in an earlier release.
+	if !strings.Contains(brief, "starts the other column") {
+		t.Fatal("the model is not told how to write a two-column slide")
+	}
+}

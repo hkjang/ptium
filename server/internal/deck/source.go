@@ -301,6 +301,12 @@ func ParseSource(source string) Source {
 			begin(line)
 			name, value, _ := strings.Cut(strings.TrimPrefix(trimmed, "!"), " ")
 			lowered := strings.ToLower(strings.TrimSpace(name))
+			// "!notes이 성장세는" is the directive and a word, written without the
+			// space between them — which is what happens when the next word starts
+			// with a Korean particle. Reading it as one token loses that word.
+			if known, rest, ok := splitDirective(lowered); ok {
+				lowered, value = known, strings.TrimSpace(rest+" "+value)
+			}
 			if lowered == "source" || lowered == "출처" {
 				if citation, ok := parseCitation(value, line); ok {
 					current.Sources = append(current.Sources, citation)
@@ -698,6 +704,24 @@ func parseCitation(value string, line int) (SourceCitation, bool) {
 		return SourceCitation{}, false
 	}
 	return citation, true
+}
+
+// splitDirective separates a directive from a word stuck to it. Only where the
+// word cannot be part of a directive's own name — Korean text, a digit — so
+// "!notesomething" stays the unknown directive it is.
+func splitDirective(token string) (string, string, bool) {
+	for _, known := range []string{"notes", "note", "source", "출처"} {
+		if token == known || !strings.HasPrefix(token, known) {
+			continue
+		}
+		rest := token[len(known):]
+		first, _ := utf8.DecodeRuneInString(rest)
+		if first < utf8.RuneSelf && (unicode.IsLetter(first) || first == '_' || first == '-') {
+			return "", "", false
+		}
+		return known, rest, true
+	}
+	return "", "", false
 }
 
 // isCitationMarker reports whether a field is the short mark a claim carries
