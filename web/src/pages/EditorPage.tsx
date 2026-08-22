@@ -28,6 +28,7 @@ import {
   slideBody, slideBodyLines, slideFields, slideHoldings, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, warningText } from './editor/model/findings'
+import { versionToSend } from './editor/model/saving'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { QualityDialog } from './editor/QualityDialog'
 import { HistoryDialog } from './editor/HistoryDialog'
@@ -95,6 +96,13 @@ export function EditorPage({ id }: { id: string }) {
   const savePromise = useRef<Promise<boolean> | null>(null)
   const editorState = useRef({ presentation, slides, dirty })
   editorState.current = { presentation, slides, dirty }
+  // The deck's version as the server last reported it. A save that sends an
+  // older number is refused with a conflict, and the number is easy to send by
+  // accident: any handler that writes `{ ...presentation, … }` copies whatever
+  // version was current when that render happened, which may be two saves ago.
+  // Keeping the newest one in a ref means the save never asks with a stale one.
+  const versionRef = useRef(0)
+  if (presentation && presentation.version > versionRef.current) versionRef.current = presentation.version
   const layoutsRef = useRef<TemplateLayout[]>([])
   layoutsRef.current = template?.layouts || []
   const { showToast } = useToast()
@@ -155,7 +163,7 @@ export function EditorPage({ id }: { id: string }) {
             title: snapshotPresentation.title,
             theme: snapshotPresentation.theme,
             templateId: snapshotPresentation.templateId,
-						version: snapshotPresentation.version,
+						version: versionToSend(snapshotPresentation.version, versionRef.current),
             ...(snapshot.slides.length > 0 ? { slides: toApiSlides(snapshot.slides, layoutsRef.current) } : {}),
           })
 						if (snapshotRevision !== revision.current) {
@@ -960,7 +968,7 @@ export function EditorPage({ id }: { id: string }) {
   return (
     <main className="editor-page">
       <header className="editor-header">
-        <div className="editor-header-left"><button className="icon-button" aria-label="저장하고 프레젠테이션 목록으로 이동" onClick={() => void leaveEditor()}><ArrowLeft size={18} /></button><span className="editor-brand"><BrandMark size="tiny" /></span><span className="header-divider" /><input className="deck-title-input" maxLength={200} value={presentation.title} onChange={(event) => { markEdited(); setPresentation({ ...presentation, title: event.target.value }); setDirty(true) }} aria-label="프레젠테이션 제목" /></div>
+        <div className="editor-header-left"><button className="icon-button" aria-label="저장하고 프레젠테이션 목록으로 이동" onClick={() => void leaveEditor()}><ArrowLeft size={18} /></button><span className="editor-brand"><BrandMark size="tiny" /></span><span className="header-divider" /><input className="deck-title-input" maxLength={200} value={presentation.title} onChange={(event) => { const title = event.target.value; markEdited(); setPresentation((current) => current ? { ...current, title } : current); setDirty(true) }} aria-label="프레젠테이션 제목" /></div>
         <div className="editor-history"><button
             className={`deck-state ${defects.length > 0 ? 'has-defects' : advisories.length > 0 ? 'has-advisories' : 'clean'}`}
             onClick={() => setFindingsOpen(true)}
