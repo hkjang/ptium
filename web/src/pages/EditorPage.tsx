@@ -28,6 +28,8 @@ import {
   slideBody, slideBodyLines, slideFields, slideHoldings, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel } from './editor/model/findings'
+import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
+import { QualityDialog } from './editor/QualityDialog'
 
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
@@ -53,7 +55,7 @@ export function EditorPage({ id }: { id: string }) {
   const [commandOpen, setCommandOpen] = useState(false)
   const [commandText, setCommandText] = useState('')
   const [commandBusy, setCommandBusy] = useState(false)
-  const [commandPlan, setCommandPlan] = useState<{ plan: { kind: string; reason: string }[]; notes: string[]; slides: number; slidesAfter: number } | null>(null)
+  const [commandPlan, setCommandPlan] = useState<CommandPlan | null>(null)
   const [findingsOpen, setFindingsOpen] = useState(false)
 	const [historyOpen, setHistoryOpen] = useState(false)
 	const [historyLoading, setHistoryLoading] = useState(false)
@@ -1170,84 +1172,29 @@ export function EditorPage({ id }: { id: string }) {
         startIndex={presentIndex}
         onClose={() => setPresenting(false)}
       />}
-      <Modal
+      <CommandDialog
         open={commandOpen}
+        text={commandText}
+        plan={commandPlan}
+        busy={commandBusy}
+        onText={(value) => { setCommandText(value); setCommandPlan(null) }}
+        onPlan={() => void planCommand()}
+        onRun={() => void runCommand()}
         onClose={() => { setCommandOpen(false); setCommandPlan(null) }}
-        title="덱에 명령하기"
-        description="문장에서 할 일을 읽어 그대로 실행합니다. 모델을 쓰지 않으므로 폐쇄망에서도 같습니다."
-        footer={<>
-          {commandPlan
-            ? <Button disabled={commandBusy} onClick={() => void runCommand()}>{commandBusy ? '적용 중…' : '적용'}</Button>
-            : <Button disabled={commandBusy || !commandText.trim()} onClick={() => void planCommand()}>{commandBusy ? '읽는 중…' : '무엇을 할지 보기'}</Button>}
-          <Button variant="secondary" onClick={() => { setCommandOpen(false); setCommandPlan(null) }}>닫기</Button>
-        </>}
-      >
-        <Input
-          autoFocus
-          value={commandText}
-          placeholder="예: 3번과 4번 합쳐줘"
-          onChange={(event: React.ChangeEvent<HTMLInputElement>) => { setCommandText(event.target.value); setCommandPlan(null) }}
-          onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) => { if (event.key === 'Enter') { event.preventDefault(); void (commandPlan ? runCommand() : planCommand()) } }}
-        />
-        {commandPlan
-          ? <div className="command-plan">
-              <ul>{commandPlan.plan.map((entry, index) => <li key={index}>{entry.reason}</li>)}</ul>
-              {commandPlan.notes.map((note, index) => <small key={index}>{note}</small>)}
-              <p>{commandPlan.slides}장 → <b>{commandPlan.slidesAfter}장</b></p>
-            </div>
-          : <ul className="command-examples">
-              <li>3번과 4번 합쳐줘</li>
-              <li>5번 삭제 · 2번과 5번 지워줘</li>
-              <li>2번을 두 장으로 나눠줘</li>
-              <li>6번을 2번으로 옮겨줘</li>
-              <li>8장으로 줄여줘 · 10분 발표로 맞춰줘 <small>(측정 점수가 가장 낮은 장부터 빠집니다)</small></li>
-            </ul>}
-      </Modal>
-      <Modal
+      />
+      <QualityDialog
         open={findingsOpen}
+        findings={deckFindings || []}
+        score={deckScore}
+        canSafelyFix={canSafelyFix}
+        aiFixing={aiFixing}
+        sweeping={sweeping}
+        onOpenSlide={(position) => { const target = slides[position - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}
+        onSafeFix={(finding) => safelyFixFinding(finding)}
+        onAIFix={(finding) => void fixFindingWithAI(finding)}
+        onFixEverything={() => void fixEverythingWithAI()}
         onClose={() => setFindingsOpen(false)}
-        title="그려진 슬라이드 측정 결과"
-        description="결함은 잘못 그려진 것, 다듬을 곳은 제대로 그려졌지만 더 좋아질 수 있는 것입니다."
-        footer={<>
-          {(deckFindings || []).some((finding) => !canSafelyFix(finding)) && (
-            <Button variant="secondary" disabled={sweeping.total > 0} onClick={() => void fixEverythingWithAI()}>
-              <WandSparkles size={14} /> 전부 AI로 고치기
-            </Button>
-          )}
-          <Button variant="secondary" onClick={() => setFindingsOpen(false)}>닫기</Button>
-        </>}
-      >
-        {deckScore && <div className="deck-score">
-          <div className="deck-score-total"><strong>{deckScore.total}</strong><span>측정된 품질</span></div>
-          <ul className="deck-score-dimensions">{deckScore.dimensions.map((dimension) => (
-            <li key={dimension.key}>
-              <span>{scoreDimensionLabel(dimension.key)}</span>
-              <i><b style={{ width: `${Math.max(2, dimension.score)}%` }} /></i>
-              <small>{dimension.score}</small>
-            </li>
-          ))}</ul>
-          {deckScore.weakest > 0 && <button type="button" className="deck-score-weakest" onClick={() => { const target = slides[deckScore.weakest - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
-            가장 낮은 슬라이드: {deckScore.weakest}번 ({deckScore.slides[deckScore.weakest - 1]?.score ?? 0}점)
-          </button>}
-          <p className="deck-score-note">점수는 <b>그려진 것</b>을 잰 결과입니다. 논지가 설득력 있는지는 재지 않습니다.</p>
-        </div>}
-        {(deckFindings || []).length === 0
-          ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
-          : <ul className="deck-findings">{(deckFindings || []).map((finding) => (
-			  <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className={finding.advisory ? 'advisory' : 'defect'}>
-				<button type="button" className="finding-target" onClick={() => { const target = slides[finding.slide - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}>
-				  <strong>{finding.slide}번 슬라이드</strong>
-				  <span>{findingLabel(finding.kind)}</span>
-				  <small>{findingDetail(finding.detail)}</small>
-				</button>
-				{canSafelyFix(finding)
-				  ? <button type="button" className="finding-safe-fix" onClick={() => safelyFixFinding(finding)}><WandSparkles size={13} /> 안전 수정</button>
-				  : <button type="button" className="finding-safe-fix ai" disabled={aiFixing === finding.slide} onClick={() => void fixFindingWithAI(finding)}>
-					  {aiFixing === finding.slide ? <LoaderCircle className="spin" size={13} /> : <WandSparkles size={13} />} AI로 고치기
-					</button>}
-			  </li>
-			))}</ul>}
-      </Modal>
+      />
 		<Modal
 			open={historyOpen}
 			onClose={() => { if (!restoringRevision) setHistoryOpen(false) }}

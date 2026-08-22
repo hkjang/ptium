@@ -74,6 +74,7 @@ export function findingDetail(detail: string) {
       (m) => `영역이 ${m[1]}% 찼습니다. 슬라이드에는 여백이 필요합니다`],
     [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
     [/^no speaker notes: .+$/, () => '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
+    [/^figures with no source: .+$/, () => '숫자가 있는데 출처가 없습니다. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
     [/^the last line holds (\d+)% of a line; .+$/,
       (m) => `마지막 줄에 한 줄의 ${m[1]}%만 남았습니다. 조금 줄이거나 고쳐 쓰면 사라집니다`],
     [/^(\w+) had too little room to draw anything$/, (m) => `${named(m[1])}을 그릴 자리가 없었습니다`],

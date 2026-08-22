@@ -16,6 +16,8 @@ describe('a measurement in the reader’s words', () => {
         '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
       ['kpi had too little room to draw anything', '핵심 지표을 그릴 자리가 없었습니다'],
       ['two lines of the quote overlap', '인용의 두 줄이 서로 겹칩니다'],
+      ['figures with no source: nothing on this slide says where its numbers came from',
+        '숫자가 있는데 출처가 없습니다. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
     ]
     for (const [measured, written] of cases) {
       expect(findingDetail(measured), measured).toBe(written)
@@ -23,9 +25,10 @@ describe('a measurement in the reader’s words', () => {
     // Nothing a rule produced may still be in the measurement's own language:
     // a half-translated sentence reads as a bug in the product.
     for (const [measured] of cases) {
-      // A colour is a colour in every language; everything else a rule wrote
-      // must be in the reader's, or the sentence reads as a bug.
-      const written = findingDetail(measured).replace(/#[0-9a-f]{3,8}/g, '')
+      // A colour is a colour in every language, and so is a directive someone
+      // types (!source, ::kpi). Everything else a rule wrote must be in the
+      // reader's language, or the sentence reads as a bug.
+      const written = findingDetail(measured).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, '')
       expect(written, measured).not.toMatch(/[a-z]{3,}/)
     }
   })
@@ -34,6 +37,26 @@ describe('a measurement in the reader’s words', () => {
     // Half-translating would be worse than not translating: the reader would
     // not know whether the words are theirs or the measurement's.
     expect(findingDetail('something nobody wrote a rule for')).toBe('something nobody wrote a rule for')
+  })
+
+  it('has a sentence for every kind the server measures', () => {
+    // The kinds and one real detail line from each, copied from the server. A
+    // kind with a name but no rule is how "figures with no source: nothing on
+    // this slide…" reached a Korean workspace in v0.46.
+    const measured: Record<string, string> = {
+      overflow: "7 lines of text in room for 5; it must shrink to 82% of the template's size",
+      outside: 'title region extends 1.2cm past the slide edge',
+      collision: 'body overlaps title by 18%',
+      contrast: 'text 1f2937 on ffffff is 3.1:1, below 4.5:1',
+      orphan: 'the last line holds 20% of a line; shortening or rewording the text avoids the stray ending',
+      density: '9 points on one slide; past 6 an audience reads instead of listening',
+      notes: 'no speaker notes: nothing is written down to say over this slide',
+      repeat: 'the same point twice: "매출이 늘었다" and "매출 증가"',
+      source: 'figures with no source: nothing on this slide says where its numbers came from',
+    }
+    for (const [kind, detail] of Object.entries(measured)) {
+      expect(findingDetail(detail).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, ''), kind).not.toMatch(/[a-z]{3,}/)
+    }
   })
 
   it('names every kind the measurement can report', () => {
