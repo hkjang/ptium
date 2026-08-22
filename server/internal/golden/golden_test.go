@@ -42,6 +42,20 @@ var fixtures = []struct {
 			"# 한눈에\n@two\n::kpi 핵심 지표\n- 매출 | 1,240억\n- 신규 고객 | 312곳\n::\n- 직영 채널이 성장을 이끌었습니다\n\n" +
 			"# 이행 계획\n::steps\n- 준비 | 범위 확정\n- 이행 | 이관\n- 안정화 | 점검\n::\n",
 	},
+	{
+		name:   "showcase",
+		design: "slate-column",
+		title:  "전환 프로그램 보고",
+		source: "# 전환 프로그램 보고\n@cover\n> 2026년 상반기\n\n" +
+			"# 1부. 지금 어디에 있는가\n@section\n\n" +
+			"# 현장의 말\n::quote\n- 배포 하나에 이틀이 걸립니다. 그동안 아무도 다른 일을 못 합니다.\n::\n" +
+			"!source 내부 인터뷰 | 운영팀 8인 | 2026-03\n\n" +
+			"# 전후 비교\n::comparison\n- 단일 서버 의존 | 마이크로서비스 분산\n- 수동 배포 | 자동화된 CI/CD\n::\n\n" +
+			"# 예산 집행률\n::meter 집행률\n- 집행 | 68%\n::\n\n" +
+			"# 채널 구성\n::share 채널 구성\n- 직영 | 52\n- 대리점 | 31\n- 온라인 | 17\n::\n\n" +
+			"# 브랜드\n@picture\n::image 로고 | 2026 브랜드 마크\n\n" +
+			"# 다음 단계\n@closing\n- 3월까지 이관 범위 승인\n- 4월 예산 재배정\n!notes 승인 두 가지를 분명히 요청합니다.\n",
+	},
 }
 
 // A rendered deck is compared whole against one recorded earlier: every part,
@@ -104,16 +118,36 @@ func render(t *testing.T, design, title, source string) []byte {
 	if err != nil {
 		t.Fatalf("analyze template: %v", err)
 	}
-	result := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	result := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{
+		Language: "ko",
+		ResolveImage: func(reference string) (deck.ContentImage, bool) {
+			return deck.ContentImage{AssetID: "asset-" + reference, Name: reference}, true
+		},
+	})
 	if len(result.Slides) == 0 {
 		t.Fatalf("the fixture compiled to no slides: %v", result.Warnings)
 	}
 	presentation := model.Presentation{Title: title, Language: "ko", Slides: result.Slides}
-	data, err := pptx.Render(pkg, manifest, deck.Build(presentation, manifest, "Ptium"))
+	data, err := pptx.Render(pkg, manifest, deck.BuildWithImages(presentation, manifest, "Ptium", fixedPicture))
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	return data
+}
+
+// fixedPicture stands in for the image store: the same picture every time, so
+// the comparison is about where the renderer puts it rather than about its bytes.
+func fixedPicture(assetID string) (pptx.Picture, bool) {
+	return pptx.Picture{Data: onePixelPNG, ContentType: "image/png", Width: 1200, Height: 800}, true
+}
+
+// onePixelPNG is the smallest valid picture: one opaque pixel.
+var onePixelPNG = []byte{
+	0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a,
+	0, 0, 0, 0x0d, 'I', 'H', 'D', 'R', 0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0x90, 0x77, 0x53, 0xde,
+	0, 0, 0, 0x0c, 'I', 'D', 'A', 'T', 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x03, 0x01, 0x01, 0x00,
+	0x18, 0xdd, 0x8d, 0xb0,
+	0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xae, 0x42, 0x60, 0x82,
 }
 
 func openTemplate(template []byte) (*pptx.Package, pptx.Manifest, error) {

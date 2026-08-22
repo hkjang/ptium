@@ -3,6 +3,7 @@ package pptx
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -53,6 +54,40 @@ func TestWriteFamilyPreviews(t *testing.T) {
 			path := fmt.Sprintf("%s/%s-%s.svg", directory, design.Key, name)
 			if err := os.WriteFile(path, []byte(svg), 0o644); err != nil {
 				t.Fatal(err)
+			}
+		}
+	}
+}
+
+// Which pages carry a number is a decision about the deck: every page but the
+// cover. It used to depend on whether the design had a rail — the section,
+// quote and closing layouts hid the master's shapes, and the number went with
+// them — so the same deck numbered its dividers in one design and not in
+// another. Every shipped design now numbers the same pages.
+func TestEveryDesignNumbersItsDividersAndItsClosingPage(t *testing.T) {
+	for _, key := range BuiltinDesignKeys() {
+		template, err := BuiltinTemplate(key)
+		if err != nil {
+			t.Fatalf("%s: builtin template: %v", key, err)
+		}
+		_, manifest, err := AnalyzeBytes(template)
+		if err != nil {
+			t.Fatalf("%s: analyze: %v", key, err)
+		}
+		for _, role := range []string{RoleSection, RoleQuote, RoleClosing, RoleContent, RoleTwoContent} {
+			layout, ok := manifest.LayoutForRole(role)
+			if !ok || layout.Role != role {
+				continue
+			}
+			if layout.SlideNumber == nil {
+				t.Fatalf("%s: the %q layout (%s) has nowhere to put a page number", key, role, layout.Name)
+			}
+			// The screen and the file have to agree about it, so the preview is
+			// asked for the same slide.
+			slide := Slide{LayoutID: layout.ID, Number: 4,
+				Fields: map[string][]Paragraph{SlotTitle: {{Text: "1부"}}}}
+			if svg := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 640}); !strings.Contains(svg, ">4</text>") {
+				t.Fatalf("%s: the preview of the %q layout draws no page number", key, role)
 			}
 		}
 	}

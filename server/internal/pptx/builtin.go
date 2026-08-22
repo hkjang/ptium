@@ -596,6 +596,19 @@ func (f layoutFamily) bodyTop() int {
 
 func (f layoutFamily) bodyHeight() int { return slideHeight - f.bodyTop() - 914400 }
 
+// slideNumberPlaceholder is the page number. It lives on the master, and again
+// on every layout that hides the master's shapes — otherwise whether a page is
+// numbered depends on whether its design happens to have a rail, and one deck
+// numbers its section pages while the same deck in another design does not.
+// Which pages show a number is a decision about the deck; a rail is decoration.
+func slideNumberPlaceholder(id int, family layoutFamily, palette BuiltinPalette) string {
+	muted := mixColor(palette.Ink, palette.Surface, 0.45)
+	return placeholderShape(id, "Slide Number Placeholder 3", "sldNum", 12,
+		slideWidth-family.Margin-1143000, slideHeight-685800, 1143000, 365760,
+		`<a:bodyPr vert="horz" lIns="0" tIns="45720" rIns="0" bIns="45720" rtlCol="0" anchor="ctr"/><a:lstStyle><a:lvl1pPr algn="r"><a:defRPr sz="1100"><a:solidFill><a:srgbClr val="`+muted+`"/></a:solidFill></a:defRPr></a:lvl1pPr></a:lstStyle>`+
+			`<a:p><a:fld id="{B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11}" type="slidenum"><a:rPr lang="ko-KR" smtClean="0"/><a:t>‹#›</a:t></a:fld><a:endParaRPr lang="ko-KR"/></a:p>`)
+}
+
 func builtinMaster(design BuiltinDesign, layoutCount int) string {
 	palette, family := design.Palette, design.Family
 	var layoutIDs strings.Builder
@@ -608,10 +621,7 @@ func builtinMaster(design BuiltinDesign, layoutCount int) string {
 	if family.Rail > 0 {
 		decoration += shapeRect(9, "Rail", 0, 0, family.Rail, slideHeight, palette.Accents[0])
 	}
-	footer := placeholderShape(10, "Slide Number Placeholder 3", "sldNum", 12,
-		slideWidth-family.Margin-1143000, slideHeight-685800, 1143000, 365760,
-		`<a:bodyPr vert="horz" lIns="0" tIns="45720" rIns="0" bIns="45720" rtlCol="0" anchor="ctr"/><a:lstStyle><a:lvl1pPr algn="r"><a:defRPr sz="1100"><a:solidFill><a:srgbClr val="`+muted+`"/></a:solidFill></a:defRPr></a:lvl1pPr></a:lstStyle>`+
-			`<a:p><a:fld id="{B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11}" type="slidenum"><a:rPr lang="ko-KR" smtClean="0"/><a:t>‹#›</a:t></a:fld><a:endParaRPr lang="ko-KR"/></a:p>`)
+	footer := slideNumberPlaceholder(10, family, palette)
 
 	return xmlDeclaration + `<p:sldMaster ` + presentationNamespaces + `><p:cSld>` +
 		`<p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>` +
@@ -1050,7 +1060,8 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Name: "구역 머리글", Type: "secHead", ShowMaster: family.Rail > 0,
 			Shapes: func(d BuiltinDesign) string {
 				palette := d.Palette
-				return shapeRect(8, "Section Accent", area.X, 2377440, 685800, 68580, palette.Accents[0]) +
+				return slideNumberPlaceholder(7, family, palette) +
+					shapeRect(8, "Section Accent", area.X, 2377440, 685800, 68580, palette.Accents[0]) +
 					placeholderShape(2, "Title 1", "title", -1, area.X, 2651760, area.Width, 1097280,
 						textBody(family.CoverAlign, "b", family.TitleSize+400, true, palette.Ink, "구역 제목")) +
 					placeholderShape(3, "Text Placeholder 2", "body", 1, area.X, 3840480, area.Width, 731520,
@@ -1098,7 +1109,8 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Name: "핵심 인용", Type: "obj", ShowMaster: family.Rail > 0,
 			Shapes: func(d BuiltinDesign) string {
 				palette := d.Palette
-				return shapeRect(8, "Quote Accent", area.X, 1828800, 274320, 274320, palette.Accents[0]) +
+				return slideNumberPlaceholder(7, family, palette) +
+					shapeRect(8, "Quote Accent", area.X, 1828800, 274320, 274320, palette.Accents[0]) +
 					placeholderShape(2, "Title 1", "title", -1, area.X, 2377440, area.Width, 1828800,
 						textBody("l", "ctr", family.TitleSize-200, false, palette.Ink, "기억에 남길 한 문장을 입력하세요")) +
 					placeholderShape(3, "Text Placeholder 2", "body", 1, area.X, 4389120, area.Width, 457200,
@@ -1126,7 +1138,8 @@ func builtinLayouts(design BuiltinDesign) []builtinLayout {
 			Name: "마무리", Type: "secHead", ShowMaster: family.Rail > 0,
 			Shapes: func(d BuiltinDesign) string {
 				palette := d.Palette
-				return shapeRect(8, "Closing Accent", area.X, 2377440, 1600200, 68580, palette.Accents[0]) +
+				return slideNumberPlaceholder(7, family, palette) +
+					shapeRect(8, "Closing Accent", area.X, 2377440, 1600200, 68580, palette.Accents[0]) +
 					placeholderShape(2, "Title 1", "ctrTitle", -1, area.X, 2651760, area.Width, 1097280,
 						textBody(family.CoverAlign, "b", family.TitleSize+400, true, palette.Ink, "감사합니다")) +
 					placeholderShape(3, "Subtitle 2", "subTitle", 1, area.X, 3840480, area.Width, 1097280,

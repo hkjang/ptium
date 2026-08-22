@@ -329,6 +329,32 @@ p:sldLayout preserve=1 showMasterSp=0 type=secHead
           a:chExt cx=0 cy=0
       p:sp
         p:nvSpPr
+          p:cNvPr id=7 name=Slide Number Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=12 type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=10210800 y=6172200
+            a:ext cx=1143000 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=45720 lIns=0 rIns=0 rtlCol=0 tIns=45720 vert=horz
+          a:lstStyle
+            a:lvl1pPr algn=r
+              a:defRPr sz=1100
+                a:solidFill
+                  a:srgbClr val=B4B4B4
+          a:p
+            a:fld id={B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11} type=slidenum
+              a:rPr lang=ko-KR smtClean=0
+              a:t
+                "‹#›"
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
           p:cNvPr id=8 name=Section Accent
           p:cNvSpPr
           p:nvPr
@@ -796,6 +822,32 @@ p:sldLayout preserve=1 showMasterSp=0 type=obj
           a:chExt cx=0 cy=0
       p:sp
         p:nvSpPr
+          p:cNvPr id=7 name=Slide Number Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=12 type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=10210800 y=6172200
+            a:ext cx=1143000 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=45720 lIns=0 rIns=0 rtlCol=0 tIns=45720 vert=horz
+          a:lstStyle
+            a:lvl1pPr algn=r
+              a:defRPr sz=1100
+                a:solidFill
+                  a:srgbClr val=B4B4B4
+          a:p
+            a:fld id={B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11} type=slidenum
+              a:rPr lang=ko-KR smtClean=0
+              a:t
+                "‹#›"
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
           p:cNvPr id=8 name=Quote Accent
           p:cNvSpPr
           p:nvPr
@@ -1057,6 +1109,32 @@ p:sldLayout preserve=1 showMasterSp=0 type=secHead
           a:ext cx=0 cy=0
           a:chOff x=0 y=0
           a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=7 name=Slide Number Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=12 type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=10210800 y=6172200
+            a:ext cx=1143000 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=45720 lIns=0 rIns=0 rtlCol=0 tIns=45720 vert=horz
+          a:lstStyle
+            a:lvl1pPr algn=r
+              a:defRPr sz=1100
+                a:solidFill
+                  a:srgbClr val=B4B4B4
+          a:p
+            a:fld id={B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11} type=slidenum
+              a:rPr lang=ko-KR smtClean=0
+              a:t
+                "‹#›"
+            a:endParaRPr lang=ko-KR
       p:sp
         p:nvSpPr
           p:cNvPr id=8 name=Closing Accent
