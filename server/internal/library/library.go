@@ -51,15 +51,21 @@ func Substitute(source string, entries []Entry) (string, []Used) {
 		return source, nil
 	}
 	var used []Used
+	// A registered slide is one page. A deck that argues a subject over two
+	// slides matches both of them to the same entry, and putting it in twice
+	// gives the company introduction twice — so the second one keeps what
+	// generation wrote for it.
+	taken := map[string]bool{}
 	for index := 1; index < len(chunks); index++ {
 		title := titleOf(chunks[index])
 		if title == "" {
 			continue
 		}
 		entry, ok := Match(title, entries)
-		if !ok {
+		if !ok || taken[entry.ID] {
 			continue
 		}
+		taken[entry.ID] = true
 		replacement := strings.TrimRight(entry.Source, "\n")
 		if strings.TrimSpace(replacement) == "" {
 			continue

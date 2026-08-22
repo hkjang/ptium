@@ -80,6 +80,32 @@ func (s *Store) CreateSnippet(ctx context.Context, ownerID string, in SnippetInp
 }
 
 // ListSnippets returns a person's saved slides.
+// LibrarySnippets is every slide an owner has registered, for generation to
+// look through before writing its own version of one.
+//
+// It is not a page. The listing endpoint caps a page at a hundred, and reusing
+// it here meant that an owner with more than a hundred saved slides had the
+// rest invisible to generation — and since the order is most-used first, the
+// invisible ones were always the newly saved. A slide someone registers today
+// has to be usable today.
+func (s *Store) LibrarySnippets(ctx context.Context, ownerID string) ([]model.Snippet, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+snippetColumns+snippetFrom+
+		` WHERE s.owner_id=$1 ORDER BY s.use_count DESC, s.updated_at DESC LIMIT 2000`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var snippets []model.Snippet
+	for rows.Next() {
+		var snippet model.Snippet
+		if err := rows.Scan(snippetScan(&snippet)...); err != nil {
+			return nil, err
+		}
+		snippets = append(snippets, snippet)
+	}
+	return snippets, rows.Err()
+}
+
 func (s *Store) ListSnippets(ctx context.Context, ownerID string, query SnippetQuery) ([]model.Snippet, int, error) {
 	limit, offset := clampPage(query.Limit, query.Offset)
 	where := ` WHERE s.owner_id=$1`

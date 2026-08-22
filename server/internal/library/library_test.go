@@ -56,3 +56,22 @@ func TestOnlyAClearMatchSubstitutes(t *testing.T) {
 		}
 	}
 }
+
+// A registered slide is one page. A deck that argues a subject across two
+// slides matches both to the same entry, and putting it in twice would give the
+// company introduction twice.
+func TestARegisteredSlideIsUsedOncePerDeck(t *testing.T) {
+	source := "# 덱 제목\n@cover\n\n# 회사 소개\n- 생성기가 쓴 줄\n\n# 회사 소개 — 비용과 효과\n- 또 생성기가 쓴 줄\n\n# 다른 주제\n- 한 줄\n"
+	entries := []Entry{{ID: "s1", Name: "회사 소개", Source: "# 회사 소개\n- 임직원 1,240명\n"}}
+	written, used := Substitute(source, entries)
+	if len(used) != 1 {
+		t.Fatalf("the entry was used %d times: %+v", len(used), used)
+	}
+	if strings.Count(written, "임직원 1,240명") != 1 {
+		t.Fatalf("the registered slide went in more than once:\n%s", written)
+	}
+	// And the slide it did not take keeps what generation wrote for it.
+	if !strings.Contains(written, "또 생성기가 쓴 줄") {
+		t.Fatalf("the second slide lost its own text:\n%s", written)
+	}
+}

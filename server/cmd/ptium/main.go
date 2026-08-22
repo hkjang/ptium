@@ -127,7 +127,7 @@ func main() {
 	// there before writing its own version of one, which is what keeps the
 	// company introduction the same introduction in every deck.
 	generator.Library = func(ctx context.Context, ownerID string) []library.Entry {
-		snippets, _, err := dataStore.ListSnippets(ctx, ownerID, store.SnippetQuery{Limit: 200, Sort: "used"})
+		snippets, err := dataStore.LibrarySnippets(ctx, ownerID)
 		if err != nil {
 			return nil
 		}
