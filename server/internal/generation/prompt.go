@@ -104,6 +104,10 @@ The language, in full:
 A second "> heading" after a slide's points starts the other column of a
 two-region layout: heading, its points, second heading, its points.
 
+The lead is one line, not the slide. Three things to say are three points,
+each on its own "- " line; a lead holding them all separated by slashes is a
+run-on sentence across the top of an empty slide.
+
 Writing craft:
 - Titles are assertions, not labels: "새 공급사 전환이 리스크를 만든다", not "공급사 분석".
 - Bullets are complete thoughts, six to fourteen words, parallel, leading with the

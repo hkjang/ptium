@@ -784,3 +784,67 @@ func TestPointsThatNameTheirSideGoToThatSide(t *testing.T) {
 		}
 	}
 }
+
+// A model wrote a whole slide on its lead line: three points separated by
+// slashes, drawn as one run-on sentence across the top of an otherwise empty
+// slide. It is a list, so it is drawn as one.
+func TestASlideWrittenOnItsLeadLineBecomesItsPoints(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 현재 물류 운영 현황 및 한계\n@content\n" +
+		"> 3개 창고, 일 12,000건 처리 중 / 오배송률 0.8% 유지 / 인력 의존도 높고 확장성 부족\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	var lines []string
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			lines = append(lines, paragraph.Text)
+		}
+	}
+	if len(lines) != 3 {
+		t.Fatalf("the slide has %d lines, wanted its 3 points: %q", len(lines), lines)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, " / ") {
+			t.Fatalf("the line was left whole: %q", line)
+		}
+	}
+
+	// A cover's subtitle is one statement about the deck, not a list.
+	cover := Decode(Compile(ParseSource("# 물류 자동화 도입 보고\n@cover\n"+
+		"> 2026년도 운영 효율화 방안 / 보고자: Ptium QA 팀\n"),
+		manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	whole := false
+	for _, paragraphs := range cover.Fields {
+		for _, paragraph := range paragraphs {
+			whole = whole || strings.Contains(paragraph.Text, " / ")
+		}
+	}
+	if !whole {
+		t.Fatalf("a cover's subtitle was split into points: %+v", cover.Fields)
+	}
+
+	// A lead above points is still a lead: the slide has more than the one line.
+	kept := Decode(Compile(ParseSource("# 성장의 근거\n@content\n> 채널 / 단가 두 가지로 좁힙니다\n"+
+		"- 채널이 늘었습니다\n- 단가가 올랐습니다\n"), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	lead := false
+	for slot, paragraphs := range kept.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			lead = lead || strings.Contains(paragraph.Text, "채널 / 단가")
+		}
+	}
+	if !lead {
+		t.Fatalf("a lead with points below it was split: %+v", kept.Fields)
+	}
+}

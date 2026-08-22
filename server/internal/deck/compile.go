@@ -215,6 +215,9 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 
 		// A slide written as two columns heads each one itself, so its first lead
 		// is that column's heading rather than the slide's subtitle.
+		// A slide whose whole body is one slash-separated line is a list written
+		// on one line, and is drawn as the list it is.
+		slide = withLeadAsPoints(slide, layout)
 		// A comparison whose two sides were written as an ordinary first line —
 		// "현재 | 자동화" above the points, with no "> " on it — names its columns
 		// the same way a lead does, so it is read the same way.
@@ -441,6 +444,48 @@ func withHeaderRow(block SourceBlock) SourceBlock {
 	}
 	block.Rows = block.Rows[1:]
 	return block
+}
+
+// withLeadAsPoints splits a lead that is the slide's whole body.
+//
+// A model wrote this and nothing else on the slide:
+//
+//	> 3개 창고, 일 12,000건 처리 중 / 오배송률 0.8% 유지 / 인력 의존도 높음
+//
+// Three points, written on one line, drawn as one run-on sentence across the
+// top of an otherwise empty slide. The separator is unambiguous — a slash with
+// a space each side, which nothing writes inside a phrase — and the slide has
+// nothing else in it, so there is nothing for the split to compete with.
+//
+// A cover or a divider keeps its line: its subtitle is a single statement about
+// the deck, not a list of points.
+func withLeadAsPoints(slide SourceSlide, layout pptx.Layout) SourceSlide {
+	lead := strings.TrimSpace(slide.Lead)
+	if lead == "" || len(slide.Bullets) > 0 || len(slide.Blocks) > 0 || len(slide.Groups) > 0 {
+		return slide
+	}
+	switch layout.Role {
+	case pptx.RoleTitle, pptx.RoleSection, pptx.RoleBlank:
+		return slide
+	}
+	if len(freeBodySlots(layout, map[string]bool{})) == 0 {
+		return slide
+	}
+	parts := strings.Split(lead, " / ")
+	if len(parts) < 2 {
+		return slide
+	}
+	points := make([]pptx.Paragraph, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if utf8.RuneCountInString(part) < 4 {
+			return slide
+		}
+		points = append(points, pptx.Paragraph{Text: part})
+	}
+	slide.Lead = ""
+	slide.Bullets = points
+	return slide
 }
 
 // withPairedFirstPoint reads a first point that names both columns as the lead
