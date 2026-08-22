@@ -286,6 +286,11 @@ print("── revisions, duplicate, trash ──")
 revisions = data_of(call("GET", f"/presentations/{deck_id}/revisions", expect=200)) or []
 print("   revisions:", len(revisions))
 if revisions:
+    # What changed since a version — the question version history raises.
+    changes = (data_of(call("GET", f"/presentations/{deck_id}/revisions/{revisions[0]['id']}/changes",
+                            expect=200)) or {}).get("changes")
+    if changes is None:
+        failures.append("a revision cannot say what changed since it")
     call("POST", f"/presentations/{deck_id}/revisions/{revisions[-1]['id']}/restore", {}, expect=200)
 copy = data_of(call("POST", f"/presentations/{deck_id}/duplicate", {}, expect=201))
 call("DELETE", f"/presentations/{copy['id']}", expect=204)

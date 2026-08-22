@@ -57,6 +57,16 @@ export interface Presentation {
   generationNotes?: string[]
 }
 
+/** What happened to one slide between two versions of a deck. */
+export interface SlideChange {
+  kind: 'added' | 'removed' | 'changed' | 'moved'
+  position: number
+  from?: number
+  title: string
+  added?: string[]
+  removed?: string[]
+}
+
 export interface PresentationRevision {
 	id: string
 	presentationId: string

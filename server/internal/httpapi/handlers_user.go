@@ -351,6 +351,41 @@ func (s *Server) restorePresentationRevision(writer http.ResponseWriter, request
 	writeData(writer, request, http.StatusOK, restored)
 }
 
+// comparePresentationRevision answers "what changed since this version".
+//
+// Version history without it is a list of timestamps: restoring one is a leap
+// in the dark, and the question anyone actually has — what is different — has
+// to be answered by opening both and reading. The answer is per slide, in the
+// deck's own language, because that is the unit a person edits in.
+func (s *Server) comparePresentationRevision(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	revisionID := request.PathValue("revisionId")
+	if _, err := uuid.Parse(revisionID); err != nil {
+		writeError(writer, request, http.StatusBadRequest, "invalid_path", "revisionId must be a UUID", nil)
+		return
+	}
+	id := request.PathValue("id")
+	before, err := s.store.PresentationRevisionSlides(request.Context(), id, revisionID, user.ID)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_revision_read_failed")
+		return
+	}
+	current, err := s.store.GetPresentation(request.Context(), id, user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	_, manifest, err := s.presentationTemplate(request.Context(), current)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_template_unavailable")
+		return
+	}
+	changes := deck.Compare(before, current.Slides, manifest)
+	writeData(writer, request, http.StatusOK, map[string]any{
+		"changes": changes, "slidesBefore": len(before), "slidesAfter": len(current.Slides),
+	})
+}
+
 func (s *Server) generatePresentation(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	maximumSlides := s.maximumSlides(request.Context())

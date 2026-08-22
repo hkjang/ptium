@@ -11,6 +11,7 @@ import type {
   ServerError,
   Slide,
   SlideBlock,
+  SlideChange,
   Snippet,
   SlideElement,
   SlideImage,
@@ -973,6 +974,13 @@ export const api = {
 			slideCount: Number(value.slideCount ?? value.slide_count ?? 0),
 			createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
 		})) as PresentationRevision[]
+	},
+	/** What changed between one version and the deck as it stands. */
+	async presentationChanges(id: string, revisionId: string) {
+		const raw = await request<unknown>(
+			`/presentations/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/changes`)
+		const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+		return Array.isArray(data.changes) ? data.changes as SlideChange[] : []
 	},
 	async restorePresentationRevision(id: string, revisionId: string) {
 		return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(await request<unknown>(

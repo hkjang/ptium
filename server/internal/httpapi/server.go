@@ -161,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("POST /api/v1/presentations/{id}/restore", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.restoreDeletedPresentation))))
 	api.Handle("DELETE /api/v1/presentations/{id}/permanent", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.permanentlyDeletePresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/revisions", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listPresentationRevisions))))
+	api.Handle("GET /api/v1/presentations/{id}/revisions/{revisionId}/changes", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.comparePresentationRevision))))
 	api.Handle("POST /api/v1/presentations/{id}/revisions/{revisionId}/restore", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.restorePresentationRevision))))
 	api.Handle("POST /api/v1/presentations/{id}/generate", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.generatePresentation))))
 	// A deck is editable as text: the source compiles to exactly the slides that

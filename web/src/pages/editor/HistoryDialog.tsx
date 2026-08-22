@@ -1,8 +1,9 @@
-import { Check, History, LoaderCircle, RotateCcw } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, History, LoaderCircle, RotateCcw } from 'lucide-react'
 import { Button, EmptyState, LoadingState, Modal } from '../../components/UI'
-import type { PresentationRevision } from '../../types'
+import type { PresentationRevision, SlideChange } from '../../types'
 import { relativeDate } from '../../utils'
 import { revisionReason } from './model/findings'
+import { changeSummary, changeLabel } from './model/changes'
 
 /**
  * Every version this deck has been, and the way back to one.
@@ -13,12 +14,20 @@ import { revisionReason } from './model/findings'
  * why the buttons lock while one is in flight rather than letting a second
  * restore race the first.
  */
-export function HistoryDialog({ open, loading, version, history, restoring, onRestore, onClose }: {
+export function HistoryDialog({
+  open, loading, version, history, restoring,
+  changes = {}, openChange = null, onCompare = () => {},
+  onRestore, onClose,
+}: {
   open: boolean
   loading: boolean
   version: number
   history: PresentationRevision[]
   restoring: string | null
+  /** What changed since each version, once it has been asked for. */
+  changes?: Record<string, SlideChange[] | 'loading'>
+  openChange?: string | null
+  onCompare?: (checkpoint: PresentationRevision) => void
   onRestore: (checkpoint: PresentationRevision) => void
   onClose: () => void
 }) {
@@ -41,18 +50,38 @@ export function HistoryDialog({ open, loading, version, history, restoring, onRe
                 <span><Check size={14} /></span>
                 <div><strong>현재 버전 {version}</strong><small>지금 편집 중인 내용</small></div>
               </li>
-              {history.map((checkpoint) => (
-                <li key={checkpoint.id}>
+              {history.map((checkpoint) => {
+                const found = changes[checkpoint.id]
+                const open = openChange === checkpoint.id
+                return (
+                <li key={checkpoint.id} className="revision-row">
                   <span><History size={14} /></span>
                   <div>
                     <strong>버전 {checkpoint.version} · {revisionReason(checkpoint.reason)}</strong>
                     <small>{checkpoint.slideCount}장 · {relativeDate(checkpoint.createdAt)}</small>
+                    {/* Restoring a version you have not read is a leap in the dark. */}
+                    <button type="button" className="revision-changes-toggle" onClick={() => onCompare(checkpoint)}>
+                      {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                      {found === 'loading' ? '무엇이 바뀌었는지 보는 중…'
+                        : found ? changeSummary(found) : '이 버전 이후 무엇이 바뀌었나'}
+                    </button>
+                    {open && Array.isArray(found) && found.length > 0 && <ul className="revision-changes">
+                      {found.map((change, index) => (
+                        <li key={`${change.kind}-${change.position}-${index}`}>
+                          <span className={`revision-change-kind ${change.kind}`}>{changeLabel(change.kind)}</span>
+                          <b>{change.position}. {change.title || '제목 없음'}</b>
+                          {change.kind === 'moved' && change.from ? <em>{change.from}번에서</em> : null}
+                          {(change.removed || []).slice(0, 4).map((line) => <code key={`-${line}`} className="gone">− {line}</code>)}
+                          {(change.added || []).slice(0, 4).map((line) => <code key={`+${line}`} className="came">+ {line}</code>)}
+                        </li>
+                      ))}
+                    </ul>}
                   </div>
                   <Button variant="secondary" size="small" disabled={busy} onClick={() => onRestore(checkpoint)}>
                     {restoring === checkpoint.id ? <LoaderCircle className="spin" size={13} /> : <RotateCcw size={13} />} 복원
                   </Button>
                 </li>
-              ))}
+              )})}
             </ol>}
     </Modal>
   )

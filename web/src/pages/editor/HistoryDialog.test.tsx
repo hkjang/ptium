@@ -47,3 +47,43 @@ describe('every version this deck has been', () => {
     expect(screen.getByText('아직 이전 버전이 없습니다')).toBeTruthy()
   })
 })
+
+describe('what changed since a version', () => {
+  const checkpoint = {
+    id: 'r2', presentationId: 'p1', version: 11, reason: 'source',
+    title: '비용 계획', slideCount: 4, createdAt: new Date().toISOString(),
+  }
+
+  it('asks only when the reader asks, and says what it found', () => {
+    const asked: string[] = []
+    const { rerender } = render(<HistoryDialog
+      open loading={false} version={12} history={[checkpoint]} restoring={null}
+      changes={{}} openChange={null}
+      onCompare={(entry) => asked.push(entry.id)}
+      onRestore={() => {}} onClose={() => {}} />)
+    // Nothing is fetched until it is asked for.
+    expect(asked).toEqual([])
+    fireEvent.click(screen.getByText('이 버전 이후 무엇이 바뀌었나'))
+    expect(asked).toEqual(['r2'])
+
+    rerender(<HistoryDialog
+      open loading={false} version={12} history={[checkpoint]} restoring={null}
+      changes={{ r2: [
+        { kind: 'changed', position: 2, title: '비용', removed: ['- 12억 원'], added: ['- 14억 원'] },
+        { kind: 'added', position: 3, title: '리스크', added: ['# 리스크'] },
+      ] }}
+      openChange="r2"
+      onCompare={() => {}} onRestore={() => {}} onClose={() => {}} />)
+    expect(screen.getByText('1장 수정 · 1장 추가')).toBeTruthy()
+    expect(screen.getByText('− - 12억 원')).toBeTruthy()
+    expect(screen.getByText('+ - 14억 원')).toBeTruthy()
+  })
+
+  it('says plainly when a version matches what is on screen', () => {
+    render(<HistoryDialog
+      open loading={false} version={12} history={[checkpoint]} restoring={null}
+      changes={{ r2: [] }} openChange="r2"
+      onCompare={() => {}} onRestore={() => {}} onClose={() => {}} />)
+    expect(screen.getByText('이 버전 이후 바뀐 것이 없습니다')).toBeTruthy()
+  })
+})

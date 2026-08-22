@@ -17,7 +17,7 @@ import { Button, EmptyState, ErrorState, Input, LoadingState, Modal, Select, Tex
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type {
-  Presentation, PresentationRevision, Slide, SlideBlock, SlideElement, SlideParagraph, Snippet, SlotFrame, SlotStyle,
+  Presentation, PresentationRevision, Slide, SlideBlock, SlideChange, SlideElement, SlideParagraph, Snippet, SlotFrame, SlotStyle,
   Template, TemplateLayout,
 } from '../types'
 import { displayError, relativeDate } from '../utils'
@@ -75,6 +75,10 @@ export function EditorPage({ id }: { id: string }) {
   const [sourceLoaded, setSourceLoaded] = useState(false)
   const [sourceBusy, setSourceBusy] = useState(false)
   const [sourceWarnings, setSourceWarnings] = useState<string[]>([])
+  // What changed since each checkpoint, asked for one at a time. Restoring a
+  // version nobody has read is a leap in the dark.
+  const [revisionChanges, setRevisionChanges] = useState<Record<string, SlideChange[] | 'loading'>>({})
+  const [openChange, setOpenChange] = useState<string | null>(null)
   // What generation did differently from what was asked — a deck shorter than
   // the count requested, most often. It is the answer to "why is this only nine
   // slides", and the person who asked is the only one who can act on it, so it
@@ -698,6 +702,26 @@ export function EditorPage({ id }: { id: string }) {
 		showToast('내용을 버리지 않고 두 슬라이드로 나눴습니다.')
 	}
 
+	// What changed since a checkpoint, fetched the first time someone asks and
+	// kept after that: the answer cannot change while the dialog is open.
+	const compareRevision = async (checkpoint: PresentationRevision) => {
+		if (openChange === checkpoint.id) { setOpenChange(null); return }
+		setOpenChange(checkpoint.id)
+		if (revisionChanges[checkpoint.id]) return
+		setRevisionChanges((current) => ({ ...current, [checkpoint.id]: 'loading' }))
+		try {
+			const changes = await api.presentationChanges(id, checkpoint.id)
+			setRevisionChanges((current) => ({ ...current, [checkpoint.id]: changes }))
+		} catch (err) {
+			setRevisionChanges((current) => {
+				const rest = { ...current }
+				delete rest[checkpoint.id]
+				return rest
+			})
+			showToast(`무엇이 바뀌었는지 불러오지 못했습니다: ${displayError(err)}`, 'error')
+		}
+	}
+
 	const openHistory = async () => {
 		setHistoryOpen(true)
 		setHistoryLoading(true)
@@ -1208,6 +1232,9 @@ export function EditorPage({ id }: { id: string }) {
         version={presentation.version}
         history={history}
         restoring={restoringRevision}
+        changes={revisionChanges}
+        openChange={openChange}
+        onCompare={(checkpoint) => void compareRevision(checkpoint)}
         onRestore={(checkpoint) => void restoreRevision(checkpoint)}
         onClose={() => setHistoryOpen(false)}
       />

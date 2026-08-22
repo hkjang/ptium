@@ -1845,6 +1845,61 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/presentations/{id}/revisions/{revisionId}/changes:
+    parameters:
+      - $ref: '#/components/parameters/PresentationID'
+      - $ref: '#/components/parameters/XRequestID'
+      - name: revisionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: comparePresentationRevision
+      summary: What changed between a version and the deck as it stands
+      description: |
+        Answers the question version history raises and does not answer: what is
+        different about this checkpoint. The unit is the slide, because that is
+        what a person edits in, and the lines that came and went are given in
+        the deck's own language — the same text the source panel shows.
+
+        Slides are matched by id, then by title, then in order, so a slide that
+        was rewritten reads as one change rather than one deletion and one
+        addition.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: What changed, slide by slide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      slidesBefore: { type: integer }
+                      slidesAfter: { type: integer }
+                      changes:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind: { type: string, enum: [added, removed, changed, moved] }
+                            position: { type: integer }
+                            from: { type: integer, description: Where the slide sat before, when it moved. }
+                            title: { type: string }
+                            added: { type: array, items: { type: string } }
+                            removed: { type: array, items: { type: string } }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/revisions/{revisionId}/restore:
     parameters:
       - $ref: '#/components/parameters/XRequestID'

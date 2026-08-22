@@ -405,6 +405,23 @@ func snapshotPresentationTx(ctx context.Context, tx pgx.Tx, id, reason string, f
 
 // RestorePresentationRevision replaces the current deck atomically and first
 // checkpoints it, so a restore can itself be undone.
+// PresentationRevisionSlides is the deck as one version had it, for showing
+// what changed since.
+func (s *Store) PresentationRevisionSlides(ctx context.Context, id, revisionID, ownerID string) ([]model.Slide, error) {
+	var raw json.RawMessage
+	if err := s.Pool.QueryRow(ctx, `SELECT r.snapshot FROM presentation_revisions r
+		JOIN presentations p ON p.id=r.presentation_id
+		WHERE r.id=$1 AND r.presentation_id=$2 AND p.owner_id=$3 AND p.deleted_at IS NULL`,
+		revisionID, id, ownerID).Scan(&raw); err != nil {
+		return nil, mapNotFound(err)
+	}
+	var snapshot presentationSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return nil, err
+	}
+	return snapshot.Slides, nil
+}
+
 func (s *Store) RestorePresentationRevision(ctx context.Context, id, revisionID, ownerID string) (model.Presentation, error) {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
