@@ -855,7 +855,11 @@ paths:
         Turns what someone already has into a Ptium deck: a presentation, or the
         material one would be written from.
 
-        A `.pptx` or `.potx` is read as a deck.
+        A `.pptx` or `.potx` is read as a deck. One Ptium exported carries the
+        text it was written from, and comes back exactly as it was written —
+        components, citations and speaker notes included — unless it has been
+        edited elsewhere since, in which case the edit wins and the file is read
+        from its shapes like any other.
 
         A `.xlsx`, `.csv`, `.tsv`, `.docx`, `.md` or `.txt` is read as material.
         A sheet becomes one slide — a chart when it is one column of labels and

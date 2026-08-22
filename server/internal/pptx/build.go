@@ -248,7 +248,11 @@ type Deck struct {
 	Title    string  `json:"title"`
 	Subject  string  `json:"subject,omitempty"`
 	Author   string  `json:"author,omitempty"`
-	Language string  `json:"language,omitempty"`
+	Language string
+	// Source is the text the deck was written from. It is carried in the
+	// exported file so that importing a Ptium deck restores what was written
+	// rather than reading it back off the drawing.
+	Source string  `json:"language,omitempty"`
 	Slides   []Slide `json:"slides"`
 }
 
@@ -325,7 +329,9 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		notesMasterRelID = fmt.Sprintf("rId%d", nextRelationshipID)
 		nextRelationshipID++
 	}
-	pkg.SetText(RelationshipsPath("ppt/presentation.xml"), presentationRelationshipsXML(pkg, slideRelIDs, notesMasterRelID, notesMasterPart))
+	sourceTarget := writeDeckSource(pkg, deck.Source)
+	pkg.SetText(RelationshipsPath("ppt/presentation.xml"),
+		presentationRelationshipsXML(pkg, slideRelIDs, notesMasterRelID, notesMasterPart, sourceTarget))
 
 	presentation, _ := pkg.Text("ppt/presentation.xml")
 	pkg.SetText("ppt/presentation.xml", rewritePresentation(presentation, slideRelIDs, notesMasterRelID, language))
@@ -1007,7 +1013,8 @@ func notesRelationshipsXML(notesPart, notesMasterPart, slidePart string) string 
 			`<Relationship Id="rId2" Type="` + relationshipNamespace + `/slide" Target="` + escapeAttribute(relativePath(notesPart, slidePart)) + `"/>`)
 }
 
-func presentationRelationshipsXML(pkg *Package, slideRelIDs []string, notesMasterRelID, notesMasterPart string) string {
+func presentationRelationshipsXML(pkg *Package, slideRelIDs []string, notesMasterRelID, notesMasterPart,
+	sourcePart string) string {
 	var builder strings.Builder
 	for _, relationship := range pkg.Relationships("ppt/presentation.xml") {
 		switch relationship.ShortType() {
@@ -1026,6 +1033,13 @@ func presentationRelationshipsXML(pkg *Package, slideRelIDs []string, notesMaste
 	}
 	if notesMasterRelID != "" && notesMasterPart != "" {
 		builder.WriteString(`<Relationship Id="` + escapeAttribute(notesMasterRelID) + `" Type="` + relationshipNamespace + `/notesMaster" Target="` + escapeAttribute(relativePath("ppt/presentation.xml", notesMasterPart)) + `"/>`)
+	}
+	if sourcePart != "" {
+		// A part nothing points at is an orphan, and an orphan is what an editor
+		// drops on the next save. The deck's own source hangs off the
+		// presentation like everything else in the file.
+		builder.WriteString(`<Relationship Id="rIdPtiumSource" Type="` + sourceRelationship +
+			`" Target="` + escapeAttribute(relativePath("ppt/presentation.xml", sourcePart)) + `"/>`)
 	}
 	return relationshipsDocument(builder.String())
 }

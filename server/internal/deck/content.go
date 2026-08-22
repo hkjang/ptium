@@ -541,6 +541,9 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 		Subject:  presentation.Prompt,
 		Author:   author,
 		Language: presentation.Language,
+		// The exported file carries the text the deck was written from, so
+		// importing it back gives the deck rather than a reading of its drawing.
+		Source: presentation.Source,
 	}
 	slideWidth, slideHeight := manifest.SlideWidth, manifest.SlideHeight
 	if slideWidth <= 0 || slideHeight <= 0 {

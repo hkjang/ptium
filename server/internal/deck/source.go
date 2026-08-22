@@ -615,6 +615,16 @@ func parseNumber(value string) (float64, bool) {
 	return number, err == nil
 }
 
+// TitleFromSource is what a deck written in this language calls itself: the
+// heading of its first slide.
+func TitleFromSource(source string) string {
+	parsed := ParseSource(source)
+	if len(parsed.Slides) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Slides[0].Title)
+}
+
 // parseCitation reads "1 | 제목 | p.42". The marker is optional: a slide with
 // one source can simply name it.
 func parseCitation(value string, line int) (SourceCitation, bool) {

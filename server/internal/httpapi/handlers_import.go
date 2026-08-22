@@ -45,6 +45,23 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 		s.importDocument(writer, request, user, meta, data)
 		return
 	}
+	// A deck Ptium exported carries the text it was written from. Reading that
+	// back gives the author their components, their citations and their notes
+	// exactly as they wrote them; reading the drawing instead turns a process
+	// diagram into "1 · 준비 · 범위 확정 · 2 · 이행" and calls it points.
+	if source, ok := pptx.DeckSource(pkg); ok {
+		title := strings.TrimSpace(request.FormValue("name"))
+		if title == "" {
+			title = deck.TitleFromSource(source)
+		}
+		if title == "" {
+			title = meta.Filename
+		}
+		s.storeImportedSource(writer, request, user, meta, title,
+			fmt.Sprintf("%s에서 가져온 덱", firstNonEmpty(meta.Filename, title)), source,
+			[]string{"Ptium이 만든 파일이라 원본 그대로 가져왔습니다"})
+		return
+	}
 	imported := pptx.ReadDeck(pkg)
 	if len(imported.Slides) == 0 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "empty_presentation",
