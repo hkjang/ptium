@@ -722,7 +722,25 @@ func placeColumns(content *Content, layout pptx.Layout, claimed map[string]bool,
 		}
 		paragraphs := make([]pptx.Paragraph, 0, len(entry.Bullets)+1)
 		if entry.Heading != "" {
-			paragraphs = append(paragraphs, pptx.Paragraph{Text: entry.Heading, Lead: true})
+			// A comparison layout offers a one-line region above each column for
+			// exactly this — "왼쪽 항목", "오른쪽 항목" — styled by the template as a
+			// heading. Writing the heading into the points instead left those
+			// regions empty and drew the heading in body text, which is the
+			// template's own design going unused on the slide that most needs it.
+			placed := false
+			if slot, ok := headingSlot(layout, claimed, slots[index]); ok {
+				// One line only. A heading too long for it would be cut mid-sentence
+				// and nobody told, so a long one stays where it has room to wrap.
+				heading := []pptx.Paragraph{{Text: entry.Heading, Lead: true}}
+				if fitted, report := pptx.FitParagraphsReport(heading, slot, language); !report.Lost() {
+					content.SetField(slot.Slot, fitted)
+					claimed[slot.Slot] = true
+					placed = true
+				}
+			}
+			if !placed {
+				paragraphs = append(paragraphs, pptx.Paragraph{Text: entry.Heading, Lead: true})
+			}
 		}
 		paragraphs = append(paragraphs, entry.Bullets...)
 		fitted, _ := pptx.FitParagraphsReport(paragraphs, slots[index], language)
@@ -732,6 +750,33 @@ func placeColumns(content *Content, layout pptx.Layout, claimed map[string]bool,
 }
 
 // freeBodySlots is every body region the slide has not already given away.
+// headingSlot is the one-line region a template puts above a column, when it
+// has one free and unclaimed.
+//
+// It is found by where it is rather than by what it is called: a body region of
+// a single line, above the column's own region and over the same part of the
+// page. Templates name these differently and Ptium binds any of them.
+func headingSlot(layout pptx.Layout, claimed map[string]bool, body pptx.Placeholder) (pptx.Placeholder, bool) {
+	var best pptx.Placeholder
+	found := false
+	for _, candidate := range layout.BodySlots() {
+		if claimed[candidate.Slot] || candidate.Slot == body.Slot || candidate.MaxLines > 1 {
+			continue
+		}
+		if candidate.Y >= body.Y || candidate.Width <= 0 || body.Width <= 0 {
+			continue
+		}
+		overlap := min(candidate.X+candidate.Width, body.X+body.Width) - max(candidate.X, body.X)
+		if overlap*2 < min(candidate.Width, body.Width) {
+			continue
+		}
+		if !found || candidate.Y > best.Y {
+			best, found = candidate, true
+		}
+	}
+	return best, found
+}
+
 func freeBodySlots(layout pptx.Layout, claimed map[string]bool) []pptx.Placeholder {
 	var slots []pptx.Placeholder
 	for _, placeholder := range layout.BodySlots() {

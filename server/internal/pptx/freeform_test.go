@@ -96,3 +96,38 @@ func TestAnObjectIsAlignedInEitherVocabulary(t *testing.T) {
 		t.Error("an alignment the renderer cannot draw was accepted")
 	}
 }
+
+// A text box the author never typed into is nothing, and must not be drawn in
+// either the preview or the file. One reached a deck carrying the editor's own
+// prompt as its content.
+func TestAnEmptyTextBoxIsNotDrawn(t *testing.T) {
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
+	layout, _ := manifest.Layout(manifest.DefaultLayout)
+	box := Element{ID: "a", Kind: "text", Text: "  ",
+		Frame: Frame{X: 1000000, Y: 1000000, Width: 2000000, Height: 800000}}
+	slide := Slide{LayoutID: layout.ID,
+		Fields:   map[string][]Paragraph{SlotTitle: {{Text: "제목"}}},
+		Elements: []Element{box}}
+	blank := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 800})
+	if !strings.Contains(blank, "제목") {
+		t.Fatal("the preview did not draw the slide at all")
+	}
+	if strings.Contains(blank, "<rect") && strings.Count(blank, "<text") > 2 {
+		t.Fatalf("an empty text box left something on the slide: %s", blank)
+	}
+	slide.Elements[0].Text = "실제로 쓴 글"
+	if drawn := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 800}); !strings.Contains(drawn, "실제로 쓴 글") {
+		t.Fatal("a text box with words in it was not drawn")
+	}
+	// Nor does the exported file carry it.
+	deck := Deck{Language: "ko", Slides: []Slide{{LayoutID: layout.ID,
+		Fields:   map[string][]Paragraph{SlotTitle: {{Text: "제목"}}},
+		Elements: []Element{box}}}}
+	file, err := Render(pkg, manifest, deck)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if strings.Contains(string(file), "TextBox") {
+		t.Fatal("the file carries a text box nobody typed into")
+	}
+}

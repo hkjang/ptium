@@ -130,6 +130,10 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale))
 	}
 	for _, element := range slide.Elements {
+		// An empty text box is nothing, in the preview as in the file.
+		if element.Kind == "text" && strings.TrimSpace(element.Text) == "" {
+			continue
+		}
 		builder.WriteString(element.SVG(scale))
 	}
 	builder.WriteString(previewSourceNote(slideSourceNote(layout, slide, options.Language), manifest.Theme, scale))

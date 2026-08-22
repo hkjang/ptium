@@ -696,7 +696,10 @@ export function FreeformCanvas({
       width: kind === 'table' ? 56 : kind === 'line' ? 30 : 26,
       height: kind === 'table' ? 34 : kind === 'line' ? 8 : kind === 'text' ? 12 : 22,
       zIndex: highest + 1, rotation: 0, opacity: 100,
-      ...(kind === 'text' ? { text: '텍스트를 입력하세요', fontSize: 24, fontFamily: 'Aptos', textColor: '20242D', align: 'left', verticalAlign: 'middle' } : {}),
+      /* A new text box starts empty. It used to start with the prompt as its
+         content, so a box the author clicked away from without typing shipped
+         "텍스트를 입력하세요" on the slide — in the preview and in the file. */
+      ...(kind === 'text' ? { text: '', fontSize: 24, fontFamily: 'Aptos', textColor: '20242D', align: 'left', verticalAlign: 'middle' } : {}),
       ...(kind === 'shape' ? { shape: requestedShape || shape, fill: '725BD6', stroke: '4C3AA0', strokeWidth: 1 } : {}),
       ...(kind === 'line' ? { shape: 'line', stroke: '4C3AA0', strokeWidth: 2 } : {}),
       ...(kind === 'table' ? {
@@ -708,6 +711,16 @@ export function FreeformCanvas({
     commit([...elements, defaults])
     setSelected([defaults.id])
     if (kind === 'text') window.setTimeout(() => setEditing(defaults.id), 0)
+  }
+
+  // A text box nobody typed into is nothing, so leaving it empty removes it
+  // rather than leaving an invisible box on the slide for someone to find later
+  // by clicking on it.
+  const finishEditing = (element: SlideElement) => {
+    setEditing('')
+    if (element.kind !== 'text' || (element.text || '').trim() !== '') return
+    commit(elements.filter((candidate) => candidate.id !== element.id))
+    setSelected([])
   }
 
   const patchSelected = (patch: Partial<SlideElement>, record = true) => {
@@ -969,14 +982,14 @@ export function FreeformCanvas({
               {(element.kind === 'text' || element.text) && (editing === element.id
                 ? <textarea autoFocus value={element.text || ''} style={textStyle}
                     onPointerDown={(event) => event.stopPropagation()}
-                    onBlur={() => setEditing('')}
+                    onBlur={() => finishEditing(element)}
                     onKeyDown={(event) => {
                       /* The editor's own key handling stops at a textarea, so without
                          this the only way out of a text box was to click elsewhere. */
                       if (event.key === 'Escape' || (event.key === 'Enter' && (event.ctrlKey || event.metaKey))) {
                         event.preventDefault()
                         event.stopPropagation()
-                        setEditing('')
+                        finishEditing(element)
                       }
                     }}
                     onChange={(event) => patchSelected({ text: event.target.value }, false)} />

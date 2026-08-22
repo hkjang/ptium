@@ -478,24 +478,33 @@ func TestTwoHeadingsOnTheirOwnLinesNameTheTwoColumns(t *testing.T) {
 			regions[slot] += paragraph.Text + "\n"
 		}
 	}
-	var invest, hold string
-	for _, text := range regions {
-		if strings.Contains(text, "투자\n") {
-			invest = text
-		}
-		if strings.Contains(text, "유지\n") {
-			hold = text
-		}
+	// The template heads each column in its own one-line region and lists that
+	// column's points below it.
+	if regions["body"] != "투자\n" || regions["body2"] != "유지\n" {
+		t.Fatalf("the two headings did not land in the layout's own heading regions: %+v", regions)
 	}
-	if invest == "" || hold == "" || invest == hold {
-		t.Fatalf("the two headings did not become two columns: %+v", regions)
-	}
-	if !strings.Contains(invest, "12억 원 초기 비용") || !strings.Contains(hold, "장애 리스크 지속") {
+	if !strings.Contains(regions["body3"], "12억 원 초기 비용") ||
+		!strings.Contains(regions["body4"], "장애 리스크 지속") {
 		t.Fatalf("the points did not follow their side: %+v", regions)
 	}
 	for _, text := range regions {
 		if strings.Contains(text, "투자 유지") {
 			t.Fatalf("the two headings were glued into one: %+v", regions)
+		}
+	}
+
+	// A heading too long for the template's one-line region stays with its points,
+	// where it has room to wrap, rather than being cut mid-sentence.
+	long := Decode(Compile(ParseSource("# 비교\n@comparison\n"+
+		"> 지금까지 우리가 운영해 온 방식과 그 한계에 대하여\n- 하나\n- 둘\n"+
+		"> 앞으로 도입하려는 새로운 방식과 기대 효과에 대하여\n- 셋\n- 넷\n"),
+		manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	if len(long.Fields["body"]) > 0 || len(long.Fields["body2"]) > 0 {
+		t.Fatalf("a long heading was squeezed into a one-line region: %+v", long.Fields)
+	}
+	for _, slot := range []string{"body3", "body4"} {
+		if len(long.Fields[slot]) == 0 || strings.Contains(long.Fields[slot][0].Text, "…") {
+			t.Fatalf("%s lost its heading: %+v", slot, long.Fields[slot])
 		}
 	}
 
@@ -639,17 +648,11 @@ func TestAPairedFirstPointNamesTheColumns(t *testing.T) {
 			regions[slot] += paragraph.Text + "\n"
 		}
 	}
-	var now, after string
-	for _, text := range regions {
-		if strings.HasPrefix(text, "현재\n") {
-			now = text
-		}
-		if strings.HasPrefix(text, "자동화\n") {
-			after = text
-		}
+	if regions["body"] != "현재\n" || regions["body2"] != "자동화\n" {
+		t.Fatalf("the two names did not head the two columns: %+v", regions)
 	}
-	if now == "" || after == "" || now == after {
-		t.Fatalf("the two names did not become two columns: %+v", regions)
+	if !strings.Contains(regions["body3"], "0.8% 오배송") || !strings.Contains(regions["body4"], "0.1% 목표") {
+		t.Fatalf("the points did not follow their side: %+v", regions)
 	}
 	for _, text := range regions {
 		if strings.Contains(text, "현재 | 자동화") {
@@ -744,23 +747,16 @@ func TestPointsThatNameTheirSideGoToThatSide(t *testing.T) {
 			regions[slot] = append(regions[slot], paragraph.Text)
 		}
 	}
-	var now, after []string
-	for _, lines := range regions {
-		if lines[0] == "현재" {
-			now = lines
-		}
-		if lines[0] == "자동화" {
-			after = lines
-		}
+	if len(regions["body"]) != 1 || regions["body"][0] != "현재" ||
+		len(regions["body2"]) != 1 || regions["body2"][0] != "자동화" {
+		t.Fatalf("the sides were not named in their own regions: %+v", regions)
 	}
-	if len(now) == 0 || len(after) == 0 {
-		t.Fatalf("the sides were not named: %+v", regions)
-	}
-	if strings.Join(now, " ") != "현재 0.8% 오배송, 인력 비용 증가" {
-		t.Fatalf("the current side holds %q", now)
+	if strings.Join(regions["body3"], " ") != "0.8% 오배송, 인력 비용 증가" {
+		t.Fatalf("the current side holds %q", regions["body3"])
 	}
 	// The unprefixed point follows the one before it, which is about automation.
-	if len(after) != 3 || !strings.Contains(after[2], "처리 속도 2배") {
+	after := regions["body4"]
+	if len(after) != 2 || !strings.Contains(after[1], "처리 속도 2배") {
 		t.Fatalf("the automation side holds %q", after)
 	}
 	for _, lines := range regions {
@@ -779,7 +775,7 @@ func TestPointsThatNameTheirSideGoToThatSide(t *testing.T) {
 		if slot == pptx.SlotTitle {
 			continue
 		}
-		if len(paragraphs) > 1 && paragraphs[0].Text == "현재" && len(paragraphs) != 3 {
+		if slot == "body3" && len(paragraphs) != 2 {
 			t.Fatalf("the split changed with only one side named: %+v", compiled.Fields)
 		}
 	}

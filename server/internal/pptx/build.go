@@ -641,6 +641,13 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapeID++
 	}
 	for _, element := range slide.Elements {
+		// A text box nobody typed into is nothing. One reached a deck carrying the
+		// editor's own prompt — "텍스트를 입력하세요" printed on the slide, in the
+		// preview and in the exported file — because the box was created with that
+		// sentence as its content rather than as a hint.
+		if element.Kind == "text" && strings.TrimSpace(element.Text) == "" {
+			continue
+		}
 		if element.Kind == "image" {
 			if placed, ok := placedByElement[element.ID]; ok {
 				freeform.WriteString(freeformPictureXML(shapeID, element, placed))

@@ -153,7 +153,19 @@ func bodySlotOrder(layout pptx.Layout, hasLayout bool, content Content) []string
 	seen := map[string]bool{pptx.SlotTitle: true, pptx.SlotSubtitle: true}
 	var order []string
 	if hasLayout {
-		for _, placeholder := range layout.BodySlots() {
+		// Column by column, not row by row: a comparison layout lists its two
+		// one-line headings before either column's points, and writing them out in
+		// that order puts both headings above the first column's list. A slide is
+		// read down one column and then down the other, and that is how it is
+		// written back out.
+		slots := append([]pptx.Placeholder{}, layout.BodySlots()...)
+		sort.SliceStable(slots, func(first, second int) bool {
+			if slots[first].X != slots[second].X {
+				return slots[first].X < slots[second].X
+			}
+			return slots[first].Y < slots[second].Y
+		})
+		for _, placeholder := range slots {
 			if seen[placeholder.Slot] {
 				continue
 			}
