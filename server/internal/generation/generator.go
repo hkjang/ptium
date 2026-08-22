@@ -397,6 +397,10 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 	}
 	writing := time.Since(started)
 	source := cleanModelSource(raw, request.Presentation.Language)
+	// A citation the brief cannot support is worse than none: it is printed at
+	// the foot of the slide and read as evidence.
+	source, invented := keepAttributedSources(source, request.Presentation.Prompt+" "+
+		request.Presentation.Title+" "+request.Material)
 	if strings.HasPrefix(source, "{") {
 		var written writtenDeck
 		if json.Unmarshal([]byte(source), &written) == nil && len(written.Slides) > 0 {
@@ -408,6 +412,11 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 		return Deck{}, errors.New("AI provider returned a deck without slides")
 	}
 	result := CompileGenerated(source, request.Presentation, request.Profile, request.Template)
+	if invented > 0 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("the model invented %d source(s) the brief does not mention", invented))
+		result.Notes = append(result.Notes, inventedSourceNote(invented, request.Presentation.Language))
+	}
 	if len(result.Slides) == 0 {
 		return Deck{}, errors.New("the deck the AI provider wrote could not be bound to this template")
 	}
