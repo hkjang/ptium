@@ -220,18 +220,33 @@ func ParseSource(source string) Source {
 				continue
 			}
 			resolved := pptx.BlockKind(kind)
+			// A grid can be named directly: "::checklist" is "::grid checklist".
+			// The definitions are listed to authors and to the model by name, and
+			// writing the name is what anyone does with a list of names.
+			named := ""
+			if resolved == "" {
+				if _, ok := pptx.LookupBuiltinGrid(kind); ok {
+					resolved, named = pptx.BlockGrid, strings.ToLower(strings.TrimSpace(kind))
+				}
+			}
 			if resolved == "" {
 				warn(line, "unknown component %q", strings.TrimSpace(kind))
 				continue
 			}
 			block, inBlock = SourceBlock{Kind: resolved, Caption: strings.TrimSpace(caption), Line: line}, true
 			if resolved == pptx.BlockGrid {
-				// A grid names its definition first: "::grid raci 담당 체계".
-				definition, rest, _ := strings.Cut(strings.TrimSpace(caption), " ")
-				if definition == "" {
-					definition = strings.ToLower(strings.TrimSpace(kind))
+				if named != "" {
+					// The fence was the definition's own name, so everything after it
+					// is the caption.
+					block.Definition, block.Caption = named, strings.TrimSpace(caption)
+				} else {
+					// A grid names its definition first: "::grid raci 담당 체계".
+					definition, rest, _ := strings.Cut(strings.TrimSpace(caption), " ")
+					if definition == "" {
+						definition = strings.ToLower(strings.TrimSpace(kind))
+					}
+					block.Definition, block.Caption = definition, strings.TrimSpace(rest)
 				}
-				block.Definition, block.Caption = definition, strings.TrimSpace(rest)
 			}
 
 		case strings.HasPrefix(trimmed, "#"):

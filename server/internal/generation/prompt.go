@@ -144,6 +144,9 @@ usually does:
 - table: columns then rows.                     first row is the header
 - quote: one memorable sentence.                rows: the sentence | source
 - callout: one statement that must not be missed. rows: the statement
+- grid: a named grid this deployment ships.     ::grid <name> <caption>
+        first row is the column header, then one row per item, each cell one of
+        the definition's own values. The definitions available are listed below.
 
 Rules for components:
 - Never invent a number. Use kpi, hero, meter, share or a chart ONLY when the
@@ -193,12 +196,43 @@ func sourceUserPrompt(request writingRequest) string {
 	}
 	fmt.Fprintf(&builder, "This template can tell %d data series apart, so never plot more than that.\n",
 		pptx.NewDesign(request.Template.Manifest).SeriesCap())
+	builder.WriteString(gridGuide())
 	if strings.TrimSpace(request.Material) != "" {
 		builder.WriteString("\nReturn the whole deck, rewritten, in the slide language.\n")
 		return builder.String()
 	}
 	fmt.Fprintf(&builder, "\nWrite exactly %d slides, in order, in the slide language.\n",
 		request.Presentation.RequestedSlideCount)
+	return builder.String()
+}
+
+// gridGuide lists the named grids this deployment draws, with the values each
+// one accepts.
+//
+// Without it the model never writes one: a RACI chart, a readiness checklist
+// and a likelihood-by-impact matrix are shapes every corporate deck uses, and
+// Ptium draws all three — but a model that has not been told they exist writes
+// them as bullets. Generated from the definitions themselves so the two cannot
+// drift apart.
+func gridGuide() string {
+	grids := pptx.BuiltinGrids()
+	if len(grids) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	builder.WriteString("\nNamed grids this deployment draws, for ::grid <name>:\n")
+	for _, grid := range grids {
+		values := make([]string, 0, len(grid.Order))
+		for _, key := range grid.Order {
+			values = append(values, key)
+		}
+		label := grid.Title
+		if strings.TrimSpace(label) == "" {
+			label = grid.Name
+		}
+		fmt.Fprintf(&builder, "- %s (%s): cells are one of %s\n", grid.Name, label, strings.Join(values, ", "))
+	}
+	builder.WriteString("A grid's first row is its column header; every later row is an item and its cells.\n")
 	return builder.String()
 }
 

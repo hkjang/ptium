@@ -403,3 +403,49 @@ func TestComparisonRowsAreNotReadAsATableHeader(t *testing.T) {
 		}
 	}
 }
+
+// The definitions are listed to authors and to the model by name — raci,
+// checklist, matrix — so writing the name as the fence is what anyone does with
+// a list of names. It used to be an unknown component, and the rows fell
+// through to the slide as stray bullets.
+func TestAGridCanBeNamedDirectly(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 준비 상태\n::checklist 이관 준비\n- 항목 | 상태\n- 요건 정의 | 완료\n- 이중화 구현 | 진행\n- 최종 검수 | 미착수\n::\n"
+	parsed := ParseSource(source)
+	if len(parsed.Warnings) != 0 {
+		t.Fatalf("naming a grid warned: %v", parsed.Warnings)
+	}
+	if len(parsed.Slides) != 1 || len(parsed.Slides[0].Blocks) != 1 {
+		t.Fatalf("parsed %+v", parsed.Slides)
+	}
+	block := parsed.Slides[0].Blocks[0]
+	if block.Kind != pptx.BlockGrid || block.Definition != "checklist" {
+		t.Fatalf("the fence did not name the definition: %+v", block)
+	}
+	if block.Caption != "이관 준비" {
+		t.Fatalf("the caption reads %q", block.Caption)
+	}
+	result := Compile(parsed, manifest, CompileOptions{Language: "ko"})
+	drawn := false
+	for _, drawnBlock := range Decode(result.Slides[0].Content).Blocks {
+		if drawnBlock.Kind == pptx.BlockGrid && drawnBlock.Grid != nil && drawnBlock.Grid.Name == "checklist" {
+			drawn = true
+		}
+	}
+	if !drawn {
+		t.Fatalf("the checklist was not drawn as a grid: %+v", Decode(result.Slides[0].Content))
+	}
+
+	// A name nobody has defined is still an unknown component, said plainly.
+	unknown := ParseSource("# 제목\n::flowchart\n- 한 줄\n::\n")
+	if len(unknown.Warnings) == 0 || !strings.Contains(unknown.Warnings[0], "flowchart") {
+		t.Fatalf("an unknown fence was not reported: %v", unknown.Warnings)
+	}
+}

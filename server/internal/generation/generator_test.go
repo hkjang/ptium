@@ -856,3 +856,44 @@ func TestAnUnreadablePlanDoesNotSinkTheDeck(t *testing.T) {
 		t.Fatal("a rejected key was hidden by skipping the plan")
 	}
 }
+
+// A RACI chart, a readiness checklist and a likelihood-by-impact matrix are
+// shapes every corporate deck uses, and Ptium draws all three. A model that has
+// not been told they exist writes them as bullets, so the brief lists them.
+func TestTheBriefSaysWhichGridsThisDeploymentDraws(t *testing.T) {
+	template := testTemplate(t)
+	var asked []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		asked = append(asked, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"# 담당 체계\n- 한 줄\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	if _, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "담당 체계", Prompt: "이관 프로젝트의 담당 체계", Language: "ko", RequestedSlideCount: 3},
+		model.Profile{}, template); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	if len(asked) == 0 {
+		t.Fatal("the model was never asked anything")
+	}
+	brief := asked[0]
+	for _, wanted := range []string{"::grid", "raci", "checklist", "column header"} {
+		if !strings.Contains(brief, wanted) {
+			t.Fatalf("the brief does not mention %q:\n%s", wanted, brief)
+		}
+	}
+	// The values come from the definitions themselves rather than a second copy.
+	for _, value := range pptx.BuiltinGrids()[0].Order {
+		if !strings.Contains(brief, value) {
+			t.Fatalf("the brief does not say a raci cell may be %q", value)
+		}
+	}
+}
