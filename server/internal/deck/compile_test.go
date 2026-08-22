@@ -574,3 +574,104 @@ func TestItemNumberReadsOnlyItemNumbers(t *testing.T) {
 		}
 	}
 }
+
+// A model wrote the name of its table inside the fence, on the line above the
+// column headings. The first row of a table is its headings, so the table came
+// out with one column headed "준비 상태", "항목 | 상태" as its first row of data,
+// and the name printed twice — once as the caption and once as that lone
+// column. One cell where the rows below have more is a caption, not a header.
+func TestACaptionInsideTheFenceIsNotTheHeaderRow(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 조직 준비 상태\n@content\n::table\n- 준비 상태\n- 항목 | 상태\n" +
+		"- 핵심 인력 교육 | 완료\n- 변경 관리 프로세스 | 진행\n::\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	var block pptx.Block
+	for _, candidate := range content.Blocks {
+		block = candidate
+	}
+	if got := strings.Join(block.Columns, " | "); got != "항목 | 상태" {
+		t.Fatalf("the header row is %q, wanted the real headings", got)
+	}
+	if block.Caption != "준비 상태" {
+		t.Fatalf("the caption is %q, wanted the line the author wrote", block.Caption)
+	}
+	if len(block.Rows) != 2 {
+		t.Fatalf("the table has %d rows, wanted its 2 items: %+v", len(block.Rows), block.Rows)
+	}
+
+	// A caption the fence already carries wins, and the lone line stays a row
+	// when the rows below it are lone lines too.
+	named := "# 목록\n@content\n::table 이미 있는 이름\n- 준비 상태\n- 항목 | 상태\n- 교육 | 완료\n::\n"
+	for _, candidate := range Decode(Compile(ParseSource(named), manifest, CompileOptions{Language: "ko"}).Slides[0].Content).Blocks {
+		if candidate.Caption != "이미 있는 이름" {
+			t.Fatalf("the fence's own caption was replaced: %q", candidate.Caption)
+		}
+	}
+}
+
+// The same comparison written without "> " in front of its two names: the
+// slide's first bullet read "현재 | 자동화" and neither column was named.
+func TestAPairedFirstPointNamesTheColumns(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 자동화 도입 전후 비교\n@comparison\n- 현재 | 자동화\n" +
+		"- 현재: 0.8% 오배송, 인력 비용 증가\n- 자동화: 0.1% 목표, 인력 30% 절감\n- 처리 속도 2배 향상 기대\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	regions := map[string]string{}
+	for slot, paragraphs := range content.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			regions[slot] += paragraph.Text + "\n"
+		}
+	}
+	var now, after string
+	for _, text := range regions {
+		if strings.HasPrefix(text, "현재\n") {
+			now = text
+		}
+		if strings.HasPrefix(text, "자동화\n") {
+			after = text
+		}
+	}
+	if now == "" || after == "" || now == after {
+		t.Fatalf("the two names did not become two columns: %+v", regions)
+	}
+	for _, text := range regions {
+		if strings.Contains(text, "현재 | 자동화") {
+			t.Fatalf("the pair was drawn as a point: %+v", regions)
+		}
+	}
+
+	// A point that merely contains a bar is still a point: a component row, or a
+	// sentence, keeps its place in the list.
+	sentence := "# 비교\n@comparison\n- 매출과 비용을 같은 기준으로 | 분기별로 나누어 자세히 살펴봅니다\n" +
+		"- 한 줄\n- 다른 줄\n"
+	kept := Decode(Compile(ParseSource(sentence), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	found := false
+	for slot, paragraphs := range kept.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for _, paragraph := range paragraphs {
+			found = found || strings.Contains(paragraph.Text, "매출과 비용을 같은 기준으로")
+		}
+	}
+	if !found {
+		t.Fatalf("a sentence with a bar was taken for a pair of column names: %+v", kept.Fields)
+	}
+}

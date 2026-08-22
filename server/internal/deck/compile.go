@@ -103,6 +103,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 				slide.Bullets = append(slide.Bullets, blockAsBullets(block)...)
 				continue
 			}
+			block = withHeaderRow(block)
 			assembled := pptx.Block{Kind: block.Kind, Caption: block.Caption, Items: block.Items}
 			if block.Kind == pptx.BlockGrid {
 				spec, ok := resolveGrid(options, block.Definition)
@@ -204,6 +205,10 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 
 		// A slide written as two columns heads each one itself, so its first lead
 		// is that column's heading rather than the slide's subtitle.
+		// A comparison whose two sides were written as an ordinary first line —
+		// "현재 | 자동화" above the points, with no "> " on it — names its columns
+		// the same way a lead does, so it is read the same way.
+		slide = withPairedFirstPoint(slide, layout, claimed)
 		_, twoColumns := columnGroups(slide, layout, claimed)
 		// An agenda whose first item was written on the lead line is not a slide
 		// with a lead: it is a list missing its first item. Drawn as written, "1."
@@ -389,6 +394,71 @@ func withGroupHeadings(slide SourceSlide) []pptx.Paragraph {
 		previous = at
 	}
 	return append(folded, slide.Bullets[previous:]...)
+}
+
+// withHeaderRow moves a caption written inside a table's fence out of its rows.
+//
+// A model wrote its grid like this:
+//
+//	::grid checklist
+//	준비 상태
+//	항목 | 상태
+//	핵심 인력 교육 | 완료
+//
+// "준비 상태" is what the table is called, but the first row of a table is its
+// column headings, so the table came out with one column headed "준비 상태",
+// "항목 | 상태" as its first row of data, and the name printed twice — once as
+// the caption the grid definition supplies and once as that lone column.
+//
+// One cell where the rows below have more is not a header. It is the caption,
+// and it is used as one when the fence did not already carry it.
+func withHeaderRow(block SourceBlock) SourceBlock {
+	switch block.Kind {
+	case pptx.BlockTable, pptx.BlockGrid, pptx.BlockComparison:
+	default:
+		return block
+	}
+	if len(block.Rows) < 3 || len(block.Rows[0]) != 1 {
+		return block
+	}
+	for _, row := range block.Rows[1:] {
+		if len(row) < 2 {
+			return block
+		}
+	}
+	if strings.TrimSpace(block.Caption) == "" {
+		block.Caption = strings.TrimSpace(block.Rows[0][0])
+	}
+	block.Rows = block.Rows[1:]
+	return block
+}
+
+// withPairedFirstPoint reads a first point that names both columns as the lead
+// that names both columns.
+//
+// A model wrote a comparison slide as "현재 | 자동화" on its own line, then the
+// points. Written with "> " in front it is a lead, and the compiler has split
+// it into two column headings since v0.60. Written without, it stayed a point:
+// the slide's first bullet read "현재 | 자동화" and neither column was named.
+// The two are the same slide, so they are read the same way.
+func withPairedFirstPoint(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) SourceSlide {
+	if strings.TrimSpace(slide.Lead) != "" || len(slide.Groups) > 0 || len(slide.Bullets) < 3 {
+		return slide
+	}
+	first := slide.Bullets[0]
+	if first.Level > 0 {
+		return slide
+	}
+	sides := strings.Split(first.Text, "|")
+	if len(sides) != 2 || !columnName(sides[0]) || !columnName(sides[1]) {
+		return slide
+	}
+	if len(freeBodySlots(layout, claimed)) < 2 {
+		return slide
+	}
+	slide.Lead = strings.TrimSpace(first.Text)
+	slide.Bullets = slide.Bullets[1:]
+	return slide
 }
 
 // withNumberedLeadAsPoint moves a lead that is the first item of a numbered
