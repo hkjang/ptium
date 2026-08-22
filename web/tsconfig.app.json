@@ -17,5 +17,8 @@
     "jsx": "react-jsx",
     "types": ["vite/client"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests are type-checked by `npm test`, which runs them. Letting them into
+  // the production build means a test file can break the shipped image.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

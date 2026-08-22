@@ -5,11 +5,11 @@ import type { Slide, TemplateLayout } from '../../../types'
 const layout: TemplateLayout = {
   id: 'content', name: '제목 및 내용', role: 'content',
   placeholders: [
-    { slot: 'title', name: 'Title', type: 'title', kind: 'text' },
-    { slot: 'body', name: 'Body', type: 'body', kind: 'text' },
-    { slot: 'body2', name: 'Body 2', type: 'body', kind: 'text' },
+    { slot: 'title', kind: 'text', maxChars: 60, maxLines: 2 },
+    { slot: 'body', kind: 'text', maxChars: 300, maxLines: 8 },
+    { slot: 'body2', kind: 'text', maxChars: 300, maxLines: 8 },
   ],
-} as TemplateLayout
+}
 
 const slide = (overrides: Partial<Slide> = {}): Slide => ({
   id: 's1', order: 1, layout: 'content', layoutId: 'content',
@@ -17,7 +17,7 @@ const slide = (overrides: Partial<Slide> = {}): Slide => ({
   bullets: ['매출 1,240억', '이익률 9.8%'],
   fields: { title: [{ text: '실적' }], body: [{ text: '매출 1,240억' }, { text: '이익률 9.8%' }] },
   ...overrides,
-} as Slide)
+})
 
 describe('a slide as the editor holds it', () => {
   it('reads its prose from the slot the template put it in', () => {
