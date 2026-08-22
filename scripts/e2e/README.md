@@ -18,6 +18,11 @@ python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter wind
 python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
 ```
 
+The editor's pure logic — how a measurement is written in the reader's words,
+how a slide's fields map to template slots — is tested next to the code instead,
+with `npm test` in `web/`. A browser is the wrong place to find out that one
+translation rule is wrong.
+
 The browser scripts need Playwright (`pip install playwright && playwright install
 chromium`) and `package.py` needs `python-pptx`; the first two need nothing but
 Python. Each exits non-zero on a

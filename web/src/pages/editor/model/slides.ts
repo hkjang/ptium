@@ -1,0 +1,155 @@
+/**
+ * The shape of a slide as the editor holds it.
+ *
+ * A slide arrives from the API as fields bound to template slots and leaves as
+ * the same thing; in between the editor needs to know which slot holds the
+ * prose, what a slide is holding, and how to write text back into the slot it
+ * came from. None of that needs React, so none of it lives in the page.
+ */
+
+import { bodySlots, primaryBodySlot, textToParagraphs } from '../../../api/client'
+import type { Slide, SlideParagraph, TemplateLayout } from '../../../types'
+
+export const MAX_SLIDES = 50
+export const defaultSlide = (order: number, layoutId?: string): Slide => ({
+  id: `new-${crypto.randomUUID()}`, order, layout: 'content', layoutId,
+  title: '새로운 슬라이드', body: '핵심 메시지를 입력하세요.', bullets: ['핵심 메시지를 입력하세요.'],
+  fields: { title: [{ text: '새로운 슬라이드' }], body: [{ text: '핵심 메시지를 입력하세요.' }] },
+  elements: [],
+})
+
+export const slideBody = (slide?: Slide) => slide?.body || slide?.bullets?.join('\n') || ''
+/** What a slide holds besides prose, named in the workspace's language. */
+interface SlideHolding { slot: string; kind: 'block' | 'image' | 'element'; label: string; detail: string }
+
+export function slideHoldings(slide?: Slide): SlideHolding[] {
+  if (!slide) return []
+  const holdings: SlideHolding[] = Object.entries(slide.blocks || {}).map(([slot, block]) => ({
+    slot, kind: 'block', label: blockLabel(String(block.kind)),
+    detail: String(block.caption || block.heading || '') || `${(block.items?.length ?? block.rows?.length ?? 0)}개 항목`,
+  }))
+  for (const [slot, image] of Object.entries(slide.images || {})) {
+    holdings.push({ slot, kind: 'image', label: '이미지', detail: String(image.name || image.caption || slot) })
+  }
+  if ((slide.elements || []).length > 0) {
+    holdings.push({ slot: 'freeform', kind: 'element', label: '자유 배치 개체', detail: `${slide.elements!.length}개` })
+  }
+  return holdings.sort((a, b) => a.slot.localeCompare(b.slot))
+}
+
+/** blockLabel names a component the way the source language does. */
+export function blockLabel(kind: string) {
+  switch (kind) {
+    case 'kpi': return '핵심 지표'
+    case 'hero': return '대표 숫자'
+    case 'steps': return '단계'
+    case 'timeline': return '타임라인'
+    case 'comparison': return '비교'
+    case 'columnChart': return '세로 막대 차트'
+    case 'barChart': return '가로 막대 차트'
+    case 'lineChart': return '추이 차트'
+    case 'shareBar': return '비중 바'
+    case 'meter': return '달성률'
+    case 'table': return '표'
+    case 'quote': return '인용'
+    case 'callout': return '강조'
+    case 'grid': return '격자'
+    case 'bullets': return '목록'
+  }
+  return kind
+}
+export const slideBodyLines = (slide?: Slide) => slideBody(slide).split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+
+/** The slots a component or an image occupies. A slot holds one thing. */
+export function drawnSlots(slide: Slide) {
+  return new Set([...Object.keys(slide.blocks || {}), ...Object.keys(slide.images || {})])
+}
+
+/**
+ * proseSlot is the slot the body textarea writes to: the first body slot no
+ * drawing occupies. Writing prose into a component's slot would put two things in
+ * one place, and the server keeps whichever it decides — silently losing one.
+ */
+export function proseSlot(slide: Slide, layout?: TemplateLayout) {
+  const drawn = drawnSlots(slide)
+  const free = bodySlots(slide.fields).filter((slot) => !drawn.has(slot))
+  if (free.length > 0) return free[0]
+  const fromLayout = layout?.placeholders.find((placeholder) =>
+    placeholder.kind === 'text' && placeholder.slot !== 'title' && placeholder.slot !== 'subtitle' && !drawn.has(placeholder.slot))
+  return fromLayout?.slot || primaryBodySlot(slide, layout)
+}
+
+/**
+ * Rebuilds the template fields for a slide from the edited title and body,
+ * leaving every other slot the generator filled untouched.
+ */
+export function slideFields(slide: Slide, layout?: TemplateLayout) {
+  const fields: Record<string, { text: string; level?: number }[]> = { ...(slide.fields || {}) }
+  const bodySlot = proseSlot(slide, layout)
+  if (slide.title.trim()) fields.title = [{ text: slide.title.trim() }]
+  else delete fields.title
+  if (slide.subtitle?.trim() && (fields.subtitle || layout?.placeholders.some((placeholder) => placeholder.slot === 'subtitle'))) {
+    fields.subtitle = [{ text: slide.subtitle.trim() }]
+  }
+  const paragraphs = textToParagraphs(slideBody(slide))
+  if (paragraphs.length > 0) fields[bodySlot] = paragraphs
+  else delete fields[bodySlot]
+  // Slots the chosen layout does not expose would be dropped by the server
+  // anyway; removing them here keeps the editor state honest.
+  if (layout) {
+    const allowed = new Set(layout.placeholders.filter((placeholder) => placeholder.kind === 'text').map((placeholder) => placeholder.slot))
+    for (const slot of Object.keys(fields)) if (!allowed.has(slot)) delete fields[slot]
+  }
+  return fields
+}
+
+/**
+ * Rebuilds the prose the text editors show from one slot's paragraphs.
+ *
+ * The slot is passed in rather than guessed: saving writes the body textarea back
+ * to the slide's prose slot, so reading it from a different slot would copy one
+ * region's words over another's on the next save.
+ */
+export function bodyFromFields(fields: Record<string, SlideParagraph[]>, slot: string) {
+  const bullets = (fields[slot] || []).map((paragraph) => `${'  '.repeat(paragraph.level || 0)}${paragraph.text}`)
+  return { body: bullets.join('\n'), bullets }
+}
+
+/** The same, from text the canvas just typed into the prose slot. */
+export function bodyFromText(text: string) {
+  return { body: text, bullets: text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) }
+}
+
+export function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
+  return slides.map((slide, index) => {
+    const layout = layouts.find((candidate) => candidate.id === slide.layoutId)
+    return {
+      id: slide.id.startsWith('new-') ? undefined : slide.id,
+      position: index + 1,
+      title: slide.title,
+      subtitle: slide.subtitle,
+      speakerNotes: slide.speakerNotes,
+      layout: slide.layout,
+      layoutId: slide.layoutId || '',
+      content: {
+        type: 'template',
+        layoutId: slide.layoutId || '',
+        fields: slideFields(slide, layout),
+        // The drawings the generator made are the deck's design. They travel with
+        // every save; a save that only carried text used to delete them.
+        blocks: slide.blocks || {},
+        images: slide.images || {},
+        elements: slide.elements || [],
+        // Where the author dragged a template region, and how they set its type.
+        // Empty maps are the deck sitting exactly as its template puts it.
+        frames: slide.frames || {},
+        styles: slide.styles || {},
+        bullets: slideBodyLines(slide),
+        accent: slide.accent,
+      },
+    }
+  })
+}
+
+// findingLabel names a measured defect in the workspace's language.
+/** The axes of the score, in the words the measurement uses. */
