@@ -799,3 +799,60 @@ func TestASlowPlanningPassDoesNotCostTheModelTheDeck(t *testing.T) {
 		t.Fatalf("the model's own text is not in the deck:\n%s", deck.Source)
 	}
 }
+
+// The plan is an aid, not a requirement. A model that answers the first pass
+// with something that is not a plan — which a local model does now and then —
+// used to sink the whole generation, and the author got a failure screen for a
+// deck the model could have written.
+func TestAnUnreadablePlanDoesNotSinkTheDeck(t *testing.T) {
+	template := testTemplate(t)
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		calls++
+		writer.Header().Set("Content-Type", "application/json")
+		if calls == 1 {
+			// A plan that is not a plan.
+			_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"물론이죠! 이렇게 구성해 보겠습니다."}}]}`))
+			return
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"# 결제 이중화\n@cover\n\n# 지금의 문제\n- 단일 리전에 의존합니다\n"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": true,
+		"generation.repair_passes": 0,
+	})
+	generator.client = server.Client()
+	deck, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "결제 이중화 계획", Language: "ko", RequestedSlideCount: 6},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("an unreadable plan sank the deck: %v", err)
+	}
+	if !strings.Contains(deck.Source, "단일 리전에 의존합니다") {
+		t.Fatalf("the model's own text is not in the deck:\n%s", deck.Source)
+	}
+	if said := strings.Join(deck.Notes, " "); !strings.Contains(said, "건너뛰고") {
+		t.Fatalf("the deck does not say the planning pass was skipped: %q", said)
+	}
+
+	// A provider that is genuinely misconfigured still fails: the writing pass
+	// hits the same wall a moment later and that failure is reported.
+	refusing := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusUnauthorized)
+		_, _ = writer.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer refusing.Close()
+	strict := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": refusing.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": true,
+	})
+	strict.client = refusing.Client()
+	if _, err := strict.Generate(context.Background(),
+		model.Presentation{Title: "계획", Prompt: "결제", Language: "ko", RequestedSlideCount: 6},
+		model.Profile{}, template); err == nil {
+		t.Fatal("a rejected key was hidden by skipping the plan")
+	}
+}

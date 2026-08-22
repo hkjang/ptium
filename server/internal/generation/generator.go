@@ -167,18 +167,19 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	planNote := ""
 	if outlinePass && presentation.RequestedSlideCount > 2 {
 		plan, err := g.plan(ctx, endpoint, modelName, apiKey, request)
-		switch {
-		case err == nil:
-			request.Plan = plan
-		case modelCouldNotAnswer(err):
-			// Planning the narrative is the first of two passes, and on a slow
-			// model it is where the clock runs out. Giving up here hands the deck
-			// to the offline writer when the model could still have written it —
-			// less well planned, but written by the model the customer chose. So
-			// the pass is dropped and the writing goes ahead.
+		if err != nil {
+			// The plan is an aid, not a requirement. Whatever went wrong in this
+			// first pass — the clock ran out, or the model answered with something
+			// that is not a plan — the second pass can still write the deck, and
+			// giving up here hands it to the offline writer when the model the
+			// customer chose could have written it.
+			//
+			// Nothing is hidden by carrying on: a provider that is misconfigured
+			// fails the writing pass a moment later, with the same cause, and that
+			// failure is reported.
 			planNote = AuthorMessage(err, presentation.Language)
-		default:
-			return Deck{}, err
+		} else {
+			request.Plan = plan
 		}
 	}
 	written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)

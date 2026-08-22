@@ -355,3 +355,51 @@ func TestALeadWrittenAsTwoSidesNamesBothColumns(t *testing.T) {
 		t.Fatalf("a sentence with a bar in it was cut in half: %+v", Decode(sentence.Slides[0].Content))
 	}
 }
+
+// On a slide the author called a comparison, the points are the things being
+// compared — peers. Read as a table, the first of them became the header row:
+// one option in the body and the other one masquerading as column titles.
+func TestComparisonRowsAreNotReadAsATableHeader(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 현행 유지와 이중화 비교\n@comparison\n> 두 가지 시나리오를 비교\n" +
+		"- 현행 유지 | 400억 원 손실 위험 | 단일 장애점 존재\n" +
+		"- 이중화 구축 | 2.4억 원 추가 비용 | 99.95% 가용성 확보\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	content := Decode(result.Slides[0].Content)
+	if len(content.Blocks) == 0 {
+		t.Fatalf("the rows did not become a component: %+v", content)
+	}
+	for _, block := range content.Blocks {
+		if block.Kind != pptx.BlockComparison {
+			t.Fatalf("the rows were drawn as %q", block.Kind)
+		}
+		if len(block.Columns) > 0 {
+			t.Fatalf("one of the options became the header row: %+v", block.Columns)
+		}
+		said := ""
+		for _, row := range block.Rows {
+			said += strings.Join(row, " ") + "\n"
+		}
+		for _, wanted := range []string{"현행 유지", "400억 원 손실 위험", "이중화 구축", "99.95% 가용성 확보"} {
+			if !strings.Contains(said, wanted) {
+				t.Fatalf("the comparison lost %q:\n%s", wanted, said)
+			}
+		}
+	}
+
+	// A table the author actually wrote still has its header.
+	table := Compile(ParseSource("# 연간 비용\n::table 연간 비용\n- 항목 | 2026 | 2027\n- 인건비 | 4.2억 | 3.4억\n::\n"),
+		manifest, CompileOptions{Language: "ko"})
+	for _, block := range Decode(table.Slides[0].Content).Blocks {
+		if block.Kind != pptx.BlockTable || len(block.Columns) == 0 {
+			t.Fatalf("an explicit table lost its header: %+v", block)
+		}
+	}
+}

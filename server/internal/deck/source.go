@@ -394,6 +394,13 @@ func promoteTabularBullets(slide *SourceSlide) {
 			kind = "kpi"
 		}
 	}
+	// On a slide the author called a comparison, rows are the two things being
+	// compared — peers. Read as a table, the first of them becomes the header
+	// row, which leaves one option in the body and the other one masquerading as
+	// column titles: two lines of small grey type where a comparison should be.
+	if strings.TrimSpace(slide.Role) == pptx.RoleComparison {
+		kind = "comparison"
+	}
 	slide.Blocks = append(slide.Blocks, SourceBlock{Kind: kind, Items: items, Rows: rows, Line: slide.Line})
 	slide.Bullets = append(slide.Bullets[:start:start], slide.Bullets[end:]...)
 }
