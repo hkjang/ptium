@@ -77,3 +77,44 @@ func TestCompileDrawsAnUnplottableChartAsFigures(t *testing.T) {
 		t.Fatalf("the downgrade should be reported: %v", compiled.Warnings)
 	}
 }
+
+// A deck's last slide is usually its ask, and closing layouts are built for
+// that: a title and a line under it. A table or a plotted trend on the last
+// slide is not an ask — it is the argument still running — and putting it on a
+// closing layout flattens the component into stray text under the title.
+func TestALastSlideCarryingAComponentIsNotAClosingSlide(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 2026 성장 전략\n@cover\n> 로드맵\n\n# 핵심 진단\n- 성장률 둔화\n\n" +
+		"# 월별 처리량\n::line 월별 처리량\n- 월 | 1월, 2월, 3월, 4월\n- 전환 전 | 120, 118, 121, 119\n" +
+		"- 전환 후 | 120, 132, 148, 165\n::\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if len(result.Slides) != 3 {
+		t.Fatalf("compiled %d slides", len(result.Slides))
+	}
+	last := Decode(result.Slides[2].Content)
+	if len(last.Blocks) == 0 {
+		t.Fatalf("the trend was not drawn as a component: %+v", last)
+	}
+	for _, warning := range result.Warnings {
+		if strings.Contains(warning, "written as text") || strings.Contains(warning, "plain text") {
+			t.Fatalf("the last slide lost its component: %s", warning)
+		}
+	}
+
+	// An author who says the slide is a closing page still gets one.
+	said := Compile(ParseSource("# 시작\n@cover\n\n# 본론\n- 한 줄\n\n# 다음 단계\n@closing\n- 승인 요청\n"),
+		manifest, CompileOptions{Language: "ko"})
+	if len(said.Slides) != 3 {
+		t.Fatalf("compiled %d slides", len(said.Slides))
+	}
+	if said.Slides[2].Layout != pptx.RoleClosing {
+		t.Fatalf("the closing slide landed on %q", said.Slides[2].Layout)
+	}
+}

@@ -527,6 +527,14 @@ func slideRole(slide SourceSlide, index, total int) string {
 	if role == pptx.RoleTitle && (len(slide.Blocks) > 0 || len(slide.Bullets) > 1) {
 		return pptx.RoleContent
 	}
+	// Nor is the last slide a closing page just because it is last. A closing
+	// page is a title and an ask; a table or a plotted trend is the argument
+	// still running, and closing layouts have nowhere to put one — the component
+	// would be flattened into lines of "1월, 2월, 3월" under the title. When the
+	// author says @closing we obey, but position alone does not decide this.
+	if role == pptx.RoleClosing && len(slide.Blocks) > 0 {
+		return pptx.RoleContent
+	}
 	return role
 }
 

@@ -1,0 +1,2463 @@
+== parts ==
+[Content_Types].xml  (xml)
+_rels/.rels  (xml)
+docProps/app.xml  (xml)
+docProps/core.xml  (xml)
+ppt/_rels/presentation.xml.rels  (xml)
+ppt/charts/_rels/chart1.xml.rels  (xml)
+ppt/charts/chart1.xml  (xml)
+ppt/embeddings/ptiumChart1.xlsx  (1866 bytes)
+ppt/notesMasters/_rels/notesMaster1.xml.rels  (xml)
+ppt/notesMasters/notesMaster1.xml  (xml)
+ppt/notesSlides/_rels/notesSlide1.xml.rels  (xml)
+ppt/notesSlides/_rels/notesSlide2.xml.rels  (xml)
+ppt/notesSlides/notesSlide1.xml  (xml)
+ppt/notesSlides/notesSlide2.xml  (xml)
+ppt/presProps.xml  (xml)
+ppt/presentation.xml  (xml)
+ppt/slideLayouts/_rels/slideLayout1.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout10.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout2.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout3.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout4.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout5.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout6.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout7.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout8.xml.rels  (xml)
+ppt/slideLayouts/_rels/slideLayout9.xml.rels  (xml)
+ppt/slideLayouts/slideLayout1.xml  (xml)
+ppt/slideLayouts/slideLayout10.xml  (xml)
+ppt/slideLayouts/slideLayout2.xml  (xml)
+ppt/slideLayouts/slideLayout3.xml  (xml)
+ppt/slideLayouts/slideLayout4.xml  (xml)
+ppt/slideLayouts/slideLayout5.xml  (xml)
+ppt/slideLayouts/slideLayout6.xml  (xml)
+ppt/slideLayouts/slideLayout7.xml  (xml)
+ppt/slideLayouts/slideLayout8.xml  (xml)
+ppt/slideLayouts/slideLayout9.xml  (xml)
+ppt/slideMasters/_rels/slideMaster1.xml.rels  (xml)
+ppt/slideMasters/slideMaster1.xml  (xml)
+ppt/slides/_rels/slide1.xml.rels  (xml)
+ppt/slides/_rels/slide2.xml.rels  (xml)
+ppt/slides/_rels/slide3.xml.rels  (xml)
+ppt/slides/_rels/slide4.xml.rels  (xml)
+ppt/slides/slide1.xml  (xml)
+ppt/slides/slide2.xml  (xml)
+ppt/slides/slide3.xml  (xml)
+ppt/slides/slide4.xml  (xml)
+ppt/tableStyles.xml  (xml)
+ppt/theme/theme1.xml  (xml)
+ppt/theme/themeNotesMaster.xml  (xml)
+ppt/viewProps.xml  (xml)
+
+== [Content_Types].xml ==
+ct:Types
+  ct:Default ContentType=application/vnd.openxmlformats-package.relationships+xml Extension=rels
+  ct:Default ContentType=application/xml Extension=xml
+  ct:Default ContentType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet Extension=xlsx
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.extended-properties+xml PartName=/docProps/app.xml
+  ct:Override ContentType=application/vnd.openxmlformats-package.core-properties+xml PartName=/docProps/core.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.drawingml.chart+xml PartName=/ppt/charts/chart1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml PartName=/ppt/notesMasters/notesMaster1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml PartName=/ppt/notesSlides/notesSlide1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml PartName=/ppt/notesSlides/notesSlide2.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.presProps+xml PartName=/ppt/presProps.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml PartName=/ppt/presentation.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout10.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout2.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout3.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout4.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout5.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout6.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout7.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout8.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml PartName=/ppt/slideLayouts/slideLayout9.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml PartName=/ppt/slideMasters/slideMaster1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slide+xml PartName=/ppt/slides/slide1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slide+xml PartName=/ppt/slides/slide2.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slide+xml PartName=/ppt/slides/slide3.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.slide+xml PartName=/ppt/slides/slide4.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.tableStyles+xml PartName=/ppt/tableStyles.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.theme+xml PartName=/ppt/theme/theme1.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.theme+xml PartName=/ppt/theme/themeNotesMaster.xml
+  ct:Override ContentType=application/vnd.openxmlformats-officedocument.presentationml.viewProps+xml PartName=/ppt/viewProps.xml
+
+== _rels/.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=ppt/presentation.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument
+  rel:Relationship Id=rId2 Target=docProps/core.xml Type=http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties
+  rel:Relationship Id=rId3 Target=docProps/app.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties
+
+== docProps/app.xml ==
+ep:Properties
+  ep:Application
+    "Ptium"
+  ep:PresentationFormat
+    "16:9"
+  ep:Slides
+    "4"
+  ep:Notes
+    "1"
+  ep:HiddenSlides
+    "0"
+  ep:MMClips
+    "0"
+  ep:ScaleCrop
+    "false"
+  ep:HeadingPairs
+    http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:vector baseType=variant size=4
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:variant
+        http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+          "Theme"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:variant
+        http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:i4
+          "1"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:variant
+        http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+          "Slide Titles"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:variant
+        http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:i4
+          "4"
+  ep:TitlesOfParts
+    http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:vector baseType=lpstr size=5
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+        "Ptium Plum"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+        "2026 성장 전략"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+        "핵심 진단"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+        "연간 비용"
+      http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes:lpstr
+        "월별 처리량"
+  ep:Company
+    "Ptium"
+  ep:LinksUpToDate
+    "false"
+  ep:SharedDoc
+    "false"
+  ep:HyperlinksChanged
+    "false"
+  ep:AppVersion
+    "16.0000"
+
+== docProps/core.xml ==
+http://schemas.openxmlformats.org/package/2006/metadata/core-properties:coreProperties
+  dc:title
+    "2026 성장 전략"
+  dc:subject
+  dc:creator
+    "Ptium"
+  http://schemas.openxmlformats.org/package/2006/metadata/core-properties:lastModifiedBy
+    "Ptium"
+  http://schemas.openxmlformats.org/package/2006/metadata/core-properties:revision
+    "1"
+  dcterms:created xsi:type=dcterms:W3CDTF
+    "<time>"
+  dcterms:modified xsi:type=dcterms:W3CDTF
+    "<time>"
+
+== ppt/_rels/presentation.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+  rel:Relationship Id=rId2 Target=presProps.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/presProps
+  rel:Relationship Id=rId3 Target=viewProps.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/viewProps
+  rel:Relationship Id=rId4 Target=theme/theme1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme
+  rel:Relationship Id=rId5 Target=tableStyles.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/tableStyles
+  rel:Relationship Id=rId6 Target=slides/slide1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+  rel:Relationship Id=rId7 Target=slides/slide2.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+  rel:Relationship Id=rId8 Target=slides/slide3.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+  rel:Relationship Id=rId9 Target=slides/slide4.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+  rel:Relationship Id=rId10 Target=notesMasters/notesMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster
+
+== ppt/charts/_rels/chart1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../embeddings/ptiumChart1.xlsx Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/package
+
+== ppt/charts/chart1.xml ==
+c:chartSpace
+  c:date1904 val=0
+  c:roundedCorners val=0
+  c:chart
+    c:autoTitleDeleted val=1
+    c:plotArea
+      c:layout
+      c:lineChart
+        c:grouping val=standard
+        c:varyColors val=0
+        c:ser
+          c:idx val=0
+          c:order val=0
+          c:tx
+            c:strRef
+              c:f
+                "Sheet1!$B$1"
+              c:strCache
+                c:ptCount val=1
+                c:pt idx=0
+                  c:v
+                    "전환 전"
+          c:spPr
+            a:ln cap=rnd w=28575
+              a:solidFill
+                a:srgbClr val=8B5CF6
+              a:round
+          c:marker
+            c:symbol val=circle
+            c:size val=6
+            c:spPr
+              a:solidFill
+                a:srgbClr val=8B5CF6
+              a:ln
+                a:noFill
+          c:dLbls
+            c:dLbl
+              c:idx val=3
+              c:numFmt formatCode=0 sourceLinked=0
+              c:spPr
+                a:noFill
+                a:ln
+                  a:noFill
+              c:txPr
+                a:bodyPr
+                a:lstStyle
+                a:p
+                  a:pPr
+                    a:defRPr b=1 sz=1200
+                      a:solidFill
+                        a:srgbClr val=F6F1FC
+                      a:latin typeface=Aptos
+                      a:ea typeface=Aptos
+                  a:endParaRPr lang=ko-KR
+              c:dLblPos val=r
+              c:showLegendKey val=0
+              c:showVal val=1
+              c:showCatName val=0
+              c:showSerName val=0
+              c:showPercent val=0
+              c:showBubbleSize val=0
+            c:delete val=1
+          c:cat
+            c:strRef
+              c:f
+                "Sheet1!$A$2:$A$5"
+              c:strCache
+                c:ptCount val=4
+                c:pt idx=0
+                  c:v
+                    "1월"
+                c:pt idx=1
+                  c:v
+                    "2월"
+                c:pt idx=2
+                  c:v
+                    "3월"
+                c:pt idx=3
+                  c:v
+                    "4월"
+          c:val
+            c:numRef
+              c:f
+                "Sheet1!$B$2:$B$5"
+              c:numCache
+                c:formatCode
+                  "General"
+                c:ptCount val=4
+                c:pt idx=0
+                  c:v
+                    "120"
+                c:pt idx=1
+                  c:v
+                    "118"
+                c:pt idx=2
+                  c:v
+                    "121"
+                c:pt idx=3
+                  c:v
+                    "119"
+          c:smooth val=0
+        c:ser
+          c:idx val=1
+          c:order val=1
+          c:tx
+            c:strRef
+              c:f
+                "Sheet1!$C$1"
+              c:strCache
+                c:ptCount val=1
+                c:pt idx=0
+                  c:v
+                    "전환 후"
+          c:spPr
+            a:ln cap=rnd w=28575
+              a:solidFill
+                a:srgbClr val=D95926
+              a:round
+          c:marker
+            c:symbol val=circle
+            c:size val=6
+            c:spPr
+              a:solidFill
+                a:srgbClr val=D95926
+              a:ln
+                a:noFill
+          c:dLbls
+            c:dLbl
+              c:idx val=3
+              c:numFmt formatCode=0 sourceLinked=0
+              c:spPr
+                a:noFill
+                a:ln
+                  a:noFill
+              c:txPr
+                a:bodyPr
+                a:lstStyle
+                a:p
+                  a:pPr
+                    a:defRPr b=1 sz=1200
+                      a:solidFill
+                        a:srgbClr val=F6F1FC
+                      a:latin typeface=Aptos
+                      a:ea typeface=Aptos
+                  a:endParaRPr lang=ko-KR
+              c:dLblPos val=r
+              c:showLegendKey val=0
+              c:showVal val=1
+              c:showCatName val=0
+              c:showSerName val=0
+              c:showPercent val=0
+              c:showBubbleSize val=0
+            c:delete val=1
+          c:cat
+            c:strRef
+              c:f
+                "Sheet1!$A$2:$A$5"
+              c:strCache
+                c:ptCount val=4
+                c:pt idx=0
+                  c:v
+                    "1월"
+                c:pt idx=1
+                  c:v
+                    "2월"
+                c:pt idx=2
+                  c:v
+                    "3월"
+                c:pt idx=3
+                  c:v
+                    "4월"
+          c:val
+            c:numRef
+              c:f
+                "Sheet1!$C$2:$C$5"
+              c:numCache
+                c:formatCode
+                  "General"
+                c:ptCount val=4
+                c:pt idx=0
+                  c:v
+                    "120"
+                c:pt idx=1
+                  c:v
+                    "132"
+                c:pt idx=2
+                  c:v
+                    "148"
+                c:pt idx=3
+                  c:v
+                    "165"
+          c:smooth val=0
+        c:marker val=1
+        c:axId val=111111111
+        c:axId val=222222222
+      c:catAx
+        c:axId val=111111111
+        c:scaling
+          c:orientation val=minMax
+        c:delete val=0
+        c:axPos val=b
+        c:majorTickMark val=none
+        c:minorTickMark val=none
+        c:tickLblPos val=nextTo
+        c:spPr
+          a:ln w=9525
+            a:solidFill
+              a:srgbClr val=848088
+        c:txPr
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:pPr
+              a:defRPr sz=1200
+                a:solidFill
+                  a:srgbClr val=B9B5BE
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+            a:endParaRPr lang=ko-KR
+        c:crossAx val=222222222
+        c:crosses val=autoZero
+        c:auto val=1
+        c:lblAlgn val=ctr
+        c:lblOffset val=100
+        c:noMultiLvlLbl val=0
+      c:valAx
+        c:axId val=222222222
+        c:scaling
+          c:orientation val=minMax
+        c:delete val=1
+        c:axPos val=l
+        c:majorTickMark val=none
+        c:minorTickMark val=none
+        c:tickLblPos val=none
+        c:crossAx val=111111111
+        c:crosses val=autoZero
+    c:legend
+      c:legendPos val=t
+      c:overlay val=0
+      c:txPr
+        a:bodyPr
+        a:lstStyle
+        a:p
+          a:pPr
+            a:defRPr sz=1200
+              a:solidFill
+                a:srgbClr val=B9B5BE
+              a:latin typeface=Aptos
+              a:ea typeface=Aptos
+          a:endParaRPr lang=ko-KR
+    c:plotVisOnly val=1
+    c:dispBlanksAs val=gap
+  c:spPr
+    a:noFill
+    a:ln
+      a:noFill
+  c:txPr
+    a:bodyPr
+    a:lstStyle
+    a:p
+      a:pPr
+        a:defRPr sz=1200
+          a:solidFill
+            a:srgbClr val=B9B5BE
+          a:latin typeface=Aptos
+          a:ea typeface=Aptos
+      a:endParaRPr lang=ko-KR
+  c:externalData r:id=rId1
+    c:autoUpdate val=0
+
+== ppt/notesMasters/_rels/notesMaster1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../theme/themeNotesMaster.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme
+
+== ppt/notesMasters/notesMaster1.xml ==
+p:notesMaster
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Slide Image Placeholder 1
+          p:cNvSpPr
+            a:spLocks noChangeAspect=1 noGrp=1 noRot=1
+          p:nvPr
+            p:ph type=sldImg
+        p:spPr
+          a:xfrm
+            a:off x=857250 y=762000
+            a:ext cx=5143500 cy=2893218
+          a:prstGeom prst=rect
+            a:avLst
+          a:noFill
+          a:ln w=12700
+            a:solidFill
+              a:prstClr val=black
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Notes Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=857250 y=4036218
+            a:ext cx=5143500 cy=4345782
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=t bIns=45720 lIns=91440 numCol=1 rIns=91440 tIns=45720 vert=horz wrap=square
+            a:normAutofit
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=en-US
+  p:clrMap accent1=accent1 accent2=accent2 accent3=accent3 accent4=accent4 accent5=accent5 accent6=accent6 bg1=lt1 bg2=lt2 folHlink=folHlink hlink=hlink tx1=dk1 tx2=dk2
+  p:notesStyle
+    a:lvl1pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 latinLnBrk=0 marL=0 rtl=0
+      a:defRPr kern=1200 sz=1200
+        a:solidFill
+          a:schemeClr val=tx1
+        a:latin typeface=+mn-lt
+        a:ea typeface=+mn-ea
+        a:cs typeface=+mn-cs
+
+== ppt/notesSlides/_rels/notesSlide1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../notesMasters/notesMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster
+  rel:Relationship Id=rId2 Target=../slides/slide1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+
+== ppt/notesSlides/_rels/notesSlide2.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../notesMasters/notesMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesMaster
+  rel:Relationship Id=rId2 Target=../slides/slide2.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide
+
+== ppt/notesSlides/notesSlide1.xml ==
+p:notes
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Slide Image Placeholder 1
+          p:cNvSpPr
+            a:spLocks noChangeAspect=1 noGrp=1 noRot=1
+          p:nvPr
+            p:ph type=sldImg
+        p:spPr
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Notes Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "오늘의 목적을 한 문장으로 밝힙니다."
+            a:endParaRPr dirty=0 lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/notesSlides/notesSlide2.xml ==
+p:notes
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Slide Image Placeholder 1
+          p:cNvSpPr
+            a:spLocks noChangeAspect=1 noGrp=1 noRot=1
+          p:nvPr
+            p:ph type=sldImg
+        p:spPr
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Notes Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "출처"
+            a:endParaRPr dirty=0 lang=ko-KR
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "통계청. 2026 소비 동향 — 표 3"
+            a:endParaRPr dirty=0 lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/presProps.xml ==
+p:presentationPr
+
+== ppt/presentation.xml ==
+p:presentation saveSubsetFonts=1
+  p:sldMasterIdLst
+    p:sldMasterId id=2147483648 r:id=rId1
+  p:notesMasterIdLst
+    p:notesMasterId r:id=rId10
+  p:sldIdLst
+    p:sldId id=256 r:id=rId6
+    p:sldId id=257 r:id=rId7
+    p:sldId id=258 r:id=rId8
+    p:sldId id=259 r:id=rId9
+  p:sldSz cx=12192000 cy=6858000
+  p:notesSz cx=6858000 cy=9144000
+  p:defaultTextStyle
+    a:defPPr
+      a:defRPr lang=ko-KR
+
+== ppt/slideLayouts/_rels/slideLayout1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout10.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout2.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout3.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout4.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout5.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout6.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout7.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout8.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/_rels/slideLayout9.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideMasters/slideMaster1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster
+
+== ppt/slideLayouts/slideLayout1.xml ==
+p:sldLayout preserve=1 type=title
+  p:cSld name=제목 슬라이드
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=8 name=Cover Accent
+          p:cNvSpPr
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2286000
+            a:ext cx=1600200 cy=68580
+          a:prstGeom prst=rect
+            a:avLst
+          a:solidFill
+            a:srgbClr val=8B5CF6
+          a:ln
+            a:noFill
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=ctrTitle
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2560320
+            a:ext cx=9814560 cy=1600200
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=5000
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "프레젠테이션 제목"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Subtitle 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=subTitle
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=4297680
+            a:ext cx=9814560 cy=914400
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr sz=2000
+                a:solidFill
+                  a:srgbClr val=C2BEC7
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "부제목 또는 한 줄 요약"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout10.xml ==
+p:sldLayout preserve=1 type=blank
+  p:cSld name=빈 화면
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout2.xml ==
+p:sldLayout preserve=1 type=secHead
+  p:cSld name=구역 머리글
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=8 name=Section Accent
+          p:cNvSpPr
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2377440
+            a:ext cx=685800 cy=68580
+          a:prstGeom prst=rect
+            a:avLst
+          a:solidFill
+            a:srgbClr val=8B5CF6
+          a:ln
+            a:noFill
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2651760
+            a:ext cx=9814560 cy=1097280
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=4200
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "구역 제목"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Text Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=3840480
+            a:ext cx=9814560 cy=731520
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr sz=1800
+                a:solidFill
+                  a:srgbClr val=C2BEC7
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "이 구역에서 다룰 내용을 한 문장으로 소개합니다"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout3.xml ==
+p:sldLayout preserve=1 type=obj
+  p:cSld name=제목 및 내용
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=3800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "제목을 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Content Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=9814560 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout4.xml ==
+p:sldLayout preserve=1 type=twoObj
+  p:cSld name=콘텐츠 2개
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=3800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "제목을 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Content Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=4678680 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1700
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=4 name=Content Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=2 type=body
+        p:spPr
+          a:xfrm
+            a:off x=6416040 y=1659636
+            a:ext cx=4678680 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1700
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout5.xml ==
+p:sldLayout preserve=1 type=twoTxTwoObj
+  p:cSld name=비교
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=3800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "제목을 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Text Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=4678680 cy=502920
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=2000
+                a:solidFill
+                  a:srgbClr val=8B5CF6
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "왼쪽 항목"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=4 name=Content Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=2 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2299716
+            a:ext cx=4678680 cy=3643884
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1600
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=5 name=Text Placeholder 4
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=3 type=body
+        p:spPr
+          a:xfrm
+            a:off x=6416040 y=1659636
+            a:ext cx=4678680 cy=502920
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=2000
+                a:solidFill
+                  a:srgbClr val=D95926
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "오른쪽 항목"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=6 name=Content Placeholder 5
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=4 type=body
+        p:spPr
+          a:xfrm
+            a:off x=6416040 y=2299716
+            a:ext cx=4678680 cy=3643884
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1600
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout6.xml ==
+p:sldLayout preserve=1 type=obj
+  p:cSld name=핵심 인용
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=8 name=Quote Accent
+          p:cNvSpPr
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1828800
+            a:ext cx=274320 cy=274320
+          a:prstGeom prst=rect
+            a:avLst
+          a:solidFill
+            a:srgbClr val=8B5CF6
+          a:ln
+            a:noFill
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2377440
+            a:ext cx=9814560 cy=1828800
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr sz=3600
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "기억에 남길 한 문장을 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Text Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=4389120
+            a:ext cx=9814560 cy=457200
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr sz=1600
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "출처 또는 화자"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout7.xml ==
+p:sldLayout preserve=1 type=picTx
+  p:cSld name=캡션 있는 그림
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=3800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "제목을 입력하세요"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Picture Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=pic
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=5660136 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=4 name=Text Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=2 type=body
+        p:spPr
+          a:xfrm
+            a:off x=7397496 y=1659636
+            a:ext cx=3697224 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr
+              a:defRPr sz=1600
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "본문 텍스트를 입력하세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout8.xml ==
+p:sldLayout preserve=1 type=titleOnly
+  p:cSld name=제목만
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=3800
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "제목을 입력하세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideLayouts/slideLayout9.xml ==
+p:sldLayout preserve=1 type=secHead
+  p:cSld name=마무리
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=8 name=Closing Accent
+          p:cNvSpPr
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2377440
+            a:ext cx=1600200 cy=68580
+          a:prstGeom prst=rect
+            a:avLst
+          a:solidFill
+            a:srgbClr val=8B5CF6
+          a:ln
+            a:noFill
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=ctrTitle
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=2651760
+            a:ext cx=9814560 cy=1097280
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr b=1 sz=4200
+                a:solidFill
+                  a:srgbClr val=F6F1FC
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "감사합니다"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Subtitle 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=subTitle
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=3840480
+            a:ext cx=9814560 cy=1097280
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+            a:lvl1pPr algn=l indent=0 marL=0
+              a:buNone
+              a:defRPr sz=1800
+                a:solidFill
+                  a:srgbClr val=C2BEC7
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "다음 단계와 연락처를 남기세요"
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slideMasters/_rels/slideMaster1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId100 Target=../theme/theme1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme
+  rel:Relationship Id=rId1 Target=../slideLayouts/slideLayout1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId2 Target=../slideLayouts/slideLayout2.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId3 Target=../slideLayouts/slideLayout3.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId4 Target=../slideLayouts/slideLayout4.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId5 Target=../slideLayouts/slideLayout5.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId6 Target=../slideLayouts/slideLayout6.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId7 Target=../slideLayouts/slideLayout7.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId8 Target=../slideLayouts/slideLayout8.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId9 Target=../slideLayouts/slideLayout9.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId10 Target=../slideLayouts/slideLayout10.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+
+== ppt/slideMasters/slideMaster1.xml ==
+p:sldMaster
+  p:cSld
+    p:bg
+      p:bgPr
+        a:solidFill
+          a:schemeClr val=bg1
+        a:effectLst
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title Placeholder 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=685800
+            a:ext cx=9814560 cy=699516
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=b bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "마스터 제목 스타일 편집"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Text Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=9814560 cy=4283964
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr bIns=0 lIns=0 rIns=0 rtlCol=0 tIns=0 vert=horz
+            a:normAutofit
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr lang=ko-KR
+              a:t
+                "마스터 텍스트 스타일 편집"
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=9 name=Rail
+          p:cNvSpPr
+          p:nvPr
+        p:spPr
+          a:xfrm
+            a:off x=0 y=0
+            a:ext cx=182880 cy=6858000
+          a:prstGeom prst=rect
+            a:avLst
+          a:solidFill
+            a:srgbClr val=8B5CF6
+          a:ln
+            a:noFill
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:endParaRPr lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=10 name=Slide Number Placeholder 3
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=12 type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=9951720 y=6172200
+            a:ext cx=1143000 cy=365760
+          a:prstGeom prst=rect
+            a:avLst
+        p:txBody
+          a:bodyPr anchor=ctr bIns=45720 lIns=0 rIns=0 rtlCol=0 tIns=45720 vert=horz
+          a:lstStyle
+            a:lvl1pPr algn=r
+              a:defRPr sz=1100
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+          a:p
+            a:fld id={B7B5A0C4-2C2F-4E28-9E86-9E0F0F5B0E11} type=slidenum
+              a:rPr lang=ko-KR smtClean=0
+              a:t
+                "‹#›"
+            a:endParaRPr lang=ko-KR
+  p:clrMap accent1=accent1 accent2=accent2 accent3=accent3 accent4=accent4 accent5=accent5 accent6=accent6 bg1=lt1 bg2=lt2 folHlink=folHlink hlink=hlink tx1=dk1 tx2=dk2
+  p:sldLayoutIdLst
+    p:sldLayoutId id=2147483650 r:id=rId1
+    p:sldLayoutId id=2147483651 r:id=rId2
+    p:sldLayoutId id=2147483652 r:id=rId3
+    p:sldLayoutId id=2147483653 r:id=rId4
+    p:sldLayoutId id=2147483654 r:id=rId5
+    p:sldLayoutId id=2147483655 r:id=rId6
+    p:sldLayoutId id=2147483656 r:id=rId7
+    p:sldLayoutId id=2147483657 r:id=rId8
+    p:sldLayoutId id=2147483658 r:id=rId9
+    p:sldLayoutId id=2147483659 r:id=rId10
+  p:txStyles
+    p:titleStyle
+      a:lvl1pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 latinLnBrk=0 rtl=0
+        a:lnSpc
+          a:spcPct val=95000
+        a:spcBef
+          a:spcPct val=0
+        a:defRPr b=1 kern=1200 sz=3800
+          a:solidFill
+            a:schemeClr val=tx1
+          a:latin typeface=+mj-lt
+          a:ea typeface=+mj-ea
+          a:cs typeface=+mj-cs
+    p:bodyStyle
+      a:lvl1pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 indent=-342900 latinLnBrk=0 marL=342900 rtl=0
+        a:lnSpc
+          a:spcPct val=105000
+        a:spcBef
+          a:spcPts val=540
+        a:buClr
+          a:srgbClr val=8B5CF6
+        a:buSzPct val=90000
+        a:buFont charset=0 panose=020B0604020202020204 pitchFamily=34 typeface=Arial
+        a:buChar char=•
+        a:defRPr kern=1200 sz=1800
+          a:solidFill
+            a:srgbClr val=F6F1FC
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+      a:lvl2pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 indent=-285750 latinLnBrk=0 marL=742950 rtl=0
+        a:lnSpc
+          a:spcPct val=105000
+        a:spcBef
+          a:spcPts val=480
+        a:buClr
+          a:srgbClr val=D95926
+        a:buSzPct val=90000
+        a:buFont charset=0 panose=020B0604020202020204 pitchFamily=34 typeface=Arial
+        a:buChar char=–
+        a:defRPr kern=1200 sz=1600
+          a:solidFill
+            a:srgbClr val=BDB9C3
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+      a:lvl3pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 indent=-228600 latinLnBrk=0 marL=1143000 rtl=0
+        a:lnSpc
+          a:spcPct val=105000
+        a:spcBef
+          a:spcPts val=420
+        a:buClr
+          a:srgbClr val=199E70
+        a:buSzPct val=90000
+        a:buFont charset=0 panose=020B0604020202020204 pitchFamily=34 typeface=Arial
+        a:buChar char=•
+        a:defRPr kern=1200 sz=1400
+          a:solidFill
+            a:srgbClr val=BDB9C3
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+      a:lvl4pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 indent=-228600 latinLnBrk=0 marL=1600200 rtl=0
+        a:lnSpc
+          a:spcPct val=105000
+        a:spcBef
+          a:spcPts val=360
+        a:buClr
+          a:srgbClr val=8B5CF6
+        a:buSzPct val=90000
+        a:buFont charset=0 panose=020B0604020202020204 pitchFamily=34 typeface=Arial
+        a:buChar char=–
+        a:defRPr kern=1200 sz=1300
+          a:solidFill
+            a:srgbClr val=BDB9C3
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+      a:lvl5pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 indent=-228600 latinLnBrk=0 marL=2057400 rtl=0
+        a:lnSpc
+          a:spcPct val=105000
+        a:spcBef
+          a:spcPts val=300
+        a:buClr
+          a:srgbClr val=D95926
+        a:buSzPct val=90000
+        a:buFont charset=0 panose=020B0604020202020204 pitchFamily=34 typeface=Arial
+        a:buChar char=•
+        a:defRPr kern=1200 sz=1200
+          a:solidFill
+            a:srgbClr val=BDB9C3
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+    p:otherStyle
+      a:lvl1pPr algn=l defTabSz=914400 eaLnBrk=1 hangingPunct=1 latinLnBrk=0 marL=0 rtl=0
+        a:defRPr kern=1200 sz=1200
+          a:solidFill
+            a:schemeClr val=tx1
+          a:latin typeface=+mn-lt
+          a:ea typeface=+mn-ea
+          a:cs typeface=+mn-cs
+
+== ppt/slides/_rels/slide1.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideLayouts/slideLayout1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId2 Target=../notesSlides/notesSlide1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide
+
+== ppt/slides/_rels/slide2.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideLayouts/slideLayout3.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId2 Target=../notesSlides/notesSlide2.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide
+
+== ppt/slides/_rels/slide3.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideLayouts/slideLayout3.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+
+== ppt/slides/_rels/slide4.xml.rels ==
+rel:Relationships
+  rel:Relationship Id=rId1 Target=../slideLayouts/slideLayout3.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout
+  rel:Relationship Id=rId3 Target=../charts/chart1.xml Type=http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart
+
+== ppt/slides/slide1.xml ==
+p:sld
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=ctrTitle
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "2026 성장 전략"
+            a:endParaRPr dirty=0 lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Subtitle 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=subTitle
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "국내 시장 재진입 로드맵"
+            a:endParaRPr dirty=0 lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slides/slide2.xml ==
+p:sld
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "핵심 진단"
+            a:endParaRPr dirty=0 lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=3 name=Content Placeholder 2
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph idx=1 type=body
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "기존 채널의 성장률이 3분기 연속 둔화"
+            a:endParaRPr dirty=0 lang=ko-KR
+          a:p
+            a:pPr lvl=1
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "이탈 고객의 62%가 온보딩 단계에서 발생"
+            a:endParaRPr dirty=0 lang=ko-KR
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "신규 세그먼트에서만 두 자릿수 성장 유지"
+            a:endParaRPr dirty=0 lang=ko-KR
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=4 name=Slide Number Placeholder
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=9951720 y=6172200
+            a:ext cx=1143000 cy=365760
+        p:txBody
+          a:bodyPr anchor=ctr
+          a:lstStyle
+          a:p
+            a:pPr algn=r
+            a:fld id={5B2B4A21-6D1F-4A76-9E30-6B4C1E9F4B10} type=slidenum
+              a:rPr lang=ko-KR smtClean=0 sz=1100
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+              a:t
+                "2"
+            a:endParaRPr lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slides/slide3.xml ==
+p:sld
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "연간 비용"
+            a:endParaRPr dirty=0 lang=ko-KR
+      p:grpSp
+        p:nvGrpSpPr
+          p:cNvPr descr=연간 비용 id=3 name=Table
+          p:cNvGrpSpPr
+          p:nvPr
+        p:grpSpPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=9814560 cy=4283964
+            a:chOff x=1280160 y=1659636
+            a:chExt cx=9814560 cy=4283964
+        p:sp
+          p:nvSpPr
+            p:cNvPr id=4 name=Text 4
+            p:cNvSpPr txBox=1
+            p:nvPr
+          p:spPr
+            a:xfrm
+              a:off x=1280160 y=1659636
+              a:ext cx=9814560 cy=192024
+            a:prstGeom prst=rect
+              a:avLst
+            a:noFill
+          p:txBody
+            a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 tIns=0 wrap=square
+              a:spAutoFit
+            a:lstStyle
+            a:p
+              a:pPr algn=l
+                a:buNone
+              a:r
+                a:rPr dirty=0 lang=ko-KR sz=1200
+                  a:solidFill
+                    a:srgbClr val=B9B5BE
+                  a:latin typeface=Aptos
+                  a:ea typeface=Aptos
+                a:t
+                  "연간 비용"
+      p:graphicFrame
+        p:nvGraphicFramePr
+          p:cNvPr descr=표. 연간 비용. 항목 / 2026 / 2027; 인건비 / 4.2억 / 3.4억; 라이선스 / 1.1억 / 1.4억 (3열 3행) id=5 name=Table
+          p:cNvGraphicFramePr
+            a:graphicFrameLocks noGrp=1
+          p:nvPr
+        p:xfrm
+          a:off x=1280160 y=1902460
+          a:ext cx=9814560 cy=1776984
+        a:graphic
+          a:graphicData uri=http://schemas.openxmlformats.org/drawingml/2006/table
+            a:tbl
+              a:tblPr bandRow=0 firstRow=1
+              a:tblGrid
+                a:gridCol w=4907280
+                a:gridCol w=2453640
+                a:gridCol w=2453640
+              a:tr h=293624
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=l
+                      a:r
+                        a:rPr b=1 lang=ko-KR sz=1200
+                          a:solidFill
+                            a:srgbClr val=B9B5BE
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "항목"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=12700
+                      a:solidFill
+                        a:srgbClr val=848088
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr b=1 lang=ko-KR sz=1200
+                          a:solidFill
+                            a:srgbClr val=B9B5BE
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "2026"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=12700
+                      a:solidFill
+                        a:srgbClr val=848088
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr b=1 lang=ko-KR sz=1200
+                          a:solidFill
+                            a:srgbClr val=B9B5BE
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "2027"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=12700
+                      a:solidFill
+                        a:srgbClr val=848088
+                    a:noFill
+              a:tr h=741680
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=l
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=F6F1FC
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "인건비"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=D5D1DB
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "4.2억"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=D5D1DB
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "3.4억"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+              a:tr h=741680
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=l
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=F6F1FC
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "라이선스"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=D5D1DB
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "1.1억"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+                a:tc
+                  a:txBody
+                    a:bodyPr
+                    a:lstStyle
+                    a:p
+                      a:pPr algn=r
+                      a:r
+                        a:rPr lang=ko-KR sz=1600
+                          a:solidFill
+                            a:srgbClr val=D5D1DB
+                          a:latin typeface=Aptos
+                          a:ea typeface=Aptos
+                        a:t
+                          "1.4억"
+                  a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
+                    a:lnB algn=ctr cap=flat cmpd=sng w=9525
+                      a:solidFill
+                        a:srgbClr val=69666E
+                    a:noFill
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=6 name=Slide Number Placeholder
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=9951720 y=6172200
+            a:ext cx=1143000 cy=365760
+        p:txBody
+          a:bodyPr anchor=ctr
+          a:lstStyle
+          a:p
+            a:pPr algn=r
+            a:fld id={5B2B4A21-6D1F-4A76-9E30-6B4C1E9F4B10} type=slidenum
+              a:rPr lang=ko-KR smtClean=0 sz=1100
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+              a:t
+                "3"
+            a:endParaRPr lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/slides/slide4.xml ==
+p:sld
+  p:cSld
+    p:spTree
+      p:nvGrpSpPr
+        p:cNvPr id=1 name=
+        p:cNvGrpSpPr
+        p:nvPr
+      p:grpSpPr
+        a:xfrm
+          a:off x=0 y=0
+          a:ext cx=0 cy=0
+          a:chOff x=0 y=0
+          a:chExt cx=0 cy=0
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=2 name=Title 1
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=title
+        p:spPr
+        p:txBody
+          a:bodyPr
+          a:lstStyle
+          a:p
+            a:r
+              a:rPr dirty=0 lang=ko-KR
+              a:t
+                "월별 처리량"
+            a:endParaRPr dirty=0 lang=ko-KR
+      p:grpSp
+        p:nvGrpSpPr
+          p:cNvPr descr=월별 처리량 id=3 name=Line chart
+          p:cNvGrpSpPr
+          p:nvPr
+        p:grpSpPr
+          a:xfrm
+            a:off x=1280160 y=1659636
+            a:ext cx=9814560 cy=4283964
+            a:chOff x=1280160 y=1659636
+            a:chExt cx=9814560 cy=4283964
+        p:sp
+          p:nvSpPr
+            p:cNvPr id=4 name=Text 4
+            p:cNvSpPr txBox=1
+            p:nvPr
+          p:spPr
+            a:xfrm
+              a:off x=1280160 y=1659636
+              a:ext cx=9814560 cy=192024
+            a:prstGeom prst=rect
+              a:avLst
+            a:noFill
+          p:txBody
+            a:bodyPr anchor=t bIns=0 lIns=0 rIns=0 tIns=0 wrap=square
+              a:spAutoFit
+            a:lstStyle
+            a:p
+              a:pPr algn=l
+                a:buNone
+              a:r
+                a:rPr dirty=0 lang=ko-KR sz=1200
+                  a:solidFill
+                    a:srgbClr val=B9B5BE
+                  a:latin typeface=Aptos
+                  a:ea typeface=Aptos
+                a:t
+                  "월별 처리량"
+      p:graphicFrame
+        p:nvGraphicFramePr
+          p:cNvPr descr=선 그래프. 월별 처리량. 1월, 2월, 3월, 4월; 전환 전 120, 118, 121, 119; 전환 후 120, 132, 148, 165 id=5 name=Chart
+          p:cNvGraphicFramePr
+          p:nvPr
+        p:xfrm
+          a:off x=1280160 y=1902460
+          a:ext cx=9814560 cy=4041140
+        a:graphic
+          a:graphicData uri=http://schemas.openxmlformats.org/drawingml/2006/chart
+            c:chart r:id=rId3
+      p:sp
+        p:nvSpPr
+          p:cNvPr id=6 name=Slide Number Placeholder
+          p:cNvSpPr
+            a:spLocks noGrp=1
+          p:nvPr
+            p:ph type=sldNum
+        p:spPr
+          a:xfrm
+            a:off x=9951720 y=6172200
+            a:ext cx=1143000 cy=365760
+        p:txBody
+          a:bodyPr anchor=ctr
+          a:lstStyle
+          a:p
+            a:pPr algn=r
+            a:fld id={5B2B4A21-6D1F-4A76-9E30-6B4C1E9F4B10} type=slidenum
+              a:rPr lang=ko-KR smtClean=0 sz=1100
+                a:solidFill
+                  a:srgbClr val=BDB9C3
+                a:latin typeface=Aptos
+                a:ea typeface=Aptos
+              a:t
+                "4"
+            a:endParaRPr lang=ko-KR
+  p:clrMapOvr
+    a:masterClrMapping
+
+== ppt/tableStyles.xml ==
+a:tblStyleLst def={5C22544A-7EE6-4342-B048-85BDC9FD1C3A}
+
+== ppt/theme/theme1.xml ==
+a:theme name=Ptium Plum
+  a:themeElements
+    a:clrScheme name=Ptium Plum
+      a:dk1
+        a:srgbClr val=F6F1FC
+      a:lt1
+        a:srgbClr val=1A1024
+      a:dk2
+        a:srgbClr val=BDB9C3
+      a:lt2
+        a:srgbClr val=5A565F
+      a:accent1
+        a:srgbClr val=8B5CF6
+      a:accent2
+        a:srgbClr val=D95926
+      a:accent3
+        a:srgbClr val=199E70
+      a:accent4
+        a:srgbClr val=9085E9
+      a:accent5
+        a:srgbClr val=E66767
+      a:accent6
+        a:srgbClr val=B05FC4
+      a:hlink
+        a:srgbClr val=D95926
+      a:folHlink
+        a:srgbClr val=199E70
+    a:fontScheme name=Ptium Plum
+      a:majorFont
+        a:latin typeface=Aptos Display
+        a:ea typeface=맑은 고딕
+        a:cs typeface=
+      a:minorFont
+        a:latin typeface=Aptos
+        a:ea typeface=맑은 고딕
+        a:cs typeface=
+    a:fmtScheme name=Ptium Plum
+      a:fillStyleLst
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+            a:tint val=80000
+        a:solidFill
+          a:schemeClr val=phClr
+            a:shade val=90000
+      a:lnStyleLst
+        a:ln cap=flat w=9525
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+        a:ln cap=flat w=19050
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+        a:ln cap=flat w=28575
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+      a:effectStyleLst
+        a:effectStyle
+          a:effectLst
+        a:effectStyle
+          a:effectLst
+        a:effectStyle
+          a:effectLst
+      a:bgFillStyleLst
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+  a:objectDefaults
+  a:extraClrSchemeLst
+
+== ppt/theme/themeNotesMaster.xml ==
+a:theme name=Ptium Plum
+  a:themeElements
+    a:clrScheme name=Ptium Plum
+      a:dk1
+        a:srgbClr val=F6F1FC
+      a:lt1
+        a:srgbClr val=1A1024
+      a:dk2
+        a:srgbClr val=BDB9C3
+      a:lt2
+        a:srgbClr val=5A565F
+      a:accent1
+        a:srgbClr val=8B5CF6
+      a:accent2
+        a:srgbClr val=D95926
+      a:accent3
+        a:srgbClr val=199E70
+      a:accent4
+        a:srgbClr val=9085E9
+      a:accent5
+        a:srgbClr val=E66767
+      a:accent6
+        a:srgbClr val=B05FC4
+      a:hlink
+        a:srgbClr val=D95926
+      a:folHlink
+        a:srgbClr val=199E70
+    a:fontScheme name=Ptium Plum
+      a:majorFont
+        a:latin typeface=Aptos Display
+        a:ea typeface=맑은 고딕
+        a:cs typeface=
+      a:minorFont
+        a:latin typeface=Aptos
+        a:ea typeface=맑은 고딕
+        a:cs typeface=
+    a:fmtScheme name=Ptium Plum
+      a:fillStyleLst
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+            a:tint val=80000
+        a:solidFill
+          a:schemeClr val=phClr
+            a:shade val=90000
+      a:lnStyleLst
+        a:ln cap=flat w=9525
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+        a:ln cap=flat w=19050
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+        a:ln cap=flat w=28575
+          a:solidFill
+            a:schemeClr val=phClr
+          a:prstDash val=solid
+      a:effectStyleLst
+        a:effectStyle
+          a:effectLst
+        a:effectStyle
+          a:effectLst
+        a:effectStyle
+          a:effectLst
+      a:bgFillStyleLst
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+        a:solidFill
+          a:schemeClr val=phClr
+  a:objectDefaults
+  a:extraClrSchemeLst
+
+== ppt/viewProps.xml ==
+p:viewPr
+  p:normalViewPr
+  p:slideViewPr
+    p:cSldViewPr snapToGrid=0
+      p:cViewPr varScale=1
+        p:scale
+          a:sx d=100 n=80
+          a:sy d=100 n=80
+        p:origin x=0 y=0
+      p:guideLst
+  p:gridSpacing cx=76200 cy=76200
