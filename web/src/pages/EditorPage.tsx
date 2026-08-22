@@ -32,6 +32,7 @@ import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { QualityDialog } from './editor/QualityDialog'
 import { HistoryDialog } from './editor/HistoryDialog'
 import { ExportDialog } from './editor/ExportDialog'
+import { useAutosave, useUnsavedWarning } from './editor/hooks/useAutosave'
 
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
@@ -85,7 +86,6 @@ export function EditorPage({ id }: { id: string }) {
   const [exporting, setExporting] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [editVersion, setEditVersion] = useState(0)
-  const saveTimer = useRef<number | null>(null)
   const revision = useRef(0)
   const savePromise = useRef<Promise<boolean> | null>(null)
   const editorState = useRef({ presentation, slides, dirty })
@@ -191,27 +191,13 @@ export function EditorPage({ id }: { id: string }) {
     return operation
   }, [id])
 
-  useEffect(() => {
-    if (!dirty) return
-    if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    saveTimer.current = window.setTimeout(() => { void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error')) }, 1000)
-    return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current) }
-  }, [dirty, editVersion, save, showToast])
-
-  useEffect(() => {
-    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!editorState.current.dirty && !savePromise.current) return
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', warnBeforeUnload)
-    return () => window.removeEventListener('beforeunload', warnBeforeUnload)
-  }, [])
-
-  useEffect(() => () => {
-    if (saveTimer.current) window.clearTimeout(saveTimer.current)
-    if (editorState.current.dirty) void save().catch(() => { /* A full-page exit is guarded by beforeunload. */ })
-  }, [save])
+  useAutosave({
+    dirty,
+    edits: editVersion,
+    save,
+    onError: (error) => showToast(`저장하지 못했습니다: ${displayError(error)}`, 'error'),
+  })
+  useUnsavedWarning(() => editorState.current.dirty || Boolean(savePromise.current))
 
   const activeIndex = Math.max(0, slides.findIndex((slide) => slide.id === activeId))
   const active = slides[activeIndex]
