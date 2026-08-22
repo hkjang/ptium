@@ -202,6 +202,9 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			claimed[placeholder.Slot] = true
 		}
 
+		// A slide written as two columns heads each one itself, so its first lead
+		// is that column's heading rather than the slide's subtitle.
+		twoColumns := len(slide.Groups) > 0 && len(freeBodySlots(layout, claimed)) > len(slide.Groups)
 		lead := strings.TrimSpace(slide.Lead)
 		// A slide that says its own lead again as a bullet says it twice on the
 		// page. The model does this often enough to be worth removing here: the
@@ -211,7 +214,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		// region. Recording it otherwise makes the renderer write the same sentence
 		// a second time, into whichever subtitle slot the layout happens to have.
 		subtitle := ""
-		if lead != "" && lead != title {
+		if lead != "" && lead != title && !twoColumns {
 			switch placeholder, ok := leadSlot(layout, claimed); {
 			case ok:
 				content.SetField(placeholder.Slot, fit(placeholder, []pptx.Paragraph{{Text: lead}}, options.Language))
@@ -240,7 +243,12 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		}
 
 		if len(slide.Bullets) > 0 {
-			distributeBullets(&content, layout, claimed, slide.Bullets, options.Language, &result.Warnings, where)
+			if columns, ok := columnGroups(slide, layout, claimed); ok {
+				placeColumns(&content, layout, claimed, columns, options.Language)
+			} else {
+				distributeBullets(&content, layout, claimed, withGroupHeadings(slide),
+					options.Language, &result.Warnings, where)
+			}
 		}
 		// A caption an author wrote for a photograph is theirs, and it was only
 		// being carried as alternative text. When the layout still has a text
@@ -356,6 +364,94 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 		return layout, ""
 	}
 	return manifest.Layouts[0], ""
+}
+
+// withGroupHeadings puts a column's heading back among the points, for a layout
+// that has nowhere to put the columns. The heading is the author's sentence: it
+// leads the points it was written for rather than being dropped.
+func withGroupHeadings(slide SourceSlide) []pptx.Paragraph {
+	if len(slide.Groups) == 0 {
+		return slide.Bullets
+	}
+	folded := make([]pptx.Paragraph, 0, len(slide.Bullets)+len(slide.Groups))
+	previous := 0
+	for _, group := range slide.Groups {
+		at := min(max(group.From, 0), len(slide.Bullets))
+		folded = append(folded, slide.Bullets[previous:at]...)
+		if heading := strings.TrimSpace(group.Heading); heading != "" {
+			folded = append(folded, pptx.Paragraph{Text: heading, Lead: true})
+		}
+		previous = at
+	}
+	return append(folded, slide.Bullets[previous:]...)
+}
+
+// column is one side of a two-column slide: its heading and its points.
+type column struct {
+	Heading string
+	Bullets []pptx.Paragraph
+}
+
+// columnGroups reads a slide written as columns — a heading, its points, another
+// heading, its points — and reports whether this layout can hold it that way.
+//
+// It can when the layout has a body region for each column. One region short and
+// the slide is better off as one list: two headings crammed into one column read
+// as a sentence that lost its verb.
+func columnGroups(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) ([]column, bool) {
+	if len(slide.Groups) == 0 {
+		return nil, false
+	}
+	columns := []column{{Heading: strings.TrimSpace(slide.Lead)}}
+	starts := append([]SourceGroup{}, slide.Groups...)
+	previous := 0
+	for _, group := range starts {
+		at := min(max(group.From, 0), len(slide.Bullets))
+		columns[len(columns)-1].Bullets = slide.Bullets[previous:at]
+		columns = append(columns, column{Heading: strings.TrimSpace(group.Heading)})
+		previous = at
+	}
+	columns[len(columns)-1].Bullets = slide.Bullets[previous:]
+	for _, entry := range columns {
+		if len(entry.Bullets) == 0 {
+			return nil, false
+		}
+	}
+	if len(freeBodySlots(layout, claimed)) < len(columns) {
+		return nil, false
+	}
+	return columns, true
+}
+
+// placeColumns writes each column into its own region, its heading above its
+// own points rather than above the slide.
+func placeColumns(content *Content, layout pptx.Layout, claimed map[string]bool,
+	columns []column, language string) {
+	slots := freeBodySlots(layout, claimed)
+	for index, entry := range columns {
+		if index >= len(slots) {
+			return
+		}
+		paragraphs := make([]pptx.Paragraph, 0, len(entry.Bullets)+1)
+		if entry.Heading != "" {
+			paragraphs = append(paragraphs, pptx.Paragraph{Text: entry.Heading, Lead: true})
+		}
+		paragraphs = append(paragraphs, entry.Bullets...)
+		fitted, _ := pptx.FitParagraphsReport(paragraphs, slots[index], language)
+		content.SetField(slots[index].Slot, fitted)
+		claimed[slots[index].Slot] = true
+	}
+}
+
+// freeBodySlots is every body region the slide has not already given away.
+func freeBodySlots(layout pptx.Layout, claimed map[string]bool) []pptx.Placeholder {
+	var slots []pptx.Placeholder
+	for _, placeholder := range layout.BodySlots() {
+		if !claimed[placeholder.Slot] && placeholder.MaxLines >= 2 {
+			slots = append(slots, placeholder)
+		}
+	}
+	return slots
 }
 
 // roleLayoutThatHolds finds another layout of the same role with room for the

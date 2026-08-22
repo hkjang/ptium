@@ -46,6 +46,11 @@ type SourceSlide struct {
 	Blocks   []SourceBlock
 	Images   []SourceImage
 	Notes    string
+	// Groups are the second and further columns: each one is a heading and the
+	// points written after it. The first column has no entry — it is the slide's
+	// lead and the points before the next heading — so a slide with one lead has
+	// no groups at all and behaves exactly as it always did.
+	Groups []SourceGroup
 	// Sources are where the slide's figures came from. A deck that states a
 	// number and cannot say where it is from is the first thing anyone in a
 	// company asks about, so the language carries the answer beside the claim.
@@ -61,6 +66,13 @@ type SourceSlide struct {
 //
 // Marker is what the claim carries ("1"), Title names the source and Locator
 // says where in it to look.
+// SourceGroup is a column: a heading, and where in the slide's points its own
+// points begin.
+type SourceGroup struct {
+	Heading string
+	From    int
+}
+
 type SourceCitation struct {
 	Marker  string
 	Title   string
@@ -255,8 +267,16 @@ func ParseSource(source string) Source {
 			hungry = nil
 			begin(line)
 			lead := unescapePayload(trimmed[1:])
+			// A second lead after points have started is a second column: it heads
+			// the points that follow it. Two-column slides are written this way by
+			// anyone describing two sides of something — and by the model — and
+			// gluing the two headings into one sentence, which is what happened
+			// before, puts both of them over the left column and leaves the right
+			// one bare.
 			if current.Lead == "" {
 				current.Lead = lead
+			} else if len(current.Bullets) > 0 {
+				current.Groups = append(current.Groups, SourceGroup{Heading: lead, From: len(current.Bullets)})
 			} else {
 				current.Lead += " " + lead
 			}

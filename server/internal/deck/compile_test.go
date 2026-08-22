@@ -183,3 +183,107 @@ func TestAClosingPageKeepsItsLeadAndItsPoints(t *testing.T) {
 		}
 	}
 }
+
+// Two columns are written the way anyone describes two sides of something: a
+// heading, its points, another heading, its points. Both headings used to be
+// glued into one sentence over the left column, leaving the right one bare.
+func TestASlideWrittenAsTwoColumnsGetsTwoColumns(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 성장과 위축의 원인 분석\n@two\n" +
+		"> 시장 환경 변화\n- 온라인 구매 선호도가 증가\n- 모바일 비중 확대\n" +
+		"> 내부 채널 갈등\n- 가격 정책 불일치\n- 대리점 디지털 역량 부족\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if len(result.Slides) != 1 {
+		t.Fatalf("compiled %d slides", len(result.Slides))
+	}
+	content := Decode(result.Slides[0].Content)
+	regions := map[string][]string{}
+	for slot, paragraphs := range content.Fields {
+		for _, paragraph := range paragraphs {
+			regions[slot] = append(regions[slot], paragraph.Text)
+		}
+	}
+	var left, right []string
+	for slot, lines := range regions {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		if strings.Contains(strings.Join(lines, " "), "시장 환경 변화") {
+			left = lines
+		}
+		if strings.Contains(strings.Join(lines, " "), "내부 채널 갈등") {
+			right = lines
+		}
+	}
+	if len(left) == 0 || len(right) == 0 {
+		t.Fatalf("the two headings did not end up over their own points: %+v", regions)
+	}
+	if strings.Contains(strings.Join(left, " "), "내부 채널 갈등") {
+		t.Fatalf("both headings landed in one region: %+v", regions)
+	}
+	// Each column keeps its own points.
+	if !strings.Contains(strings.Join(left, " "), "모바일 비중 확대") {
+		t.Fatalf("the left column lost its points: %+v", left)
+	}
+	if !strings.Contains(strings.Join(right, " "), "대리점 디지털 역량 부족") {
+		t.Fatalf("the right column lost its points: %+v", right)
+	}
+
+	// A layout with one region gets one list rather than two crammed headings.
+	single := Compile(ParseSource("# 한 칸\n@layout 제목-및-내용\n"+
+		"> 왼쪽\n- 한 줄\n> 오른쪽\n- 다른 줄\n"), manifest, CompileOptions{Language: "ko"})
+	said := ""
+	for _, paragraphs := range Decode(single.Slides[0].Content).Fields {
+		for _, paragraph := range paragraphs {
+			said += paragraph.Text + "\n"
+		}
+	}
+	for _, wanted := range []string{"왼쪽", "한 줄", "오른쪽", "다른 줄"} {
+		if !strings.Contains(said, wanted) {
+			t.Fatalf("a one-region layout lost %q:\n%s", wanted, said)
+		}
+	}
+}
+
+// And a two-column slide comes back out as it was written. Everything in this
+// language is written, compiled and written again; a heading that survives the
+// compile but not the writing is a slow deletion.
+func TestTwoColumnsSurviveTheRoundTrip(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 성장과 위축의 원인 분석\n@two\n" +
+		"> 시장 환경 변화\n- 온라인 구매 선호도가 증가\n- 모바일 비중 확대\n" +
+		"> 내부 채널 갈등\n- 가격 정책 불일치\n- 디지털 역량 부족\n"
+	result := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	written := Format(model.Presentation{Title: "채널", Language: "ko", Slides: result.Slides}, manifest)
+	for _, line := range []string{
+		"> 시장 환경 변화", "- 온라인 구매 선호도가 증가", "- 모바일 비중 확대",
+		"> 내부 채널 갈등", "- 가격 정책 불일치", "- 디지털 역량 부족",
+	} {
+		if !strings.Contains(written, line) {
+			t.Fatalf("the round trip lost %q:\n%s", line, written)
+		}
+	}
+	// Written again, it compiles to the same two columns.
+	again := Compile(ParseSource(written), manifest, CompileOptions{Language: "ko"})
+	if len(again.Slides) != len(result.Slides) {
+		t.Fatalf("the deck changed size: %d then %d", len(result.Slides), len(again.Slides))
+	}
+	rewritten := Format(model.Presentation{Title: "채널", Language: "ko", Slides: again.Slides}, manifest)
+	if strings.TrimSpace(rewritten) != strings.TrimSpace(written) {
+		t.Fatalf("a second round trip changed the deck:\n%s\n---\n%s", written, rewritten)
+	}
+}
