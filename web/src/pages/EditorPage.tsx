@@ -27,7 +27,7 @@ import {
   MAX_SLIDES, bodyFromFields, bodyFromText, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, toApiSlides,
 } from './editor/model/slides'
-import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel } from './editor/model/findings'
+import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, warningText } from './editor/model/findings'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { QualityDialog } from './editor/QualityDialog'
 import { HistoryDialog } from './editor/HistoryDialog'
@@ -1070,7 +1070,7 @@ export function EditorPage({ id }: { id: string }) {
               </div>
               </div>
               {(sourceWarnings.length > 0 || sourceFindings.length > 0) && <ul className="source-editor-warnings">
-                {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warning}</li>)}
+                {sourceWarnings.map((warning) => <li key={warning}><AlertTriangle size={13} /> {warningText(warning)}</li>)}
                 {sourceFindings.map((finding) => (
                   <li key={`${finding.slide}-${finding.slot}-${finding.kind}`}
                     className={finding.advisory ? 'source-editor-advisory' : 'source-editor-finding'}>

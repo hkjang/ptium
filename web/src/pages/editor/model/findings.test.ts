@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel } from './findings'
+import {
+  findingDetail, findingLabel, objectParticle, revisionReason, scoreDimensionLabel,
+  subjectParticle, toParticle, warningText,
+} from './findings'
 
 describe('a measurement in the reader’s words', () => {
   it('writes each finding as a sentence about their slide', () => {
@@ -14,7 +17,7 @@ describe('a measurement in the reader’s words', () => {
         '한 장에 요점이 9개입니다. 6개를 넘으면 듣지 않고 읽습니다'],
       ['no speaker notes: nothing is written down to say over this slide',
         '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
-      ['kpi had too little room to draw anything', '핵심 지표을 그릴 자리가 없었습니다'],
+      ['kpi had too little room to draw anything', '핵심 지표를 그릴 자리가 없었습니다'],
       ['two lines of the quote overlap', '인용의 두 줄이 서로 겹칩니다'],
       ['figures with no source: nothing on this slide says where its numbers came from',
         '숫자가 있는데 출처가 없습니다. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
@@ -74,5 +77,42 @@ describe('a measurement in the reader’s words', () => {
     for (const reason of ['edit', 'source', 'generation', 'restore']) {
       expect(revisionReason(reason), reason).not.toBe(reason)
     }
+  })
+})
+
+describe('what compiling adjusted, in the reader’s words', () => {
+  it('keeps the place and rewrites the sentence', () => {
+    expect(warningText('line 46 (slide 8): layout "마무리" has no free body region, so its points were kept as plain text'))
+      .toBe('line 46 (slide 8): "마무리" 레이아웃에는 본문 영역이 없어 요점을 제목 아래 줄로 적었습니다')
+  })
+
+  it('names the component the way the rest of the editor does', () => {
+    expect(warningText('line 12: lineChart has no free region in layout "제목만" and was written as text'))
+      .toBe('line 12: "제목만" 레이아웃에 추이 차트를 그릴 자리가 없어 글로 적었습니다')
+    expect(warningText('slide 3: columnChart had no numeric values and was drawn as table'))
+      .toBe('slide 3: 세로 막대 차트에 숫자가 없어 표로 그렸습니다')
+  })
+
+  it('says what a source-language mistake was', () => {
+    expect(warningText('line 7: unknown component "flowchart"')).toBe('line 7: "flowchart"은 없는 컴포넌트입니다')
+    expect(warningText('line 9: @layout needs a layout id')).toBe('line 9: @layout 에는 레이아웃 id가 필요합니다')
+  })
+
+  it('picks the particle the word actually takes', () => {
+    // 표를 · 차트를, 표로 · 격자로 — the final consonant decides, and ㄹ takes 로.
+    expect(objectParticle('표')).toBe('를')
+    expect(objectParticle('격자')).toBe('를')
+    expect(objectParticle('인용')).toBe('을')
+    expect(toParticle('표')).toBe('로')
+    expect(toParticle('인용')).toBe('으로')
+    expect(toParticle('서울')).toBe('로')
+    // A Latin or numeric ending is read as ending open.
+    expect(objectParticle('KPI')).toBe('를')
+    expect(subjectParticle('표')).toBe('가')
+    expect(subjectParticle('인용')).toBe('이')
+  })
+
+  it('leaves a sentence it does not know alone rather than mangling it', () => {
+    expect(warningText('something nobody has written a rule for')).toBe('something nobody has written a rule for')
   })
 })
