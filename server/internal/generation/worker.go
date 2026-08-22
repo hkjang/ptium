@@ -116,8 +116,12 @@ func (w *Worker) resolveTemplate(ctx context.Context, presentation model.Present
 }
 
 func (w *Worker) fail(ctx context.Context, presentation model.Presentation, cause error) error {
+	// Two readers, two messages. The operator gets the cause as it happened; the
+	// author gets what kind of thing went wrong, whether trying again is worth
+	// it, and who to ask — in the language they asked for the deck in, and
+	// without the address of an internal service in it.
 	message := truncate(cause.Error(), 1000)
-	_ = w.store.FailGeneration(ctx, presentation.ID, message)
+	_ = w.store.FailGeneration(ctx, presentation.ID, AuthorMessage(cause, presentation.Language))
 	details, _ := json.Marshal(map[string]any{"presentationId": presentation.ID, "ownerId": presentation.OwnerID})
 	_ = w.store.CaptureIncident(ctx, model.Incident{UserID: stringPointer(presentation.OwnerID), Kind: "generation", Severity: "error", Message: message, Details: details})
 	return cause
