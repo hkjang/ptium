@@ -305,3 +305,72 @@ func TestInspectSeparatesUnfinishedFromBroken(t *testing.T) {
 		t.Fatalf("a cover without notes must not be reported: %+v", reported)
 	}
 }
+
+// A line chart labels its x-axis by centring a month in the gap between two
+// ticks, which gives a two-character label a box seven centimetres wide. Those
+// boxes overlap; the labels do not. Measuring boxes made every trend chart
+// report a collision and cost it a third of its score.
+func TestAChartsAxisLabelsDoNotReadAsACollision(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	layout, _ := manifest.Layout(manifest.DefaultLayout)
+	slide := Slide{LayoutID: layout.ID,
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "월별 처리량"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockLine, Heading: "월별 처리량",
+			Labels: []string{"1월", "2월", "3월", "4월"},
+			Series: []Series{
+				{Name: "전환 전", Points: []float64{120, 118, 121, 119}},
+				{Name: "전환 후", Points: []float64{120, 132, 148, 165}}}}}}
+	for _, finding := range InspectSlide(manifest, layout, slide, NewDesign(manifest)) {
+		if finding.Kind == FindingCollision {
+			t.Fatalf("the chart reports a collision it does not have: %s", finding.String())
+		}
+	}
+
+	// Text that really does land on other text is still caught: two labels of
+	// the same width in the same place.
+	overlapping := []Primitive{
+		text(Frame{X: 0, Y: 0, Width: 1000000, Height: 300000}, line("첫 번째 항목"),
+			textOptions{Size: 1800, Color: "000000"}),
+		text(Frame{X: 100000, Y: 0, Width: 1000000, Height: 300000}, line("두 번째 항목"),
+			textOptions{Size: 1800, Color: "000000"}),
+	}
+	first, second := inkBounds(overlapping[0]), inkBounds(overlapping[1])
+	if overlapArea(first, second) <= 0 {
+		t.Fatalf("two labels drawn on each other no longer overlap: %v and %v", first, second)
+	}
+}
+
+// "2026년 상반기" on a cover is when the deck is about. Asking a cover for the
+// source of its own date teaches people to ignore the question.
+func TestACoverIsNotAskedWhereItsYearCameFrom(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	cover, _ := manifest.Layout(manifest.TitleLayout)
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	deck := Deck{Language: "ko", Slides: []Slide{
+		{LayoutID: cover.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "전환 프로그램 보고"}}, SlotSubtitle: {{Text: "2026년 상반기"}}}},
+		{LayoutID: content.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "매출"}}, SlotBody: {{Text: "2026년 매출은 1,240억"}}}},
+	}}
+	asked := map[int]bool{}
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingSource {
+			asked[finding.Slide] = true
+		}
+	}
+	if asked[1] {
+		t.Fatal("the cover was asked for a source")
+	}
+	if !asked[2] {
+		t.Fatal("a slide stating 1,240억 was not asked where it came from")
+	}
+
+	// A year on a content slide is still not a figure on its own.
+	dateOnly := Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID, Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "일정"}}, SlotBody: {{Text: "2026년 상반기에 이관을 마칩니다"}}}}}}
+	for _, finding := range InspectDeck(manifest, dateOnly) {
+		if finding.Kind == FindingSource {
+			t.Fatalf("a date was read as a figure: %s", finding.String())
+		}
+	}
+}

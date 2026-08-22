@@ -360,7 +360,7 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
 		}
-		if len(slide.Sources) == 0 && statesFigures(slide) {
+		if len(slide.Sources) == 0 && carriesArgument(slide, layout) && statesFigures(slide) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingSource, Advisory: true,
 				Detail: "figures with no source: nothing on this slide says where its numbers came from"})
 		}
@@ -370,6 +370,10 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 
 // figurePattern is a number worth asking about: one with a unit, a percentage
 // or a thousands separator. A page number or a step count is not a claim.
+// aYear is a date, not a claim. "2026년 상반기" is when the deck is about, and
+// asking it for a source teaches people to ignore the question.
+var aYear = regexp.MustCompile(`(19|20)\d{2}\s*(년|年|년도)?`)
+
 var statedFigure = regexp.MustCompile(`\d[\d,.]*\s*(%|억|만|천|원|달러|명|건|개|배|시간|일|주|년|개월|퍼센트|` +
 	`억원|만원|亿|億|円|元|USD|KRW|EUR|JPY|[kmb]n?\b)|\d{1,3}(,\d{3})+`)
 
@@ -388,24 +392,30 @@ func statesFigures(slide Slide) bool {
 			}
 		}
 		for _, item := range block.Items {
-			if statedFigure.MatchString(item.Value + " " + item.Label) {
+			if statesFigure(item.Value + " " + item.Label) {
 				return true
 			}
 		}
 		for _, row := range block.Rows {
-			if statedFigure.MatchString(strings.Join(row, " ")) {
+			if statesFigure(strings.Join(row, " ")) {
 				return true
 			}
 		}
 	}
 	for _, paragraphs := range slide.Fields {
 		for _, paragraph := range paragraphs {
-			if statedFigure.MatchString(paragraph.Text) {
+			if statesFigure(paragraph.Text) {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// statesFigure reports whether one piece of text puts a number in front of a
+// room, with dates read as dates.
+func statesFigure(text string) bool {
+	return statedFigure.MatchString(aYear.ReplaceAllString(text, " "))
 }
 
 // carriesArgument reports whether a slide makes a point, as opposed to opening or
@@ -523,8 +533,13 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 			if height > bounds.Height && height-bounds.Height > overflow {
 				overflow, overflowText = height-bounds.Height, text
 			}
+			// Text is compared as ink rather than as its box: a month label
+			// centred in the gap between two ticks owns a box seven centimetres
+			// wide and draws two characters in it.
+			ink := inkBounds(primitive)
+			ink.Height = max(ink.Height, height)
 			bounds.Height = max(bounds.Height, height)
-			drawn = append(drawn, bounds)
+			drawn = append(drawn, ink)
 		}
 		if beyond := outsideBy(bounds, slideWidth, slideHeight); beyond > worstSlide {
 			worstSlide = beyond

@@ -74,26 +74,43 @@ func drawnBounds(primitives []Primitive) (int, int, bool) {
 	return top, bottom, found
 }
 
-// inkBounds is the room a primitive's ink actually takes. A text box is often
-// given every remaining millimetre of the region and then draws one line in it:
-// measuring the box would say the component fills the slide when what a reader
-// sees is a sentence at the top of an empty page.
+// inkBounds is the room a primitive's ink actually takes.
+//
+// A text box is routinely far larger than what it draws: given every remaining
+// millimetre of a region and then drawing one line, or made as wide as the gap
+// between two ticks so that a two-character month label can be centred on one.
+// Measuring the box says the component fills the slide, and says the axis
+// labels of every line chart sit on top of each other. Measuring the ink says
+// what a reader sees.
 func inkBounds(primitive Primitive) Frame {
 	bounds := primitive.bounds()
 	if primitive.Kind != shapeText {
 		return bounds
 	}
-	height, _ := drawnTextHeight(primitive)
-	if height <= 0 || height >= bounds.Height {
-		return bounds
+	if height, _ := drawnTextHeight(primitive); height > 0 && height < bounds.Height {
+		switch strings.TrimSpace(primitive.Anchor) {
+		case "ctr":
+			bounds.Y += (bounds.Height - height) / 2
+		case "b":
+			bounds.Y += bounds.Height - height
+		}
+		bounds.Height = height
 	}
-	switch strings.TrimSpace(primitive.Anchor) {
-	case "ctr":
-		bounds.Y += (bounds.Height - height) / 2
-	case "b":
-		bounds.Y += bounds.Height - height
+	// Wrapped text uses the whole width to wrap into, so its longest line is at
+	// least as wide as the box and nothing is narrowed.
+	widest := 0
+	for _, paragraph := range primitive.Lines {
+		widest = max(widest, textWidth(paragraph.Text, primitive.FontSize))
 	}
-	bounds.Height = height
+	if widest > 0 && widest < bounds.Width {
+		switch strings.TrimSpace(primitive.Align) {
+		case "ctr":
+			bounds.X += (bounds.Width - widest) / 2
+		case "r":
+			bounds.X += bounds.Width - widest
+		}
+		bounds.Width = widest
+	}
 	return bounds
 }
 
