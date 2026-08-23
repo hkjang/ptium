@@ -909,7 +909,10 @@ func TestABareSecondHeadingNamesTheSecondColumn(t *testing.T) {
 // same shape kept a bullet in front of it.
 func TestAColumnNameIsJudgedByLengthNotWordCount(t *testing.T) {
 	names := []string{"첫 달 업무 파악", "적응 저해 원인", "2주 집중 교육을 통한 업무 숙달 가속화",
-		"멘토 1:1 배정을 통한 맞춤형 가이드", "현재", "총 필요 예산"}
+		"멘토 1:1 배정을 통한 맞춤형 가이드", "현재", "총 필요 예산",
+		// English names are longer in characters and no wider on the page.
+		"Current State Metrics", "Operational Consequences", "Status Quo",
+		"Implementation and rollout timeline"}
 	for _, name := range names {
 		if !columnName(name) {
 			t.Fatalf("%q is a column name and was not read as one", name)
@@ -917,13 +920,38 @@ func TestAColumnNameIsJudgedByLengthNotWordCount(t *testing.T) {
 	}
 	notNames := []string{
 		"", "  ",
-		"매출과 비용을 같은 기준으로 분기별로 나누어 자세히 살펴봅니다", // too long
-		"분기별로 나누어 자세히 살펴봅니다",                  // reads as a sentence
+		"매출과 비용을 같은 기준으로 분기별로 나누어 자세히 살펴봅니다",              // too wide
+		"Re-scheduling increases administrative overhead", // too wide in English too
+		"분기별로 나누어 자세히 살펴봅니다",                              // reads as a sentence
 		"이 슬라이드는 무엇을 말하는가?",
 	}
 	for _, name := range notNames {
 		if columnName(name) {
 			t.Fatalf("%q is not a column name and was read as one", name)
 		}
+	}
+}
+
+// Judgements about how long a phrase is were counted in characters, which reads
+// a Korean figure as short and the same figure in English as a sentence. They
+// are measured as they draw now.
+func TestLengthJudgementsAreTheSameInBothLanguages(t *testing.T) {
+	figures := pptx.Block{Kind: pptx.BlockColumns, Items: []pptx.Item{
+		{Label: "Total investment", Value: "240,000 USD"},
+		{Label: "Payback", Value: "18 months"}}}
+	if wordy(figures) {
+		t.Fatal("English figures were read as phrases")
+	}
+	korean := pptx.Block{Kind: pptx.BlockColumns, Items: []pptx.Item{
+		{Label: "총 투자액", Value: "1억 5천만 원"},
+		{Label: "회수 기간", Value: "3년"}}}
+	if wordy(korean) {
+		t.Fatal("Korean figures were read as phrases")
+	}
+	phrases := pptx.Block{Kind: pptx.BlockColumns, Items: []pptx.Item{
+		{Label: "구조", Value: "개발/운영 분리"},
+		{Label: "Rollout", Value: "Two-phase rollout"}}}
+	if !wordy(phrases) {
+		t.Fatal("phrases were read as figures and would be set in the size of a headline number")
 	}
 }

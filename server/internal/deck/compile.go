@@ -774,7 +774,13 @@ func withoutSidePrefix(text, side string) (string, bool) {
 // somebody wrote, and splitting it would cut their sentence in half.
 func columnName(value string) bool {
 	trimmed := strings.TrimSpace(value)
-	if trimmed == "" || utf8.RuneCountInString(trimmed) > 24 {
+	// Measured as it draws, not counted in characters. Twenty-four characters is
+	// a phrase in Korean and half a sentence in English — "Implementation and
+	// rollout timeline" is thirty-five characters and narrower on the page than
+	// "2주 집중 교육을 통한 업무 숙달 가속화", which is twenty-two. Eighteen ems is
+	// wider than every name either language has produced here and narrower than
+	// every sentence.
+	if trimmed == "" || pptx.TextEm(trimmed) > 18 {
 		return false
 	}
 	// Counting words was the wrong test for Korean. "첫 달 업무 파악" is four and
@@ -1156,10 +1162,16 @@ func chartFallback(block pptx.Block) (pptx.Block, string) {
 }
 
 // wordy reports whether a component's values are phrases rather than figures.
-// Anything past a few characters is a phrase; "18%" and "4억" are not.
+//
+// Measured as it draws rather than counted in characters: six characters is a
+// figure in Korean — "1억 5천만 원" is eight — and half a word in English, where
+// "240,000 USD" is eleven characters and narrower on the page than
+// "개발/운영 분리", which is eight. Six ems is wider than every figure either
+// language writes and narrower than the phrases that were setting themselves in
+// the size of a headline number and wrapping out of their cards.
 func wordy(block pptx.Block) bool {
 	for _, item := range block.Items {
-		if utf8.RuneCountInString(strings.TrimSpace(item.Display(block.Unit))) > 6 {
+		if pptx.TextEm(strings.TrimSpace(item.Display(block.Unit))) > 6 {
 			return true
 		}
 	}

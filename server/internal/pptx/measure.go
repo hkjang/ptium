@@ -50,6 +50,15 @@ func measureEm(text string) float64 {
 	return total
 }
 
+// TextEm is how wide a string draws, in multiples of the font size.
+//
+// Callers outside the drawing use it to judge whether a phrase is short: a
+// count of characters says a Korean column name of nine is shorter than an
+// English one of twenty-one, and on the page it is not.
+func TextEm(text string) float64 {
+	return measureEm(text)
+}
+
 // wrappedLines counts the lines a string needs at a given line width.
 //
 // Text breaks between words, so this walks the words the way a renderer does
