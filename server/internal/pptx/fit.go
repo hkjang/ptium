@@ -261,7 +261,7 @@ func SanitizeBlock(block Block, placeholder Placeholder) (Block, bool) {
 		}
 	}
 	// A component needs room; a slot too short for this kind stays prose.
-	if placeholder.MaxLines < BlockMinimumLines(kind) {
+	if placeholder.MaxLines < BlockRoom(block) {
 		return Block{}, false
 	}
 	return block, true

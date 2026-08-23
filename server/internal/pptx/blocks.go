@@ -126,6 +126,18 @@ func BlockMinimumLines(kind string) int {
 	return 3
 }
 
+// BlockRoom is BlockMinimumLines for a component that has something to say
+// above itself. A quote introduced by a line needs the line's room too, and a
+// region that cannot give it is better filled with prose than with a statement
+// drawn past its own frame.
+func BlockRoom(block Block) int {
+	lines := BlockMinimumLines(block.Kind)
+	if statementLabel(block) != "" && (block.Kind == BlockQuote || block.Kind == BlockCallout) {
+		lines++
+	}
+	return lines
+}
+
 // RenderBlock lays a component out inside a frame. It returns an empty
 // component when the block carries nothing to draw, so callers can fall back to
 // prose without a special case.
@@ -135,7 +147,21 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 	}
 	body := frame
 	component := Component{Name: componentName(block.Kind), Frame: frame}
-	if block.Kind == BlockQuote || block.Kind == BlockCallout {
+	statementBlock := block.Kind == BlockQuote || block.Kind == BlockCallout
+	if statementBlock {
+		// A pull quote is not given a bold heading over it — it is the statement.
+		// But the words are the author's: a slide whose layout has no subtitle
+		// region keeps its lead in the component's heading, and clearing it here
+		// took that line off the slide without telling anybody. It is drawn the
+		// way a label is drawn, above the statement it introduces.
+		if label := statementLabel(block); label != "" {
+			height := lineHeightFor(design.Small) * min(cellLines(label, design.Small, body.Width), 2)
+			component.Primitives = append(component.Primitives, text(
+				Frame{X: body.X, Y: body.Y, Width: body.Width, Height: height},
+				line(label), textOptions{Size: design.Small, Color: design.InkMuted, Bold: true, Font: design.Minor, Wrap: true}))
+			body.Y += height + design.Unit/2
+			body.Height -= height + design.Unit/2
+		}
 		block.Heading = ""
 	}
 	if heading := strings.TrimSpace(block.Heading); heading != "" {
@@ -148,7 +174,6 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 		body.Y += height + design.Unit
 		body.Height -= height + design.Unit
 	}
-	statementBlock := block.Kind == BlockQuote || block.Kind == BlockCallout
 	if caption := strings.TrimSpace(block.Caption); caption != "" && !statementBlock {
 		// A caption labels what follows, so it sits above it. Pinned to the bottom
 		// of a frame that its content does not fill, it reads as a stray line.
@@ -208,6 +233,21 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 	}
 	component.Primitives = append(component.Primitives, primitives...)
 	return component
+}
+
+// statementLabel is what a quote or callout is introduced by: the lead the
+// slide had nowhere else to keep, and the word the author labelled it with.
+func statementLabel(block Block) string {
+	heading := strings.TrimSpace(block.Heading)
+	caption := strings.TrimSpace(block.Caption)
+	switch {
+	case heading == "":
+		return caption
+	case caption == "" || strings.EqualFold(heading, caption):
+		return heading
+	default:
+		return caption + " · " + heading
+	}
 }
 
 func componentName(kind string) string {
