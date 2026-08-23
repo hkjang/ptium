@@ -260,8 +260,8 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	}
 	y := (float64(placeholder.Y)+45720)*scale + fontSize
 	var builder strings.Builder
-	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s"%s%s font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve">`,
-		x, y, color, fontSize, weight, anchor, slant, escapeAttribute(fallbackFamily(family)))
+	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s"%s%s font-family="%s, %s" xml:space="preserve">`,
+		x, y, color, fontSize, weight, anchor, slant, escapeAttribute(fallbackFamily(family)), previewFallbacks)
 	// A line's worth of position, in lines: a lead keeps a little air under it,
 	// the same air the exported file gives it.
 	position := 0.0
@@ -330,7 +330,7 @@ func previewEmptySlot(placeholder Placeholder, theme Theme, scale float64) strin
 		fontSize = 22
 	}
 	return fmt.Sprintf(`<g><rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" rx="%.1f" fill="none" stroke="#%s" stroke-width="1.5" stroke-dasharray="7 5" opacity="0.55"/>`+
-		`<text x="%.1f" y="%.1f" fill="#%s" font-size="%.1f" text-anchor="middle" opacity="0.75" font-family="Malgun Gothic, sans-serif">%s</text></g>`,
+		`<text x="%.1f" y="%.1f" fill="#%s" font-size="%.1f" text-anchor="middle" opacity="0.75" font-family="`+previewFallbacks+`">%s</text></g>`,
 		x, y, boxWidth, boxHeight, fontSize*0.4, color,
 		x+boxWidth/2, y+boxHeight/2+fontSize/3, color, fontSize, escapeText(label))
 }
@@ -342,3 +342,19 @@ func fallbackFamily(family string) string {
 	}
 	return family
 }
+
+// previewFallbacks is what a preview falls back to when the template's own font
+// is not on the machine looking at it.
+//
+// It used to be "Malgun Gothic, Apple SD Gothic Neo, sans-serif". A template
+// set in Aptos — which ships with Microsoft 365 and nothing else — drawn on a
+// machine with neither Aptos nor a Windows Korean font lands on whatever the
+// browser calls sans-serif, and on Linux that is usually DejaVu Sans, whose
+// lowercase runs a fifth wider than the humanist faces every template is set
+// in. An English title measured to fit its box was drawn past the edge of the
+// slide, because SVG cannot reflow the line it is handed.
+//
+// The Latin fallbacks come first and are all near half an em: the browser picks
+// per character, so Hangul still finds the Korean faces further down the list.
+const previewFallbacks = `Segoe UI, Roboto, Noto Sans, Helvetica Neue, Arial, Liberation Sans, ` +
+	`Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif`

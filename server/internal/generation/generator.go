@@ -419,7 +419,7 @@ func planJSON(raw string) []byte {
 // so a deployment pinned to a tuned model keeps working.
 func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey string, request writingRequest) (Deck, error) {
 	started := time.Now()
-	system := sourceSystemPrompt
+	system := sourceSystemPrompt + exampleDeck(request.Presentation.Language)
 	if strings.TrimSpace(request.Material) != "" {
 		system = rewriteSystemPrompt
 	}

@@ -218,7 +218,7 @@ func previewArtworkText(piece Artwork, x, y, width, height, scale float64, trans
 		weight = "700"
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve"%s>`,
+	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, `+previewFallbacks+`" xml:space="preserve"%s>`,
 		textX, textY, escapeAttribute(piece.Color), fontSize, weight, anchor, escapeAttribute(fallbackFamily(piece.Font)), transform)
 	for index, line := range lines {
 		fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, textX, textY+float64(index)*lineHeight, escapeText(line))

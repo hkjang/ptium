@@ -34,3 +34,38 @@ func TestTheBriefSaysWhereALocatorComesFrom(t *testing.T) {
 		}
 	}
 }
+
+// The example the brief ends with used to be Korean whatever language was
+// asked for, and a model writing English copied what it saw: an English deck
+// came back with "::kpi 규모" as a caption, and the example's own citation
+// turned up as an invented source in decks that had nothing to do with it.
+func TestTheExampleIsInTheDecksLanguage(t *testing.T) {
+	korean := exampleDeck("ko")
+	if !strings.Contains(korean, "::kpi 규모") {
+		t.Fatalf("the Korean example is not Korean: %s", korean)
+	}
+	for _, language := range []string{"en", "en-GB", "ja", "zh"} {
+		example := exampleDeck(language)
+		if strings.Contains(example, "규모") || strings.Contains(example, "전환 대상") {
+			t.Fatalf("the %s example carries Korean: %s", language, example)
+		}
+		if !strings.Contains(example, "::kpi Scope") {
+			t.Fatalf("the %s example lost its component: %s", language, example)
+		}
+		if !strings.Contains(example, "Write yours in the requested") {
+			t.Fatalf("the %s example does not say it is not the language to write in", language)
+		}
+	}
+	// Both examples teach the same language, so both carry every construct.
+	for _, example := range []string{korean, exampleDeck("en")} {
+		for _, construct := range []string{"# ", "@cover", "> ", "!notes ", "!source ", "::kpi ", "\n::\n"} {
+			if !strings.Contains(example, construct) {
+				t.Fatalf("an example does not show %q", construct)
+			}
+		}
+	}
+	// The rules themselves no longer carry the example.
+	if strings.Contains(sourceSystemPrompt, "전환은 지금") {
+		t.Fatal("the example is still nailed into the rules")
+	}
+}

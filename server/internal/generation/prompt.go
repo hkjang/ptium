@@ -134,24 +134,7 @@ Writing craft:
 - Write in the requested language and tone. No markdown, asterisks or emoji.
 
 Every slide begins with a line starting "# ". A component's rows go between its
-::kind line and its closing :: line, never after. Here is a complete two-slide
-deck, in full:
-
-# 전환은 지금 결정해야 합니다
-@cover
-> 2026년 하반기 · 임원 보고
-!notes 결론부터 말하고, 근거를 두 가지로 좁혀 설명합니다.
-
-# 전환 대상과 규모
-@content
-> 42개 시스템을 세 묶음으로 나눴습니다.
-!source 내부 시스템 대장 | 2026-03
-::kpi 규모
-- 전환 대상 | 42개
-- 1차 범위 | 12개
-- 예상 절감 | 18%
-::
-!notes 1차 범위만 승인받으면 나머지는 실적으로 설득합니다.
+::kind line and its closing :: line, never after.
 
 Components — a body region may hold one instead of prose, and the better deck
 usually does:
@@ -267,6 +250,62 @@ func gridGuide() string {
 // a slide that reads badly. What the model is asked for is the craft — the
 // title that says what the slide argues, the sentence that is not the title
 // again, the point that is a point rather than a paragraph.
+// exampleDeck is the two-slide example the writing brief ends with, in the
+// language the deck is being written in.
+//
+// It used to be Korean whatever was asked for, and a model writing English
+// copied what it saw: an English deck came back with "::kpi 규모" as a component
+// caption, and the example's own citation — "내부 시스템 대장 | 2026-03" — turned
+// up as an invented source in decks and revisions that had nothing to do with
+// it. An example is read as much as the rules are.
+func exampleDeck(language string) string {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(language)), "ko") || strings.TrimSpace(language) == "" {
+		return koreanExample
+	}
+	return englishExample
+}
+
+const koreanExample = `
+Here is a complete two-slide deck, in full:
+
+# 전환은 지금 결정해야 합니다
+@cover
+> 2026년 하반기 · 임원 보고
+!notes 결론부터 말하고, 근거를 두 가지로 좁혀 설명합니다.
+
+# 전환 대상과 규모
+@content
+> 42개 시스템을 세 묶음으로 나눴습니다.
+!source 내부 시스템 대장 | 2026-03
+::kpi 규모
+- 전환 대상 | 42개
+- 1차 범위 | 12개
+- 예상 절감 | 18%
+::
+!notes 1차 범위만 승인받으면 나머지는 실적으로 설득합니다.
+`
+
+const englishExample = `
+Here is a complete two-slide deck, in full. Write yours in the requested
+language, not in this one:
+
+# The migration has to be decided now
+@cover
+> Second half of 2026 · board review
+!notes Lead with the decision, then narrow the evidence to two points.
+
+# What moves, and how much
+@content
+> Forty-two systems, sorted into three groups.
+!source Internal systems register | 2026-03
+::kpi Scope
+- In scope | 42 systems
+- First wave | 12
+- Expected saving | 18%
+::
+!notes Approve the first wave and the rest is argued with results.
+`
+
 const rewriteSystemPrompt = `You are a senior presentation writer editing a deck someone already wrote.
 
 The deck's facts are theirs. Every number, name, date and claim in it must appear

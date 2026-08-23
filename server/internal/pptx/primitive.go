@@ -579,7 +579,7 @@ func (p Primitive) textSVG(scale float64) string {
 		weight = "700"
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, Malgun Gothic, Apple SD Gothic Neo, sans-serif" xml:space="preserve">`,
+	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, `+previewFallbacks+`" xml:space="preserve">`,
 		x, top+fontSize*0.82, colorOrGrey(p.Color), fontSize, weight, anchor, escapeAttribute(fallbackFamily(p.Font)))
 	for index, value := range wrapped {
 		fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x, top+fontSize*0.82+float64(index)*lineHeight, escapeText(value))

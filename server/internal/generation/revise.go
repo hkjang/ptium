@@ -82,7 +82,8 @@ func (g *Generator) ReviseSlide(ctx context.Context, revision Revision) (string,
 	}
 	g.applyProviderSettings(ctx)
 	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey,
-		sourceSystemPrompt+"\n\n"+reviseSystemPrompt, revisionPrompt(revision), 0.3)
+		sourceSystemPrompt+exampleDeck(revision.Presentation.Language)+"\n\n"+reviseSystemPrompt,
+		revisionPrompt(revision), 0.3)
 	if err != nil {
 		return "", err
 	}

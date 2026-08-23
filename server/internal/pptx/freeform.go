@@ -400,7 +400,7 @@ func (e Element) tableSVG(x, y, width, height, scale float64) string {
 			}
 			fmt.Fprintf(&builder, `<rect x="%.2f" y="%.2f" width="%.2f" height="%.2f" fill="#%s" stroke="#%s" stroke-width="%.2f"/>`,
 				cellX, cellY, cellWidth, cellHeight, fill, colorOrGrey(border), strokeWidth)
-			fmt.Fprintf(&builder, `<text x="%.2f" y="%.2f" text-anchor="middle" dominant-baseline="middle" fill="#%s" font-size="%.2f" font-weight="%s" font-family="%s, Malgun Gothic, sans-serif">%s</text>`,
+			fmt.Fprintf(&builder, `<text x="%.2f" y="%.2f" text-anchor="middle" dominant-baseline="middle" fill="#%s" font-size="%.2f" font-weight="%s" font-family="%s, `+previewFallbacks+`">%s</text>`,
 				cellX+cellWidth/2, cellY+cellHeight/2, color, pixelFont, weight, escapeAttribute(family), escapeText(text))
 		}
 	}
@@ -564,7 +564,7 @@ func (e Element) textSVG(x, y, width, height, scale float64) string {
 		family = "Aptos"
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, `<text x="%.2f" y="%.2f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, Malgun Gothic, sans-serif"%s>`,
+	fmt.Fprintf(&builder, `<text x="%.2f" y="%.2f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, `+previewFallbacks+`"%s>`,
 		textX, top+fontSize*.84, colorOrGrey(color), fontSize, weight, anchor, escapeAttribute(family), style)
 	for index, line := range wrapped {
 		fmt.Fprintf(&builder, `<tspan x="%.2f" y="%.2f">%s</tspan>`, textX, top+fontSize*.84+float64(index)*lineHeight, escapeText(line))
