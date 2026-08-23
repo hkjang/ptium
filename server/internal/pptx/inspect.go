@@ -659,6 +659,7 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 	// covered its own first row passed inspection.
 	var drawn []Frame
 	overflow, overflowText := 0, ""
+	wide, wideText := 0, ""
 	for _, primitive := range component.Primitives {
 		bounds := primitive.bounds()
 		if bounds.Width <= 0 && bounds.Height <= 0 {
@@ -673,6 +674,25 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 			// centred in the gap between two ticks owns a box seven centimetres
 			// wide and draws two characters in it.
 			ink := inkBounds(primitive)
+			// A line that runs past the side of its own box is drawn over whatever
+			// is beside it. "1억 5천만 원" in a card a third of a narrow region wide
+			// was painted across the card next to it and the room read "1억 5천".
+			//
+			// The widest line is measured here rather than taken from inkBounds,
+			// which only ever narrows a box to its ink: asked how far the text runs
+			// past the box, it answers zero, and a check written on it can never
+			// fire. Centred text is exempt — a label centred on a tick is meant to
+			// be wider than the gap it sits in, and what it lands on is the
+			// collision check's business.
+			if !primitive.Wrap && primitive.Align != "ctr" && bounds.Width > 0 {
+				widest := 0
+				for _, paragraph := range primitive.Lines {
+					widest = max(widest, textWidth(paragraph.Text, primitive.FontSize))
+				}
+				if widest-bounds.Width > wide {
+					wide, wideText = widest-bounds.Width, text
+				}
+			}
 			ink.Height = max(ink.Height, height)
 			bounds.Height = max(bounds.Height, height)
 			drawn = append(drawn, ink)
@@ -689,6 +709,11 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingOverflow,
 			Detail: fmt.Sprintf("%s draws %q %.2fcm taller than the room it reserved",
 				block.Kind, shorten(overflowText, 28), emuToCm(overflow))})
+	}
+	if wide > tolerance {
+		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingOverflow,
+			Detail: fmt.Sprintf("%s draws %q %.2fcm wider than the room it reserved",
+				block.Kind, shorten(wideText, 28), emuToCm(wide))})
 	}
 	// Two lines of a component's own text may not land on each other.
 	for i := 0; i < len(drawn); i++ {

@@ -19,6 +19,8 @@ describe('a measurement in the reader’s words', () => {
         '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
       ['kpi had too little room to draw anything', '핵심 지표를 그릴 자리가 없었습니다'],
       ['two lines of the quote overlap', '인용의 두 줄이 서로 겹칩니다'],
+      ['meter draws "이관 일정과 담당" 2.92cm wider than the room it reserved',
+        '달성률의 "이관 일정과 담당"이 확보한 자리보다 옆으로 2.92cm 넘칩니다'],
       ['figures with no source: 28.5%, 1,200건',
         '브리프에 없는 숫자에 출처가 없습니다: 28.5%, 1,200건. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다'],
     ]

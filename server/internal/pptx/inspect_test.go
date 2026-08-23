@@ -456,3 +456,43 @@ func TestAPercentageTheBriefImpliesIsNotInvented(t *testing.T) {
 		t.Fatal("a count the brief never gave was let through")
 	}
 }
+
+// A component draws its own text, and nothing was checking that the text fits
+// sideways: a figure wider than its box is painted over whatever is beside it
+// and the room reads half a number. The check that was written first could
+// never fire — it asked inkBounds how far the text ran past its box, and
+// inkBounds only ever narrows a box to its ink.
+func TestTextWiderThanItsOwnBoxIsMeasured(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	design := NewDesign(manifest)
+	layout, _ := manifest.Layout(manifest.DefaultLayout)
+	body, _ := layout.Slot(SlotBody)
+	narrow := Frame{X: body.X, Y: body.Y, Width: 4200000, Height: 2400000}
+	long := "지식관리 시스템 교체에 따른 이관 일정과 담당"
+
+	wide := func(block Block) string {
+		for _, finding := range inspectComponent(body, narrow, block, design, manifest.SlideWidth, manifest.SlideHeight) {
+			if strings.Contains(finding.Detail, "wider than") {
+				return finding.Detail
+			}
+		}
+		return ""
+	}
+	// A label nobody can shrink for the author is reported, so the repair pass
+	// can ask for a shorter one.
+	if detail := wide(Block{Kind: BlockMeter, Items: []Item{{Label: long, Value: "72%"}}}); detail == "" {
+		t.Fatal("a label drawn past the side of its own box was not reported")
+	}
+	// A figure gives way to the room it is in instead, so these are quiet.
+	for _, block := range []Block{
+		{Kind: BlockHero, Items: []Item{{Label: "총 비용", Value: "1억 5천만 원"}}},
+		{Kind: BlockKPI, Items: []Item{
+			{Label: "총 비용", Value: "1억 5천만 원"},
+			{Label: "이관 기간", Value: "4개월"},
+			{Label: "문서 건수", Value: "12,400건"}}},
+	} {
+		if detail := wide(block); detail != "" {
+			t.Fatalf("%s: %s", block.Kind, detail)
+		}
+	}
+}

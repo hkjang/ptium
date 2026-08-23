@@ -83,6 +83,8 @@ export function findingDetail(detail: string) {
       (m) => `${named(m[1])}${objectParticle(named(m[1]))} 그릴 자리가 없었습니다`],
     [/^(\w+) draws "(.+)" ([\d.]+)cm taller than the room it reserved$/,
       (m) => `${named(m[1])}의 "${m[2]}"${subjectParticle(m[2])} 확보한 자리보다 ${m[3]}cm 큽니다`],
+    [/^(\w+) draws "(.+)" ([\d.]+)cm wider than the room it reserved$/,
+      (m) => `${named(m[1])}의 "${m[2]}"${subjectParticle(m[2])} 확보한 자리보다 옆으로 ${m[3]}cm 넘칩니다`],
     [/^two lines of the (\w+) overlap$/, (m) => `${named(m[1])}의 두 줄이 서로 겹칩니다`],
     [/^(\w+) draws ([\d.]+)cm past the slide edge$/,
       (m) => `${named(m[1])}${subjectParticle(named(m[1]))} 슬라이드 밖으로 ${m[2]}cm 나갔습니다`],

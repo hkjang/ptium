@@ -289,25 +289,14 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 	// "1억 5천". The number gives way to the card it is in, down to the size of
 	// the label but no further — smaller than that and it stops being the thing
 	// the slide is about.
+	// The floor is the label's own size: a figure smaller than the words around
+	// it stops being the thing the slide is about.
 	if inner := cardWidth - d.Unit*4; inner > 0 {
-		widestValue := func(size int) int {
-			widest := 0
-			for _, item := range items {
-				widest = max(widest, textWidth(item.Display(block.Unit), size))
-			}
-			return widest
+		values := make([]string, 0, len(items))
+		for _, item := range items {
+			values = append(values, item.Display(block.Unit))
 		}
-		// The floor is the label's own size: a figure smaller than the words
-		// around it stops being the thing the slide is about. Where even that
-		// does not fit — a card a third of a narrow region wide, holding
-		// "1억 5천만 원" — the number is set in the label's size and the card keeps
-		// whatever it can rather than painting over the card beside it.
-		for widestValue(valueSize) > inner && valueSize > d.Small {
-			// Scaling by the ratio lands a hair over on the last step, since a
-			// glyph is not exactly proportional to its point size; the step down
-			// keeps it moving until it fits.
-			valueSize = max(min(valueSize*inner/widestValue(valueSize), valueSize-25), d.Small)
-		}
+		valueSize = fitToWidth(valueSize, inner, d.Small, values...)
 	}
 	tileHeightFor := func(size int) int {
 		height := d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(size)
@@ -392,6 +381,33 @@ func hasDetail(items []Item) bool {
 	return false
 }
 
+// fitToWidth is the largest size at or below the one asked for at which every
+// line fits the width it is given, never smaller than floor.
+//
+// A component draws its own text and nothing was checking that the text fits
+// sideways: a figure wider than its box is painted over whatever is beside it,
+// and the room reads half a number. Measuring found it in the hero, the meter,
+// the timeline and the share bar as well as the card row it was first seen in.
+func fitToWidth(size, width, floor int, lines ...string) int {
+	if width <= 0 || size <= floor {
+		return size
+	}
+	widest := func(at int) int {
+		found := 0
+		for _, line := range lines {
+			found = max(found, textWidth(line, at))
+		}
+		return found
+	}
+	for widest(size) > width && size > floor {
+		// Scaling by the ratio lands a hair over on the last step, since a glyph
+		// is not exactly proportional to its point size; the step down keeps it
+		// moving until it fits.
+		size = max(min(size*width/widest(size), size-25), floor)
+	}
+	return size
+}
+
 // layoutHero draws the single number a slide leads with, in the body face
 // rather than a display face, with its label beneath.
 func (d Design) layoutHero(frame Frame, block Block) []Primitive {
@@ -408,6 +424,7 @@ func (d Design) layoutHero(frame Frame, block Block) []Primitive {
 	if size > 9600 {
 		size = 9600
 	}
+	size = fitToWidth(size, frame.Width, d.Heading, value)
 	valueHeight := lineHeightFor(size)
 	if valueHeight > frame.Height*2/3 {
 		size = d.Display
