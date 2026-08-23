@@ -496,3 +496,23 @@ func TestTextWiderThanItsOwnBoxIsMeasured(t *testing.T) {
 		}
 	}
 }
+
+// A brief that says "세 개 시스템" has said 3, and a deck that writes "3개" is
+// quoting it. Counted in words the number is still a number: the deck was told
+// it had invented a figure the author had given it.
+func TestANumberWrittenInWordsIsStillANumber(t *testing.T) {
+	read := NewBriefFigures("현재 세 개 시스템에서 연 18,000건을 처리하고 있고, 대안은 두 가지입니다.")
+	for _, quoted := range []string{"3개 시스템을 하나로", "2가지 대안을 비교", "18,000건"} {
+		if missing := read.Missing(quoted); len(missing) > 0 {
+			t.Fatalf("%q quotes the brief and was reported as invented: %q", quoted, missing)
+		}
+	}
+	if missing := read.Missing("7개 부서가 참여"); len(missing) == 0 {
+		t.Fatal("a count the brief never gave was let through")
+	}
+	// The counter is required: "한" alone is the first syllable of half the words
+	// in Korean, and a brief about 한국 has not said 1.
+	if read := NewBriefFigures("한국 시장 진출 계획"); len(read.numbers) > 0 {
+		t.Fatalf("a word beginning with 한 was read as a number: %v", read.numbers)
+	}
+}

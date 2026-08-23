@@ -487,7 +487,33 @@ func NewBriefFigures(brief string) BriefFigures {
 			read.numbers = append(read.numbers, value)
 		}
 	}
+	// A brief that says "세 개 시스템" has said 3, and a deck that writes "3개"
+	// is quoting it rather than inventing a figure. Counted in words the number
+	// is still a number, in every language the deck is written in.
+	for _, match := range countedInWords.FindAllStringSubmatch(brief, -1) {
+		if value, ok := numberWords[strings.ToLower(match[1])]; ok {
+			read.digits += " " + strconv.Itoa(value)
+			read.numbers = append(read.numbers, float64(value))
+		}
+	}
 	return read
+}
+
+// countedInWords matches a small number written as a word and the counter that
+// follows it. The counter is required: "한" alone is the first syllable of half
+// the words in Korean.
+var countedInWords = regexp.MustCompile(`(?i)(하나|한|둘|두|셋|세|넷|네|다섯|여섯|일곱|여덟|아홉|열|` +
+	`一|二|三|四|五|六|七|八|九|十)\s*(개|곳|명|건|가지|번|차례|단계|팀|부서|시스템|사|つ|件|名|社|部|回|年|か月)|` +
+	`(one|two|three|four|five|six|seven|eight|nine|ten)`)
+
+// numberWords is how a small number is written when it is not written in
+// digits.
+var numberWords = map[string]int{
+	"하나": 1, "한": 1, "둘": 2, "두": 2, "셋": 3, "세": 3, "넷": 4, "네": 4,
+	"다섯": 5, "여섯": 6, "일곱": 7, "여덟": 8, "아홉": 9, "열": 10,
+	"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+	"six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
 }
 
 // Missing lists the figures in text the brief neither states nor implies.
