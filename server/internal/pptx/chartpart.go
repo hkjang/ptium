@@ -251,7 +251,7 @@ func (c *ChartPart) typefaceXML() string {
 	if font == "" {
 		return ""
 	}
-	return `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+	return latinTypefaceXML(font)
 }
 
 func (c *ChartPart) axisLineXML() string {

@@ -416,7 +416,7 @@ func (p Primitive) textDrawingML(id int) string {
 		}
 		runProperties += `><a:solidFill>` + solidColor(p.Color, 0) + `</a:solidFill>`
 		if strings.TrimSpace(p.Font) != "" && !strings.HasPrefix(p.Font, "+") {
-			runProperties += `<a:latin typeface="` + escapeAttribute(p.Font) + `"/><a:ea typeface="` + escapeAttribute(p.Font) + `"/>`
+			runProperties += latinTypefaceXML(p.Font)
 		}
 		runProperties += `</a:rPr>`
 		paragraphs.WriteString(`<a:p>` + properties + `<a:r>` + runProperties + `<a:t>` + escapeText(paragraph.Text) + `</a:t></a:r></a:p>`)

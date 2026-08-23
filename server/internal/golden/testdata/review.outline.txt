@@ -1576,7 +1576,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "핵심 지표"
         p:sp
@@ -1644,7 +1643,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "매출"
         p:sp
@@ -1671,7 +1669,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos Display
-                  a:ea typeface=Aptos Display
                 a:t
                   "1,240억"
         p:sp
@@ -1739,7 +1736,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "신규 고객"
         p:sp
@@ -1766,7 +1762,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos Display
-                  a:ea typeface=Aptos Display
                 a:t
                   "312곳"
       p:sp
@@ -1790,7 +1785,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "2"
             a:endParaRPr lang=ko-KR
@@ -1903,7 +1897,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=FFFFFF
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "1"
         p:sp
@@ -1930,7 +1923,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "준비"
         p:sp
@@ -1957,7 +1949,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "범위 확정"
         p:sp
@@ -2004,7 +1995,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=FFFFFF
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "2"
         p:sp
@@ -2031,7 +2021,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "이행"
         p:sp
@@ -2058,7 +2047,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "이관"
         p:sp
@@ -2105,7 +2093,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=FFFFFF
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "3"
         p:sp
@@ -2132,7 +2119,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "안정화"
         p:sp
@@ -2159,7 +2145,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "점검"
       p:sp
@@ -2183,7 +2168,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "3"
             a:endParaRPr lang=ko-KR

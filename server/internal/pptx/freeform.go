@@ -259,7 +259,7 @@ func (e Element) tableCellXML(text string, header bool) string {
 	}
 	font := ""
 	if family := strings.TrimSpace(e.FontFamily); family != "" && !strings.HasPrefix(family, "+") {
-		font = `<a:latin typeface="` + escapeAttribute(family) + `"/><a:ea typeface="` + escapeAttribute(family) + `"/>`
+		font = latinTypefaceXML(family)
 	}
 	border := e.Stroke
 	if strings.TrimSpace(border) == "" || strings.EqualFold(border, "transparent") {
@@ -297,7 +297,7 @@ func (e Element) textBodyXML() string {
 	}
 	font := ""
 	if family := strings.TrimSpace(e.FontFamily); family != "" && !strings.HasPrefix(family, "+") {
-		font = `<a:latin typeface="` + escapeAttribute(family) + `"/><a:ea typeface="` + escapeAttribute(family) + `"/>`
+		font = latinTypefaceXML(family)
 	}
 	runFlags := ""
 	if e.Bold {

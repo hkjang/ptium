@@ -672,6 +672,21 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 // Header & Footer dialog inserts. Ptium writes it for the same reason a person
 // ticks that box — a deck of twenty slides that nobody can refer to by number is
 // harder to talk about — and leaves the cover alone, as every deck does.
+// latinTypefaceXML names the font a run is set in, for Latin characters only.
+//
+// It used to name the same font for East Asian characters as well, which said
+// that Hangul and kanji were to be set in Aptos — a face with neither. The
+// template's own East Asian font is what those characters are for, and leaving
+// the element out is how a run inherits it: a Korean or Japanese deck exported
+// from here was overriding its template's Korean font with a Latin one on every
+// run of text it contained.
+func latinTypefaceXML(font string) string {
+	if strings.TrimSpace(font) == "" {
+		return ""
+	}
+	return `<a:latin typeface="` + escapeAttribute(font) + `"/>`
+}
+
 func slideNumberXML(shapeID int, layout Layout, slide Slide, language string) string {
 	slot := layout.SlideNumber
 	if slot == nil || slide.Number <= 0 || slide.HideNumber {
@@ -701,7 +716,7 @@ func slideNumberXML(shapeID int, layout Layout, slide Slide, language string) st
 		properties += `<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(colour, "#")) + `"/></a:solidFill>`
 	}
 	if font := strings.TrimSpace(slot.Font); font != "" {
-		properties += `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+		properties += latinTypefaceXML(font)
 	}
 	properties += `</a:rPr>`
 	// The field is what makes the number follow the slide when someone reorders
@@ -801,7 +816,7 @@ func composedParagraphsXML(placeholder Placeholder, paragraphs []Paragraph, lang
 			properties += `<a:solidFill><a:srgbClr val="` + escapeAttribute(placeholder.Color) + `"/></a:solidFill>`
 		}
 		if font := strings.TrimSpace(placeholder.Font); font != "" && !strings.HasPrefix(font, "+") {
-			properties += `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+			properties += latinTypefaceXML(font)
 		}
 		return properties + `</a:rPr>`
 	}

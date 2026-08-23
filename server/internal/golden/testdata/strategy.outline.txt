@@ -228,7 +228,6 @@ c:chartSpace
                       a:solidFill
                         a:srgbClr val=F6F1FC
                       a:latin typeface=Aptos
-                      a:ea typeface=Aptos
                   a:endParaRPr lang=ko-KR
               c:dLblPos val=r
               c:showLegendKey val=0
@@ -319,7 +318,6 @@ c:chartSpace
                       a:solidFill
                         a:srgbClr val=F6F1FC
                       a:latin typeface=Aptos
-                      a:ea typeface=Aptos
                   a:endParaRPr lang=ko-KR
               c:dLblPos val=r
               c:showLegendKey val=0
@@ -393,7 +391,6 @@ c:chartSpace
                 a:solidFill
                   a:srgbClr val=B9B5BE
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
             a:endParaRPr lang=ko-KR
         c:crossAx val=222222222
         c:crosses val=autoZero
@@ -424,7 +421,6 @@ c:chartSpace
               a:solidFill
                 a:srgbClr val=B9B5BE
               a:latin typeface=Aptos
-              a:ea typeface=Aptos
           a:endParaRPr lang=ko-KR
     c:plotVisOnly val=1
     c:dispBlanksAs val=gap
@@ -441,7 +437,6 @@ c:chartSpace
           a:solidFill
             a:srgbClr val=B9B5BE
           a:latin typeface=Aptos
-          a:ea typeface=Aptos
       a:endParaRPr lang=ko-KR
   c:externalData r:id=rId1
     c:autoUpdate val=0
@@ -1969,7 +1964,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=BDB9C3
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "출처: 통계청, 2026 소비 동향, 표 3"
             a:endParaRPr lang=ko-KR
@@ -1994,7 +1988,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=BDB9C3
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "2"
             a:endParaRPr lang=ko-KR
@@ -2067,7 +2060,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=B9B5BE
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "연간 비용"
       p:graphicFrame
@@ -2099,7 +2091,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=B9B5BE
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "항목"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2118,7 +2109,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=B9B5BE
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "2026"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2137,7 +2127,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=B9B5BE
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "2027"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2157,7 +2146,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=F6F1FC
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "인건비"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2176,7 +2164,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "4.2억"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2195,7 +2182,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "3.4억"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2215,7 +2201,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=F6F1FC
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "라이선스"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2234,7 +2219,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "1.1억"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2253,7 +2237,6 @@ p:sld
                           a:solidFill
                             a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
-                          a:ea typeface=Aptos
                         a:t
                           "1.4억"
                   a:tcPr anchor=ctr marB=45720 marL=0 marR=91440 marT=45720
@@ -2282,7 +2265,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=BDB9C3
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "3"
             a:endParaRPr lang=ko-KR
@@ -2355,7 +2337,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=B9B5BE
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "월별 처리량"
       p:graphicFrame
@@ -2390,7 +2371,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=BDB9C3
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "4"
             a:endParaRPr lang=ko-KR

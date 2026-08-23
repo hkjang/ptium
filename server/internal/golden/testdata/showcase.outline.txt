@@ -1806,7 +1806,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "2"
             a:endParaRPr lang=ko-KR
@@ -1899,7 +1898,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Georgia
-                  a:ea typeface=Georgia
                 a:t
                   "배포 하나에 이틀이 걸립니다. 그동안 아무도 다른 일을 못 합니다."
       p:sp
@@ -1925,7 +1923,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "출처: 내부 인터뷰, 운영팀 8인, 2026-03"
             a:endParaRPr lang=ko-KR
@@ -1950,7 +1947,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "3"
             a:endParaRPr lang=ko-KR
@@ -2064,7 +2060,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "단일 서버 의존"
         p:sp
@@ -2091,7 +2086,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=2563EB
                   a:latin typeface=Georgia
-                  a:ea typeface=Georgia
                 a:t
                   "마이크로서비스 분산"
         p:sp
@@ -2159,7 +2153,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "수동 배포"
         p:sp
@@ -2186,7 +2179,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=EB6834
                   a:latin typeface=Georgia
-                  a:ea typeface=Georgia
                 a:t
                   "자동화된 CI/CD"
       p:sp
@@ -2210,7 +2202,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "4"
             a:endParaRPr lang=ko-KR
@@ -2283,7 +2274,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "집행률"
         p:sp
@@ -2310,7 +2300,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "집행"
         p:sp
@@ -2337,7 +2326,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=717273
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "68%"
         p:sp
@@ -2403,7 +2391,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "5"
             a:endParaRPr lang=ko-KR
@@ -2476,7 +2463,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=929292
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "채널 구성"
         p:sp
@@ -2523,7 +2509,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=FFFFFF
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "52"
         p:sp
@@ -2570,7 +2555,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "31"
         p:sp
@@ -2617,7 +2601,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=15181D
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "17"
         p:sp
@@ -2664,7 +2647,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=717273
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "직영  52"
         p:sp
@@ -2711,7 +2693,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=717273
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "대리점  31"
         p:sp
@@ -2758,7 +2739,6 @@ p:sld
                   a:solidFill
                     a:srgbClr val=717273
                   a:latin typeface=Aptos
-                  a:ea typeface=Aptos
                 a:t
                   "온라인  17"
       p:sp
@@ -2782,7 +2762,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "6"
             a:endParaRPr lang=ko-KR
@@ -2879,7 +2858,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "7"
             a:endParaRPr lang=ko-KR
@@ -2961,7 +2939,6 @@ p:sld
                 a:solidFill
                   a:srgbClr val=B4B4B4
                 a:latin typeface=Aptos
-                a:ea typeface=Aptos
               a:t
                 "8"
             a:endParaRPr lang=ko-KR

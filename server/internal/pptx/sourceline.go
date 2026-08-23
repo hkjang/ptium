@@ -214,7 +214,7 @@ func sourceNoteXML(shapeID int, note *sourceNote, language string) string {
 		properties += `<a:solidFill><a:srgbClr val="` + escapeAttribute(colour) + `"/></a:solidFill>`
 	}
 	if font := strings.TrimSpace(note.Font); font != "" {
-		properties += `<a:latin typeface="` + escapeAttribute(font) + `"/><a:ea typeface="` + escapeAttribute(font) + `"/>`
+		properties += latinTypefaceXML(font)
 	}
 	properties += `</a:rPr>`
 	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Source Note"` +

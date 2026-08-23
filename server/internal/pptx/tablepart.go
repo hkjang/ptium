@@ -96,7 +96,7 @@ func (t *TablePart) cellXML(value string, column int, header bool) string {
 	}
 	font := ""
 	if typeface := strings.TrimSpace(t.Font); typeface != "" && !strings.HasPrefix(typeface, "+") {
-		font = `<a:latin typeface="` + escapeAttribute(typeface) + `"/><a:ea typeface="` + escapeAttribute(typeface) + `"/>`
+		font = latinTypefaceXML(typeface)
 	}
 	rule, width := t.Hairline, 9525
 	if header {
