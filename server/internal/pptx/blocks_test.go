@@ -302,3 +302,40 @@ func TestAQuoteKeepsItsWholeSentence(t *testing.T) {
 		t.Errorf("the quote reads %q", sanitized.Text)
 	}
 }
+
+// "1억 5천만 원" in a card sized for three figures was drawn straight across the
+// card beside it, and the room read "1억 5천". The number gives way to the card
+// it is in.
+func TestAKPIValueFitsItsCard(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	design := NewDesign(manifest)
+	// The region this KPI row actually landed in, three cards across.
+	frame := Frame{X: 838200, Y: 2000000, Width: 4200000, Height: 1600000}
+	block := Block{Kind: BlockKPI, Items: []Item{
+		{Label: "총 비용", Value: "1억 5천만 원"},
+		{Label: "이관 기간", Value: "4개월"},
+		{Label: "문서 건수", Value: "12,400건"},
+	}}
+	cardWidth := (frame.Width - design.Unit*2*2) / 3
+	inner := cardWidth - design.Unit*4
+	widest := 0
+	for _, primitive := range design.layoutKPI(frame, block) {
+		for _, line := range primitive.Lines {
+			if primitive.Kind != "text" || !strings.Contains(line.Text, "1억") {
+				continue
+			}
+			widest = max(widest, textWidth(line.Text, primitive.FontSize))
+		}
+	}
+	if widest == 0 {
+		t.Fatal("the value was not drawn at all")
+	}
+	// Down to the label's own size, which is the floor: a figure smaller than the
+	// words around it stops being the thing the slide is about.
+	if widest > inner && design.Small < 1200 {
+		t.Fatalf("the value draws %d wide in a card of %d", widest, inner)
+	}
+	if widest > inner*11/10 {
+		t.Fatalf("the value draws %d wide in a card of %d, past what the floor explains", widest, inner)
+	}
+}

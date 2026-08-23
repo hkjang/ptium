@@ -370,13 +370,45 @@ func (g *Generator) plan(ctx context.Context, endpoint, modelName, apiKey string
 		return nil, err
 	}
 	var plan deckPlan
-	if err := json.Unmarshal([]byte(raw), &plan); err != nil {
-		return nil, errors.New("AI provider returned an outline that could not be read")
+	if err := json.Unmarshal(planJSON(raw), &plan); err != nil {
+		// The answer itself, cut short: without it the next person to see this can
+		// only guess what the model said, which is how a fenced outline went
+		// undiagnosed. The author sees the plain explanation, not this.
+		return nil, fmt.Errorf("AI provider returned an outline that could not be read: %s",
+			truncate(strings.Join(strings.Fields(raw), " "), 160))
 	}
 	if len(plan.Slides) == 0 {
 		return nil, errors.New("AI provider returned an empty outline")
 	}
 	return &plan, nil
+}
+
+// planJSON is the object in a model's answer.
+//
+// The planning pass asks for JSON and nothing else, and a model mostly obliges
+// — but a run against a self-hosted model came back with the outline wrapped in
+// a fence, the whole pass was thrown away, and the deck was written with no
+// design behind it. What was asked for was there and unread. So the fence and
+// whatever is said around the object are removed before it is read, and only an
+// answer with no object in it at all is a failure.
+func planJSON(raw string) []byte {
+	trimmed := strings.TrimSpace(raw)
+	if fence := strings.Index(trimmed, "```"); fence >= 0 {
+		rest := trimmed[fence+3:]
+		if line := strings.IndexByte(rest, '\n'); line >= 0 && !strings.Contains(rest[:line], "{") {
+			rest = rest[line+1:]
+		}
+		if end := strings.Index(rest, "```"); end >= 0 {
+			rest = rest[:end]
+		}
+		trimmed = strings.TrimSpace(rest)
+	}
+	start := strings.IndexByte(trimmed, '{')
+	end := strings.LastIndexByte(trimmed, '}')
+	if start < 0 || end <= start {
+		return []byte(trimmed)
+	}
+	return []byte(trimmed[start : end+1])
 }
 
 // writeDeck asks the model for the deck and binds it to the template.

@@ -284,6 +284,31 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 	for _, item := range items {
 		labelLines = max(labelLines, min(cellLines(item.Label, d.Small, cardWidth-d.Unit*4), 2))
 	}
+	// A figure wider than its card was drawn straight across the card beside it:
+	// "1억 5천만 원" ran under the next tile's background and the room read
+	// "1억 5천". The number gives way to the card it is in, down to the size of
+	// the label but no further — smaller than that and it stops being the thing
+	// the slide is about.
+	if inner := cardWidth - d.Unit*4; inner > 0 {
+		widestValue := func(size int) int {
+			widest := 0
+			for _, item := range items {
+				widest = max(widest, textWidth(item.Display(block.Unit), size))
+			}
+			return widest
+		}
+		// The floor is the label's own size: a figure smaller than the words
+		// around it stops being the thing the slide is about. Where even that
+		// does not fit — a card a third of a narrow region wide, holding
+		// "1억 5천만 원" — the number is set in the label's size and the card keeps
+		// whatever it can rather than painting over the card beside it.
+		for widestValue(valueSize) > inner && valueSize > d.Small {
+			// Scaling by the ratio lands a hair over on the last step, since a
+			// glyph is not exactly proportional to its point size; the step down
+			// keeps it moving until it fits.
+			valueSize = max(min(valueSize*inner/widestValue(valueSize), valueSize-25), d.Small)
+		}
+	}
 	tileHeightFor := func(size int) int {
 		height := d.Unit*4 + lineHeightFor(d.Small)*labelLines + d.Unit/2 + lineHeightFor(size)
 		if hasDetail(items) {

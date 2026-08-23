@@ -954,3 +954,44 @@ func TestTheShortenTaskNamesTheNumberOfPoints(t *testing.T) {
 		t.Fatalf("the fit task changed: %q", fit)
 	}
 }
+
+// The planning pass asks for JSON and nothing else. A run against a self-hosted
+// model answered with the outline inside a fence, the pass was thrown away, and
+// the deck was written with no design behind it — the thing that was asked for
+// was there, and unread.
+func TestThePlanIsReadThroughWhateverWrapsIt(t *testing.T) {
+	object := `{"thesis":"지금 결정해야 합니다","slides":[{"role":"content","headline":"현황"}]}`
+	for _, answer := range []string{
+		object,
+		"```json\n" + object + "\n```",
+		"```\n" + object + "\n```",
+		"다음은 요청하신 구성입니다:\n" + object,
+		object + "\n\n필요하시면 슬라이드 수를 조정하겠습니다.",
+		"  \n" + object + "  ",
+	} {
+		var plan deckPlan
+		if err := json.Unmarshal(planJSON(answer), &plan); err != nil {
+			t.Fatalf("could not read the outline from %q: %v", answer, err)
+		}
+		if plan.Thesis != "지금 결정해야 합니다" || len(plan.Slides) != 1 {
+			t.Fatalf("the outline read from %q is wrong: %+v", answer, plan)
+		}
+	}
+	// An answer with no object in it is still a failure.
+	var plan deckPlan
+	if err := json.Unmarshal(planJSON("죄송합니다, 구성을 만들 수 없습니다."), &plan); err == nil {
+		t.Fatal("an answer with no outline in it was read as one")
+	}
+}
+
+// The author gets the plain explanation; the warning carries what the model
+// actually said, because without it the next person can only guess.
+func TestAnUnreadableOutlineIsQuotedInTheWarning(t *testing.T) {
+	err := errors.New("AI provider returned an outline that could not be read: 죄송합니다 구성을 만들 수 없습니다")
+	if got := AuthorMessage(err, "ko"); !strings.Contains(got, "읽을 수 없는") {
+		t.Fatalf("the author sees %q, wanted the plain explanation", got)
+	}
+	if got := AuthorMessage(err, "en"); strings.Contains(got, "죄송합니다") {
+		t.Fatalf("the model's own answer reached the author: %q", got)
+	}
+}
