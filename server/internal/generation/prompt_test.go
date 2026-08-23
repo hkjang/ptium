@@ -118,3 +118,25 @@ func TestTheBriefAsksForSlidesThatAddSomething(t *testing.T) {
 		}
 	}
 }
+
+// The measurement knows a steps component draws five entries and says so when a
+// deck holds six. Knowing it only on the reading side wastes the round trip:
+// the model wrote the sixth step, the author was told, and the author had to
+// act. The writing brief now carries the same limits.
+func TestTheBriefStatesWhatAComponentDraws(t *testing.T) {
+	for _, wanted := range []string{
+		"at most FIVE stages",
+		"at most SIX",
+		"the rest\n  are on no slide at all",
+	} {
+		if !strings.Contains(sourceSystemPrompt, wanted) {
+			t.Errorf("the writing brief does not say %q", wanted)
+		}
+	}
+	// And the limits it states are the ones the drawing keeps.
+	for kind, stated := range map[string]int{pptx.BlockSteps: 5, pptx.BlockTimeline: 6, pptx.BlockMeter: 5} {
+		if drawn := pptx.DrawableItems(kind); drawn != stated {
+			t.Errorf("the brief says %s takes %d but the drawing takes %d", kind, stated, drawn)
+		}
+	}
+}

@@ -149,13 +149,13 @@ Components — a body region may hold one instead of prose, and the better deck
 usually does:
 - kpi: two to four headline numbers.            rows: label | value
 - hero: the one number the slide is about.      rows: label | value | context
-- meter: progress against a target.             rows: label | 72%
+- meter: progress against a target, at most five. rows: label | 72%
 - columns: magnitude across up to six categories. rows: label | number
 - bars: the same when category names are long.  rows: label | number
 - line: a trend.                                rows: series name | v1, v2, v3
 - share: part-to-whole across three to five parts. rows: label | number
-- steps: a three-to-five stage process.         rows: stage | what happens
-- timeline: dated milestones.                   rows: date | milestone | detail
+- steps: a process, at most FIVE stages.        rows: stage | what happens
+- timeline: dated milestones, at most SIX.      rows: date | milestone | detail
 - comparison: two or three options.             rows: option | headline | detail
 - table: columns then rows.                     first row is the header
 - quote: one memorable sentence.                rows: the sentence | source
@@ -170,6 +170,11 @@ Rules for components:
   steps, timeline, comparison, table, callout or prose, which carry structure
   without fabricating data.
 - One component per slide. Prose is still right for argument and nuance.
+- Keep to the limits above. A component draws the first few rows and the rest
+  are on no slide at all — a sixth step, a fourth option, a seventh milestone is
+  written and then never seen by anybody. A process with eight stages is two
+  slides of four, or five stages with the last three folded into one; it is
+  never one slide of eight.
 - Component labels are two or three words, never a sentence.
 - In Korean, Japanese and Chinese, never put a space between a number and its
   unit: "7월", "2026년", "200%", "2026年8月", "8,400万円", "3時間12分" — not

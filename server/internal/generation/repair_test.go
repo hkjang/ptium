@@ -89,3 +89,54 @@ func TestARewriteThatDropsAHeadingIsRefused(t *testing.T) {
 		t.Fatalf("a rewrite that merged two lines was refused: %s", lost)
 	}
 }
+
+// A component that holds more than it draws is worth another draft: the entries
+// past the limit are on no slide, which is the same kind of loss as text that
+// does not fit.
+//
+// Against the live model this could not be fixed by asking. Told in two places
+// that a process takes at most five stages, and given a brief naming eight, it
+// wrote eight — first as a timeline, then as steps. So the deck is measured
+// after it is written and the slide is sent back with what was measured.
+func TestAComponentDrawingLessThanItHoldsIsSentBackForARewrite(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 이행 순서\n@content\n::steps 순서\n- 요구사항 확정 | 현업 프로세스 매핑\n" +
+		"- 데이터 정제 | 레거시 품질 검증\n- 파일럿 구축 | 핵심 모듈 시험\n- 1차 이관 | 비핵심 부서\n" +
+		"- 2차 이관 | 핵심 부서\n- 병행 운영 | 양 시스템 가동\n- 안정화 | 성능 최적화\n- 최종 전환 | 레거시 종료\n::\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	presentation := model.Presentation{Language: "ko", Title: "이행 순서", Slides: compiled.Slides}
+
+	defects := slidesByDefect(manifest, presentation)
+	if len(defects) == 0 {
+		t.Fatal("a slide holding eight stages of a five-stage component was not queued for a rewrite")
+	}
+	if defects[0].action != ReviseShorten {
+		t.Fatalf("the slide is queued for %q, wanted a shorter one", defects[0].action)
+	}
+	said := false
+	for _, detail := range defects[0].details {
+		said = said || strings.Contains(detail, "of its 8 entries")
+	}
+	if !said {
+		t.Fatalf("the rewrite is not told what is left out: %q", defects[0].details)
+	}
+
+	// A rewrite that keeps five of them measures better and is kept; one that
+	// still holds eight is not an improvement.
+	shorter := deck.Compile(deck.ParseSource("# 이행 순서\n@content\n::steps 순서\n- 요구사항 확정 | 현업 매핑\n"+
+		"- 데이터 정제 | 품질 검증\n- 이관 | 부서별 전환\n- 병행 운영 | 양 시스템\n- 최종 전환 | 레거시 종료\n::\n"),
+		manifest, deck.CompileOptions{Language: "ko"}).Slides
+	if got := defectsOnSlide(manifest, presentation, 1, shorter[0]); got != 0 {
+		t.Errorf("the shorter slide still measures %d defects", got)
+	}
+	if got := defectsOnSlide(manifest, presentation, 1, presentation.Slides[0]); got == 0 {
+		t.Error("the slide that holds eight measures clean, so no rewrite could be judged better")
+	}
+}

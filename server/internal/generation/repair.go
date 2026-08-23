@@ -175,7 +175,7 @@ func slideShape(slide model.Slide) (headings, regions int) {
 func repairable(finding pptx.Finding) bool {
 	switch finding.Kind {
 	case pptx.FindingOverflow, pptx.FindingOutside, pptx.FindingCollision, pptx.FindingContrast,
-		pptx.FindingDensity, pptx.FindingRepeat:
+		pptx.FindingDensity, pptx.FindingRepeat, pptx.FindingTrimmed:
 		return true
 	}
 	return false
@@ -184,7 +184,12 @@ func repairable(finding pptx.Finding) bool {
 // repairAction is what to ask the model for, given what the measurement found.
 func repairAction(kind string) string {
 	switch kind {
-	case pptx.FindingDensity, pptx.FindingRepeat:
+	case pptx.FindingDensity, pptx.FindingRepeat, pptx.FindingTrimmed:
+		// A component holding more than it draws is asked to say the same thing
+		// in what the drawing shows. Telling the model the limit did not hold —
+		// it wrote eight stages against a brief that named eight, twice, under a
+		// brief that states the limit in two places. Measuring the result and
+		// keeping it only if it improved does hold.
 		return ReviseShorten
 	}
 	return ReviseFit
