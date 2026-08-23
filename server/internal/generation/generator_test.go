@@ -1073,3 +1073,41 @@ func TestComposeSaysWhatItDropped(t *testing.T) {
 		t.Fatalf("the line was dropped in silence: %q\n%s", composed.Warnings, composed.Source)
 	}
 }
+
+// A model that stops because it ran out of room has not answered. Half a plan
+// is not valid JSON and half a deck is a deck missing its last slides, so the
+// partial answer is a failure that names the setting to raise — it used to be
+// passed on as if it were whole whenever the model had written anything at all.
+func TestAnAnswerCutOffAtTheOutputLimitIsAFailure(t *testing.T) {
+	for _, one := range []struct {
+		name, content string
+	}{
+		{"nothing written", ""},
+		{"cut off mid-answer", `{"deckTitle": "ERP 교체", "slides": [{"role": "title", "headl`},
+	} {
+		capped := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			writer.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(writer).Encode(map[string]any{"choices": []any{map[string]any{
+				"message":       map[string]any{"role": "assistant", "content": one.content},
+				"finish_reason": "length",
+			}}})
+		}))
+		generator := New(testSettings{"ai.provider": "openai-compatible", "ai.base_url": capped.URL,
+			"ai.model": "test-model", "ai.api_key": "test-key"})
+		generator.client = capped.Client()
+		_, err := generator.complete(context.Background(), capped.URL+"/chat/completions", "test-model", "test-key",
+			"system", "user", 0.5)
+		capped.Close()
+		if err == nil {
+			t.Fatalf("%s: a capped answer was accepted as an answer", one.name)
+		}
+		if !strings.Contains(err.Error(), "output limit") {
+			t.Fatalf("%s: error = %v", one.name, err)
+		}
+		// And the author is told which number fixes it.
+		message := AuthorMessage(err, "ko")
+		if !strings.Contains(message, "max_output_tokens") {
+			t.Fatalf("%s: the author is told %q", one.name, message)
+		}
+	}
+}

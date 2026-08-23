@@ -50,6 +50,8 @@ func AuthorMessage(cause error, language string) string {
 		strings.Contains(text, "could not be read"), strings.Contains(text, "empty outline"),
 		strings.Contains(text, "without slides"), strings.Contains(text, "reasoning but no answer"):
 		return words.unreadable
+	case strings.Contains(text, "output limit"):
+		return words.outputLimit
 	case strings.Contains(text, "template"):
 		return words.template
 	case strings.Contains(text, "needs an ai provider"), strings.Contains(text, "unsupported ai provider"):
@@ -62,6 +64,10 @@ func AuthorMessage(cause error, language string) string {
 // was asked for.
 type failureWords struct {
 	unreachable, rejected, busy, timeout, providerBroken, unreadable, template, notConfigured, unknown string
+	// outputLimit is the model stopping mid-answer because it ran out of room.
+	// It is the one failure an administrator fixes with a single number, so the
+	// message says which number.
+	outputLimit string
 }
 
 func failureWordsKorean() failureWords {
@@ -72,6 +78,7 @@ func failureWordsKorean() failureWords {
 		timeout:        "AI 서비스가 제한 시간 안에 답하지 않았습니다. 다시 시도해 주세요. 계속되면 관리자에게 알려 주세요.",
 		providerBroken: "AI 서비스가 오류를 돌려주었습니다. 다시 시도해 주세요. 계속되면 관리자에게 오류 센터를 확인해 달라고 요청하세요.",
 		unreadable:     "AI 서비스가 읽을 수 없는 답을 보냈습니다. 다시 시도해 주세요. 계속되면 관리자에게 모델 설정을 확인해 달라고 요청하세요.",
+		outputLimit:    "AI 서비스가 답을 끝내지 못하고 출력 한도에서 멈췄습니다. 관리자가 서비스 설정에서 최대 출력 토큰(ai.max_output_tokens)을 늘리면 해결됩니다.",
 		template:       "이 덱의 템플릿을 불러오지 못했습니다. 다른 디자인을 고르거나 관리자에게 알려 주세요.",
 		notConfigured:  "AI 제공자가 설정되어 있지 않습니다. 관리자에게 서비스 설정을 확인해 달라고 요청하세요.",
 		unknown:        "생성에 실패했습니다. 다시 시도해 주세요. 계속되면 관리자에게 오류 센터의 기록을 확인해 달라고 요청하세요.",
@@ -86,6 +93,7 @@ func failureWordsEnglish() failureWords {
 		timeout:        "The AI service did not answer in time. Please try again; tell an administrator if it keeps happening.",
 		providerBroken: "The AI service returned an error. Please try again; if it keeps happening, ask an administrator to check the error centre.",
 		unreadable:     "The AI service returned an answer that could not be read. Please try again; if it keeps happening, ask an administrator to check the model settings.",
+		outputLimit:    "The AI service stopped mid-answer at its output limit. An administrator can fix this by raising the maximum output tokens (ai.max_output_tokens) in service settings.",
 		template:       "This deck's template could not be loaded. Choose another design, or tell an administrator.",
 		notConfigured:  "No AI provider is configured. Ask an administrator to check service settings.",
 		unknown:        "Generation failed. Please try again; if it keeps happening, ask an administrator to check the record in the error centre.",
@@ -100,6 +108,7 @@ func failureWordsJapanese() failureWords {
 		timeout:        "AIサービスが制限時間内に応答しませんでした。再度お試しください。続く場合は管理者にお知らせください。",
 		providerBroken: "AIサービスがエラーを返しました。再度お試しください。続く場合は管理者にエラーセンターの確認を依頼してください。",
 		unreadable:     "AIサービスが読み取れない応答を返しました。再度お試しください。続く場合は管理者にモデル設定の確認を依頼してください。",
+		outputLimit:    "AIサービスが回答を終える前に出力上限で停止しました。管理者がサービス設定で最大出力トークン(ai.max_output_tokens)を増やすと解決します。",
 		template:       "このデッキのテンプレートを読み込めませんでした。別のデザインを選ぶか、管理者にお知らせください。",
 		notConfigured:  "AIプロバイダーが設定されていません。管理者にサービス設定の確認を依頼してください。",
 		unknown:        "生成に失敗しました。再度お試しください。続く場合は管理者にエラーセンターの記録の確認を依頼してください。",
@@ -114,6 +123,7 @@ func failureWordsChinese() failureWords {
 		timeout:        "AI 服务未在限定时间内响应。请重试；如持续出现请告知管理员。",
 		providerBroken: "AI 服务返回了错误。请重试；如持续出现，请联系管理员查看错误中心。",
 		unreadable:     "AI 服务返回了无法读取的内容。请重试；如持续出现，请联系管理员检查模型设置。",
+		outputLimit:    "AI 服务在回答完成前达到输出上限而停止。请管理员在服务设置中调高最大输出 token 数(ai.max_output_tokens)。",
 		template:       "无法加载该演示文稿的模板。请更换设计，或告知管理员。",
 		notConfigured:  "尚未配置 AI 提供方。请联系管理员检查服务设置。",
 		unknown:        "生成失败。请重试；如持续出现，请联系管理员查看错误中心的记录。",

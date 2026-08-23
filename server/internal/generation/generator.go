@@ -712,8 +712,16 @@ func (g *Generator) send(ctx context.Context, endpoint, modelName, apiKey, syste
 	if choice.reasoned() {
 		return "", errReasonedWithoutAnswering
 	}
-	if strings.TrimSpace(choice.Message.Content) == "" && choice.FinishReason == "length" {
-		return "", fmt.Errorf("AI provider stopped at the output limit without writing anything; raise ai.max_output_tokens")
+	if choice.FinishReason == "length" {
+		// The answer stopped because the budget ran out, not because it was
+		// finished. Half of one is not a shorter version of it: half a plan is
+		// not valid JSON, and half a deck is a deck missing its last slides with
+		// nothing said about them. This used to be caught only when the model
+		// wrote nothing at all, so an answer cut off after five thousand
+		// characters was passed on as if it were whole — the plan pass then
+		// failed to read it and was skipped in silence.
+		return "", fmt.Errorf("AI provider stopped at the output limit after %d characters; raise ai.max_output_tokens",
+			len(strings.TrimSpace(choice.Message.Content)))
 	}
 	return strings.TrimSpace(choice.Message.Content), nil
 }
