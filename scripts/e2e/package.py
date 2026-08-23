@@ -9,7 +9,7 @@ make python-pptx raise here first.
     pip install python-pptx
     python3 scripts/e2e/package.py
 """
-import html, json, os, re, sys, time, urllib.request, urllib.error
+import html, io, json, os, re, sys, time, urllib.request, urllib.error, uuid, zipfile
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 SECRET = os.environ.get("PTIUM_DEV_SECRET", "devsecret-devsecret-devsecret-devsecret")
@@ -225,6 +225,84 @@ for index, slide in enumerate(read.slides, 1):
     if missing:
         failures.append(f"slide {index} draws {missing[:4]} in the preview and not in the file")
 print(f"   compared {len(read.slides)} slides")
+
+# A deck reaches Ptium three ways: written by the model, typed by hand, and
+# carried in from a file. The third is the one nobody watches, so it is walked
+# end to end here: a file built by another tool goes in, comes out, has the
+# source Ptium hides inside it stripped away, and goes in again — which is the
+# path a deck takes when someone edits the exported file in PowerPoint first.
+print("── a deck carried in from another tool ──")
+try:
+    from pptx.util import Inches
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+except ImportError:
+    print("   python-pptx is missing its chart helpers; skipped")
+else:
+    foreign = Presentation()
+    cover = foreign.slides.add_slide(foreign.slide_layouts[0])
+    cover.shapes.title.text = f"외부 도구로 만든 덱 {RUN}"
+    cover.placeholders[1].text = "가져오기 점검용"
+    listed = foreign.slides.add_slide(foreign.slide_layouts[1])
+    listed.shapes.title.text = "현황 요약"
+    frame = listed.placeholders[1].text_frame
+    frame.text = "검색 실패율 31%"
+    for line in ["문서 12,400건", "이관 4개월 소요"]:
+        frame.add_paragraph().text = line
+    listed.notes_slide.notes_text_frame.text = "여기서 실패율을 강조합니다."
+    tabled = foreign.slides.add_slide(foreign.slide_layouts[5])
+    tabled.shapes.title.text = "대안 비교"
+    grid = tabled.shapes.add_table(2, 3, Inches(0.5), Inches(2), Inches(9), Inches(1.5)).table
+    for row, line in enumerate([["항목", "현행 유지", "외부 SaaS"], ["초기 비용", "0원", "1억 5천만 원"]]):
+        for column, cell in enumerate(line):
+            grid.cell(row, column).text = cell
+    charted = foreign.slides.add_slide(foreign.slide_layouts[5])
+    charted.shapes.title.text = "분기 검색량"
+    numbers = CategoryChartData()
+    numbers.categories = ["1분기", "2분기", "3분기"]
+    numbers.add_series("검색량", (1180, 1240, 1390))
+    charted.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(2), Inches(8), Inches(4), numbers)
+    carried = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"ptium-foreign-{RUN}.pptx")
+    foreign.save(carried)
+
+    def import_file(path, name):
+        boundary = uuid.uuid4().hex
+        payload = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+                   "Content-Type: application/vnd.openxmlformats-officedocument.presentationml.presentation\r\n\r\n").encode()
+        payload += open(path, "rb").read() + f"\r\n--{boundary}--\r\n".encode()
+        request = urllib.request.Request(BASE + "/presentations/import", data=payload,
+                                         headers={"X-Ptium-Dev-Secret": SECRET,
+                                                  "Content-Type": f"multipart/form-data; boundary={boundary}"},
+                                         method="POST")
+        with urllib.request.urlopen(request) as response:
+            return json.loads(response.read())["data"]
+
+    brought = import_file(carried, "foreign.pptx")
+    deck_id = (brought.get("presentation") or {}).get("id", "")
+    source = (call("GET", f"/presentations/{deck_id}/source") or {}).get("source", "")
+    for wanted in ["# 현황 요약", "- 검색 실패율 31%", "!notes 여기서 실패율을", "::table", "- 초기 비용 | 0원 | 1억 5천만 원", "::columns", "- 2분기 | 1240"]:
+        if wanted not in source:
+            failures.append(f"the deck carried in from another tool lost {wanted!r}")
+    print(f"   {brought.get('slides')} slides in, table and chart kept")
+
+    # Out and back in again, with the source Ptium hides in the file removed.
+    exported = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True)
+    stripped_path = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"ptium-stripped-{RUN}.pptx")
+    inside = zipfile.ZipFile(io.BytesIO(exported))
+    with zipfile.ZipFile(stripped_path, "w", zipfile.ZIP_DEFLATED) as out:
+        for item in inside.infolist():
+            if item.filename == "ppt/ptiumSource.xml":
+                continue
+            data = inside.read(item.filename)
+            if item.filename == "[Content_Types].xml":
+                data = data.replace(b'<Override PartName="/ppt/ptiumSource.xml" ContentType="application/xml"/>', b"")
+            out.writestr(item, data)
+    again = import_file(stripped_path, "stripped.pptx")
+    reread = (call("GET", f"/presentations/{(again.get('presentation') or {}).get('id', '')}/source") or {}).get("source", "")
+    for wanted in ["- 검색 실패율 31%", "!notes 여기서 실패율을", "- 초기 비용 | 0원 | 1억 5천만 원", "- 2분기 | 1240"]:
+        if wanted not in reread:
+            failures.append(f"reading Ptium's own drawing back lost {wanted!r}")
+    print("   read back from the drawing alone, nothing lost")
 
 print()
 print(f"{len(failures)} failures")
