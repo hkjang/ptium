@@ -17,7 +17,10 @@ func TestAPreviewNamesFontsAViewerIsLikelyToHave(t *testing.T) {
 		SlotTitle: {{Text: "Manual dispatch creates operational drag"}},
 		SlotBody:  {{Text: "42 technicians dispatched by hand"}}}}
 	svg := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 1200})
-	for _, family := range []string{"Arial", "Liberation Sans", "Malgun Gothic", "sans-serif"} {
+	for _, family := range []string{"Arial", "Liberation Sans", "Malgun Gothic",
+		// A Japanese deck was drawn with 遅, 効 and 満 as empty boxes: a Korean font
+		// covers the hanja Korean uses and not the kanji it does not.
+		"Yu Gothic", "Noto Sans JP", "Microsoft YaHei", "sans-serif"} {
 		if !strings.Contains(svg, family) {
 			t.Fatalf("the preview does not fall back to %s", family)
 		}

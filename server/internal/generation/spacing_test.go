@@ -73,3 +73,29 @@ func TestAUnitDoesNotEatTheNextWord(t *testing.T) {
 		}
 	}
 }
+
+// The gap a model leaves between a number and its unit is the same mistake in
+// Japanese, and the tidier only knew Korean: a deck came back saying
+// "2026 年 8 月", "8,400 万円" and "3 時間 12 分".
+func TestTheUnitGapIsClosedInJapaneseToo(t *testing.T) {
+	cases := map[string]string{
+		"8,400 万円": "8,400万円",
+		"4,200 件":  "4,200件",
+		"9 名":      "9名",
+		"186 名":    "186名",
+		"第 3 四半期":  "第 3四半期",
+		"3 時間":     "3時間",
+		"12 か月":    "12か月",
+	}
+	for written, wanted := range cases {
+		if got := deck.TidyKorean(written); got != wanted {
+			t.Errorf("TidyKorean(%q) = %q, want %q", written, got, wanted)
+		}
+	}
+	// A space before an ordinary word is not the same mistake.
+	for _, line := range []string{"導入により 対応時間を短縮", "AI チャットボット", "58% が最多"} {
+		if got := deck.TidyKorean(line); got != line {
+			t.Errorf("TidyKorean(%q) = %q, want it untouched", line, got)
+		}
+	}
+}

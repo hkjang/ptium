@@ -955,3 +955,29 @@ func TestLengthJudgementsAreTheSameInBothLanguages(t *testing.T) {
 		t.Fatal("phrases were read as figures and would be set in the size of a headline number")
 	}
 }
+
+// Whether a line reads as a sentence decided which lines could be column
+// headings, and it knew only Korean. It also asked whether the last *byte* of
+// the line was a full stop, which for any Korean or Japanese ending is a
+// continuation byte and never a full stop at all.
+func TestASentenceIsRecognisedInEveryLanguageTheDeckWritesIn(t *testing.T) {
+	sentences := []string{
+		"매출이 늘었습니다", "결정을 미룰 수 없다", "This is a whole sentence.",
+		"導入により対応時間を短縮します", "問い合わせは月間4,200件です", "自動化を進めた。",
+		"何が問題なのか？",
+	}
+	for _, line := range sentences {
+		if !readsAsSentence(line) {
+			t.Fatalf("%q reads as a sentence and was not read as one", line)
+		}
+	}
+	names := []string{
+		"현재", "총 필요 예산", "Status Quo", "Implementation and rollout timeline",
+		"現状の課題", "導入後の効果", "一次回答までの待ち時間",
+	}
+	for _, line := range names {
+		if readsAsSentence(line) {
+			t.Fatalf("%q is a name and was read as a sentence", line)
+		}
+	}
+}

@@ -529,17 +529,30 @@ func tidyText(value string) string {
 // TidyKorean closes the gaps a model leaves in Korean text. It is exported for
 // the generation pipeline, which runs it over what the model wrote so that the
 // deck's own text — the source the workspace shows — reads the way the slides do.
+//
+// It closes the same gap in Japanese and Chinese, where the rule is the same
+// and the model makes the same mistake: a deck written in Japanese came back
+// saying "2026 年 8 月", "8,400 万円" and "3 時間 12 分", none of which anyone
+// writes.
 func TidyKorean(value string) string {
 	for {
 		tidied := koreanUnitSpace.ReplaceAllString(value, "$1$2$3")
 		tidied = koreanTrailingSpace.ReplaceAllString(tidied, "$1$2")
 		tidied = koreanForeignParticle.ReplaceAllString(tidied, "$1$2$3")
+		tidied = kanjiUnitSpace.ReplaceAllString(tidied, "$1$2")
 		if tidied == value {
 			return value
 		}
 		value = tidied
 	}
 }
+
+// kanjiUnitSpace matches a number separated from the counter that belongs to
+// it. The counters are the ones a deck uses: time, money, quantity and the
+// units of a workplace.
+var kanjiUnitSpace = regexp.MustCompile(
+	`([0-9%）\)\]])[ 	]+(四半期|年間|年度|時間|分間|週間|箇月|ヶ月|か月|万円|億円|千円|人月|人日|` +
+		`年|月|日|時|分|秒|週|件|名|人|社|台|回|点|割|個|枚|本|部|課|期|号|億|万|千|円|％|つ)`)
 
 // unescapePayload removes the one escape the language has: a backslash in front
 // of text that would otherwise be read as markup. It is applied to what a

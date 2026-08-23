@@ -356,5 +356,12 @@ func fallbackFamily(family string) string {
 //
 // The Latin fallbacks come first and are all near half an em: the browser picks
 // per character, so Hangul still finds the Korean faces further down the list.
+//
+// Every writing system the product generates in is named. A Japanese deck was
+// drawn with 遅, 効, 満, 処 and a dozen others as empty boxes: the list named
+// Korean faces and no Japanese ones, and a Korean font covers the hanja Korean
+// uses and not the kanji it does not.
 const previewFallbacks = `Segoe UI, Roboto, Noto Sans, Helvetica Neue, Arial, Liberation Sans, ` +
-	`Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif`
+	`Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, ` +
+	`Yu Gothic, Hiragino Sans, Meiryo, Noto Sans JP, ` +
+	`Microsoft YaHei, PingFang SC, Noto Sans SC, sans-serif`

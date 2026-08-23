@@ -166,8 +166,9 @@ Rules for components:
   without fabricating data.
 - One component per slide. Prose is still right for argument and nuance.
 - Component labels are two or three words, never a sentence.
-- In Korean, never put a space between a number and its unit: "7월", "2026년",
-  "200%", not "7 월", "2026 년", "200 %".`
+- In Korean, Japanese and Chinese, never put a space between a number and its
+  unit: "7월", "2026년", "200%", "2026年8月", "8,400万円", "3時間12分" — not
+  "7 월", "2026 년", "200 %", "2026 年 8 月", "8,400 万円", "3 時間 12 分".`
 
 // planSystemPrompt's second pass used to be JSON; the plan itself stays JSON
 // because it is consumed by the writer, not by a person.

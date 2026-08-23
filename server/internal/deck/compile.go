@@ -546,10 +546,19 @@ func readsAsSentence(text string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if strings.ContainsAny(trimmed[len(trimmed)-1:], ".!?") {
+	// The last rune, not the last byte: a Korean or Japanese ending is three
+	// bytes, and asking whether its final byte is a full stop is asking nothing.
+	runes := []rune(trimmed)
+	if strings.ContainsRune(".!?。！？:;", runes[len(runes)-1]) {
 		return true
 	}
-	for _, ending := range []string{"다", "요", "죠", "까", "함", "됨", "임"} {
+	// How a sentence ends where a heading does not. Korean predicate endings,
+	// and the Japanese polite and plain forms — a Japanese heading is usually a
+	// noun, so a verb ending is the signal there too.
+	for _, ending := range []string{
+		"다", "요", "죠", "까", "함", "됨", "임",
+		"ます", "です", "ました", "ません", "である", "します", "する", "された", "された。",
+	} {
 		if strings.HasSuffix(trimmed, ending) {
 			return true
 		}
