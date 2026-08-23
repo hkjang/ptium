@@ -1111,3 +1111,37 @@ func TestAnAnswerCutOffAtTheOutputLimitIsAFailure(t *testing.T) {
 		}
 	}
 }
+
+// Eight thousand output tokens was chosen when a deck's source was the whole
+// answer. Measured against the live model, planning a nine-slide deck spent
+// 6,495 completion tokens — four fifths of it thinking — so the default was
+// four fifths gone on the smallest deck anyone asks for, and fifty slides had
+// no chance. Since a capped answer is a failure, that is a generation that
+// falls back rather than one that quietly arrives short.
+func TestTheOutputBudgetGrowsWithTheDeck(t *testing.T) {
+	generator := New(testSettings{"ai.provider": "openai-compatible"})
+	generator.maxOutputTokens = defaultOutputTokens
+
+	// The smallest deck anyone asks for already spent 6,495 tokens of the 8,000
+	// on one pass, so even that gets room.
+	generator.budgetForDeck(9)
+	if generator.maxOutputTokens <= 6495 {
+		t.Errorf("a nine-slide deck gets %d tokens; one pass of it measured 6,495", generator.maxOutputTokens)
+	}
+	generator.budgetForDeck(50)
+	if generator.maxOutputTokens <= defaultOutputTokens {
+		t.Errorf("a fifty-slide deck was left at %d tokens", generator.maxOutputTokens)
+	}
+	// Fifty slides at the measured rate, twice over, still fits what was chosen.
+	if want := 50 * 116 * 2; generator.maxOutputTokens < want {
+		t.Errorf("a fifty-slide deck gets %d tokens, less than %d", generator.maxOutputTokens, want)
+	}
+
+	// A budget an administrator set is theirs.
+	chosen := New(testSettings{"ai.provider": "openai-compatible", "ai.max_output_tokens": 3000})
+	chosen.applyProviderSettings(context.Background())
+	chosen.budgetForDeck(50)
+	if chosen.maxOutputTokens != 3000 {
+		t.Errorf("an administrator's 3000 became %d", chosen.maxOutputTokens)
+	}
+}

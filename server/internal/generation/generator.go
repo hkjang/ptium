@@ -30,6 +30,9 @@ type Generator struct {
 	// tokens; without a bound a reasoning model will spend the whole context on
 	// thinking, and with too small a bound the deck arrives truncated.
 	maxOutputTokens int
+	// outputTokensSet marks a budget an administrator chose. Theirs is used as
+	// it stands; the default is stretched to the deck being asked for.
+	outputTokensSet bool
 	// reasoning says whether to ask the provider not to think.
 	reasoning reasoningMode
 	// repairs bounds how many slides a generation may send back to the model
@@ -133,6 +136,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "ai.model", &modelName)
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
 	g.applyProviderSettings(ctx)
+	g.budgetForDeck(presentation.RequestedSlideCount)
 	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
 		if rewrite {
 			// Rewriting is the one thing the offline writer cannot stand in for: it
@@ -325,6 +329,30 @@ func (g *Generator) fromLibrary(ctx context.Context, presentation model.Presenta
 	return rebuilt
 }
 
+// budgetForDeck stretches the output budget to the deck being asked for.
+//
+// Eight thousand tokens was chosen when a deck's source was the whole answer.
+// Asked for the plan of a nine-slide deck, the model this was measured against
+// spent 6,495 completion tokens to write 2,634 characters — four fifths of the
+// budget went on thinking, and 81% of the default was gone on the smallest deck
+// anyone asks for. A little more brief, a little more thinking, and the answer
+// stops mid-sentence: half a plan is not JSON and half a deck is a deck missing
+// its last slides.
+//
+// Tokenised with the model's own tokeniser, the decks written here run 90 to
+// 116 tokens a slide, so the room the answer itself needs is small and the room
+// the thinking needs is not. The floor covers the thinking; the slope covers
+// the deck. A budget an administrator set is theirs and is left alone.
+func (g *Generator) budgetForDeck(slides int) {
+	if g.outputTokensSet || slides <= 0 {
+		return
+	}
+	wanted := defaultOutputTokens + slides*250
+	if wanted > g.maxOutputTokens {
+		g.maxOutputTokens = min(wanted, 32000)
+	}
+}
+
 // applyProviderSettings reads the knobs a self-hosted provider needs.
 func (g *Generator) applyProviderSettings(ctx context.Context) {
 	seconds := int(defaultRequestTimeout / time.Second)
@@ -332,8 +360,10 @@ func (g *Generator) applyProviderSettings(ctx context.Context) {
 		g.client.Timeout = time.Duration(seconds) * time.Second
 	}
 	tokens := defaultOutputTokens
+	g.outputTokensSet = false
 	if _ = g.settings.Get(ctx, "ai.max_output_tokens", &tokens); tokens >= 500 && tokens <= 32000 {
 		g.maxOutputTokens = tokens
+		g.outputTokensSet = tokens != defaultOutputTokens
 	}
 	repairs := maximumRepairs
 	if _ = g.settings.Get(ctx, "generation.repair_passes", &repairs); repairs >= 0 && repairs <= 10 {
