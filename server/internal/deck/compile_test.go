@@ -901,3 +901,29 @@ func TestABareSecondHeadingNamesTheSecondColumn(t *testing.T) {
 		}
 	}
 }
+
+// Counting words was the wrong test for Korean. A fresh deck wrote
+// "첫 달 업무 파악 | 적응 저해 원인" — four words a side — and got a bullet with a
+// bar in it, and headed one column of another slide with
+// "2주 집중 교육을 통한 업무 숙달 가속화" while the other column's heading of the
+// same shape kept a bullet in front of it.
+func TestAColumnNameIsJudgedByLengthNotWordCount(t *testing.T) {
+	names := []string{"첫 달 업무 파악", "적응 저해 원인", "2주 집중 교육을 통한 업무 숙달 가속화",
+		"멘토 1:1 배정을 통한 맞춤형 가이드", "현재", "총 필요 예산"}
+	for _, name := range names {
+		if !columnName(name) {
+			t.Fatalf("%q is a column name and was not read as one", name)
+		}
+	}
+	notNames := []string{
+		"", "  ",
+		"매출과 비용을 같은 기준으로 분기별로 나누어 자세히 살펴봅니다", // too long
+		"분기별로 나누어 자세히 살펴봅니다",                  // reads as a sentence
+		"이 슬라이드는 무엇을 말하는가?",
+	}
+	for _, name := range notNames {
+		if columnName(name) {
+			t.Fatalf("%q is not a column name and was read as one", name)
+		}
+	}
+}

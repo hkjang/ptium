@@ -5,6 +5,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -341,7 +342,7 @@ func sameStem(first, second string) bool {
 // InspectDeck reports the defects of a whole deck.
 func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	design := NewDesign(manifest)
-	briefFigures := digitsOnly(strings.ToLower(deck.Brief))
+	briefFigures := NewBriefFigures(deck.Brief)
 	var findings []Finding
 	for index, slide := range deck.Slides {
 		layout, ok := manifest.Layout(slide.LayoutID)
@@ -433,14 +434,11 @@ func statesFigure(text string) bool {
 }
 
 // unbriefedFigures lists the figures a slide states that the brief did not.
-//
-// briefDigits is the brief with its thousands separators removed, so that
-// "1,200" in a deck matches "1200" in a brief and the other way round.
-func unbriefedFigures(slide Slide, briefDigits string) []string {
+func unbriefedFigures(slide Slide, brief BriefFigures) []string {
 	seen := map[string]bool{}
 	var missing []string
 	consider := func(text string) {
-		for _, figure := range figuresNotIn(briefDigits, text) {
+		for _, figure := range brief.Missing(text) {
 			if seen[figure] {
 				continue
 			}
@@ -470,20 +468,74 @@ func unbriefedFigures(slide Slide, briefDigits string) []string {
 // how generation tells a number the author supplied from one the model brought
 // in by itself.
 func FiguresNotIn(brief, text string) []string {
-	return figuresNotIn(digitsOnly(strings.ToLower(brief)), text)
+	return NewBriefFigures(brief).Missing(text)
 }
 
-func figuresNotIn(briefDigits, text string) []string {
+// BriefFigures is what a brief said in numbers, ready to be asked whether a
+// deck's figure came from it.
+type BriefFigures struct {
+	digits  string
+	numbers []float64
+}
+
+// NewBriefFigures reads a brief once, for a deck that will be asked about it
+// many times.
+func NewBriefFigures(brief string) BriefFigures {
+	read := BriefFigures{digits: digitsOnly(strings.ToLower(brief))}
+	for _, match := range leadingNumber.FindAllString(brief, -1) {
+		if value, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && value > 0 {
+			read.numbers = append(read.numbers, value)
+		}
+	}
+	return read
+}
+
+// Missing lists the figures in text the brief neither states nor implies.
+func (b BriefFigures) Missing(text string) []string {
 	var missing []string
 	for _, figure := range StatedFigures(text) {
 		figure = strings.TrimSpace(figure)
 		number := digitsOnly(leadingNumber.FindString(figure))
-		if figure == "" || number == "" || strings.Contains(briefDigits, number) {
+		if figure == "" || number == "" || strings.Contains(b.digits, number) {
+			continue
+		}
+		if b.dividesTo(figure, number) {
 			continue
 		}
 		missing = append(missing, figure)
 	}
 	return missing
+}
+
+// dividesTo reports whether a percentage is two of the brief's own numbers
+// divided: a brief that says 34 people and 6 leavers has already said 17.6%,
+// and asking where that came from is asking the author to cite their own
+// arithmetic. The divisor has to be a real count — one in two is not a
+// derivation, it is a coincidence with every brief that mentions a pair.
+func (b BriefFigures) dividesTo(figure, number string) bool {
+	if !strings.Contains(figure, "%") && !strings.Contains(figure, "퍼센트") {
+		return false
+	}
+	share, err := strconv.ParseFloat(number, 64)
+	if err != nil || share <= 0 || share > 100 {
+		return false
+	}
+	for _, whole := range b.numbers {
+		if whole < 10 {
+			continue
+		}
+		for _, part := range b.numbers {
+			// Strictly smaller: a number divided by itself is 100%, and a brief
+			// with any repeated number would otherwise excuse every figure near it.
+			if part >= whole {
+				continue
+			}
+			if math.Abs(part/whole*100-share) < 0.05 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)

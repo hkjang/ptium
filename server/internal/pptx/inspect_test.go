@@ -430,3 +430,29 @@ func TestTheAuthorsOwnFigureIsNotAskedForASource(t *testing.T) {
 		t.Fatalf("a deck with no brief had %d slides asked, wanted 2", unbriefed)
 	}
 }
+
+// A brief that says 34 people and 6 leavers has already said 17.6%. Asking
+// where that figure came from is asking the author to cite their own
+// arithmetic, and the deck said it in a note as well.
+func TestAPercentageTheBriefImpliesIsNotInvented(t *testing.T) {
+	brief := "지난해 입사자 34명 중 6명이 6개월 내 퇴사했고, 사내 설문 응답 112명 중 47%가 첫 달이 어렵다고 답했습니다."
+	read := NewBriefFigures(brief)
+	if missing := read.Missing("이탈률 17.6%로 인재 확보 비용이 늘었습니다"); len(missing) > 0 {
+		t.Fatalf("a figure the brief divides to was reported as invented: %q", missing)
+	}
+	if missing := read.Missing("입사자 34명 중 6명"); len(missing) > 0 {
+		t.Fatalf("the brief's own numbers were reported: %q", missing)
+	}
+	// A figure nobody can get to from the brief is still reported, and a small
+	// divisor is a coincidence rather than a derivation.
+	for _, invented := range []string{"이탈률 50% 감소를 목표로 합니다", "가용성 99.99%를 확보합니다"} {
+		if missing := read.Missing(invented); len(missing) == 0 {
+			t.Fatalf("an invented figure was let through: %q", invented)
+		}
+	}
+	// Only percentages are read this way: a count that happens to equal a ratio
+	// is not a derivation.
+	if missing := read.Missing("총 18건이 접수되었습니다"); len(missing) == 0 {
+		t.Fatal("a count the brief never gave was let through")
+	}
+}

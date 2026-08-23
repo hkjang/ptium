@@ -777,7 +777,12 @@ func columnName(value string) bool {
 	if trimmed == "" || utf8.RuneCountInString(trimmed) > 24 {
 		return false
 	}
-	return len(strings.Fields(trimmed)) <= 3
+	// Counting words was the wrong test for Korean. "첫 달 업무 파악" is four and
+	// "2주 집중 교육을 통한 업무 숙달 가속화" is seven, and both are plainly the name
+	// of a column; the slides that wrote them got a bullet reading
+	// "첫 달 업무 파악 | 적응 저해 원인" and a heading with a bullet in front of it.
+	// What rules a line out is its length and whether it reads as a sentence.
+	return !readsAsSentence(trimmed)
 }
 
 // placeColumns writes each column into its own region, its heading above its
