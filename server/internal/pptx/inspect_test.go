@@ -639,3 +639,28 @@ func TestMoneyWrittenWithALatinScaleIsTheBriefsMoney(t *testing.T) {
 		t.Errorf("the brief's own 240,000 was called invented: %q", missing)
 	}
 }
+
+// A brief that prices a system at 1억 5천만 원 has not said 5, and a deck that
+// promises "연간 5억 원 절감" is not quoting it — it borrowed the digit out of
+// the middle of the price.
+func TestADigitInsideAnAmountIsNotANumberTheBriefStated(t *testing.T) {
+	read := NewBriefFigures("신규 시스템 도입 비용 1억 5천만 원, 이관 기간 4개월. 위키 문서 12,400건.")
+	if missing := read.Missing("> 검색 효율성 향상으로 연간 5억 원 절감"); len(missing) != 1 {
+		t.Errorf("a figure borrowed from inside the brief's price went unreported: %q", missing)
+	}
+	for _, line := range []string{"- 도입 비용 | 1억 5천만 원", "- 도입 비용 | 1.5억", "- 도입 비용 | 150,000,000원",
+		"- 이관 기간 | 4개월", "- 문서 | 12,400건"} {
+		if missing := read.Missing(line); len(missing) > 0 {
+			t.Errorf("%q: the brief states this, but it was called invented: %q", line, missing)
+		}
+	}
+}
+
+func TestABriefWrittenWithALatinScaleStatesThatAmount(t *testing.T) {
+	read := NewBriefFigures("The rollout costs $240k and saves 1.5m over three years.")
+	for _, line := range []string{"- Cost | 240,000 USD", "- Saving | 1,500,000 USD"} {
+		if missing := read.Missing(line); len(missing) > 0 {
+			t.Errorf("%q: the brief states this, but it was called invented: %q", line, missing)
+		}
+	}
+}

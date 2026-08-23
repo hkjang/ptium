@@ -539,15 +539,30 @@ type BriefFigures struct {
 // many times.
 func NewBriefFigures(brief string) BriefFigures {
 	read := BriefFigures{stated: map[string]bool{}}
-	for _, match := range leadingNumber.FindAllString(brief, -1) {
-		read.stated[digitsOnly(match)] = true
-		if value, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && value > 0 {
+	for _, at := range leadingNumber.FindAllStringIndex(brief, -1) {
+		match := digitsOnly(brief[at[0]:at[1]])
+		// A digit group inside a larger amount is not a number the brief
+		// stated. "신규 시스템 1억 5천만 원" does not say 5, and a deck that
+		// claims "연간 5억 원 절감" is not quoting it. The amount itself is
+		// registered below, whole.
+		if partOfAnAmount(brief[at[1]:]) {
+			continue
+		}
+		read.stated[match] = true
+		if value, err := strconv.ParseFloat(match, 64); err == nil && value > 0 {
 			read.numbers = append(read.numbers, value)
 		}
 	}
 	// Written large, a number shares no digits with the same number written
 	// small: "1억 2천만" and "1.2억" have none in common. Read both as amounts.
 	for _, match := range scaledNumber.FindAllString(brief, -1) {
+		if value, ok := myriadValue(match); ok {
+			read.numbers = append(read.numbers, value)
+		}
+	}
+	// The same in the other direction: a brief that costs something at $240k
+	// has stated 240,000, whichever way the deck writes it back.
+	for _, match := range latinScaled.FindAllString(brief, -1) {
 		if value, ok := myriadValue(match); ok {
 			read.numbers = append(read.numbers, value)
 		}
@@ -691,6 +706,24 @@ var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)
 // several times over — 1억 2천만, 9천5백만, 8000만, 1.2억.
 var scaledNumber = regexp.MustCompile(`\d[\d,]*(?:\.\d+)?\s*` +
 	`(?:[조억만천백십兆億亿萬万千百十](?:\s*\d[\d,]*(?:\.\d+)?)?\s*)+`)
+
+// partOfAnAmount reports whether what follows a digit group is a scale word,
+// which makes those digits part of a bigger number rather than one of their own.
+func partOfAnAmount(rest string) bool {
+	for _, r := range rest {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		_, scaled := myriadScales[r]
+		// Only the myriad words: "5천만" is one amount, "5k" is one amount,
+		// "5개" is the number five.
+		return scaled && !(r == 'k' || r == 'm' || r == 'b')
+	}
+	return false
+}
+
+// latinScaled matches an amount written with a Latin scale suffix: 240k, 1.5m.
+var latinScaled = regexp.MustCompile(`(?i)\d[\d,]*(?:\.\d+)?\s*[kmb]n?\b`)
 
 // myriadScales is what each of those words multiplies by. The Latin suffixes
 // are here too: a brief that costs something at 240,000 USD and a deck that
