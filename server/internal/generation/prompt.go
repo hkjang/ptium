@@ -121,6 +121,11 @@ Writing craft:
 - Never make the same point twice in different words. A slide with three real
   points is finished; a fourth line restating the first is padding, and it reads
   as generated. If there is nothing further to say, stop writing.
+- Nor across slides. A deck that lists three options as points and then lists
+  the same three as a table has one slide, not two: the room reads the second
+  as padding and the presenter has to explain why they are seeing it again. Each
+  slide either adds a fact, compares what was already given, or draws a
+  conclusion from it — a slide that only reformats the slide before it goes.
 - Never invent a figure. Every number on a slide — in a bullet, in a lead line,
   in the notes — comes from the brief or follows arithmetically from it. A target
   nobody set, a percentage nobody measured, a saving nobody counted: write the

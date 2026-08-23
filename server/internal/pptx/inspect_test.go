@@ -567,3 +567,40 @@ func TestASlideThatSaysWhatTheLastOneSaidIsReported(t *testing.T) {
 		}
 	}
 }
+
+// A brief priced three offices in words — 1억 2천만, 8천만, 9천5백만 — and the
+// deck wrote the same three as 1.2억, 8000만, 9500만. Compared as digit strings
+// they have nothing in common, so every one of the author's own figures came
+// back as invented. Read as amounts they are the same numbers.
+func TestAnAmountWrittenAnotherWayIsStillTheBriefsAmount(t *testing.T) {
+	read := NewBriefFigures("강남 A동은 임대료 월 1억 2천만 원, 판교 B동은 월 8천만 원, " +
+		"여의도 C동은 월 9천5백만 원입니다. 총 이전 비용은 약 14억 원.")
+	for _, line := range []string{"임대료 1.2억/월", "판교 B 동 | 8000 만원", "여의도 C 동 | 9500 만원", "이전 비용 14억 원"} {
+		if missing := read.Missing(line); len(missing) > 0 {
+			t.Errorf("%q: the brief states these, but they were called invented: %q", line, missing)
+		}
+	}
+	// The number the brief never gave is still the number the author is asked about.
+	if missing := read.Missing("이전 비용 18억 원"); len(missing) != 1 {
+		t.Errorf("a figure the brief never states was not reported: %q", missing)
+	}
+}
+
+func TestANumberWrittenLargeIsReadAsItsAmount(t *testing.T) {
+	for _, one := range []struct {
+		run   string
+		value float64
+	}{
+		{"1억 2천만", 1.2e8}, {"9천5백만", 9.5e7}, {"8000 만", 8e7},
+		{"1.2억", 1.2e8}, {"3조 5천억", 3.5e12}, {"십만", 1e5}, {"2,500만", 2.5e7},
+	} {
+		value, ok := myriadValue(one.run)
+		if !ok || !sameAmount(value, one.value) {
+			t.Errorf("%q read as %v (%v), want %v", one.run, value, ok, one.value)
+		}
+	}
+	// A plain number has no scale word and is left to the digit comparison.
+	if _, ok := myriadValue("8000"); ok {
+		t.Error("a number with no scale word was read as a scaled amount")
+	}
+}

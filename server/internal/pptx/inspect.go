@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Every defect this file looks for was first found by rendering a slide and
@@ -528,6 +529,9 @@ func FiguresNotIn(brief, text string) []string {
 type BriefFigures struct {
 	digits  string
 	numbers []float64
+	// scaled is the brief's amounts as numbers, so a figure written in another
+	// notation can still be recognised as one of them.
+	scaled []float64
 }
 
 // NewBriefFigures reads a brief once, for a deck that will be asked about it
@@ -536,6 +540,14 @@ func NewBriefFigures(brief string) BriefFigures {
 	read := BriefFigures{digits: digitsOnly(strings.ToLower(brief))}
 	for _, match := range leadingNumber.FindAllString(brief, -1) {
 		if value, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && value > 0 {
+			read.numbers = append(read.numbers, value)
+		}
+	}
+	// Written large, a number shares no digits with the same number written
+	// small: "1억 2천만" and "1.2억" have none in common. Read both as amounts.
+	for _, match := range scaledNumber.FindAllString(brief, -1) {
+		if value, ok := myriadValue(match); ok {
+			read.scaled = append(read.scaled, value)
 			read.numbers = append(read.numbers, value)
 		}
 	}
@@ -580,9 +592,33 @@ func (b BriefFigures) Missing(text string) []string {
 		if b.dividesTo(figure, number) {
 			continue
 		}
+		if b.states(figure) {
+			continue
+		}
 		missing = append(missing, figure)
 	}
 	return missing
+}
+
+// states reports whether the brief gives this amount under another notation.
+func (b BriefFigures) states(figure string) bool {
+	value, ok := myriadValue(figure)
+	if !ok {
+		return false
+	}
+	for _, stated := range b.scaled {
+		if sameAmount(value, stated) {
+			return true
+		}
+	}
+	// The brief may have written it in plain digits — 80,000,000 against the
+	// deck's 8천만.
+	for _, match := range leadingNumber.FindAllString(b.digits, -1) {
+		if plain, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && sameAmount(value, plain) {
+			return true
+		}
+	}
+	return false
 }
 
 // dividesTo reports whether a percentage is two of the brief's own numbers
@@ -617,6 +653,82 @@ func (b BriefFigures) dividesTo(figure, number string) bool {
 }
 
 var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)
+
+// scaledNumber matches a number written the way Korean, Japanese and Chinese
+// write large ones: a digit group, then the myriad scale words, possibly
+// several times over — 1억 2천만, 9천5백만, 8000만, 1.2억.
+var scaledNumber = regexp.MustCompile(`\d[\d,]*(?:\.\d+)?\s*` +
+	`(?:[조억만천백십兆億亿萬万千百十](?:\s*\d[\d,]*(?:\.\d+)?)?\s*)+`)
+
+// myriadScales is what each of those words multiplies by.
+var myriadScales = map[rune]float64{
+	'십': 10, '백': 100, '천': 1000, '만': 1e4, '억': 1e8, '조': 1e12,
+	'十': 10, '百': 100, '千': 1000, '万': 1e4, '萬': 1e4,
+	'億': 1e8, '亿': 1e8, '兆': 1e12,
+}
+
+// myriadValue reads such a run as the number it says.
+//
+// A brief that puts a rent at "월 1억 2천만 원" and a deck that writes it
+// "1.2억/월" are stating the same amount, and telling the author the deck
+// invented it is worse than saying nothing: a check that accuses the author of
+// making up their own figures is one they learn to skip. Digits alone cannot
+// see this — the two share no digit string at all.
+func myriadValue(run string) (float64, bool) {
+	var total, section, current float64
+	haveCurrent, scaled := false, false
+	digits := ""
+	flush := func() {
+		if digits == "" {
+			return
+		}
+		if value, err := strconv.ParseFloat(digitsOnly(digits), 64); err == nil {
+			current, haveCurrent = value, true
+		}
+		digits = ""
+	}
+	for _, r := range run {
+		switch {
+		case r >= '0' && r <= '9', r == ',', r == '.':
+			digits += string(r)
+		case unicode.IsSpace(r):
+			// A space inside a number is how it was typeset, not what it means.
+		default:
+			flush()
+			scale, ok := myriadScales[r]
+			if !ok {
+				return 0, false
+			}
+			scaled = true
+			// "만" on its own is ten thousand; "9천5백만" is what came before it.
+			base := current
+			if !haveCurrent {
+				base = 0
+				if section == 0 {
+					base = 1
+				}
+			}
+			if scale >= 1e4 {
+				total += (section + base) * scale
+				section = 0
+			} else {
+				section += base * scale
+			}
+			current, haveCurrent = 0, false
+		}
+	}
+	flush()
+	total += section + current
+	if !scaled || total <= 0 {
+		return 0, false
+	}
+	return total, true
+}
+
+// sameAmount reports whether two readings of a number are the same number.
+func sameAmount(a, b float64) bool {
+	return math.Abs(a-b) <= math.Max(math.Abs(b), 1)*1e-9
+}
 
 // digitsOnly makes "1,200" and "1200" the same number, which is the only
 // difference between how a brief writes a figure and how a deck does.

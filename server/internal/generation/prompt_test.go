@@ -103,3 +103,18 @@ func TestTheBriefOffersTheSlidesAlreadyMade(t *testing.T) {
 		t.Fatal("a deck with no library was told about one")
 	}
 }
+
+// A deck listed three offices as points and then the same three as a table.
+// The measurement calls that an echo; the brief now asks for the slide not to
+// be written in the first place, since a round trip spent measuring what was
+// never asked for is the mistake this project keeps finding.
+func TestTheBriefAsksForSlidesThatAddSomething(t *testing.T) {
+	for _, wanted := range []string{
+		"Nor across slides.",
+		"a slide that only reformats the slide before it goes",
+	} {
+		if !strings.Contains(sourceSystemPrompt, wanted) {
+			t.Fatalf("the writing brief does not say %q", wanted)
+		}
+	}
+}
