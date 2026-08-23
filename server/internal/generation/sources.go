@@ -133,12 +133,56 @@ func attributed(line, haystack string) bool {
 		// Nothing but generic words: "출처: 내부 자료" cites nothing at all.
 		return false
 	}
+	// The whole name, written as the brief writes it, is the author's own words:
+	// nothing more is needed to believe it. Anything less has to be spoken of as
+	// a source somewhere in the brief.
+	if phrase := normalizeForMatch(title); phrase != "" && strings.Contains(haystack, phrase) {
+		return true
+	}
+	cited := false
 	for _, word := range words {
 		if !strings.Contains(haystack, word) {
 			return false
 		}
+		cited = cited || namesASource(haystack, word)
 	}
-	return true
+	// Every word is in the brief, but somewhere in it one of them has to be
+	// spoken of as a source. A deck written for 개발본부 cited "내부 개발본부
+	// 보고서", which the brief supports only in the sense that it says who the
+	// deck is for — the strongest kind of invented citation, because the part
+	// that checks out is the part everyone checks.
+	return cited
+}
+
+// sourceMarkers are the words a brief uses when it says where something came
+// from. One of them near a citation's own words is what tells a source from a
+// name the brief happens to contain.
+var sourceMarkers = []string{
+	"기준", "따르면", "자료", "조사", "설문", "보고서", "로그", "통계", "데이터", "리포트",
+	"집계", "분석", "발표", "인용", "출처", ".csv", ".xlsx", "report", "survey", "data",
+	"log", "according", "based on", "source",
+}
+
+// namesASource reports whether the brief speaks of this word as a source: a
+// marker in the same clause as the word.
+//
+// The clause is the unit rather than a distance in characters, because in a
+// short brief everything is near everything: "개발본부 리더들에게 공유" sits a
+// dozen characters from "사내 설문" and would borrow its credibility.
+func namesASource(haystack, word string) bool {
+	for _, clause := range strings.FieldsFunc(haystack, func(symbol rune) bool {
+		return strings.ContainsRune(".,;·\n()[]", symbol) || symbol == '。' || symbol == '、'
+	}) {
+		if !strings.Contains(clause, word) {
+			continue
+		}
+		for _, marker := range sourceMarkers {
+			if strings.Contains(clause, marker) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // genericSourceWords are the words that appear in the name of every source and
@@ -164,6 +208,45 @@ func distinctiveWords(value string) []string {
 
 func normalizeForMatch(value string) string {
 	return strings.ToLower(strings.Join(strings.Fields(value), " "))
+}
+
+// strongSourceMarkers name a thing a figure can come from. "자료" and "데이터"
+// are not among them: a brief that calls itself "실무 논의 자료" is not citing
+// anything.
+var strongSourceMarkers = []string{
+	"설문", "조사", "로그", "통계", "보고서", "감사", "실적", "지표 데이터", "리포트",
+	".csv", ".xlsx", "survey", "report", "audit", "log file",
+}
+
+// BriefNamesASource reports whether the brief says where anything came from.
+//
+// A deck written from a brief that names 사내 설문 cited five things the brief
+// never mentioned, all of which were dropped, and never cited the survey it was
+// given. Dropping what was invented is only half of it; the author should be
+// told that what they supplied went unused.
+func BriefNamesASource(brief string) bool {
+	haystack := normalizeForMatch(brief)
+	for _, marker := range strongSourceMarkers {
+		if strings.Contains(haystack, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// uncitedBriefNote is what the deck says when the brief named a source and no
+// slide used it.
+func uncitedBriefNote(language string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(language), "ja"):
+		return "ブリーフに出典が書かれていますが、どのスライドにも引用されていません。数字の横に !source で書き添えてください。"
+	case strings.HasPrefix(strings.ToLower(language), "zh"):
+		return "简报中提到了来源，但没有任何一页引用它。请在数字旁用 !source 注明。"
+	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
+		return "브리프가 말한 출처가 어느 슬라이드에도 인용되지 않았습니다. 숫자 옆에 !source 로 적어 두면 발표자 노트에도 함께 나갑니다."
+	}
+	return "The brief names a source and no slide cites it. Add it beside the figure with !source, " +
+		"and it goes into the speaker notes as well."
 }
 
 // vagueLocatorNote is what the deck says about the locators it trimmed.

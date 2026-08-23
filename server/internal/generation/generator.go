@@ -417,6 +417,13 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 			fmt.Sprintf("the model invented %d source(s) the brief does not mention", invented))
 		result.Notes = append(result.Notes, inventedSourceNote(invented, request.Presentation.Language))
 	}
+	// The brief said where its figures came from and the deck cites nothing: the
+	// author supplied the one thing a room asks for and it went unused.
+	if !strings.Contains(source, "!source") && !strings.Contains(source, "!출처") &&
+		BriefNamesASource(request.Presentation.Prompt+" "+request.Material) {
+		result.Warnings = append(result.Warnings, "the brief names a source and no slide cites it")
+		result.Notes = append(result.Notes, uncitedBriefNote(request.Presentation.Language))
+	}
 	if vague > 0 {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("the model gave %d locator(s) the brief does not; the source names were kept", vague))

@@ -139,3 +139,58 @@ func TestASpreadsheetRangeIsNotAnInvention(t *testing.T) {
 		}
 	}
 }
+
+// A deck written from a brief that named 사내 설문 cited five things the brief
+// never mentioned — all dropped — and never cited the survey it was given.
+func TestABriefThatNamesASourceIsRecognised(t *testing.T) {
+	named := []string{
+		"사내 설문(2026년 3월, 응답 112명)에서 47%가 답했습니다",
+		"내부 결제 로그 기준 지난 12개월 장애 2회",
+		"통계청 2026 소비 동향(표 3) 기준",
+		"매출-419731.csv에서 가져온 자료",
+	}
+	for _, brief := range named {
+		if !BriefNamesASource(brief) {
+			t.Fatalf("%q names a source and was not read as one", brief)
+		}
+	}
+	// A brief that calls itself a document is not citing anything, and neither is
+	// one that says nothing about where its figures came from.
+	for _, brief := range []string{
+		"신규 결제 수단 도입을 검토하는 실무 논의 자료. 도입 시 기대 효과와 리스크를 정리.",
+		"결제 이중화 투자 12억 원을 이사회에 요청",
+		"",
+	} {
+		if BriefNamesASource(brief) {
+			t.Fatalf("%q names no source and was read as one", brief)
+		}
+	}
+	if note := uncitedBriefNote("ko"); !strings.Contains(note, "!source") {
+		t.Fatalf("the note does not say how to fix it: %s", note)
+	}
+}
+
+// A citation whose only word in the brief is who the deck is for is the
+// strongest kind of invention: the part that checks out is the part everyone
+// checks. "내부 개발본부 보고서" survived a brief that only says the deck is for
+// 개발본부.
+func TestACitationNeedsTheBriefToSpeakOfASource(t *testing.T) {
+	brief := normalizeForMatch("신입 개발자 온보딩 개편안을 개발본부 리더들에게 공유. " +
+		"사내 설문(2026년 3월, 응답 112명)에서 첫 달 업무 파악이 47%.")
+	if attributed("!source 내부 개발본부 보고서", brief) {
+		t.Fatal("a report nobody mentioned was accepted because the audience was named")
+	}
+	if !attributed("!source 사내 설문 | 2026.03", brief) {
+		t.Fatal("the source the brief actually names was rejected")
+	}
+}
+
+// A name the brief writes out itself is the author's own words, marker or no
+// marker: "매출 현황" in a brief that says "매출-419731.csv에서 가져온 자료, 매출
+// 현황" is a citation of something the author supplied.
+func TestANameTheBriefWritesOutIsKept(t *testing.T) {
+	brief := normalizeForMatch("매출-419731.csv에서 가져온 자료, 매출 현황")
+	if !attributed("!source 매출 현황 | Sheet1!A1:C9", brief) {
+		t.Fatal("a name the brief writes out was treated as invented")
+	}
+}
