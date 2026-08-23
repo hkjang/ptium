@@ -995,3 +995,81 @@ func TestAnUnreadableOutlineIsQuotedInTheWarning(t *testing.T) {
 		t.Fatalf("the model's own answer reached the author: %q", got)
 	}
 }
+
+// A deployment pinned to a model that answers in the older JSON shape used to
+// return straight from compose: no repair pass, nothing said about invented
+// figures, nothing said about a source the brief named and the deck ignored.
+// Both shapes are the same deck and go through the same doors.
+func TestTheJSONShapeGoesThroughTheSameDoors(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	request := writingRequest{
+		Presentation: model.Presentation{Language: "ko", Title: "이관 보고",
+			Prompt:              "내부 검색 로그 기준 검색 실패율 31%. 교체 비용 1억 5천만 원.",
+			RequestedSlideCount: 3},
+		Template: Template{Manifest: manifest},
+	}
+	written := writtenDeck{Slides: []writtenSlide{
+		{Title: "이관 보고"},
+		{Title: "현황", Fields: map[string]json.RawMessage{
+			pptx.SlotBody: json.RawMessage(`["검색 실패율 31%","가용성 99.99% 확보"]`)}},
+		{Title: "승인 요청"},
+	}}
+	composed, err := compose(request, written)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	generator := &Generator{}
+	finished, err := generator.finishDeck(context.Background(), request, composed, composed.Source, 0, 0, time.Second)
+	if err != nil {
+		t.Fatalf("finishDeck: %v", err)
+	}
+	notes := strings.Join(finished.Notes, " ")
+	if !strings.Contains(notes, "99.99%") {
+		t.Fatalf("the JSON shape says nothing about the figure it invented: %q", finished.Notes)
+	}
+	if !strings.Contains(notes, "!source") {
+		t.Fatalf("the JSON shape says nothing about the source the brief named: %q", finished.Notes)
+	}
+}
+
+// Text with nowhere to go used to disappear without a word: a body written for
+// a slide whose layout has no body region was dropped in silence. The other way
+// of writing a deck says so; both should.
+func TestComposeSaysWhatItDropped(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	request := writingRequest{
+		Presentation: model.Presentation{Language: "ko", Title: "이관 보고", RequestedSlideCount: 2},
+		Template:     Template{Manifest: manifest},
+	}
+	written := writtenDeck{Slides: []writtenSlide{
+		{Title: "이관 보고"},
+		{Title: "승인 요청", Fields: map[string]json.RawMessage{
+			pptx.SlotBody: json.RawMessage(`["예산 승인이 필요합니다"]`)}},
+	}}
+	composed, err := compose(request, written)
+	if err != nil {
+		t.Fatalf("compose: %v", err)
+	}
+	kept := strings.Contains(composed.Source, "예산 승인이 필요합니다")
+	said := false
+	for _, warning := range composed.Warnings {
+		said = said || strings.Contains(warning, "예산 승인이 필요합니다")
+	}
+	if !kept && !said {
+		t.Fatalf("the line was dropped in silence: %q\n%s", composed.Warnings, composed.Source)
+	}
+}

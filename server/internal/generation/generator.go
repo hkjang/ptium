@@ -436,7 +436,16 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 	if strings.HasPrefix(source, "{") {
 		var written writtenDeck
 		if json.Unmarshal([]byte(source), &written) == nil && len(written.Slides) > 0 {
-			return compose(request, written)
+			composed, err := compose(request, written)
+			if err != nil {
+				return Deck{}, err
+			}
+			// The JSON shape is another way of saying the same deck, so it goes
+			// through the same doors. It used to return here, which meant a
+			// deployment pinned to a model that answers in JSON got no repair
+			// pass, no word about invented figures, and no word about a source
+			// the brief named and the deck ignored.
+			return g.finishDeck(ctx, request, composed, composed.Source, invented, vague, writing)
 		}
 	}
 	parsed := deck.ParseSource(source)
@@ -444,6 +453,16 @@ func (g *Generator) writeDeck(ctx context.Context, endpoint, modelName, apiKey s
 		return Deck{}, errors.New("AI provider returned a deck without slides")
 	}
 	result := CompileGenerated(source, request.Presentation, request.Profile, request.Template)
+	return g.finishDeck(ctx, request, result, source, invented, vague, writing)
+}
+
+// finishDeck is everything that happens to a written deck between the model's
+// answer and the author's screen: what the deck says about what was invented or
+// left uncited, the pass that measures it against the template and asks for the
+// slides that do not fit to be written again, and the count the author asked
+// for.
+func (g *Generator) finishDeck(ctx context.Context, request writingRequest, result Deck,
+	source string, invented, vague int, writing time.Duration) (Deck, error) {
 	if invented > 0 {
 		result.Warnings = append(result.Warnings,
 			fmt.Sprintf("the model invented %d source(s) the brief does not mention", invented))

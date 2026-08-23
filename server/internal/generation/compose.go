@@ -57,10 +57,15 @@ func compose(request writingRequest, written writtenDeck) (Deck, error) {
 		for slot, block := range slide.Blocks {
 			placeholder, ok := layout.Slot(canonicalSlot(slot))
 			if !ok || !placeholder.AcceptsText() || placeholder.Slot == pptx.SlotTitle {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("slide %d: layout %q has no region for a %s and it was dropped",
+						index+1, layout.Name, block.Kind))
 				continue
 			}
 			sanitized, usable := sanitizeBlock(block, placeholder)
 			if !usable {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("slide %d: the %s did not have enough room and was dropped", index+1, block.Kind))
 				continue
 			}
 			content.SetBlock(placeholder.Slot, sanitized)
@@ -71,6 +76,13 @@ func compose(request writingRequest, written writtenDeck) (Deck, error) {
 		for slot, raw := range slide.Fields {
 			placeholder, ok := layout.Slot(canonicalSlot(slot))
 			if !ok || !placeholder.AcceptsText() || claimed[placeholder.Slot] {
+				// Text with nowhere to go used to disappear here without a word.
+				// The other way of writing a deck says so; both should.
+				if lines := parseParagraphs(raw); len(lines) > 0 {
+					result.Warnings = append(result.Warnings,
+						fmt.Sprintf("slide %d: layout %q has no free %s region, so %q was dropped",
+							index+1, layout.Name, canonicalSlot(slot), truncate(lines[0].Text, 40)))
+				}
 				continue
 			}
 			paragraphs := fitParagraphs(parseParagraphs(raw), placeholder)
