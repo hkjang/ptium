@@ -382,6 +382,28 @@ if revisions:
     if changes is None:
         failures.append("a revision cannot say what changed since it")
     call("POST", f"/presentations/{deck_id}/revisions/{revisions[-1]['id']}/restore", {}, expect=200)
+
+# Restoring a checkpoint has to give the deck back. The call was checked for a
+# 200 and nothing else, so nothing here would have noticed a restore that
+# returned a different deck.
+call("PUT", f"/presentations/{deck_id}/source",
+     {"source": f"# 복원 점검 {RUN}\n@cover\n> 되돌리기 전\n\n# 요점\n@content\n- 첫 줄\n- 둘째 줄\n"}, expect=200)
+before = ((data_of(call("GET", f"/presentations/{deck_id}/source", expect=200)) or {}).get("source") or "").strip()
+call("PUT", f"/presentations/{deck_id}/source",
+     {"source": f"# 덮어쓴 판 {RUN}\n@cover\n> 이 판은 되돌려집니다\n"}, expect=200)
+# A checkpoint records the deck as it was before the change, so the newest one
+# holds what the overwrite replaced.
+newest = (data_of(call("GET", f"/presentations/{deck_id}/revisions", expect=200)) or [])
+if not newest:
+    failures.append("overwriting a deck kept no checkpoint of what it replaced")
+else:
+    call("POST", f"/presentations/{deck_id}/revisions/{newest[0]['id']}/restore", {}, expect=200)
+    back = ((data_of(call("GET", f"/presentations/{deck_id}/source", expect=200)) or {}).get("source") or "").strip()
+    if back != before:
+        failures.append("a restored checkpoint did not give the deck back")
+        print("   lost:", [l for l in before.split("\n") if l not in back.split("\n")][:4])
+        print("   gained:", [l for l in back.split("\n") if l not in before.split("\n")][:4])
+
 copy = data_of(call("POST", f"/presentations/{deck_id}/duplicate", {}, expect=201))
 call("DELETE", f"/presentations/{copy['id']}", expect=204)
 trashed = data_of(call("GET", "/presentations?deleted=true", expect=200)) or []
