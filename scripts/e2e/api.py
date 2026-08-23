@@ -139,6 +139,29 @@ print("   slides:", (inspected or {}).get("slides"), "defects:", (inspected or {
       "advisories:", (inspected or {}).get("advisories"))
 if (inspected or {}).get("defects"):
     failures.append(f"a plain four-slide deck has defects: {inspected}")
+# A component draws as many entries as its kind can show and takes the first of
+# them. A slide holding more than that has entries on no slide at all, and the
+# measurement has to say so — a deck once asked a board to approve a plan whose
+# "calculate the financial impact" step was drawn nowhere.
+trimmed_deck = data_of(call("POST", "/presentations", {"title": f"안 그려지는 항목 {RUN}", "prompt": "단계 여섯"}, expect=201))
+call("PUT", f"/presentations/{trimmed_deck['id']}/source", {"source":
+     "# 이행 순서\n@content\n::steps 순서\n- 1 | 현황 파악\n- 2 | 대안 정의\n- 3 | 비교\n"
+     "- 4 | 이행 계획\n- 5 | 재무 영향\n- 6 | 승인 요청\n::\n"}, expect=200)
+measured = data_of(call("GET", f"/presentations/{trimmed_deck['id']}/inspect", expect=200)) or {}
+carried = [f for f in (measured.get("findings") or []) if f.get("kind") == "trimmed"]
+if not carried:
+    failures.append("a six-entry component drawn five at a time is not reported")
+elif "5 of its 6" not in carried[0].get("detail", ""):
+    failures.append(f"the finding does not say what was left out: {carried[0]}")
+# Split as the workspace's safe fix splits it, and the deck measures clean.
+call("PUT", f"/presentations/{trimmed_deck['id']}/source", {"source":
+     "# 이행 순서\n@content\n::steps 순서\n- 1 | 현황 파악\n- 2 | 대안 정의\n- 3 | 비교\n"
+     "- 4 | 이행 계획\n- 5 | 재무 영향\n::\n\n# 이행 순서 (계속)\n@content\n::steps 순서\n- 6 | 승인 요청\n::\n"}, expect=200)
+after = data_of(call("GET", f"/presentations/{trimmed_deck['id']}/inspect", expect=200)) or {}
+if [f for f in (after.get("findings") or []) if f.get("kind") == "trimmed"]:
+    failures.append("carrying the rest onto a second slide did not settle the finding")
+call("DELETE", f"/presentations/{trimmed_deck['id']}", expect=204)
+
 call("GET", f"/presentations/{deck_id}/preview.svg?slide=1&width=400", raw=True, expect=200)
 status, pptx = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True, expect=200)
 try:

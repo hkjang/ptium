@@ -191,3 +191,33 @@ export function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
 
 // findingLabel names a measured defect in the workspace's language.
 /** The axes of the score, in the words the measurement uses. */
+
+/**
+ * A component that draws fewer entries than it holds, split across two slides.
+ *
+ * A steps component draws five entries because six across a slide would be
+ * unreadable, and the sixth was on no slide at all. Which five were drawn is
+ * arithmetic — the first five — so carrying the rest onto a second slide keeps
+ * every word without anybody rewriting anything.
+ *
+ * Returns the slide as it should now be and the slide that carries the rest, or
+ * null when the slide does not hold what was measured.
+ */
+export function carryTrimmedEntries(slide: Slide, slot: string, drawn: number, newId: string) {
+  const block = slide.blocks?.[slot]
+  const items = Array.isArray(block?.items) ? block.items : []
+  if (!block || drawn < 1 || items.length <= drawn) return null
+  const kept: Slide = { ...slide, blocks: { ...slide.blocks, [slot]: { ...block, items: items.slice(0, drawn) } } }
+  const rest: Slide = {
+    ...slide,
+    id: newId,
+    order: slide.order + 1,
+    title: `${slide.title} (계속)`.slice(0, 200),
+    blocks: { ...slide.blocks, [slot]: { ...block, items: items.slice(drawn) } },
+    // Freeform objects were placed against the first slide's drawing; repeating
+    // them over the continuation would put a callout on the wrong entries.
+    elements: [],
+    speakerNotes: slide.speakerNotes ? `${slide.speakerNotes} (계속)` : undefined,
+  }
+  return { kept, rest }
+}

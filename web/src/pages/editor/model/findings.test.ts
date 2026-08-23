@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  findingDetail, findingLabel, objectParticle, revisionReason, scoreDimensionLabel,
+  findingDetail, findingLabel, objectParticle, trimmedCounts, revisionReason, scoreDimensionLabel,
   subjectParticle, toParticle, warningText,
 } from './findings'
 
@@ -120,5 +120,21 @@ describe('what compiling adjusted, in the reader’s words', () => {
 
   it('leaves a sentence it does not know alone rather than mangling it', () => {
     expect(warningText('something nobody has written a rule for')).toBe('something nobody has written a rule for')
+  })
+})
+
+describe('what a trimmed component counted', () => {
+  it('reads the numbers back out of the sentence the server wrote', () => {
+    expect(trimmedCounts('steps draws 5 of its 6 entries; the rest are on no slide'))
+      .toEqual({ kind: 'steps', drawn: 5, held: 6 })
+    expect(trimmedCounts('comparison draws 3 of its 10 entries; the rest are on no slide'))
+      .toEqual({ kind: 'comparison', drawn: 3, held: 10 })
+  })
+
+  it('refuses a sentence it does not understand rather than guessing', () => {
+    for (const detail of ['9 points in one region; past 6 an audience reads instead of listening',
+      'steps draws 5 of its 5 entries; the rest are on no slide', 'steps draws many of its entries']) {
+      expect(trimmedCounts(detail), detail).toBeNull()
+    }
   })
 })

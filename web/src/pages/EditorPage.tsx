@@ -23,10 +23,10 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, bodyFromFields, bodyFromText, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
-import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, warningText } from './editor/model/findings'
+import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
 import { versionToSend } from './editor/model/saving'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { QualityDialog } from './editor/QualityDialog'
@@ -621,8 +621,23 @@ export function EditorPage({ id }: { id: string }) {
 
 	const canSafelyFix = (finding: DeckFinding) => {
 		if (finding.kind === 'notes') return Boolean(slides[finding.slide - 1])
+		// A component that draws five of six entries is carried onto a second
+		// slide: which five it drew is arithmetic, not judgement, so nothing has
+		// to be rewritten to fix it.
+		if (finding.kind === 'trimmed') return slides.length < MAX_SLIDES && Boolean(trimmedItems(finding))
 		if (finding.kind !== 'density' && finding.kind !== 'overflow') return false
 		return slides.length < MAX_SLIDES && slideBodyLines(slides[finding.slide - 1]).length >= 4
+	}
+
+	// trimmedItems is the component a "some of it is not drawn" finding is about,
+	// and where it has to be cut, when the slide really holds what was measured.
+	const trimmedItems = (finding: DeckFinding) => {
+		const counts = trimmedCounts(finding.detail)
+		const slide = slides[finding.slide - 1]
+		const block = slide?.blocks?.[finding.slot]
+		const items = Array.isArray(block?.items) ? block.items : []
+		if (!counts || !block || items.length <= counts.drawn) return null
+		return { slide, slot: finding.slot, block, items, drawn: counts.drawn }
 	}
 
 	// What cannot be fixed without rewriting words is handed to the model, with
@@ -732,6 +747,18 @@ export function EditorPage({ id }: { id: string }) {
 			setDirty(true)
 			setFindingsOpen(false)
 			showToast('발표 노트 초안을 추가했습니다.')
+			return
+		}
+		if (finding.kind === 'trimmed') {
+			const carried = trimmedItems(finding)
+			const split = carried && carryTrimmedEntries(target, carried.slot, carried.drawn, `new-${crypto.randomUUID()}`)
+			if (!carried || !split) return
+			setSlides([...slides.slice(0, index), split.kept, split.rest, ...slides.slice(index + 1)]
+				.map((slide, slideIndex) => ({ ...slide, order: slideIndex + 1 })))
+			setActiveId(split.rest.id)
+			setDirty(true)
+			setFindingsOpen(false)
+			showToast(`그려지지 않던 ${carried.items.length - carried.drawn}개를 다음 슬라이드로 옮겼습니다.`)
 			return
 		}
 		const lines = slideBodyLines(target)

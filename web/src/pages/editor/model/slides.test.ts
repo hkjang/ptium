@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -88,5 +88,33 @@ describe('textRegions', () => {
     const withBlock = { ...slide(), blocks: { body3: { kind: 'kpi', items: [] } } }
     const regions = textRegions(withBlock as never, comparison as never)
     expect(regions.map((region) => region.slot)).toEqual(['body', 'body2', 'body4'])
+  })
+})
+
+describe('a component that draws less than it holds', () => {
+  const stepped = (count: number): Slide => ({
+    id: 'a', order: 3, layout: 'content', title: '이행 순서', speakerNotes: '순서대로 말합니다',
+    blocks: { body: { kind: 'steps', items: Array.from({ length: count }, (_, index) => ({ label: `${index + 1}`, value: `단계 ${index + 1}` })) } },
+    elements: [{ id: 'e1', kind: 'text', x: 1, y: 1, width: 10, height: 5, text: '메모' }],
+  })
+
+  it('carries the entries nobody would see onto a second slide', () => {
+    const split = carryTrimmedEntries(stepped(6), 'body', 5, 'new-1')
+    expect(split).not.toBeNull()
+    expect(split!.kept.blocks!.body.items).toHaveLength(5)
+    expect(split!.rest.blocks!.body.items).toHaveLength(1)
+    // Nothing is lost and nothing is duplicated.
+    const all = [...split!.kept.blocks!.body.items!, ...split!.rest.blocks!.body.items!]
+    expect(all.map((item) => (item as { value: string }).value)).toEqual(
+      Array.from({ length: 6 }, (_, index) => `단계 ${index + 1}`))
+    expect(split!.rest.title).toBe('이행 순서 (계속)')
+    expect(split!.rest.id).toBe('new-1')
+    // Objects placed against the first drawing do not follow onto the second.
+    expect(split!.rest.elements).toEqual([])
+  })
+
+  it('does nothing when the slide draws everything it holds', () => {
+    expect(carryTrimmedEntries(stepped(5), 'body', 5, 'new-1')).toBeNull()
+    expect(carryTrimmedEntries(stepped(6), 'nosuchslot', 5, 'new-1')).toBeNull()
   })
 })

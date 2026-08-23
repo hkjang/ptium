@@ -244,3 +244,19 @@ export function groupFindings(findings: DeckFinding[]): DeckFinding[][] {
   }
   return groups
 }
+
+/**
+ * What a "some of it is not drawn" finding counted.
+ *
+ * The measurement says a component draws five of its six entries. Fixing that
+ * means knowing which five, so the numbers are read back out of the sentence
+ * the server wrote — the same sentence the reader sees translated above.
+ */
+export function trimmedCounts(detail: string) {
+  const match = detail.match(/^(\w+) draws (\d+) of its (\d+) entries/)
+  if (!match) return null
+  const drawn = Number(match[2])
+  const held = Number(match[3])
+  if (!Number.isFinite(drawn) || !Number.isFinite(held) || drawn < 1 || held <= drawn) return null
+  return { kind: match[1], drawn, held }
+}
