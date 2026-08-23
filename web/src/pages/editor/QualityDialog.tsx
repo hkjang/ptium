@@ -1,7 +1,7 @@
 import { LoaderCircle, WandSparkles } from 'lucide-react'
 import type { DeckFinding, DeckScore } from '../../api/client'
 import { Button, Modal } from '../../components/UI'
-import { findingDetail, findingLabel, scoreDimensionLabel } from './model/findings'
+import { findingDetail, findingLabel, groupFindings, scoreDimensionLabel } from './model/findings'
 
 /**
  * What the measurement found, and what the deck scores.
@@ -13,6 +13,12 @@ import { findingDetail, findingLabel, scoreDimensionLabel } from './model/findin
  *
  * The note at the bottom is not decoration. A score that let itself be read as
  * a judgement of the argument would be lying.
+ *
+ * Findings that say the same sentence about different slides are one row. Half
+ * the decks measured have no speaker notes anywhere, and listing that eight
+ * times pushed everything else off the panel — including the findings that were
+ * about this deck rather than about a habit. One row, every slide it applies
+ * to, and one button that fixes all of them.
  */
 export function QualityDialog({ open, findings, score, canSafelyFix, aiFixing, sweeping, onOpenSlide, onSafeFix, onAIFix, onFixEverything, onClose }: {
   open: boolean
@@ -22,8 +28,8 @@ export function QualityDialog({ open, findings, score, canSafelyFix, aiFixing, s
   aiFixing: number | null
   sweeping: { done: number; total: number }
   onOpenSlide: (position: number) => void
-  onSafeFix: (finding: DeckFinding) => void
-  onAIFix: (finding: DeckFinding) => void
+  onSafeFix: (findings: DeckFinding[]) => void
+  onAIFix: (findings: DeckFinding[]) => void
   onFixEverything: () => void
   onClose: () => void
 }) {
@@ -58,20 +64,33 @@ export function QualityDialog({ open, findings, score, canSafelyFix, aiFixing, s
       </div>}
       {findings.length === 0
         ? <p className="modal-note">모든 슬라이드가 템플릿 안에 제대로 들어갑니다.</p>
-        : <ul className="deck-findings">{findings.map((finding) => (
-            <li key={`${finding.slide}-${finding.slot}-${finding.kind}`} className={finding.advisory ? 'advisory' : 'defect'}>
-              <button type="button" className="finding-target" onClick={() => onOpenSlide(finding.slide)}>
-                <strong>{finding.slide}번 슬라이드</strong>
-                <span>{findingLabel(finding.kind)}</span>
-                <small>{findingDetail(finding.detail)}</small>
-              </button>
-              {canSafelyFix(finding)
-                ? <button type="button" className="finding-safe-fix" onClick={() => onSafeFix(finding)}><WandSparkles size={13} /> 안전 수정</button>
-                : <button type="button" className="finding-safe-fix ai" disabled={aiFixing === finding.slide} onClick={() => onAIFix(finding)}>
-                    {aiFixing === finding.slide ? <LoaderCircle className="spin" size={13} /> : <WandSparkles size={13} />} AI로 고치기
-                  </button>}
-            </li>
-          ))}</ul>}
+        : <ul className="deck-findings">{groupFindings(findings).map((group) => {
+            const first = group[0]
+            const many = group.length > 1
+            const busy = group.some((finding) => aiFixing === finding.slide) || sweeping.total > 0
+            return (
+              <li key={`${first.slide}-${first.slot}-${first.kind}-${group.length}`} className={first.advisory ? 'advisory' : 'defect'}>
+                <button type="button" className="finding-target" onClick={() => onOpenSlide(first.slide)}>
+                  <strong>{many ? `${group.length}개 슬라이드` : `${first.slide}번 슬라이드`}</strong>
+                  <span>{findingLabel(first.kind)}</span>
+                  <small>{findingDetail(first.detail)}</small>
+                </button>
+                {many && <span className="finding-slides">
+                  {group.slice(0, 12).map((finding) => (
+                    <button type="button" key={finding.slide} onClick={() => onOpenSlide(finding.slide)}>{finding.slide}번</button>
+                  ))}
+                  {group.length > 12 && <small>외 {group.length - 12}장</small>}
+                </span>}
+                {canSafelyFix(first)
+                  ? <button type="button" className="finding-safe-fix" onClick={() => onSafeFix(group)}>
+                      <WandSparkles size={13} /> {many ? `${group.length}개 한번에 수정` : '안전 수정'}
+                    </button>
+                  : <button type="button" className="finding-safe-fix ai" disabled={busy} onClick={() => onAIFix(group)}>
+                      {busy ? <LoaderCircle className="spin" size={13} /> : <WandSparkles size={13} />} {many ? `${group.length}개 AI로 고치기` : 'AI로 고치기'}
+                    </button>}
+              </li>
+            )
+          })}</ul>}
     </Modal>
   )
 }

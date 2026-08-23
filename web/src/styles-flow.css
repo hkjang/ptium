@@ -172,6 +172,9 @@
 .deck-findings .finding-safe-fix:hover{border-color:var(--violet);background:#f1ecff}
 .deck-findings .finding-safe-fix.ai{color:#4e3e98;border-color:#ded7f4;background:#fff}
 .deck-findings .finding-safe-fix:disabled{opacity:.55;cursor:default}
+.deck-findings .finding-slides{display:flex;flex-wrap:wrap;gap:4px;padding:5px 124px 8px 10px}
+.deck-findings .finding-slides button{width:auto;display:inline-flex;grid-template-columns:none;padding:2px 7px;border-radius:6px;color:var(--muted);background:#fbfaff;font-size:9px;font-weight:600}
+.deck-findings li:has(.finding-slides) .finding-target{padding-right:124px}
 .revision-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px;max-height:min(55vh,440px);overflow-y:auto}
 .revision-list li{min-height:57px;padding:9px 10px;display:grid;grid-template-columns:28px 1fr auto;gap:9px;align-items:center;border:1px solid var(--line);border-radius:9px;background:#fff}
 .revision-list li>span{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;color:var(--muted);background:var(--surface-soft)}

@@ -628,6 +628,31 @@ export function EditorPage({ id }: { id: string }) {
 	// What cannot be fixed without rewriting words is handed to the model, with
 	// the measurement attached: "0.9cm too tall" is something a rewrite can aim at.
 	const [aiFixing, setAiFixing] = useState(0)
+	// A group of findings is one job. Handed over one slide at a time so each
+	// rewrite stays its own undo step, but asked for once.
+	const fixFindingsWithAI = async (group: DeckFinding[]) => {
+		if (group.length < 2) {
+			await fixFindingWithAI(group[0])
+			return
+		}
+		if (sweeping.total > 0 || aiFixing) return
+		setFindingsOpen(false)
+		setSweeping({ done: 0, total: group.length })
+		try {
+			for (const [index, finding] of group.entries()) {
+				setSweeping({ done: index, total: group.length })
+				await reviseSlideAt(finding.slide - 1, {
+					action: finding.kind === 'notes' ? 'notes' : finding.kind === 'repeat' ? 'shorten' : 'fit',
+					instruction: `측정 결과: ${finding.detail}`,
+					slot: finding.slot || '',
+				})
+			}
+			showToast(`${group.length}장을 AI로 다시 썼습니다. 결과를 다시 측정합니다.`)
+		} finally {
+			setSweeping({ done: 0, total: 0 })
+		}
+	}
+
 	const fixFindingWithAI = async (finding: DeckFinding) => {
 		const target = slides[finding.slide - 1]
 		if (!target || aiFixing) return
@@ -675,6 +700,24 @@ export function EditorPage({ id }: { id: string }) {
 
 	// Safe fixes never discard content: missing notes receive a draft, while a
 	// crowded prose slide is split and every line moves to one of the two slides.
+	// Missing notes are the same omission on every slide that has them, so they
+	// are drafted in one pass. Splitting a slide changes the deck under the
+	// measurement, so those are still done one at a time and measured again.
+	const safelyFixFindings = (group: DeckFinding[]) => {
+		const notes = group.filter((finding) => finding.kind === 'notes' && canSafelyFix(finding))
+		if (notes.length > 1) {
+			const indexes = new Set(notes.map((finding) => finding.slide - 1))
+			markEdited()
+			setSlides((current) => current.map((slide, slideIndex) => indexes.has(slideIndex)
+				? { ...slide, speakerNotes: `${slide.title}: ${slide.subtitle || slideBodyLines(slide)[0] || slide.title}`.slice(0, 4000) }
+				: slide))
+			setDirty(true)
+			showToast(`${notes.length}장에 발표 노트 초안을 추가했습니다.`)
+			return
+		}
+		safelyFixFinding(group[0])
+	}
+
 	const safelyFixFinding = (finding: DeckFinding) => {
 		const index = finding.slide - 1
 		const target = slides[index]
@@ -1244,8 +1287,8 @@ export function EditorPage({ id }: { id: string }) {
         aiFixing={aiFixing}
         sweeping={sweeping}
         onOpenSlide={(position) => { const target = slides[position - 1]; if (target) setActiveId(target.id); setFindingsOpen(false) }}
-        onSafeFix={(finding) => safelyFixFinding(finding)}
-        onAIFix={(finding) => void fixFindingWithAI(finding)}
+        onSafeFix={(group) => safelyFixFindings(group)}
+        onAIFix={(group) => void fixFindingsWithAI(group)}
         onFixEverything={() => void fixEverythingWithAI()}
         onClose={() => setFindingsOpen(false)}
       />

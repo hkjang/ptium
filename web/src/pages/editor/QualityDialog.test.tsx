@@ -67,9 +67,29 @@ describe('what the measurement found', () => {
     const onAIFix = vi.fn()
     render(dialog({ onSafeFix, onAIFix }))
     fireEvent.click(screen.getByRole('button', { name: /안전 수정/ }))
-    expect(onSafeFix).toHaveBeenCalledWith(findings[1])
+    expect(onSafeFix).toHaveBeenCalledWith([findings[1]])
     fireEvent.click(screen.getByRole('button', { name: '  AI로 고치기'.trim() }))
-    expect(onAIFix).toHaveBeenCalledWith(findings[0])
+    expect(onAIFix).toHaveBeenCalledWith([findings[0]])
+  })
+
+  // Half the decks measured have no speaker notes anywhere, which arrived as
+  // the same sentence once per slide and pushed everything else off the panel.
+  it('says a repeated finding once, and fixes every slide it names at once', () => {
+    const onSafeFix = vi.fn()
+    const onOpenSlide = vi.fn()
+    const missing = (slide: number): DeckFinding => ({
+      slide, slot: '', kind: 'notes', advisory: true,
+      detail: 'no speaker notes: nothing is written down to say over this slide',
+    })
+    const repeated = [findings[0], missing(3), missing(5), missing(6)]
+    render(dialog({ findings: repeated, onSafeFix, onOpenSlide }))
+    expect(screen.getAllByText('발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다')).toHaveLength(1)
+    expect(screen.getByText('3개 슬라이드')).toBeTruthy()
+    // Each slide is still one click away.
+    fireEvent.click(screen.getByRole('button', { name: '5번' }))
+    expect(onOpenSlide).toHaveBeenCalledWith(5)
+    fireEvent.click(screen.getByRole('button', { name: /3개 한번에 수정/ }))
+    expect(onSafeFix).toHaveBeenCalledWith([missing(3), missing(5), missing(6)])
   })
 
   it('says so plainly when nothing is wrong', () => {

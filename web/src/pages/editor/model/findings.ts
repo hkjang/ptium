@@ -9,6 +9,8 @@
  * without a browser at all.
  */
 
+import type { DeckFinding } from '../../../api/client'
+
 export function scoreDimensionLabel(key: string) {
   switch (key) {
     case 'readability': return '가독성'
@@ -210,4 +212,32 @@ export function revisionReason(reason: string) {
     case 'restore': return '버전 복원 전'
   }
   return reason
+}
+
+/**
+ * Findings that say the same thing about different slides, as one group.
+ *
+ * Across a thousand measured decks, four in five findings were the same
+ * sentence — "no speaker notes" — repeated once per slide. Read as a list of
+ * things to do, that is eight rows for one job, and it buried the findings that
+ * were about the deck itself. Same kind and same words means one row.
+ *
+ * Order is kept: a group sits where its first finding was, so the panel still
+ * reads in slide order.
+ */
+export function groupFindings(findings: DeckFinding[]): DeckFinding[][] {
+  const groups: DeckFinding[][] = []
+  const byWording = new Map<string, DeckFinding[]>()
+  for (const finding of findings) {
+    const key = `${finding.kind}\u0000${finding.detail}`
+    const existing = byWording.get(key)
+    if (existing) {
+      existing.push(finding)
+      continue
+    }
+    const group = [finding]
+    byWording.set(key, group)
+    groups.push(group)
+  }
+  return groups
 }
