@@ -1010,3 +1010,30 @@ func TestADirectiveWithAWordStuckToItKeepsTheWord(t *testing.T) {
 		t.Fatalf("a note beginning with a year lost it: %q", digits.Slides[0].Notes)
 	}
 }
+
+// A comparison slide names both of its columns. On a template whose layout has
+// one body region, both columns land in that region and the second heading sits
+// in the middle of the list — where writing the source back used to drop it.
+// Open the code view of such a deck, apply it, and the right-hand column lost
+// its name and its points joined the left one.
+func TestFormatKeepsAColumnHeadingFoundMidBody(t *testing.T) {
+	manifest := testManifest()
+	source := "# 투자 대비 리스크 분석\n@comparison\n> 투자 비용\n- 12억 원 투자 필요\n- 기술 부채 해소\n" +
+		"> 잠재 손실\n- 거래 중단 매출 손실\n- 고객 이탈 장기 손실\n"
+	first := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	formatted := Format(model.Presentation{Slides: first.Slides}, manifest)
+	if !strings.Contains(formatted, "> 잠재 손실") {
+		t.Fatalf("the second column's heading was not written back:\n%s", formatted)
+	}
+	second := Compile(ParseSource(formatted), manifest, CompileOptions{Language: "ko"})
+	before, after := Decode(first.Slides[0].Content), Decode(second.Slides[0].Content)
+	if len(before.Fields[pptx.SlotBody]) != len(after.Fields[pptx.SlotBody]) {
+		t.Fatalf("a round trip changed the body:\n%+v\n%+v", before.Fields[pptx.SlotBody], after.Fields[pptx.SlotBody])
+	}
+	for index := range before.Fields[pptx.SlotBody] {
+		if before.Fields[pptx.SlotBody][index] != after.Fields[pptx.SlotBody][index] {
+			t.Fatalf("line %d changed: %+v then %+v", index+1,
+				before.Fields[pptx.SlotBody][index], after.Fields[pptx.SlotBody][index])
+		}
+	}
+}

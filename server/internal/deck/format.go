@@ -61,19 +61,24 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 				builder.WriteString(formatBlock(block))
 				continue
 			}
-			for index, paragraph := range content.Fields[slot] {
+			for _, paragraph := range content.Fields[slot] {
 				text := strings.TrimSpace(paragraph.Text)
 				if text == "" {
 					continue
 				}
 				if paragraph.Lead {
-					// A lead at the head of a region other than the one the slide's
-					// own lead went into is that column's heading: a two-column slide
-					// is written as a heading, its points, another heading, its
-					// points. Writing it back as a point would demote it, and not
-					// writing it at all would delete it — which is what used to
-					// happen to the right-hand column of every such slide.
-					if index == 0 && text != lead {
+					// A lead that is not the slide's own is a column's heading: a
+					// two-column slide is written as a heading, its points, another
+					// heading, its points. Writing it back as a point would demote
+					// it, and not writing it at all would delete it — which is what
+					// used to happen to the right-hand column of every such slide.
+					//
+					// It is not always first in its region. When the layout has one
+					// body region, both columns land in it and the second heading
+					// sits in the middle of the list; requiring it to be first there
+					// deleted it, which three of a thousand stored decks had already
+					// had done to them.
+					if text != lead {
 						fmt.Fprintf(&builder, "> %s\n", escapeSourceLine(text))
 					}
 					continue
