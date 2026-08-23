@@ -120,6 +120,44 @@ export function bodyFromText(text: string) {
   return { body: text, bullets: text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) }
 }
 
+/**
+ * The text regions of a slide, in the order the layout lists them.
+ *
+ * A comparison slide has four: a heading above each column and a list under
+ * each. The panel used to show one — the first free one — so half of such a
+ * slide could not be read, let alone edited, without going to the canvas or the
+ * source. Regions a component or an image occupies are not text regions.
+ */
+export function textRegions(slide?: Slide, layout?: TemplateLayout) {
+  if (!slide) return []
+  const drawn = drawnSlots(slide)
+  const skip = new Set(['title', 'subtitle'])
+  const order: string[] = []
+  for (const placeholder of layout?.placeholders || []) {
+    if (placeholder.kind !== 'text' || skip.has(placeholder.slot) || drawn.has(placeholder.slot)) continue
+    if (!order.includes(placeholder.slot)) order.push(placeholder.slot)
+  }
+  for (const slot of bodySlots(slide.fields)) {
+    if (!skip.has(slot) && !drawn.has(slot) && !order.includes(slot)) order.push(slot)
+  }
+  return order.map((slot) => ({
+    slot,
+    label: regionLabel(slot, (layout?.placeholders || []).find((placeholder) => placeholder.slot === slot)?.region),
+    text: bodyFromFields(slide.fields || {}, slot).body,
+  }))
+}
+
+/** regionLabel names a region the way someone looking at the slide would. */
+export function regionLabel(slot: string, region?: string) {
+  const words: Record<string, string> = {
+    left: '왼쪽', right: '오른쪽', top: '위', middle: '가운데', bottom: '아래', full: '전체', centre: '가운데', center: '가운데',
+  }
+  const named = (region || '').split('-').map((part) => words[part]).filter(Boolean)
+  if (named.length > 0) return `${named.join(' ')} 영역`
+  const fallback: Record<string, string> = { body: '본문', body1: '본문', body2: '본문 2', body3: '본문 3', body4: '본문 4' }
+  return fallback[slot] || slot
+}
+
 export function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
   return slides.map((slide, index) => {
     const layout = layouts.find((candidate) => candidate.id === slide.layoutId)

@@ -218,6 +218,9 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		// A slide whose whole body is one slash-separated line is a list written
 		// on one line, and is drawn as the list it is.
 		slide = withLeadAsPoints(slide, layout)
+		// A second column heading written as an ordinary line, the way the model
+		// writes a two-column slide when it forgets the "> ".
+		slide = withBareColumnHeading(slide, layout, claimed)
 		// A comparison whose two sides were written as an ordinary first line —
 		// "현재 | 자동화" above the points, with no "> " on it — names its columns
 		// the same way a lead does, so it is read the same way.
@@ -486,6 +489,72 @@ func withLeadAsPoints(slide SourceSlide, layout pptx.Layout) SourceSlide {
 	slide.Lead = ""
 	slide.Bullets = points
 	return slide
+}
+
+// withBareColumnHeading finds the second column's heading among the points.
+//
+// A model wrote its schedule slide as a heading, four dates, another heading,
+// four more — with none of the lines marked. The first bare line becomes the
+// slide's lead, which is right, and the second became an ordinary point, so the
+// left column was headed and the right column had its own heading sitting in
+// the list with a bullet in front of it.
+//
+// The shape has to be unmistakable before it is read this way: both the lead
+// and the candidate are names rather than sentences, points sit on both sides
+// of the candidate, and it is the only line on the slide that could be one.
+func withBareColumnHeading(slide SourceSlide, layout pptx.Layout, claimed map[string]bool) SourceSlide {
+	if len(slide.Groups) > 0 || len(slide.Bullets) < 3 || !columnName(slide.Lead) {
+		return slide
+	}
+	if len(freeBodySlots(layout, claimed)) < 2 {
+		return slide
+	}
+	bare := map[string]bool{}
+	for _, text := range slide.BareBullets {
+		bare[text] = true
+	}
+	at := -1
+	for index, bullet := range slide.Bullets {
+		if index == 0 || index == len(slide.Bullets)-1 || bullet.Level > 0 {
+			continue
+		}
+		// Written without a "- ", like the lead above it: that is the whole
+		// signal, and without it a short point would be promoted to a heading.
+		if !bare[bullet.Text] || !columnName(bullet.Text) || readsAsSentence(bullet.Text) {
+			continue
+		}
+		if at >= 0 {
+			// More than one line could be the heading, so none of them is.
+			return slide
+		}
+		at = index
+	}
+	if at < 0 {
+		return slide
+	}
+	heading := strings.TrimSpace(slide.Bullets[at].Text)
+	rest := append([]pptx.Paragraph{}, slide.Bullets[:at]...)
+	slide.Bullets = append(rest, slide.Bullets[at+1:]...)
+	slide.Groups = []SourceGroup{{Heading: heading, From: at}}
+	return slide
+}
+
+// readsAsSentence reports whether a line ends the way a sentence does. A
+// heading does not.
+func readsAsSentence(text string) bool {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return false
+	}
+	if strings.ContainsAny(trimmed[len(trimmed)-1:], ".!?") {
+		return true
+	}
+	for _, ending := range []string{"다", "요", "죠", "까", "함", "됨", "임"} {
+		if strings.HasSuffix(trimmed, ending) {
+			return true
+		}
+	}
+	return false
 }
 
 // withPairedFirstPoint reads a first point that names both columns as the lead

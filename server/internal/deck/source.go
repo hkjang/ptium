@@ -46,6 +46,10 @@ type SourceSlide struct {
 	Blocks   []SourceBlock
 	Images   []SourceImage
 	Notes    string
+	// BareBullets are the points that were written without a "- " in front of
+	// them. Everything else about them is the same; what it says is that the
+	// author was not writing a list when they wrote that line.
+	BareBullets []string
 	// Groups are the second and further columns: each one is a heading and the
 	// points written after it. The first column has no entry — it is the slide's
 	// lead and the points before the next heading — so a slide with one lead has
@@ -361,7 +365,12 @@ func ParseSource(source string) Source {
 			case current.Lead == "" && len(current.Bullets) == 0 && countRowFields(trimmed) < 2:
 				current.Lead = trimmed
 			default:
-				current.Bullets = append(current.Bullets, pptx.Paragraph{Text: tidyText(trimmed)})
+				text := tidyText(trimmed)
+				current.Bullets = append(current.Bullets, pptx.Paragraph{Text: text})
+				// Remembered because the missing marker is the only difference
+				// between a point and the heading of a second column, when the
+				// author wrote neither of them with one.
+				current.BareBullets = append(current.BareBullets, text)
 			}
 		}
 	}

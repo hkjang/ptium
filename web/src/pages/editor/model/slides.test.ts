@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, bodyFromText, drawnSlots, proseSlot, slideBody, slideFields, slideHoldings, toApiSlides } from './slides'
+import { bodyFromFields, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -46,5 +46,47 @@ describe('a slide as the editor holds it', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0].title).toBe('실적')
     expect(sent[0].content.fields?.body?.map((paragraph) => paragraph.text)).toEqual(['매출 1,240억', '이익률 9.8%'])
+  })
+})
+
+describe('textRegions', () => {
+  const comparison = {
+    id: 'c', name: '비교', role: 'comparison',
+    placeholders: [
+      { slot: 'title', kind: 'text', region: 'full-top', maxChars: 56, maxLines: 2 },
+      { slot: 'body', kind: 'text', region: 'left-top', maxChars: 30, maxLines: 1 },
+      { slot: 'body2', kind: 'text', region: 'right-top', maxChars: 30, maxLines: 1 },
+      { slot: 'body3', kind: 'text', region: 'left-middle', maxChars: 300, maxLines: 13 },
+      { slot: 'body4', kind: 'text', region: 'right-middle', maxChars: 300, maxLines: 13 },
+    ],
+  }
+  const slide = () => ({
+    id: 's', order: 1, layout: 'comparison', layoutId: 'c', title: '자동화 도입 전후 비교',
+    fields: {
+      title: [{ text: '자동화 도입 전후 비교' }],
+      body: [{ text: '현재' }], body2: [{ text: '자동화' }],
+      body3: [{ text: '0.8% 오배송' }], body4: [{ text: '0.1% 목표' }, { text: '2배 향상' }],
+    },
+    elements: [],
+  })
+
+  it('lists every text region of a two-column slide, not just the first', () => {
+    const regions = textRegions(slide() as never, comparison as never)
+    expect(regions.map((region) => region.slot)).toEqual(['body', 'body2', 'body3', 'body4'])
+    expect(regions[1].text).toBe('자동화')
+    expect(regions[3].text).toBe('0.1% 목표\n2배 향상')
+  })
+
+  it('names a region by where it is on the slide', () => {
+    const regions = textRegions(slide() as never, comparison as never)
+    expect(regions[0].label).toBe('왼쪽 위 영역')
+    expect(regions[3].label).toBe('오른쪽 가운데 영역')
+    expect(regionLabel('body2')).toBe('본문 2')
+  })
+
+  it('leaves out a region a component occupies', () => {
+    const withBlock = { ...slide(), blocks: { body3: { kind: 'kpi', items: [] } } }
+    const regions = textRegions(withBlock as never, comparison as never)
+    expect(regions.map((region) => region.slot)).toEqual(['body', 'body2', 'body4'])
   })
 })

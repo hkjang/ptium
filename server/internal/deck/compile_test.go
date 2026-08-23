@@ -844,3 +844,60 @@ func TestASlideWrittenOnItsLeadLineBecomesItsPoints(t *testing.T) {
 		t.Fatalf("a lead with points below it was split: %+v", kept.Fields)
 	}
 }
+
+// A model wrote its schedule slide as a heading, four dates, another heading,
+// four more — none of the lines marked. The first bare line becomes the lead;
+// the second used to become an ordinary point, so the left column was headed
+// and the right column's heading sat in its own list with a bullet in front.
+func TestABareSecondHeadingNamesTheSecondColumn(t *testing.T) {
+	template, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(template)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 도입 일정 및 마일스톤\n@two\n설계 및 구축\n- 2026년 4분기\n- 시스템 설계 완료\n" +
+		"운영 및 최적화\n- 2027년 2분기\n- 전체 시스템 가동\n"
+	content := Decode(Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	regions := map[string][]pptx.Paragraph{}
+	for slot, paragraphs := range content.Fields {
+		if slot != pptx.SlotTitle {
+			regions[slot] = paragraphs
+		}
+	}
+	var build, run []pptx.Paragraph
+	for _, paragraphs := range regions {
+		if paragraphs[0].Text == "설계 및 구축" {
+			build = paragraphs
+		}
+		if paragraphs[0].Text == "운영 및 최적화" {
+			run = paragraphs
+		}
+	}
+	if len(build) == 0 || len(run) == 0 {
+		t.Fatalf("the two headings did not head the two columns: %+v", regions)
+	}
+	if !build[0].Lead || !run[0].Lead {
+		t.Fatalf("one heading was drawn as a point: %+v", regions)
+	}
+	if len(build) != 3 || len(run) != 3 {
+		t.Fatalf("the points did not follow their heading: %+v", regions)
+	}
+
+	// A slide whose lines are sentences keeps them all as points: only an
+	// unmistakable pair of names is a pair of columns.
+	prose := "# 요약\n@two\n핵심 요약\n- 매출이 늘었습니다\n- 결론\n- 비용이 줄었습니다\n- 다음 단계를 정합니다\n"
+	kept := Decode(Compile(ParseSource(prose), manifest, CompileOptions{Language: "ko"}).Slides[0].Content)
+	for slot, paragraphs := range kept.Fields {
+		if slot == pptx.SlotTitle {
+			continue
+		}
+		for index, paragraph := range paragraphs {
+			if paragraph.Lead && paragraph.Text == "결론" && index == 0 {
+				t.Fatalf("a short point was promoted to a column heading: %+v", kept.Fields)
+			}
+		}
+	}
+}

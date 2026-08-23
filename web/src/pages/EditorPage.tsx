@@ -25,7 +25,7 @@ import { roleLabel } from './TemplatesPage'
 
 import {
   MAX_SLIDES, bodyFromFields, bodyFromText, defaultSlide, drawnSlots, proseSlot,
-  slideBody, slideBodyLines, slideFields, slideHoldings, toApiSlides,
+  slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, warningText } from './editor/model/findings'
 import { versionToSend } from './editor/model/saving'
@@ -231,6 +231,10 @@ export function EditorPage({ id }: { id: string }) {
     updateSlide(activeId, updates)
   }
   const activeLayout = useMemo(() => (template?.layouts || []).find((layout) => layout.id === active?.layoutId), [template, active?.layoutId])
+  // Every text region of the slide, so a two-column slide can be read and edited
+  // from the panel rather than only from the canvas. The first is the prose slot
+  // the body box has always written to; the rest used to be invisible here.
+  const activeRegions = useMemo(() => textRegions(active, activeLayout), [active, activeLayout])
 
   // ── Editing what the generator wrote ───────────────────────────────────────
   // The canvas edits the slide's own regions. Every change lands in the same
@@ -1129,7 +1133,11 @@ export function EditorPage({ id }: { id: string }) {
               <p className="inspector-help">템플릿 슬롯의 글을 편집합니다. 캔버스 위 텍스트 상자는 자유롭게 이동·회전할 수 있습니다.</p>
               <label className="slide-edit-field"><span>제목</span><input disabled={!active} value={active?.title || ''} maxLength={200} onChange={(event) => updateActive({ title: event.target.value })} aria-label="슬라이드 제목" placeholder="슬라이드 제목" /></label>
               <label className="slide-edit-field"><span>리드 문장</span><input disabled={!active} value={active?.subtitle || ''} maxLength={300} onChange={(event) => updateActive({ subtitle: event.target.value })} aria-label="리드 문장" placeholder="제목 아래 한 줄" /></label>
-              <label className="slide-edit-field grow"><span>본문 {activeHoldings.some((holding) => holding.kind !== 'element') ? '(컴포넌트 옆 영역)' : ''}</span><Textarea disabled={!active} value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." /></label>
+              <label className="slide-edit-field grow"><span>{activeRegions.length > 1 ? activeRegions[0].label : '본문'} {activeHoldings.some((holding) => holding.kind !== 'element') ? '(컴포넌트 옆 영역)' : ''}</span><Textarea disabled={!active} value={slideBody(active)} onChange={(event) => updateActive({ body: event.target.value, bullets: event.target.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) })} className="slide-body-editor" aria-label="슬라이드 본문" placeholder="핵심 메시지를 줄마다 입력하세요." /></label>
+              {activeRegions.slice(1).map((region) => <label className="slide-edit-field grow" key={region.slot}><span>{region.label}</span><Textarea
+                value={region.text}
+                onChange={(event) => updateActive({ fields: { ...(active?.fields || {}), [region.slot]: textToParagraphs(event.target.value) } })}
+                className="slide-body-editor" aria-label={region.label} placeholder="이 영역의 글" /></label>)}
               {activeHoldings.length > 0 && <div className="slide-holdings"><strong>슬라이드 개체</strong><ul>{activeHoldings.map((holding) => <li key={holding.slot}>{holding.kind === 'image' ? <Image size={13} /> : <LayoutPanelTop size={13} />}<span>{holding.label}</span><small>{holding.detail}</small></li>)}</ul></div>}
             </section>
           </div> : panel === 'design' ? <div className="inspector-content">
