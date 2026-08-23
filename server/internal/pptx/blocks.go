@@ -113,6 +113,37 @@ type Block struct {
 // maximumBlockItems caps a component so it stays readable at slide scale.
 const maximumBlockItems = 8
 
+// DrawableItems is how many entries a component of this kind puts on a slide.
+//
+// Five steps across a slide is already a tight row and a sixth would be
+// unreadable, so the drawing takes the first five. That is a reasonable design
+// and a bad silence: the author wrote six and the sixth is on no slide. The
+// number is published here so the measurement can say what was left out.
+// drawableEntries is DrawableItems for one block. A comparison written as a
+// matrix — an attribute per row, the sides across — is drawn row by row and is
+// not capped at three; only the card shape is.
+func drawableEntries(block Block) int {
+	if block.Kind == BlockComparison && len(comparisonMatrix(block)) > 0 {
+		return 0
+	}
+	return DrawableItems(block.Kind)
+}
+
+// A kind with no fixed cap answers zero: what it draws depends on the room it
+// is given and on the shape of what it holds, and a number here would be a
+// guess reported as a fact.
+func DrawableItems(kind string) int {
+	switch kind {
+	case BlockComparison:
+		return 3
+	case BlockMeter, BlockSteps:
+		return 5
+	case BlockTimeline:
+		return 6
+	}
+	return 0
+}
+
 // BlockMinimumLines is how much vertical room a component needs, measured in
 // lines of the slot's own body text. A one-line caption slot can still hold a
 // statement; a chart cannot.

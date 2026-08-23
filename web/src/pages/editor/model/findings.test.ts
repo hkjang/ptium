@@ -61,6 +61,7 @@ describe('a measurement in the reader’s words', () => {
       repeat: 'the same point twice: "매출이 늘었다" and "매출 증가"',
       source: 'figures with no source: 28.5%, 1,200건',
       echo: "2 of this slide's 4 points were already made on slide 3",
+      trimmed: 'steps draws 5 of its 6 entries; the rest are on no slide',
     }
     for (const [kind, detail] of Object.entries(measured)) {
       expect(findingDetail(detail).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, ''), kind).not.toMatch(/[a-z]{3,}/)
@@ -68,7 +69,7 @@ describe('a measurement in the reader’s words', () => {
   })
 
   it('names every kind the measurement can report', () => {
-    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source']
+    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed']
     for (const kind of kinds) {
       expect(findingLabel(kind), kind).not.toBe(kind)
     }

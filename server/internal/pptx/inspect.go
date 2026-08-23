@@ -19,6 +19,8 @@ import (
 const (
 	// FindingOverflow is text that cannot fit its region even after shrinking.
 	FindingOverflow = "overflow"
+	// FindingTrimmed is a component holding more entries than its kind draws.
+	FindingTrimmed = "trimmed"
 	// FindingOutside is something drawn beyond the slide's edge.
 	FindingOutside = "outside"
 	// FindingCollision is two things drawn on top of each other.
@@ -413,6 +415,14 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		// A component draws as many entries as its kind can show and takes the
+		// first of them. The rest are on no slide, and until now in no message
+		// either: the author wrote six steps, five were drawn, and nothing said
+		// which one the room would never see.
+		for _, finding := range trimmedComponents(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
@@ -515,6 +525,35 @@ func unbriefedFigures(slide Slide, brief BriefFigures) []string {
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// trimmedComponents reports a component that holds more than it draws.
+func trimmedComponents(slide Slide) []Finding {
+	var findings []Finding
+	slots := make([]string, 0, len(slide.Blocks))
+	for slot := range slide.Blocks {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		block := slide.Blocks[slot]
+		drawable := drawableEntries(block)
+		held := 0
+		for _, item := range block.Items {
+			if strings.TrimSpace(item.Label) == "" && strings.TrimSpace(item.Value) == "" &&
+				item.Number == nil && len(item.Bullets) == 0 {
+				continue
+			}
+			held++
+		}
+		if drawable <= 0 || held <= drawable {
+			continue
+		}
+		findings = append(findings, Finding{Slot: slot, Kind: FindingTrimmed, Advisory: true,
+			Detail: fmt.Sprintf("%s draws %d of its %d entries; the rest are on no slide",
+				block.Kind, drawable, held)})
+	}
+	return findings
 }
 
 // FiguresNotIn lists the figures in text that the brief does not state. It is

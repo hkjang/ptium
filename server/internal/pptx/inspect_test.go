@@ -664,3 +664,47 @@ func TestABriefWrittenWithALatinScaleStatesThatAmount(t *testing.T) {
 		}
 	}
 }
+
+// A component draws as many entries as its kind can show. Six steps across a
+// slide would be unreadable, so five are drawn — and until this was measured,
+// the sixth was on no slide and in no message. A corpus deck asked a board to
+// "Calculate the financial impact" in a step nobody would ever see.
+func TestAComponentThatDrawsLessThanItHoldsIsReported(t *testing.T) {
+	slide := Slide{Blocks: map[string]Block{
+		SlotBody: {Kind: BlockSteps, Items: []Item{
+			{Label: "1", Value: "현황 파악"}, {Label: "2", Value: "대안 정의"}, {Label: "3", Value: "비교"},
+			{Label: "4", Value: "이행 계획"}, {Label: "5", Value: "재무 영향"}, {Label: "6", Value: "승인 요청"},
+		}},
+	}}
+	findings := trimmedComponents(slide)
+	if len(findings) != 1 {
+		t.Fatalf("a step that is drawn nowhere was not reported: %+v", findings)
+	}
+	if !strings.Contains(findings[0].Detail, "5 of its 6") || !findings[0].Advisory {
+		t.Fatalf("finding = %+v", findings[0])
+	}
+
+	// Five fit, so five say nothing.
+	slide.Blocks[SlotBody] = Block{Kind: BlockSteps, Items: slide.Blocks[SlotBody].Items[:5]}
+	if findings := trimmedComponents(slide); len(findings) != 0 {
+		t.Fatalf("a component drawing everything it holds was reported: %+v", findings)
+	}
+}
+
+// A comparison written as a matrix is drawn row by row and is not capped at
+// three cards. Reporting it as trimmed would be an accusation about a drawing
+// that shows everything.
+func TestAComparisonMatrixIsNotReportedAsTrimmed(t *testing.T) {
+	rows := [][]string{{"항목", "지금", "다음"}}
+	items := []Item{{Label: "항목", Value: "지금", Detail: "다음"}}
+	for _, name := range []string{"비용", "기간", "인원", "위험", "효과"} {
+		rows = append(rows, []string{name, "1억", "8천만"})
+		items = append(items, Item{Label: name, Value: "1억", Detail: "8천만"})
+	}
+	slide := Slide{Blocks: map[string]Block{
+		SlotBody: {Kind: BlockComparison, Rows: rows, Items: items},
+	}}
+	if findings := trimmedComponents(slide); len(findings) != 0 {
+		t.Fatalf("a matrix that draws every row was reported as trimmed: %+v", findings)
+	}
+}

@@ -40,6 +40,7 @@ var dimensionOf = map[string]string{
 	FindingOutside:   DimensionReadability,
 	FindingDensity:   DimensionReadability,
 	FindingOrphan:    DimensionReadability,
+	FindingTrimmed:   DimensionReadability,
 	FindingNotes:     DimensionStructure,
 	FindingRepeat:    DimensionStructure,
 	FindingEcho:      DimensionStructure,
@@ -57,6 +58,9 @@ func weightOf(finding Finding) int {
 		switch finding.Kind {
 		case FindingDensity, FindingRepeat, FindingEcho:
 			return 6
+		case FindingTrimmed:
+			// Content that is on no slide is worse than content that is crowded.
+			return 10
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.
 			return 12
