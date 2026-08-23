@@ -47,6 +47,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true
+    // A shared deck is opened by someone who has no account here. Asking the
+    // server who they are answers 401, which is not an error worth reporting to
+    // a person who came to look at a deck — and asking at all is a request they
+    // did not make.
+    if (window.location.pathname.startsWith('/view/')) {
+      setLoading(false)
+      return
+    }
     captureImplicitToken()
     async function bootstrap() {
       setLoading(true)

@@ -139,6 +139,10 @@ func (s *Server) Handler() http.Handler {
 	root.HandleFunc("POST /api/v1/auth/token", s.exchangeToken)
 	// Signing out clears the cookie whether or not the session still verifies.
 	root.HandleFunc("POST /api/v1/auth/logout", s.signOut)
+	// A shared deck is read by whoever holds the link, which is the whole point
+	// of the link: no session, no account, and nothing but the slides.
+	root.HandleFunc("GET /api/v1/shared/{token}", s.sharedPresentation)
+	root.HandleFunc("GET /api/v1/shared/{token}/preview.svg", s.sharedPreview)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
@@ -181,6 +185,10 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))
+	// Links that open this deck for someone without an account.
+	api.Handle("POST /api/v1/presentations/{id}/shares", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.createShare))))
+	api.Handle("GET /api/v1/presentations/{id}/shares", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listShares))))
+	api.Handle("DELETE /api/v1/presentations/{id}/shares/{shareId}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.revokeShare))))
 	// Grid components an organisation defined for itself.
 	api.Handle("GET /api/v1/grids", requireScope("presentations:read", http.HandlerFunc(s.listGrids)))
 	api.Handle("POST /api/v1/grids", requireScope("presentations:write", http.HandlerFunc(s.saveGrid)))

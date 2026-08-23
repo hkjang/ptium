@@ -16,6 +16,7 @@ import { GuidePage } from './pages/GuidePage'
 import { LoginPage } from './pages/LoginPage'
 import { PresentationsPage } from './pages/PresentationsPage'
 import { PresenterPage } from './pages/PresenterPage'
+import { SharedDeckPage } from './pages/SharedDeckPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { TemplatesPage } from './pages/TemplatesPage'
 import { Link, navigate, useLocation } from './router'
@@ -24,6 +25,12 @@ export function App() {
   const { pathname } = useLocation()
   const { user, loading } = useAuth()
   const { productName } = useBrand()
+
+  // A shared deck opens before anything else asks who is looking: the link is
+  // for someone who has no account here, and sending them to a sign-in page
+  // would defeat it.
+  const sharedMatch = pathname.match(/^\/view\/([^/]+)$/)
+  if (sharedMatch) return <SharedDeckPage token={decodeURIComponent(sharedMatch[1])} />
 
   if (loading || pathname === '/auth/callback') return <main className="app-bootstrap"><div className="login-brand"><BrandMark size="large" /><span>{productName}</span></div><LoaderCircle className="spin" size={24} /><p>워크스페이스를 준비하는 중…</p></main>
   if (pathname === '/login') return <LoginPage />

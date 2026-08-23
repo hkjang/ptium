@@ -1775,6 +1775,167 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/presentations/{id}/shares:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: listShares
+      summary: List the links that open this deck
+      description: >
+        Every link made for this deck, open or closed. The tokens themselves are
+        not returned: a link is shown once, when it is made.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: The links made for this deck.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Share'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: createShare
+      summary: Open this deck to whoever holds a link
+      description: >
+        Makes a link that shows this deck read-only, for someone who has no
+        account here. The link is in the response and nowhere else: the token is
+        stored as a digest, so it cannot be produced again. Set days to expire
+        it, or leave it out to keep it open until it is revoked.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                  maxLength: 120
+                  description: What this link is for, so the owner can tell two apart.
+                days:
+                  type: integer
+                  minimum: 0
+                  maximum: 3650
+                  description: Days until it stops working. Zero leaves it open until revoked.
+      responses:
+        '201':
+          description: The link, shown once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Share'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/v1/presentations/{id}/shares/{shareId}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - name: shareId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeShare
+      summary: Close a link
+      description: The deck is untouched; the link stops working from now on.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '204':
+          description: The link is closed.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/shared/{token}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: readSharedDeck
+      summary: Read a deck someone shared a link to
+      description: >
+        No credentials. The deck's name and its slide titles, and nothing else —
+        not its source, not its template, not the workspace it lives in. A link
+        that was revoked or has expired answers 410.
+      tags: [Presentations]
+      security: []
+      responses:
+        '200':
+          description: The shared deck.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      title: { type: string }
+                      slideCount: { type: integer }
+                      titles:
+                        type: array
+                        items: { type: string }
+                      language: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The link is no longer open.
+
+  /api/v1/shared/{token}/preview.svg:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+      - name: slide
+        in: query
+        schema: { type: integer, minimum: 1 }
+      - name: width
+        in: query
+        schema: { type: integer }
+    get:
+      operationId: readSharedSlide
+      summary: Draw one slide of a shared deck
+      description: The slide as the editor draws it, for whoever holds the link.
+      tags: [Presentations]
+      security: []
+      responses:
+        '200':
+          description: The slide.
+          content:
+            image/svg+xml:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The link is no longer open.
+
   /api/v1/presentations/{id}/restore:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4723,6 +4884,24 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    Share:
+      type: object
+      description: >
+        A link that opens one deck read-only. The token is not part of it: the
+        link is returned once, when it is made, and stored only as a digest.
+      properties:
+        id: { type: string, format: uuid }
+        presentationId: { type: string, format: uuid }
+        label: { type: string }
+        url:
+          type: string
+          description: The address to hand to a person. Present only in the response that made it.
+        expiresAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        lastSeenAt: { type: string, format: date-time, nullable: true }
+        views: { type: integer }
+        createdAt: { type: string, format: date-time }
 
     Snippet:
       type: object

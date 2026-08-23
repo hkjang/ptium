@@ -150,3 +150,19 @@ func TestAssetsInContentFindsBothPlacedAndDrawnImages(t *testing.T) {
 		t.Fatalf("unreadable content produced %v", got)
 	}
 }
+
+// A share's token is kept as a digest: the row cannot hand anyone a working
+// link, so a copy of the database is not a set of open decks.
+func TestAShareTokenIsStoredAsADigest(t *testing.T) {
+	token := "lvMybRajay5kvvUDpZm158tdXPngvehZ"
+	digest := shareDigest(token)
+	if strings.Contains(digest, token) || len(digest) != 64 {
+		t.Fatalf("the digest is not a digest: %q", digest)
+	}
+	if shareDigest(token) != digest {
+		t.Fatal("the same token digests differently twice")
+	}
+	if shareDigest(token+"x") == digest {
+		t.Fatal("two different tokens share a digest")
+	}
+}

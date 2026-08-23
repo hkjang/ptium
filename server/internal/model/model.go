@@ -128,24 +128,39 @@ type AssetTag struct {
 	Count int    `json:"count"`
 }
 
+// Share is a link that opens one deck read-only, for someone who has no account
+// here. The token itself is not in it: it is shown once, when the link is made.
+type Share struct {
+	ID             string     `json:"id"`
+	PresentationID string     `json:"presentationId"`
+	Label          string     `json:"label,omitempty"`
+	ExpiresAt      *time.Time `json:"expiresAt,omitempty"`
+	RevokedAt      *time.Time `json:"revokedAt,omitempty"`
+	LastSeenAt     *time.Time `json:"lastSeenAt,omitempty"`
+	Views          int        `json:"views"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	// URL is filled in when the link is made, and never afterwards.
+	URL string `json:"url,omitempty"`
+}
+
 type Presentation struct {
-	ID                  string  `json:"id"`
-	OwnerID             string  `json:"ownerId"`
-	Title               string  `json:"title"`
-	Prompt              string  `json:"prompt"`
-	Status              string  `json:"status"`
-	TemplateID          *string `json:"templateId,omitempty"`
-	TemplateName        string  `json:"templateName,omitempty"`
+	ID           string  `json:"id"`
+	OwnerID      string  `json:"ownerId"`
+	Title        string  `json:"title"`
+	Prompt       string  `json:"prompt"`
+	Status       string  `json:"status"`
+	TemplateID   *string `json:"templateId,omitempty"`
+	TemplateName string  `json:"templateName,omitempty"`
 	// GenerationNotes is what generation had to change about what was asked
 	// for: a deck shorter than the count requested, a layout that could not
 	// hold a component, a figure with no source. The person who asked is the
 	// one who needs to know, so it travels with the deck rather than to a log.
-	GenerationNotes []string `json:"generationNotes,omitempty"`
-	Theme               string  `json:"theme"`
-	Language            string  `json:"language"`
-	Audience            string  `json:"audience"`
-	Tone                string  `json:"tone"`
-	RequestedSlideCount int     `json:"requestedSlideCount"`
+	GenerationNotes     []string `json:"generationNotes,omitempty"`
+	Theme               string   `json:"theme"`
+	Language            string   `json:"language"`
+	Audience            string   `json:"audience"`
+	Tone                string   `json:"tone"`
+	RequestedSlideCount int      `json:"requestedSlideCount"`
 	// Source is the deck written in Ptium's slide language. It is the editable
 	// form of the deck: compiling it reproduces the slides.
 	Source              string          `json:"source,omitempty"`

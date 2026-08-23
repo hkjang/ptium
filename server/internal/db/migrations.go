@@ -240,6 +240,24 @@ var migrations = []string{
 		updated_at timestamptz NOT NULL DEFAULT now())`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS snippets_owner_name_idx ON snippets(owner_id,lower(name))`,
 	`CREATE INDEX IF NOT EXISTS snippets_owner_used_idx ON snippets(owner_id,last_used_at DESC)`,
+	// A deck is written to be shown to someone. Until now the only way to show
+	// one to a person without an account was to export the file and mail it,
+	// which is how a deck stops being the one in Ptium and starts being four
+	// copies in four inboxes. A share is a link that opens the deck read-only:
+	// the token is stored as a digest, so the row cannot hand anyone a working
+	// link, and it can be revoked or left to expire.
+	`CREATE TABLE IF NOT EXISTS presentation_shares(
+		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+		presentation_id uuid NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		token_digest text NOT NULL UNIQUE,
+		label text NOT NULL DEFAULT '',
+		expires_at timestamptz,
+		revoked_at timestamptz,
+		last_seen_at timestamptz,
+		views integer NOT NULL DEFAULT 0,
+		created_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE INDEX IF NOT EXISTS presentation_shares_deck_idx ON presentation_shares(presentation_id,created_at DESC)`,
 }
 
 var defaultSettings = map[string]struct {

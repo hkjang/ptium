@@ -183,6 +183,50 @@ if document_id:
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
      note="a file nothing here can read must say so")
 
+print("── a link someone without an account can open ──")
+shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
+                                                      "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}
+call("PUT", f"/presentations/{shared_deck.get('id')}/source",
+     {"source": f"# 공유 점검 {RUN}\n@cover\n> 링크로 여는 덱\n\n# 현황\n@content\n- 첫 줄\n- 둘째 줄\n"})
+made = data_of(call("POST", f"/presentations/{shared_deck.get('id')}/shares", {"label": "임원 검토", "days": 7}, expect=201)) or {}
+link = made.get("url", "")
+token = link.rsplit("/", 1)[-1] if link else ""
+if not token or "/view/" not in link:
+    failures.append(f"a share was made without a link to hand anyone: {made!r}")
+# Opened by a stranger: no dev secret, no session, no key.
+opened = urllib.request.Request(BASE + f"/shared/{token}")
+try:
+    with urllib.request.urlopen(opened) as response:
+        seen = json.loads(response.read())["data"]
+except urllib.error.HTTPError as error:
+    seen = {}
+    failures.append(f"a shared link did not open for someone without an account: {error.code}")
+if seen.get("slideCount") != 2 or f"공유 점검 {RUN}" not in (seen.get("title") or ""):
+    failures.append(f"the link showed something other than the deck: {seen!r}")
+try:
+    with urllib.request.urlopen(urllib.request.Request(BASE + f"/shared/{token}/preview.svg?slide=2&width=600")) as response:
+        drawn = response.read().decode()
+    if "<svg" not in drawn or "둘째 줄" not in drawn:
+        failures.append("a shared link drew something other than the slide")
+except urllib.error.HTTPError as error:
+    failures.append(f"a shared slide did not draw: {error.code}")
+# The link carries nothing else: the deck's source is not readable through it.
+for path in [f"/presentations/{shared_deck.get('id')}", f"/presentations/{shared_deck.get('id')}/source"]:
+    try:
+        urllib.request.urlopen(urllib.request.Request(BASE + path))
+        failures.append(f"{path} answered someone with no credentials")
+    except urllib.error.HTTPError as error:
+        if error.code not in (401, 403):
+            failures.append(f"{path} answered {error.code} to someone with no credentials")
+call("DELETE", f"/presentations/{shared_deck.get('id')}/shares/{made.get('id')}", expect=204)
+try:
+    urllib.request.urlopen(urllib.request.Request(BASE + f"/shared/{token}"))
+    failures.append("a revoked link still opens the deck")
+except urllib.error.HTTPError as error:
+    if error.code != 410:
+        failures.append(f"a revoked link answered {error.code}, expected 410")
+print(f"   opened by a stranger, {seen.get('slideCount')} slides, closed on revoke")
+
 print("── the library comes first ──")
 registered = data_of(call("POST", "/snippets", {
     "name": f"회사 소개 {RUN}",
