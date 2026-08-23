@@ -111,3 +111,45 @@ func TestPreviewSVGRendersRequestedSlide(t *testing.T) {
 		t.Fatal("an out-of-range slide must fail")
 	}
 }
+
+// A deck edited on the canvas has slides its stored source no longer describes.
+// The exported file used to carry that stored text, so importing the file gave
+// the older deck back — in the corpus, a slide short.
+func TestTheExportedFileCarriesTheDeckAsItStands(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	source := "# 이중화 계획\n@cover\n> 2026년 8월\n\n# 지표\n- 처리량 1,200건\n- 오류율 0.2%\n"
+	presentation := model.Presentation{Title: "이중화 계획", Language: "ko", Source: source}
+	presentation.Slides = deck.Compile(deck.ParseSource(source), manifest,
+		deck.CompileOptions{Language: "ko"}).Slides
+	// Someone adds a slide on the canvas. Nothing rewrites the stored text.
+	added := deck.Compile(deck.ParseSource("# 다음 단계\n- 승인 요청\n"), manifest,
+		deck.CompileOptions{Language: "ko"}).Slides
+	presentation.Slides = append(presentation.Slides, added...)
+
+	file, err := PPTX(presentation, Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	pkg, err := pptx.Open(file)
+	if err != nil {
+		t.Fatalf("open the exported file: %v", err)
+	}
+	carried, ok := pptx.DeckSource(pkg)
+	if !ok {
+		t.Fatal("the exported file carries no deck source")
+	}
+	if !strings.Contains(carried, "# 다음 단계") {
+		t.Fatalf("the exported file does not carry the slide the deck has:\n%s", carried)
+	}
+	if got := len(deck.Compile(deck.ParseSource(carried), manifest,
+		deck.CompileOptions{Language: "ko"}).Slides); got != len(presentation.Slides) {
+		t.Fatalf("the file carries %d slides, the deck has %d", got, len(presentation.Slides))
+	}
+}

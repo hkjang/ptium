@@ -395,3 +395,23 @@ func leadParagraph(content Content) string {
 	}
 	return ""
 }
+
+// MatchesSlides reports whether this source still describes these slides.
+//
+// The source text and the slides are two records of one deck, and the slides
+// are the authority: a canvas edit changes them without rewriting the text. The
+// code view has always asked this before showing stored text. The exported file
+// did not, so a deck edited on the canvas travelled with an older source inside
+// it — and importing that file gave the older deck back, a slide short.
+func MatchesSlides(source string, presentation model.Presentation, manifest pptx.Manifest) bool {
+	if strings.TrimSpace(source) == "" {
+		return false
+	}
+	compiled := Compile(ParseSource(source), manifest, CompileOptions{Language: presentation.Language})
+	if len(compiled.Slides) != len(presentation.Slides) {
+		return false
+	}
+	written := presentation
+	written.Slides = compiled.Slides
+	return Format(written, manifest) == Format(presentation, manifest)
+}

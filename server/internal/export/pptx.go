@@ -46,6 +46,13 @@ func PPTX(presentation model.Presentation, options Options) ([]byte, error) {
 			return nil, fmt.Errorf("analyze presentation template: %w", err)
 		}
 	}
+	// The file carries its own source so that importing it gives the deck back
+	// rather than a reading of its drawing. That only holds while the source
+	// still describes the slides; when the canvas has moved on, the deck as it
+	// stands is written instead of the text it was last saved from.
+	if !deck.MatchesSlides(presentation.Source, presentation, manifest) {
+		presentation.Source = deck.Format(presentation, manifest)
+	}
 	return pptx.Render(pkg, manifest, deck.BuildWithImages(presentation, manifest, options.Author, options.Images))
 }
 

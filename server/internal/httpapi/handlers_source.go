@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
@@ -41,7 +40,7 @@ func (s *Server) getPresentationSource(writer http.ResponseWriter, request *http
 	// Slides are the authority: if they have been edited since the source was
 	// written, the text is regenerated from them rather than shown out of date.
 	if formatted := deck.Format(presentation, manifest); formatted != "" &&
-		(strings.TrimSpace(source) == "" || !sourceMatchesSlides(source, presentation, manifest)) {
+		!deck.MatchesSlides(source, presentation, manifest) {
 		source = formatted
 	}
 	writeData(writer, request, http.StatusOK, map[string]any{
@@ -256,15 +255,6 @@ func carryCanvasLayerAcross(stored, compiled []model.Slide) []model.Slide {
 // formatted forms compares exactly what the text can express: the points, the
 // components, the images, the notes — and nothing the text was never meant to
 // carry, such as a canvas layer.
-func sourceMatchesSlides(source string, presentation model.Presentation, manifest pptx.Manifest) bool {
-	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: presentation.Language})
-	if len(compiled.Slides) != len(presentation.Slides) {
-		return false
-	}
-	written := presentation
-	written.Slides = compiled.Slides
-	return deck.Format(written, manifest) == deck.Format(presentation, manifest)
-}
 
 // sourceLayouts is the layout vocabulary an author can write in @layout.
 func sourceLayouts(manifest pptx.Manifest) []map[string]string {

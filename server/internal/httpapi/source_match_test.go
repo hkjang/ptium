@@ -24,7 +24,7 @@ func TestSourceIsStaleOnceTheSlidesMoveOn(t *testing.T) {
 	presentation := model.Presentation{Language: "ko"}
 	presentation.Slides = deck.Compile(deck.ParseSource(source), manifest,
 		deck.CompileOptions{Language: "ko"}).Slides
-	if !sourceMatchesSlides(source, presentation, manifest) {
+	if !deck.MatchesSlides(source, presentation, manifest) {
 		t.Fatalf("source that produced these slides should still describe them:\n%s",
 			deck.Format(presentation, manifest))
 	}
@@ -42,7 +42,7 @@ func TestSourceIsStaleOnceTheSlidesMoveOn(t *testing.T) {
 		edited := presentation
 		edited.Slides = append([]model.Slide(nil), presentation.Slides...)
 		edit(&edited.Slides[1])
-		if sourceMatchesSlides(source, edited, manifest) {
+		if deck.MatchesSlides(source, edited, manifest) {
 			t.Errorf("%s changed and the old text still passes as the deck", name)
 		}
 	}
