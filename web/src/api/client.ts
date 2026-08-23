@@ -10,6 +10,7 @@ import type {
   ProfilePreferences,
   ServerError,
   Share,
+  DeckComment,
   Slide,
   SlideBlock,
   SlideChange,
@@ -1002,6 +1003,26 @@ export const api = {
 			`/presentations/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`, { method: 'POST' },
 		), ['presentation', 'data']))
 	},
+  /** What the people who read this deck said about it. */
+  async comments(id: string) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/comments`)
+    return unwrapList<Record<string, unknown>>(raw, ['comments', 'items', 'data']).map((value) => ({
+      id: String(value.id ?? ''),
+      presentationId: String(value.presentationId ?? id),
+      slideId: value.slideId ? String(value.slideId) : undefined,
+      author: String(value.author ?? ''),
+      body: String(value.body ?? ''),
+      resolvedAt: value.resolvedAt ? String(value.resolvedAt) : undefined,
+      createdAt: String(value.createdAt ?? new Date().toISOString()),
+    })) as DeckComment[]
+  },
+  /** Marks a remark dealt with, or puts it back. */
+  resolveComment: (id: string, commentId: string, resolved = true) => request<void>(
+    `/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}/resolve`,
+    { method: 'POST', body: JSON.stringify({ resolved }) }),
+  /** Removes a remark. The owner decides what stays on their deck. */
+  deleteComment: (id: string, commentId: string) => request<void>(
+    `/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}`, { method: 'DELETE' }),
   /** Links that open this deck for someone with no account here. */
   async shares(id: string) {
     const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/shares`)

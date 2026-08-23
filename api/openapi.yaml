@@ -1897,14 +1897,172 @@ paths:
                     properties:
                       title: { type: string }
                       slideCount: { type: integer }
+                      slides:
+                        type: array
+                        description: Each slide's name and the id a remark attaches itself to.
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            title: { type: string }
                       titles:
                         type: array
+                        description: Deprecated; the titles alone, as the first viewer expected them.
                         items: { type: string }
                       language: { type: string }
         '404':
           $ref: '#/components/responses/NotFound'
         '410':
           description: The link is no longer open.
+
+  /api/v1/presentations/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: listComments
+      summary: What the people who read this deck said
+      description: Every remark left through a share link, oldest first, with the slide each is about.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: The remarks left on this deck.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/comments/{commentId}/resolve:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - name: commentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: resolveComment
+      summary: Mark a remark dealt with, or put it back
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                resolved: { type: boolean, default: true }
+      responses:
+        '204':
+          description: The remark is marked.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/presentations/{id}/comments/{commentId}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+      - name: commentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteComment
+      summary: Remove a remark
+      description: The owner decides what stays on their deck. Nobody is notified.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '204':
+          description: The remark is gone.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/shared/{token}/comments:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: readSharedComments
+      summary: Read what has been said about a shared deck
+      description: No credentials. Everyone holding the link is in the same conversation.
+      tags: [Presentations]
+      security: []
+      responses:
+        '200':
+          description: The remarks on this deck.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The link is no longer open.
+    post:
+      operationId: leaveSharedComment
+      summary: Say what is wrong with slide 4
+      description: >
+        A remark from someone who has no account here, under the name they type.
+        The slide must belong to the deck the link opens. A deck holds 500
+        remarks; past that this answers 429.
+      tags: [Presentations]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                slideId:
+                  type: string
+                  format: uuid
+                  description: The slide it is about. Omit for a remark about the deck.
+                author: { type: string, maxLength: 80 }
+                body: { type: string, maxLength: 4000 }
+      responses:
+        '201':
+          description: The remark, as it was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Comment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The link is no longer open.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          description: This deck holds as many remarks as it will take.
 
   /api/v1/shared/{token}/preview.svg:
     parameters:
@@ -4884,6 +5042,20 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    Comment:
+      type: object
+      description: >
+        One remark about one slide, left by someone reviewing the deck. The
+        author is a name they typed, not an account.
+      properties:
+        id: { type: string, format: uuid }
+        presentationId: { type: string, format: uuid }
+        slideId: { type: string, format: uuid }
+        author: { type: string }
+        body: { type: string }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
 
     Share:
       type: object

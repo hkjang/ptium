@@ -143,6 +143,10 @@ func (s *Server) Handler() http.Handler {
 	// of the link: no session, no account, and nothing but the slides.
 	root.HandleFunc("GET /api/v1/shared/{token}", s.sharedPresentation)
 	root.HandleFunc("GET /api/v1/shared/{token}/preview.svg", s.sharedPreview)
+	// Looking is half of a review. Whoever holds the link can say what is wrong
+	// with slide 4, and read what others said.
+	root.HandleFunc("GET /api/v1/shared/{token}/comments", s.sharedComments)
+	root.HandleFunc("POST /api/v1/shared/{token}/comments", s.addSharedComment)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
@@ -189,6 +193,10 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("POST /api/v1/presentations/{id}/shares", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.createShare))))
 	api.Handle("GET /api/v1/presentations/{id}/shares", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listShares))))
 	api.Handle("DELETE /api/v1/presentations/{id}/shares/{shareId}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.revokeShare))))
+	// What the people who read it said, and what the author did about it.
+	api.Handle("GET /api/v1/presentations/{id}/comments", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listComments))))
+	api.Handle("POST /api/v1/presentations/{id}/comments/{commentId}/resolve", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.resolveComment))))
+	api.Handle("DELETE /api/v1/presentations/{id}/comments/{commentId}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deleteComment))))
 	// Grid components an organisation defined for itself.
 	api.Handle("GET /api/v1/grids", requireScope("presentations:read", http.HandlerFunc(s.listGrids)))
 	api.Handle("POST /api/v1/grids", requireScope("presentations:write", http.HandlerFunc(s.saveGrid)))

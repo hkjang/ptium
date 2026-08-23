@@ -128,6 +128,21 @@ type AssetTag struct {
 	Count int    `json:"count"`
 }
 
+// Comment is one remark about one slide, left by someone reviewing the deck.
+//
+// The author is a name they typed, not an account: the person following a
+// share link has none, and asking them to make one to say "the number on slide
+// 4 is out of date" is how a review does not happen.
+type Comment struct {
+	ID             string     `json:"id"`
+	PresentationID string     `json:"presentationId"`
+	SlideID        string     `json:"slideId,omitempty"`
+	Author         string     `json:"author"`
+	Body           string     `json:"body"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
 // Share is a link that opens one deck read-only, for someone who has no account
 // here. The token itself is not in it: it is shown once, when the link is made.
 type Share struct {

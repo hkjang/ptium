@@ -225,6 +225,49 @@ try:
 except urllib.error.HTTPError as error:
     if error.code != 410:
         failures.append(f"a revoked link answered {error.code}, expected 410")
+# Looking is half of a review. The other half is saying what is wrong with
+# slide 4, which is what the link is for.
+opened_again = data_of(call("POST", f"/presentations/{shared_deck.get('id')}/shares", {"label": "의견", "days": 0}, expect=201)) or {}
+review_token = (opened_again.get("url") or "").rsplit("/", 1)[-1]
+review_slides = []
+try:
+    with urllib.request.urlopen(urllib.request.Request(BASE + f"/shared/{review_token}")) as response:
+        review_slides = (json.loads(response.read())["data"] or {}).get("slides") or []
+except urllib.error.HTTPError as error:
+    failures.append(f"the review link did not open: {error.code}")
+if review_slides:
+    said = json.dumps({"slideId": review_slides[1]["id"], "author": "박검토",
+                       "body": "이 숫자는 지난 분기 기준입니다."}).encode()
+    request = urllib.request.Request(BASE + f"/shared/{review_token}/comments", data=said,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request) as response:
+            left = json.loads(response.read())["data"]
+        if left.get("slideId") != review_slides[1]["id"]:
+            failures.append(f"the remark lost the slide it was about: {left!r}")
+    except urllib.error.HTTPError as error:
+        failures.append(f"a stranger could not leave a remark: {error.code}")
+    mine = data_of(call("GET", f"/presentations/{shared_deck.get('id')}/comments")) or []
+    if not any(row.get("author") == "박검토" for row in mine):
+        failures.append("the owner cannot see what the reviewer said")
+    else:
+        remark = [row for row in mine if row.get("author") == "박검토"][0]
+        call("POST", f"/presentations/{shared_deck.get('id')}/comments/{remark['id']}/resolve", {"resolved": True}, expect=204)
+        after = data_of(call("GET", f"/presentations/{shared_deck.get('id')}/comments")) or []
+        if not any(row["id"] == remark["id"] and row.get("resolvedAt") for row in after):
+            failures.append("a remark marked dealt with did not stay dealt with")
+    # A remark about someone else's slide is not a way into another deck.
+    stray = json.dumps({"slideId": "11111111-1111-1111-1111-111111111111", "body": "x"}).encode()
+    request = urllib.request.Request(BASE + f"/shared/{review_token}/comments", data=stray,
+                                     headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        urllib.request.urlopen(request)
+        failures.append("a remark was accepted for a slide from another deck")
+    except urllib.error.HTTPError as error:
+        if error.code != 422:
+            failures.append(f"a stray slide id answered {error.code}, expected 422")
+print("   a reviewer left a remark on slide 2 and the owner marked it dealt with")
+
 print(f"   opened by a stranger, {seen.get('slideCount')} slides, closed on revoke")
 
 print("── the library comes first ──")

@@ -268,3 +268,31 @@
 .share-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, #dcdce4); border-radius: 10px; }
 .share-list li.revoked { opacity: 0.55; }
 .share-list small { display: block; color: var(--ink-muted, #6b6b76); font-size: 12px; }
+
+/* What the person who opened the link had to say about slide 4. */
+.shared-deck-comments { border-top: 1px solid var(--line, #dcdce4); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.shared-deck-comments h2 { font-size: 13px; margin: 0; color: var(--ink-muted, #6b6b76); display: flex; align-items: center; gap: 6px; }
+.shared-deck-comments h2 span { display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--brand, #7c3aed); color: #fff; font-size: 11px; }
+.shared-deck-comments ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.shared-deck-comments li { padding: 8px 12px; border-radius: 10px; background: #fff; border: 1px solid var(--line, #dcdce4); }
+.shared-deck-comments li.resolved { opacity: 0.6; }
+.shared-deck-comments li strong { font-size: 12px; }
+.shared-deck-comments li p { margin: 2px 0 0; font-size: 14px; white-space: pre-wrap; }
+.shared-deck-comments li small { color: var(--brand, #7c3aed); font-size: 11px; }
+.shared-deck-say { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.shared-deck-say input { width: 140px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line, #dcdce4); }
+.shared-deck-say textarea { flex: 1; min-width: 240px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line, #dcdce4); resize: vertical; font: inherit; }
+.shared-deck-say button { padding: 8px 16px; border-radius: 8px; border: 0; background: var(--brand, #7c3aed); color: #fff; cursor: pointer; }
+.shared-deck-say button:disabled { opacity: 0.4; cursor: default; }
+.shared-deck-rail em { color: var(--brand, #7c3aed); font-style: normal; font-size: 10px; }
+
+/* What the people who were sent the link had to say. */
+.comments-dialog { display: flex; flex-direction: column; gap: 12px; }
+.comment-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; max-height: 50vh; overflow-y: auto; }
+.comment-list li { padding: 10px 12px; border: 1px solid var(--line, #dcdce4); border-radius: 10px; }
+.comment-list li.resolved { opacity: 0.55; }
+.comment-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.comment-head small { color: var(--ink-muted, #6b6b76); font-size: 11px; margin-left: auto; }
+.comment-slide { border: 0; background: none; padding: 0; color: var(--brand, #7c3aed); cursor: pointer; font-size: 12px; }
+.comment-list p { margin: 4px 0 8px; white-space: pre-wrap; }
+.comment-actions { display: flex; gap: 6px; }

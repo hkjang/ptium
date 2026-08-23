@@ -258,6 +258,21 @@ var migrations = []string{
 		views integer NOT NULL DEFAULT 0,
 		created_at timestamptz NOT NULL DEFAULT now())`,
 	`CREATE INDEX IF NOT EXISTS presentation_shares_deck_idx ON presentation_shares(presentation_id,created_at DESC)`,
+	// A link lets someone look at a deck. Looking is half of a review: the other
+	// half is saying what is wrong with slide 4, and until now that came back as
+	// an email the author had to hold beside the deck. A comment is attached to
+	// the slide it is about — by id, so it stays on that slide when the deck is
+	// reordered — and it says who left it, in the name they typed.
+	`CREATE TABLE IF NOT EXISTS slide_comments(
+		id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+		presentation_id uuid NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+		slide_id uuid REFERENCES slides(id) ON DELETE CASCADE,
+		share_id uuid REFERENCES presentation_shares(id) ON DELETE SET NULL,
+		author_name text NOT NULL DEFAULT '',
+		body text NOT NULL,
+		resolved_at timestamptz,
+		created_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE INDEX IF NOT EXISTS slide_comments_deck_idx ON slide_comments(presentation_id,created_at)`,
 }
 
 var defaultSettings = map[string]struct {

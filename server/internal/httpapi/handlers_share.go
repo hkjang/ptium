@@ -81,10 +81,20 @@ func (s *Server) revokeShare(writer http.ResponseWriter, request *http.Request) 
 // sharedDeck is what a link shows: the slides, and the deck's own name. Not the
 // source, not the template, not who made it.
 type sharedDeck struct {
-	Title      string   `json:"title"`
-	SlideCount int      `json:"slideCount"`
-	Titles     []string `json:"titles"`
-	Language   string   `json:"language,omitempty"`
+	Title      string       `json:"title"`
+	SlideCount int          `json:"slideCount"`
+	Slides     []sharedPage `json:"slides"`
+	// Titles is what the first viewer shipped with, kept so a page served from
+	// a cache keeps working against a newer server.
+	Titles   []string `json:"titles"`
+	Language string   `json:"language,omitempty"`
+}
+
+// sharedPage is one slide as a link sees it: what it is called, and the id a
+// comment attaches itself to.
+type sharedPage struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 func (s *Server) sharedPresentation(writer http.ResponseWriter, request *http.Request) {
@@ -93,12 +103,14 @@ func (s *Server) sharedPresentation(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	titles := make([]string, 0, len(presentation.Slides))
+	pages := make([]sharedPage, 0, len(presentation.Slides))
 	for _, slide := range presentation.Slides {
 		titles = append(titles, slide.Title)
+		pages = append(pages, sharedPage{ID: slide.ID, Title: slide.Title})
 	}
 	writeData(writer, request, http.StatusOK, sharedDeck{
 		Title: presentation.Title, SlideCount: len(presentation.Slides),
-		Titles: titles, Language: presentation.Language,
+		Slides: pages, Titles: titles, Language: presentation.Language,
 	})
 }
 
@@ -148,6 +160,110 @@ func (s *Server) presentationFromShare(writer http.ResponseWriter, request *http
 		return model.Presentation{}, err
 	}
 	return presentation, nil
+}
+
+// A link lets someone look at a deck. Looking is half of a review; the other
+// half is saying what is wrong with slide 4. These are the two ends of that:
+// whoever holds the link can leave a remark and read the ones already left, and
+// the owner sees them all in the workspace and marks them dealt with.
+
+type commentRequest struct {
+	SlideID string `json:"slideId"`
+	Author  string `json:"author"`
+	Body    string `json:"body"`
+}
+
+func (s *Server) addSharedComment(writer http.ResponseWriter, request *http.Request) {
+	presentation, err := s.presentationFromShare(writer, request)
+	if err != nil {
+		return
+	}
+	var input commentRequest
+	if !decodeJSON(writer, request, &input) {
+		return
+	}
+	// The slide has to be one of this deck's: a link to one deck is not a way to
+	// write on another.
+	if strings.TrimSpace(input.SlideID) != "" && !slideBelongsTo(presentation, input.SlideID) {
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
+			"that slide is not part of this deck", nil)
+		return
+	}
+	comment, err := s.store.AddComment(request.Context(), presentation.ID, store.CommentInput{
+		SlideID: strings.TrimSpace(input.SlideID), Author: input.Author, Body: input.Body,
+	})
+	switch {
+	case errors.Is(err, store.ErrTooManyComments):
+		writeError(writer, request, http.StatusTooManyRequests, "too_many_comments", err.Error(), nil)
+		return
+	case err != nil:
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
+		return
+	}
+	writeData(writer, request, http.StatusCreated, comment)
+}
+
+func (s *Server) sharedComments(writer http.ResponseWriter, request *http.Request) {
+	presentation, err := s.presentationFromShare(writer, request)
+	if err != nil {
+		return
+	}
+	comments, err := s.store.Comments(request.Context(), presentation.ID)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "comment_list_failed")
+		return
+	}
+	writeData(writer, request, http.StatusOK, comments)
+}
+
+func (s *Server) listComments(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	comments, err := s.store.OwnerComments(request.Context(), request.PathValue("id"), user.ID)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "comment_list_failed")
+		return
+	}
+	writeData(writer, request, http.StatusOK, comments)
+}
+
+func (s *Server) resolveComment(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var input struct {
+		Resolved *bool `json:"resolved"`
+	}
+	if request.ContentLength > 0 && !decodeJSON(writer, request, &input) {
+		return
+	}
+	resolved := true
+	if input.Resolved != nil {
+		resolved = *input.Resolved
+	}
+	if err := s.store.ResolveComment(request.Context(), request.PathValue("id"), user.ID,
+		request.PathValue("commentId"), resolved); err != nil {
+		s.handleStoreError(writer, request, err, "comment_resolve_failed")
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) deleteComment(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	if err := s.store.DeleteComment(request.Context(), request.PathValue("id"), user.ID,
+		request.PathValue("commentId")); err != nil {
+		s.handleStoreError(writer, request, err, "comment_delete_failed")
+		return
+	}
+	writer.WriteHeader(http.StatusNoContent)
+}
+
+// slideBelongsTo reports whether this deck has that slide.
+func slideBelongsTo(presentation model.Presentation, slideID string) bool {
+	for _, slide := range presentation.Slides {
+		if slide.ID == slideID {
+			return true
+		}
+	}
+	return false
 }
 
 // shareURL is the address to hand to a person, built from the request so it is

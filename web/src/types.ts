@@ -268,6 +268,17 @@ export interface Snippet {
   updatedAt: string
 }
 
+/** One remark about one slide, left by someone reviewing the deck. */
+export interface DeckComment {
+  id: string
+  presentationId: string
+  slideId?: string
+  author: string
+  body: string
+  resolvedAt?: string
+  createdAt: string
+}
+
 /** A link that opens one deck read-only, for someone with no account here. */
 export interface Share {
   id: string
