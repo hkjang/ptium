@@ -42,6 +42,7 @@ var dimensionOf = map[string]string{
 	FindingOrphan:    DimensionReadability,
 	FindingNotes:     DimensionStructure,
 	FindingRepeat:    DimensionStructure,
+	FindingEcho:      DimensionStructure,
 	FindingCollision: DimensionVisual,
 	FindingContrast:  DimensionAccessibility,
 	FindingSource:    DimensionEvidence,
@@ -54,7 +55,7 @@ var dimensionOf = map[string]string{
 func weightOf(finding Finding) int {
 	if finding.Advisory {
 		switch finding.Kind {
-		case FindingDensity, FindingRepeat:
+		case FindingDensity, FindingRepeat, FindingEcho:
 			return 6
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.

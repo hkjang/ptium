@@ -43,6 +43,10 @@ const (
 	// where it is from, and a deck that cannot answer is not finished — however
 	// well it is drawn.
 	FindingSource = "source"
+	// FindingEcho is a slide that says what an earlier slide already said. It is
+	// measured across the deck rather than inside one slide, which is where the
+	// repetition that a room actually notices lives.
+	FindingEcho = "echo"
 )
 
 // A slide is a thing someone stands next to and talks over. Two of its failures
@@ -339,6 +343,53 @@ func sameStem(first, second string) bool {
 	return strings.HasPrefix(string(longer), string(shorter))
 }
 
+// repeatedSlides reports a slide that says what an earlier slide already said.
+//
+// A deck listed three candidate offices as bullets on one slide and as a table
+// on the next, with the same rents and the same commutes, and measured
+// perfectly: repetition was only ever looked for inside a slide. A room reads
+// the second one as padding, and the presenter has to explain why they are
+// being shown it twice.
+//
+// Two lines that are nearly the same line are not enough — a deck may restate
+// its own headline — so it takes several before a slide is called an echo.
+func repeatedSlides(deck Deck) []Finding {
+	lines := make([][][]string, len(deck.Slides))
+	for index, slide := range deck.Slides {
+		for _, sentence := range slideSentences(slide) {
+			if words := contentWords(sentence); len(words) >= 4 {
+				lines[index] = append(lines[index], words)
+			}
+		}
+	}
+	var findings []Finding
+	for later := 1; later < len(deck.Slides); later++ {
+		if len(lines[later]) < 2 {
+			continue
+		}
+		for earlier := 0; earlier < later; earlier++ {
+			shared := 0
+			for _, line := range lines[later] {
+				for _, before := range lines[earlier] {
+					if wordOverlap(line, before) >= 0.6 {
+						shared++
+						break
+					}
+				}
+			}
+			// Most of this slide, and more than one line of it, is a slide the
+			// room has already been shown.
+			if shared >= 2 && shared*2 >= len(lines[later]) {
+				findings = append(findings, Finding{Slide: later + 1, Kind: FindingEcho, Advisory: true,
+					Detail: fmt.Sprintf("%d of this slide's %d points were already made on slide %d",
+						shared, len(lines[later]), earlier+1)})
+				break
+			}
+		}
+	}
+	return findings
+}
+
 // InspectDeck reports the defects of a whole deck.
 func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	design := NewDesign(manifest)
@@ -376,6 +427,7 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 				Detail: "figures with no source: " + strings.Join(unsourced, ", ")})
 		}
 	}
+	findings = append(findings, repeatedSlides(deck)...)
 	return findings
 }
 

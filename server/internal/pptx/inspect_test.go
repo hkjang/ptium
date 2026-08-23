@@ -516,3 +516,54 @@ func TestANumberWrittenInWordsIsStillANumber(t *testing.T) {
 		t.Fatalf("a word beginning with 한 was read as a number: %v", read.numbers)
 	}
 }
+
+// A deck listed three candidate offices as bullets on one slide and as a table
+// on the next — the same rents, the same commutes — and measured perfectly:
+// repetition was only ever looked for inside a slide. A room reads the second
+// one as padding.
+func TestASlideThatSaysWhatTheLastOneSaidIsReported(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	slide := func(title string, lines ...string) Slide {
+		paragraphs := make([]Paragraph, 0, len(lines))
+		for _, line := range lines {
+			paragraphs = append(paragraphs, Paragraph{Text: line})
+		}
+		return Slide{LayoutID: content.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: title}}, SlotBody: paragraphs}}
+	}
+	deck := Deck{Language: "ko", Slides: []Slide{
+		slide("세 후보지 기본 정보",
+			"강남 A동은 임대료 1억 2천만 원, 통근 42분",
+			"판교 B동은 임대료 8천만 원, 통근 47분, 노선 1개",
+			"여의도 C동은 임대료 9천 5백만 원, 통근 38분, 노선 3개"),
+		slide("임대료와 통근 시간 비교",
+			"강남 A동 월 1억 2천만 원 통근 42분, 노선 2개",
+			"판교 B동 월 8천만 원 통근 47분, 노선 1개",
+			"여의도 C동 월 9천 5백만 원 통근 38분, 노선 3개"),
+	}}
+	echoes := 0
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingEcho {
+			echoes++
+			if finding.Slide != 2 {
+				t.Fatalf("the echo was reported on slide %d, not the second telling", finding.Slide)
+			}
+		}
+	}
+	if echoes != 1 {
+		t.Fatalf("a slide repeating the one before it was reported %d times", echoes)
+	}
+
+	// A deck that moves on is quiet, and one line in common is not an echo: a
+	// deck may restate its own headline.
+	moving := Deck{Language: "ko", Slides: []Slide{
+		slide("현황", "강남 A동은 임대료 1억 2천만 원, 통근 42분", "판교 B동은 노선이 하나뿐입니다"),
+		slide("제안", "여의도 C동으로 이전할 것을 제안합니다", "강남 A동은 임대료 1억 2천만 원, 통근 42분"),
+	}}
+	for _, finding := range InspectDeck(manifest, moving) {
+		if finding.Kind == FindingEcho {
+			t.Fatalf("a deck that moves on was called an echo: %s", finding.String())
+		}
+	}
+}

@@ -30,6 +30,7 @@ export function findingLabel(kind: string) {
     case 'density': return '한 장에 너무 많음'
     case 'notes': return '발표 노트 없음'
     case 'repeat': return '같은 말을 두 번 함'
+    case 'echo': return '앞 장과 같은 내용'
     case 'source': return '숫자의 출처 없음'
   }
   return kind
@@ -74,6 +75,8 @@ export function findingDetail(detail: string) {
     [/^the region is (\d+)% full; a slide needs room to breathe$/,
       (m) => `영역이 ${m[1]}% 찼습니다. 슬라이드에는 여백이 필요합니다`],
     [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
+    [/^(\d+) of this slide's (\d+) points were already made on slide (\d+)$/,
+      (m) => `이 장의 요점 ${m[2]}개 중 ${m[1]}개를 ${m[3]}번 슬라이드에서 이미 말했습니다`],
     [/^no speaker notes: .+$/, () => '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
     [/^figures with no source: (.+)$/,
       (m) => `브리프에 없는 숫자에 출처가 없습니다: ${m[1]}. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다`],

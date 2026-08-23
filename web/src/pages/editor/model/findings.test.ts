@@ -19,6 +19,8 @@ describe('a measurement in the reader’s words', () => {
         '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
       ['kpi had too little room to draw anything', '핵심 지표를 그릴 자리가 없었습니다'],
       ['two lines of the quote overlap', '인용의 두 줄이 서로 겹칩니다'],
+      ["2 of this slide's 4 points were already made on slide 3",
+        '이 장의 요점 4개 중 2개를 3번 슬라이드에서 이미 말했습니다'],
       ['meter draws "이관 일정과 담당" 2.92cm wider than the room it reserved',
         '달성률의 "이관 일정과 담당"이 확보한 자리보다 옆으로 2.92cm 넘칩니다'],
       ['figures with no source: 28.5%, 1,200건',
@@ -58,6 +60,7 @@ describe('a measurement in the reader’s words', () => {
       notes: 'no speaker notes: nothing is written down to say over this slide',
       repeat: 'the same point twice: "매출이 늘었다" and "매출 증가"',
       source: 'figures with no source: 28.5%, 1,200건',
+      echo: "2 of this slide's 4 points were already made on slide 3",
     }
     for (const [kind, detail] of Object.entries(measured)) {
       expect(findingDetail(detail).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, ''), kind).not.toMatch(/[a-z]{3,}/)
