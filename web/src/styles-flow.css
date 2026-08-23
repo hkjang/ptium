@@ -257,3 +257,14 @@
 .shared-deck-rail button { display: flex; align-items: center; gap: 8px; white-space: nowrap; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, #dcdce4); background: #fff; cursor: pointer; font-size: 13px; }
 .shared-deck-rail button.active { border-color: var(--brand, #7c3aed); color: var(--brand, #7c3aed); }
 .shared-deck-rail span { color: var(--ink-muted, #6b6b76); font-variant-numeric: tabular-nums; }
+
+/* Links that open a deck for someone with no account here. */
+.share-dialog { display: flex; flex-direction: column; gap: 14px; }
+.share-make { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.share-made { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border-radius: 10px; background: var(--surface-sunken, #f4f4f7); border: 1px solid var(--line, #dcdce4); }
+.share-made strong { font-size: 12px; color: var(--ink-muted, #6b6b76); }
+.share-made code { flex: 1; min-width: 220px; font-size: 12px; word-break: break-all; }
+.share-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.share-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--line, #dcdce4); border-radius: 10px; }
+.share-list li.revoked { opacity: 0.55; }
+.share-list small { display: block; color: var(--ink-muted, #6b6b76); font-size: 12px; }

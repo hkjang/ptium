@@ -222,6 +222,12 @@ func (s *Server) updatePresentation(writer http.ResponseWriter, request *http.Re
 	}
 	storeInput := store.PresentationInput{Title: current.Title, Prompt: current.Prompt, Theme: current.Theme, Language: current.Language,
 		Audience: current.Audience, Tone: current.Tone, SlideCount: current.RequestedSlideCount, TemplateID: current.TemplateID}
+	// A deck stored without the fields an edit is required to carry cannot be
+	// edited at all: every save fails on what the row already held. Decks
+	// imported before those fields were filled are in exactly that state, so
+	// what is missing is filled from the deployment's defaults rather than
+	// rejected.
+	fillMissingFrom(&storeInput, s.defaultPresentationInput(request.Context()))
 	mergePresentationInput(&storeInput, input)
 	if message := validatePresentationEditInput(storeInput); message != "" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", message, nil)
@@ -567,6 +573,26 @@ func validatePresentationInput(input store.PresentationInput, maximumSlides int)
 		return "audience and tone are required"
 	}
 	return ""
+}
+
+// fillMissingFrom completes a deck's required fields from the deployment's
+// defaults, leaving everything the deck already says alone.
+func fillMissingFrom(target *store.PresentationInput, defaults store.PresentationInput) {
+	if strings.TrimSpace(target.Theme) == "" {
+		target.Theme = defaults.Theme
+	}
+	if strings.TrimSpace(target.Language) == "" {
+		target.Language = defaults.Language
+	}
+	if strings.TrimSpace(target.Audience) == "" {
+		target.Audience = defaults.Audience
+	}
+	if strings.TrimSpace(target.Tone) == "" {
+		target.Tone = defaults.Tone
+	}
+	if target.SlideCount < 1 {
+		target.SlideCount = defaults.SlideCount
+	}
 }
 
 func validatePresentationEditInput(input store.PresentationInput) string {

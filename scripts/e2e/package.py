@@ -285,6 +285,13 @@ else:
             failures.append(f"the deck carried in from another tool lost {wanted!r}")
     print(f"   {brought.get('slides')} slides in, table and chart kept")
 
+    # A deck carried in is a deck like any other: it has to be editable. It was
+    # not — the row was stored without the fields an edit is required to carry,
+    # so every save failed on what was already missing.
+    renamed = call("PATCH", f"/presentations/{deck_id}", {"title": f"가져온 덱 {RUN}"})
+    if not renamed or renamed.get("title") != f"가져온 덱 {RUN}":
+        failures.append("a deck carried in from another tool cannot be edited")
+
     # Out and back in again, with the source Ptium hides in the file removed.
     exported = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True)
     stripped_path = os.path.join(os.environ.get("TMPDIR", "/tmp"), f"ptium-stripped-{RUN}.pptx")

@@ -166,10 +166,14 @@ func (s *Server) storeImportedSource(writer http.ResponseWriter, request *http.R
 		technical = []string{}
 	}
 
-	created, err := s.store.CreatePresentation(request.Context(), user.ID, store.PresentationInput{
-		Title: presentation.Title, Prompt: presentation.Prompt, Language: language,
-		SlideCount: len(compiled.Slides), TemplateID: presentation.TemplateID,
-	})
+	// A deck carried in from a file is a deck like any other, and the fields a
+	// deck is required to have are filled from the deployment's defaults. Left
+	// empty — as they were — the row failed validation on every later edit, and
+	// an imported deck could be looked at and never changed.
+	input := s.defaultPresentationInput(request.Context())
+	input.Title, input.Prompt, input.Language = presentation.Title, presentation.Prompt, language
+	input.SlideCount, input.TemplateID = len(compiled.Slides), presentation.TemplateID
+	created, err := s.store.CreatePresentation(request.Context(), user.ID, input)
 	if err != nil {
 		s.internalError(writer, request, "presentation_create_failed", err)
 		return

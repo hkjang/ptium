@@ -268,6 +268,20 @@ export interface Snippet {
   updatedAt: string
 }
 
+/** A link that opens one deck read-only, for someone with no account here. */
+export interface Share {
+  id: string
+  presentationId: string
+  label: string
+  /** Present only in the answer that made it: the token is stored as a digest. */
+  url?: string
+  expiresAt?: string
+  revokedAt?: string
+  lastSeenAt?: string
+  views: number
+  createdAt: string
+}
+
 export interface TemplatePlaceholder {
   slot: string
   kind: string

@@ -9,6 +9,7 @@ import type {
 	PresentationRevision,
   ProfilePreferences,
   ServerError,
+  Share,
   Slide,
   SlideBlock,
   SlideChange,
@@ -678,6 +679,20 @@ function normalizeAdminSettingsPayload(raw: unknown) {
   return { values, configured, unreadable }
 }
 
+function normalizeShare(value: Record<string, unknown>): Share {
+  return {
+    id: String(value.id ?? ''),
+    presentationId: String(value.presentationId ?? value.presentation_id ?? ''),
+    label: String(value.label ?? ''),
+    url: value.url ? String(value.url) : undefined,
+    expiresAt: value.expiresAt ? String(value.expiresAt) : undefined,
+    revokedAt: value.revokedAt ? String(value.revokedAt) : undefined,
+    lastSeenAt: value.lastSeenAt ? String(value.lastSeenAt) : undefined,
+    views: Number(value.views ?? 0),
+    createdAt: String(value.createdAt ?? value.created_at ?? new Date().toISOString()),
+  }
+}
+
 export const api = {
   async readiness() {
     const root = API_BASE.endsWith('/api/v1') ? API_BASE.slice(0, -'/api/v1'.length) : ''
@@ -987,6 +1002,21 @@ export const api = {
 			`/presentations/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/restore`, { method: 'POST' },
 		), ['presentation', 'data']))
 	},
+  /** Links that open this deck for someone with no account here. */
+  async shares(id: string) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/shares`)
+    return unwrapList<Record<string, unknown>>(raw, ['shares', 'items', 'data']).map(normalizeShare)
+  },
+  /** Makes one. The address comes back once and is not stored anywhere it can be read again. */
+  async createShare(id: string, input: { label?: string; days?: number } = {}) {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/shares`, {
+      method: 'POST', body: JSON.stringify(input),
+    })
+    return normalizeShare(unwrapOne<Record<string, unknown>>(raw, ['share', 'data']))
+  },
+  /** Closes one. The deck is untouched. */
+  revokeShare: (id: string, shareId: string) => request<void>(
+    `/presentations/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' }),
   async exportPresentation(id: string, format: 'pptx' | 'pdf' = 'pptx') {
     const headers = new Headers({ Accept: format === 'pptx' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/pdf' })
     const token = session.token(); const secret = session.secret()
