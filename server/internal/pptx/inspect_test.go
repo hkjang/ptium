@@ -604,3 +604,38 @@ func TestANumberWrittenLargeIsReadAsItsAmount(t *testing.T) {
 		t.Error("a number with no scale word was read as a scaled amount")
 	}
 }
+
+// A brief that reports revenue of 1,240억 has not reported 240억. Compared as
+// digit runs it had: "240" sits inside "1240", so a deck that understated the
+// quarter fivefold was never asked about it.
+func TestAFigureInsideAnotherNumberIsNotStatedByTheBrief(t *testing.T) {
+	read := NewBriefFigures("매출 1,240억 원, 영업이익 210억 원, 신규 고객 312곳의 분기 실적을 이사회에 보고")
+	if missing := read.Missing("- 매출 | 240억 원"); len(missing) != 1 {
+		t.Errorf("a figure the brief never states went unreported: %q", missing)
+	}
+	for _, line := range []string{"- 매출 | 1,240억 원", "- 영업이익 | 210억 원", "- 신규 고객 | 312곳"} {
+		if missing := read.Missing(line); len(missing) > 0 {
+			t.Errorf("%q: the brief states this, but it was called invented: %q", line, missing)
+		}
+	}
+}
+
+// One amount can read as two figures. "하루 1만 2천 건" is 12,000, which the
+// brief gave; neither half of it is a number anybody invented.
+func TestAnAmountSplitAcrossTwoFiguresIsStillOneNumber(t *testing.T) {
+	read := NewBriefFigures("창고 3곳에서 하루 12,000건을 사람이 처리하고 있습니다.")
+	if missing := read.Missing("현재 3개 창고에서 하루 1만 2천 건을 처리합니다."); len(missing) > 0 {
+		t.Errorf("the brief's own 12,000 was called invented: %q", missing)
+	}
+	// The same brief has not said anything about doubling.
+	if missing := read.Missing("- 처리 속도 2배 향상 기대"); len(missing) != 1 {
+		t.Errorf("an invented multiplier went unreported: %q", missing)
+	}
+}
+
+func TestMoneyWrittenWithALatinScaleIsTheBriefsMoney(t *testing.T) {
+	read := NewBriefFigures("The new system costs 240,000 USD over three years.")
+	if missing := read.Missing("- Financials | $240k investment over three years"); len(missing) > 0 {
+		t.Errorf("the brief's own 240,000 was called invented: %q", missing)
+	}
+}

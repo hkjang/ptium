@@ -527,18 +527,20 @@ func FiguresNotIn(brief, text string) []string {
 // BriefFigures is what a brief said in numbers, ready to be asked whether a
 // deck's figure came from it.
 type BriefFigures struct {
-	digits  string
+	// stated is each number the brief writes, whole. A deck figure has to be one
+	// of these, not a run of digits found somewhere among them: a brief that
+	// says 매출 1,240억 has not said 240억, and the deck that wrote 240억 has
+	// understated the quarter fivefold. Compared as substrings that passed.
+	stated  map[string]bool
 	numbers []float64
-	// scaled is the brief's amounts as numbers, so a figure written in another
-	// notation can still be recognised as one of them.
-	scaled []float64
 }
 
 // NewBriefFigures reads a brief once, for a deck that will be asked about it
 // many times.
 func NewBriefFigures(brief string) BriefFigures {
-	read := BriefFigures{digits: digitsOnly(strings.ToLower(brief))}
+	read := BriefFigures{stated: map[string]bool{}}
 	for _, match := range leadingNumber.FindAllString(brief, -1) {
+		read.stated[digitsOnly(match)] = true
 		if value, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && value > 0 {
 			read.numbers = append(read.numbers, value)
 		}
@@ -547,7 +549,6 @@ func NewBriefFigures(brief string) BriefFigures {
 	// small: "1억 2천만" and "1.2억" have none in common. Read both as amounts.
 	for _, match := range scaledNumber.FindAllString(brief, -1) {
 		if value, ok := myriadValue(match); ok {
-			read.scaled = append(read.scaled, value)
 			read.numbers = append(read.numbers, value)
 		}
 	}
@@ -556,7 +557,7 @@ func NewBriefFigures(brief string) BriefFigures {
 	// is still a number, in every language the deck is written in.
 	for _, match := range countedInWords.FindAllStringSubmatch(brief, -1) {
 		if value, ok := numberWords[strings.ToLower(match[1])]; ok {
-			read.digits += " " + strconv.Itoa(value)
+			read.stated[strconv.Itoa(value)] = true
 			read.numbers = append(read.numbers, float64(value))
 		}
 	}
@@ -583,16 +584,23 @@ var numberWords = map[string]int{
 // Missing lists the figures in text the brief neither states nor implies.
 func (b BriefFigures) Missing(text string) []string {
 	var missing []string
+	// A number can be written across what reads as two figures — "하루 1만 2천
+	// 건" is one amount, and the brief that said 12,000 said it. Read the whole
+	// runs of the line before judging any part of one.
+	runs := scaledNumber.FindAllString(text, -1)
 	for _, figure := range StatedFigures(text) {
 		figure = strings.TrimSpace(figure)
 		number := digitsOnly(leadingNumber.FindString(figure))
-		if figure == "" || number == "" || strings.Contains(b.digits, number) {
+		if figure == "" || number == "" || b.states(number) {
 			continue
 		}
 		if b.dividesTo(figure, number) {
 			continue
 		}
-		if b.states(figure) {
+		if b.statesAmount(figure) {
+			continue
+		}
+		if b.statesRunAround(figure, runs) {
 			continue
 		}
 		missing = append(missing, figure)
@@ -600,21 +608,45 @@ func (b BriefFigures) Missing(text string) []string {
 	return missing
 }
 
-// states reports whether the brief gives this amount under another notation.
-func (b BriefFigures) states(figure string) bool {
-	value, ok := myriadValue(figure)
-	if !ok {
+// states reports whether the brief writes this number, either as these digits
+// or as the same value written differently — 0.80 against the brief's 0.8.
+func (b BriefFigures) states(number string) bool {
+	if b.stated[number] {
+		return true
+	}
+	value, err := strconv.ParseFloat(number, 64)
+	if err != nil {
 		return false
 	}
-	for _, stated := range b.scaled {
-		if sameAmount(value, stated) {
+	return b.holds(value)
+}
+
+// statesAmount reports whether the brief gives this amount under another
+// notation — 8천만 against a brief that wrote 80,000,000 or 0.8억.
+func (b BriefFigures) statesAmount(figure string) bool {
+	value, ok := myriadValue(figure)
+	return ok && b.holds(value)
+}
+
+// statesRunAround reports whether this figure is part of a longer number the
+// brief does state.
+func (b BriefFigures) statesRunAround(figure string, runs []string) bool {
+	figure = strings.TrimSpace(figure)
+	for _, run := range runs {
+		if !strings.Contains(run, figure) {
+			continue
+		}
+		if value, ok := myriadValue(run); ok && b.holds(value) {
 			return true
 		}
 	}
-	// The brief may have written it in plain digits — 80,000,000 against the
-	// deck's 8천만.
-	for _, match := range leadingNumber.FindAllString(b.digits, -1) {
-		if plain, err := strconv.ParseFloat(digitsOnly(match), 64); err == nil && sameAmount(value, plain) {
+	return false
+}
+
+// holds reports whether any number the brief states is this one.
+func (b BriefFigures) holds(value float64) bool {
+	for _, stated := range b.numbers {
+		if sameAmount(value, stated) {
 			return true
 		}
 	}
@@ -660,8 +692,11 @@ var leadingNumber = regexp.MustCompile(`\d[\d,.]*`)
 var scaledNumber = regexp.MustCompile(`\d[\d,]*(?:\.\d+)?\s*` +
 	`(?:[조억만천백십兆億亿萬万千百十](?:\s*\d[\d,]*(?:\.\d+)?)?\s*)+`)
 
-// myriadScales is what each of those words multiplies by.
+// myriadScales is what each of those words multiplies by. The Latin suffixes
+// are here too: a brief that costs something at 240,000 USD and a deck that
+// writes $240k are the same money.
 var myriadScales = map[rune]float64{
+	'k': 1e3, 'm': 1e6, 'b': 1e9,
 	'십': 10, '백': 100, '천': 1000, '만': 1e4, '억': 1e8, '조': 1e12,
 	'十': 10, '百': 100, '千': 1000, '万': 1e4, '萬': 1e4,
 	'億': 1e8, '亿': 1e8, '兆': 1e12,
@@ -687,7 +722,7 @@ func myriadValue(run string) (float64, bool) {
 		}
 		digits = ""
 	}
-	for _, r := range run {
+	for _, r := range strings.ToLower(run) {
 		switch {
 		case r >= '0' && r <= '9', r == ',', r == '.':
 			digits += string(r)
