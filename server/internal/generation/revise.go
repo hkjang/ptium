@@ -90,6 +90,13 @@ func (g *Generator) ReviseSlide(ctx context.Context, revision Revision) (string,
 	if !strings.Contains(source, "#") {
 		return "", errors.New("the AI provider did not return a slide")
 	}
+	// A rewrite invents citations exactly as readily as a first draft does: asked
+	// to make one slide fit, the model returned it with "!source 내부 시스템 대장"
+	// on the end, from a brief that mentions no such thing. The filter that
+	// guards generation guards this too — nothing that reaches a slide should
+	// pass through a door generation does not watch.
+	source, _, _ = keepAttributedSources(source, revision.Presentation.Prompt+" "+
+		revision.Presentation.Title)
 	// A model asked for one slide sometimes returns the next one too. The first
 	// is the one that was asked for.
 	return strings.TrimSpace(trimSourceSlides(source, 1)), nil

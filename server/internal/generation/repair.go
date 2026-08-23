@@ -82,6 +82,16 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 		proposal := compiled.Slides[0]
 		proposal.ID = result.Slides[position-1].ID
 		proposal.Position = position
+		// A rewrite that deleted something always measures better. The slide that
+		// found this had two columns, and the rewrite came back with one — the
+		// heading of the other simply gone, and the defect count down, so it was
+		// kept. Fewer words are the point of a rewrite; fewer headings and empty
+		// regions are not.
+		if lost := structureLost(result.Slides[position-1], proposal); lost != "" {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("slide %d was left as written: the rewrite %s", position, lost))
+			continue
+		}
 		before := candidate.count
 		after := defectsOnSlide(manifest, presentation, position, proposal)
 		if after >= before {
@@ -112,6 +122,47 @@ type slideDefect struct {
 	// action is what to ask for. A slide crammed with ten points does not need
 	// shorter words, it needs fewer points; a line that overflows its box does.
 	action string
+}
+
+// structureLost names what a rewrite dropped, or "" when it kept the shape of
+// the slide it replaced.
+//
+// Content is counted as structure rather than as words: shortening a line is
+// what a rewrite is for, and merging two into one is allowed, but a heading
+// that no longer exists and a region that is now empty are losses whatever the
+// measurement says about them.
+func structureLost(before, after model.Slide) string {
+	wasHeadings, wasRegions := slideShape(before)
+	nowHeadings, nowRegions := slideShape(after)
+	switch {
+	case nowHeadings < wasHeadings:
+		return fmt.Sprintf("dropped %d of the slide's %d headings", wasHeadings-nowHeadings, wasHeadings)
+	case nowRegions < wasRegions:
+		return fmt.Sprintf("left %d of the slide's %d regions empty", wasRegions-nowRegions, wasRegions)
+	}
+	return ""
+}
+
+// slideShape counts what a slide is made of: the headings it carries and the
+// regions holding anything at all.
+func slideShape(slide model.Slide) (headings, regions int) {
+	content := deck.Decode(slide.Content)
+	for slot, paragraphs := range content.Fields {
+		filled := false
+		for _, paragraph := range paragraphs {
+			if strings.TrimSpace(paragraph.Text) == "" {
+				continue
+			}
+			filled = true
+			if paragraph.Lead && slot != pptx.SlotTitle {
+				headings++
+			}
+		}
+		if filled {
+			regions++
+		}
+	}
+	return headings, regions + len(content.Blocks) + len(content.Images)
 }
 
 // repairable reports whether a finding is worth another draft.
