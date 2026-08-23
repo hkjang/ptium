@@ -24,6 +24,10 @@ type writingRequest struct {
 	// no clock; without it, "the second half" is whichever year the model
 	// remembers.
 	Today string
+	// Registered are the names of the slides this owner has already made and
+	// agreed. The deck is asked to name one rather than write its own version,
+	// and naming it is what lets the registered slide take its place.
+	Registered []string
 }
 
 // deckPlan is the narrative design produced by the first pass.
@@ -167,9 +171,54 @@ Rules for components:
 
 // planSystemPrompt's second pass used to be JSON; the plan itself stays JSON
 // because it is consumed by the writer, not by a person.
+// writeRegistered offers the deck the slides someone already made.
+//
+// The substitution that puts one into a deck matches by title, and a model left
+// to itself titles the company introduction something of its own — so against a
+// real model the slide library almost never fired. Told the names, the deck
+// names one exactly, and the slide that was agreed takes the place of the
+// model's version of it.
+func writeRegistered(builder *strings.Builder, registered []string, brief string) {
+	if len(registered) == 0 {
+		return
+	}
+	builder.WriteString("\nSlides this company has already made and agreed. If the deck needs one,\n" +
+		"write its title exactly as it appears here and leave that slide otherwise\n" +
+		"empty — the agreed slide is put in its place, and anything you write on it\n" +
+		"is thrown away. Do not name one the deck does not need:\n")
+	for _, name := range registered {
+		fmt.Fprintf(builder, "- %s\n", name)
+	}
+	// Naming the names was not enough on its own: asked for a deck about
+	// "회사 소개 471936", the model wrote a slide called "Ptium 기업 개요" and the
+	// agreed slide stayed on the shelf. Where the brief itself names one, it is
+	// not a suggestion.
+	if named := namedInBrief(registered, brief); len(named) > 0 {
+		builder.WriteString("\nThe brief names these by name, so the deck must contain them, each with\n" +
+			"exactly the title written above:\n")
+		for _, name := range named {
+			fmt.Fprintf(builder, "- %s\n", name)
+		}
+	}
+}
+
+// namedInBrief lists the registered slides the author asked for in so many
+// words.
+func namedInBrief(registered []string, brief string) []string {
+	haystack := normalizeForMatch(brief)
+	var named []string
+	for _, name := range registered {
+		if trimmed := normalizeForMatch(name); trimmed != "" && strings.Contains(haystack, trimmed) {
+			named = append(named, name)
+		}
+	}
+	return named
+}
+
 func planUserPrompt(request writingRequest) string {
 	var builder strings.Builder
 	writeBrief(&builder, request)
+	writeRegistered(&builder, request.Registered, request.Presentation.Prompt+" "+request.Presentation.Title)
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))
 	fmt.Fprintf(&builder, "\nDesign exactly %d slides.\n", request.Presentation.RequestedSlideCount)
@@ -185,6 +234,7 @@ func sourceUserPrompt(request writingRequest) string {
 		builder.WriteString(material)
 		builder.WriteString("\n")
 	}
+	writeRegistered(&builder, request.Registered, request.Presentation.Prompt+" "+request.Presentation.Title)
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))
 	if request.Plan != nil {

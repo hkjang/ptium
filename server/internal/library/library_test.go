@@ -75,3 +75,40 @@ func TestARegisteredSlideIsUsedOncePerDeck(t *testing.T) {
 		t.Fatalf("the second slide lost its own text:\n%s", written)
 	}
 }
+
+// A model asked for a deck about "회사 소개 471936" wrote the slide as
+// "회사 소개" — the words without the id — and the agreed slide stayed on the
+// shelf. The stem counts, but only where one slide has it.
+func TestATitleMatchesANameWithoutItsTrailingNumber(t *testing.T) {
+	entries := []Entry{{ID: "a", Name: "회사 소개 471936", Source: "# 회사 소개 471936\n- 임직원 1,240명\n"}}
+	if entry, ok := Match("회사 소개", entries); !ok || entry.ID != "a" {
+		t.Fatal("the slide the deck named was not found")
+	}
+	if _, ok := Match("사업 계획", entries); ok {
+		t.Fatal("a different slide was matched")
+	}
+	// Two versions of the same name stem to the same thing, so neither answers to
+	// the stem alone — a wrong substitution is worse than none.
+	versioned := []Entry{{ID: "a", Name: "매출 2025"}, {ID: "b", Name: "매출 2026"}}
+	if _, ok := Match("매출", versioned); ok {
+		t.Fatal("an ambiguous stem was matched")
+	}
+	if entry, ok := Match("매출 2026", versioned); !ok || entry.ID != "b" {
+		t.Fatal("the exact name stopped matching")
+	}
+}
+
+// The half-the-title rule was counted in bytes. A Hangul syllable is three of
+// them and a digit is one, so "보안 아키텍처 475660" measured in bytes is two
+// thirds id — and a deck that named the slide as "보안 아키텍처 475660의 2026
+// 전략적 중요성" missed the half by a single byte and wrote its own version.
+func TestTheHalfOfATitleIsCountedInCharacters(t *testing.T) {
+	entries := []Entry{{ID: "a", Name: "보안 아키텍처 475660", Source: "# 보안 아키텍처 475660\n- 3계층 분리\n"}}
+	if entry, ok := Match("보안 아키텍처 475660의 2026 전략적 중요성", entries); !ok || entry.ID != "a" {
+		t.Fatal("a title that is mostly the registered name did not match it")
+	}
+	// The rule still holds: a title that is mostly something else does not match.
+	if _, ok := Match("2026년 사업 계획과 보안 아키텍처 475660 검토 및 승인 요청 사항 정리", entries); ok {
+		t.Fatal("a title that only mentions the name in passing was matched")
+	}
+}

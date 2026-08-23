@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
@@ -67,5 +68,38 @@ func TestTheExampleIsInTheDecksLanguage(t *testing.T) {
 	// The rules themselves no longer carry the example.
 	if strings.Contains(sourceSystemPrompt, "전환은 지금") {
 		t.Fatal("the example is still nailed into the rules")
+	}
+}
+
+// The substitution that puts a registered slide into a deck matches by title,
+// and a model left to itself titles the company introduction something of its
+// own — so against a real model the slide library almost never fired. The
+// brief now offers the names.
+func TestTheBriefOffersTheSlidesAlreadyMade(t *testing.T) {
+	request := writingRequest{
+		Presentation: model.Presentation{Title: "사업 계획", Language: "ko", RequestedSlideCount: 6},
+		Template:     Template{Manifest: pptx.Manifest{}},
+		Registered:   []string{"회사 소개", "보안 아키텍처"},
+	}
+	prompt := sourceUserPrompt(request)
+	for _, wanted := range []string{"already made and agreed", "- 회사 소개", "- 보안 아키텍처", "write its title exactly"} {
+		if !strings.Contains(prompt, wanted) {
+			t.Fatalf("the brief does not say %q", wanted)
+		}
+	}
+	// The brief names one of them, so it is not a suggestion.
+	request.Presentation.Prompt = "회사 소개와 2026년 사업 계획을 임원에게 보고"
+	insisted := sourceUserPrompt(request)
+	if !strings.Contains(insisted, "names these by name, so the deck must contain them") {
+		t.Fatalf("the brief names a registered slide and the deck was not told to include it")
+	}
+	if strings.Count(insisted, "- 보안 아키텍처") != 1 {
+		t.Fatal("a slide the brief does not name was insisted on")
+	}
+
+	// A workspace with no library says nothing about one.
+	request.Registered = nil
+	if strings.Contains(sourceUserPrompt(request), "already made and agreed") {
+		t.Fatal("a deck with no library was told about one")
 	}
 }

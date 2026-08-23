@@ -18,6 +18,7 @@ package library
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Entry is one slide someone registered.
@@ -82,25 +83,48 @@ func Substitute(source string, entries []Entry) (string, []Used) {
 // Match finds the registered slide a title names, if one clearly does.
 func Match(title string, entries []Entry) (Entry, bool) {
 	wanted := normalize(title)
-	if len(wanted) < 2 {
+	if utf8.RuneCountInString(wanted) < 2 {
 		return Entry{}, false
+	}
+	// A name's trailing number is a version or an id — "회사 소개 471936" — and a
+	// deck that names the slide writes the words without it. The stem only
+	// counts when one entry has it: two slides called "매출 2025" and "매출 2026"
+	// both stem to "매출", and a wrong substitution is worse than none.
+	stems := map[string]int{}
+	for _, entry := range entries {
+		for _, name := range append([]string{entry.Name}, entry.Aliases...) {
+			if stem := normalize(withoutTrailingNumber(name)); utf8.RuneCountInString(stem) >= 2 && stem != normalize(name) {
+				stems[stem]++
+			}
+		}
 	}
 	best, bestScore := Entry{}, 0
 	for _, entry := range entries {
 		for _, name := range append([]string{entry.Name}, entry.Aliases...) {
 			candidate := normalize(name)
-			if len(candidate) < 2 {
+			if utf8.RuneCountInString(candidate) < 2 {
 				continue
 			}
 			score := 0
 			switch {
 			case candidate == wanted:
 				score = 100
-			case strings.Contains(wanted, candidate) && len(candidate)*2 >= len(wanted):
+			case strings.Contains(wanted, candidate) &&
+				utf8.RuneCountInString(candidate)*2 >= utf8.RuneCountInString(wanted):
 				// "회사 소개" registered, "회사 소개 (2026)" asked for: the same slide,
 				// said at more length. Half the title has to be the name, or "계획"
 				// would match every plan slide in every deck.
+				//
+				// Counted in characters, not bytes. A Hangul syllable is three bytes
+				// and a digit is one, so "보안 아키텍처 475660" measured in bytes is
+				// two thirds id — and the slide the deck named as
+				// "보안 아키텍처 475660의 2026 전략적 중요성" missed the half by a single
+				// byte and was written again from scratch.
 				score = 80
+			default:
+				if stem := normalize(withoutTrailingNumber(name)); stem == wanted && stems[stem] == 1 {
+					score = 60
+				}
 			}
 			if score > bestScore {
 				best, bestScore = entry, score
@@ -108,6 +132,16 @@ func Match(title string, entries []Entry) (Entry, bool) {
 		}
 	}
 	return best, bestScore > 0
+}
+
+// withoutTrailingNumber drops the number a name ends with, and the punctuation
+// holding it on.
+func withoutTrailingNumber(name string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(name), "0123456789")
+	if trimmed == strings.TrimSpace(name) {
+		return name
+	}
+	return strings.TrimRight(trimmed, " -_()[]#·:.v")
 }
 
 // normalize reduces a name to what it says: letters and digits, folded, with

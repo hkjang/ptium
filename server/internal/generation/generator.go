@@ -151,6 +151,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 		return Deck{}, err
 	}
 	request := writingRequest{Presentation: presentation, Profile: profile, Template: template, Today: g.today()}
+	request.Registered = registeredNames(ctx, g.Library, presentation.OwnerID)
 	// A deck that already has slides is being rewritten, not invented. Its own
 	// text is the material, its structure is already decided, and planning a new
 	// narrative for it would throw away the thing being improved.
@@ -266,6 +267,25 @@ func (g *Generator) today() string {
 		now = g.Now
 	}
 	return now().Format("2006-01-02")
+}
+
+// registeredNames lists what this owner has in the slide library, for the brief
+// to offer the model. A long library is trimmed: the point is to remind a deck
+// that the standard slides exist, not to recite the whole shelf.
+func registeredNames(ctx context.Context, read func(context.Context, string) []library.Entry, ownerID string) []string {
+	if read == nil || strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	var names []string
+	for _, entry := range read(ctx, ownerID) {
+		if name := strings.TrimSpace(entry.Name); name != "" {
+			names = append(names, name)
+		}
+		if len(names) >= 20 {
+			break
+		}
+	}
+	return names
 }
 
 // fromLibrary puts the owner's registered slides into a deck that wrote its own
