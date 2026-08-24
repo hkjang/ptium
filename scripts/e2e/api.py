@@ -711,6 +711,33 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # A brief that is mostly numbers earns a slide that draws them. Without a model
 # this deck used to come back as bullet lists: of the decks this workspace has
 # generated, 461 with a chart were written by hand and three by generation.
+# The product's central promise: the template is the design, and a deck that was
+# written into one can be written into another. A deck rebinds each slide to the
+# layout of the same role, and what it draws changes with it.
+print("── a deck moved to another template ──")
+designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=20", expect=200)) or []) if t.get("id")]
+if len(designs) >= 2:
+    moved = data_of(call("POST", "/presentations", {"title": f"디자인 교체 {RUN}", "prompt": "점검",
+                                                    "templateId": designs[0]["id"]}, expect=201)) or {}
+    call("PUT", f"/presentations/{moved.get('id')}/source",
+         {"source": "# 표지입니다\n@cover\n> 부제목\n\n# 본문\n@content\n- 한 줄\n- 두 줄\n"}, expect=200)
+    status, drawn_before = call("GET", f"/presentations/{moved.get('id')}/preview.svg?slide=1&width=600", raw=True, expect=200)
+    call("PATCH", f"/presentations/{moved.get('id')}", {"templateId": designs[1]["id"]}, expect=200)
+    after_state = data_of(call("GET", f"/presentations/{moved.get('id')}", expect=200)) or {}
+    status, drawn_after = call("GET", f"/presentations/{moved.get('id')}/preview.svg?slide=1&width=600", raw=True, expect=200)
+    if after_state.get("templateName") != designs[1].get("name"):
+        failures.append(f"the deck did not move to {designs[1].get('name')}: {after_state.get('templateName')}")
+    if drawn_before == drawn_after:
+        failures.append("a deck moved to another template draws exactly as it did before")
+    moved_measured = data_of(call("GET", f"/presentations/{moved.get('id')}/inspect", expect=200)) or {}
+    if moved_measured.get("defects"):
+        failures.append(f"the deck has {moved_measured.get('defects')} defect(s) in its new design")
+    status, moved_pptx = call("GET", f"/presentations/{moved.get('id')}/export?format=pptx", raw=True, expect=200)
+    if not moved_pptx.startswith(b"PK"):
+        failures.append("a deck in its new design does not export")
+    print(f"   {designs[0].get('name')} → {designs[1].get('name')}: drew differently, {moved_measured.get('defects')} defect(s)")
+    call("DELETE", f"/presentations/{moved.get('id')}", expect=204)
+
 print("── the numbers a brief gives, drawn ──")
 figures = data_of(call("POST", "/presentations", {"title": f"숫자 브리프 {RUN}",
     "prompt": "지역별 처리 건수 보고. 서울 1,200건, 부산 860건, 대구 540건, 광주 410건. "
