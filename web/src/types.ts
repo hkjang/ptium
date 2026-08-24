@@ -214,6 +214,8 @@ export interface Slide {
   /** How a template region's text is set, per slot, where it was changed. */
   styles?: Record<string, SlotStyle>
   speakerNotes?: string
+  /** A slide kept in the deck and out of the talk: an appendix, a backup number. */
+  skipped?: boolean
   imageUrl?: string
   accent?: string
 }

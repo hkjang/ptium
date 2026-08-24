@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, moveSlideTo, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, moveSlideTo, presentIndexOf, slidesToPresent, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -145,5 +145,29 @@ describe('moving a slide by dragging it', () => {
     expect(moveSlideTo(before, 1, 1)).toBe(before)
     expect(moveSlideTo(before, 1, 2)).toBe(before)
     expect(moveSlideTo(before, 9, 0)).toBe(before)
+  })
+})
+
+describe('a slide kept out of the talk', () => {
+  const deck = (skipped: number[]) => ['a', 'b', 'c', 'd'].map((id, index): Slide => ({
+    id, order: index + 1, layout: 'content', title: id, skipped: skipped.includes(index) || undefined,
+  }))
+
+  it('is left out of the show and kept in the deck', () => {
+    const slides = deck([1, 2])
+    expect(slidesToPresent(slides).map((slide) => slide.id)).toEqual(['a', 'd'])
+    expect(slides).toHaveLength(4)
+  })
+
+  // Pressing F5 has to start somewhere, and an empty show is never what it meant.
+  it('still presents when every slide is skipped', () => {
+    expect(slidesToPresent(deck([0, 1, 2, 3]))).toHaveLength(4)
+  })
+
+  it('starts the show at the next slide that is in it', () => {
+    const slides = deck([1, 2])
+    expect(presentIndexOf(slides, 0)).toBe(0)
+    expect(presentIndexOf(slides, 1)).toBe(1) // b is skipped, so the show starts at d
+    expect(presentIndexOf(slides, 3)).toBe(1)
   })
 })

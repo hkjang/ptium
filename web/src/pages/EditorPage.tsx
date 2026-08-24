@@ -2,7 +2,7 @@ import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, Plus, RotateCcw, Trash2, Link2, MonitorPlay, WandSparkles, X, MessageSquareText } from 'lucide-react'
+  Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, Plus, RotateCcw, Trash2, Link2, MonitorPlay, WandSparkles, X, MessageSquareText } from 'lucide-react'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
@@ -23,7 +23,7 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, blockLabel, moveSlideTo, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, blockLabel, moveSlideTo, presentIndexOf, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
@@ -312,6 +312,14 @@ export function EditorPage({ id }: { id: string }) {
     if (railScroll.current !== null) { window.clearInterval(railScroll.current); railScroll.current = null }
   }
   useEffect(() => stopFollowing, [])
+
+  // Keeping a slide out of the talk without taking it out of the deck.
+  const toggleSkipped = (slideId: string) => {
+    markEdited()
+    setSlides((current) => current.map((slide) =>
+      slide.id === slideId ? { ...slide, skipped: !slide.skipped } : slide))
+    setDirty(true)
+  }
 
   const dropSlide = (gap: number) => {
     stopFollowing()
@@ -667,7 +675,11 @@ export function EditorPage({ id }: { id: string }) {
       // outcome by far.
       if (event.key === 'F5' && !control) {
         event.preventDefault()
-        if (slides.length > 0) { (document.activeElement as HTMLElement | null)?.blur?.(); setPresentIndex(activeIndex); setPresenting(true) }
+        if (slides.length > 0) {
+          (document.activeElement as HTMLElement | null)?.blur?.()
+          setPresentIndex(presentIndexOf(slides, activeIndex))
+          setPresenting(true)
+        }
         return
       }
       if (control && !event.altKey && (event.key.toLowerCase() === 'f' || event.key.toLowerCase() === 'h')) {
@@ -1182,7 +1194,7 @@ export function EditorPage({ id }: { id: string }) {
             const drawn = !slide.id.startsWith('new-') && index < savedSlideCount
             return <button
               key={slide.id}
-              className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}${dragging === index ? ' dragging' : ''}${dropAt === index ? ' drop-before' : ''}${dropAt === index + 1 && index === slides.length - 1 ? ' drop-after' : ''}`}
+              className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}${slide.skipped ? ' skipped' : ''}${dragging === index ? ' dragging' : ''}${dropAt === index ? ' drop-before' : ''}${dropAt === index + 1 && index === slides.length - 1 ? ' drop-after' : ''}`}
               draggable
               onClick={() => setActiveId(slide.id)}
               onDragStart={(event) => {
@@ -1224,7 +1236,7 @@ export function EditorPage({ id }: { id: string }) {
             <button className={canvasMode === 'edit' ? 'active' : ''} onClick={() => setCanvasMode('edit')}>편집</button>
             <button className={canvasMode === 'preview' ? 'active' : ''} onClick={() => { if (dirty) void save().catch(() => { /* the preview falls back to the saved state */ }); setCanvasMode('preview') }}>템플릿 미리보기</button>
             <button className={canvasMode === 'source' ? 'active' : ''} onClick={() => void openSource()}><Code2 size={13} /> 코드</button>
-          </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
+          </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className={`icon-button small${active?.skipped ? ' active' : ''}`} onClick={() => { if (active) toggleSkipped(active.id) }} disabled={!active} aria-pressed={Boolean(active?.skipped)} title={active?.skipped ? '발표에서 건너뜁니다. 눌러서 다시 발표에 넣습니다' : '발표할 때 이 슬라이드를 건너뜁니다. 덱과 내려받은 파일에는 그대로 남습니다'} aria-label="발표에서 건너뛰기"><EyeOff size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
           {active ? <div className={`canvas-stage ${canvasMode === 'edit' ? 'detail-mode' : ''}`}>
             {canvasMode === 'edit' ? <FreeformCanvas
               presentationId={id}
@@ -1382,7 +1394,7 @@ export function EditorPage({ id }: { id: string }) {
       {presenting && <PresentationView
         presentationId={id}
         title={presentation.title}
-        slides={slides}
+        slides={slidesToPresent(slides)}
         version={`${railVersion}`}
         startIndex={presentIndex}
         onClose={() => setPresenting(false)}

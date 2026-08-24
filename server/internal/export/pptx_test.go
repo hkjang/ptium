@@ -1,7 +1,10 @@
 package export
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -151,5 +154,51 @@ func TestTheExportedFileCarriesTheDeckAsItStands(t *testing.T) {
 	if got := len(deck.Compile(deck.ParseSource(carried), manifest,
 		deck.CompileOptions{Language: "ko"}).Slides); got != len(presentation.Slides) {
 		t.Fatalf("the file carries %d slides, the deck has %d", got, len(presentation.Slides))
+	}
+}
+
+// A slide kept for the questions afterwards belongs in the file and not in the
+// show. PowerPoint reads show="0" off the slide part, so a deck exported from
+// here walks past the same slides the presenter here does.
+func TestASkippedSlideIsMarkedInTheFile(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 본론\n@content\n- 첫 줄\n\n# 부록\n@content\n!skip\n- 물어보면 보여 줄 표\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	presentation := model.Presentation{Title: "건너뛰기", Language: "ko", Slides: compiled.Slides}
+	file, err := PPTX(presentation, Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := 0
+	for _, entry := range archive.File {
+		if !strings.HasPrefix(entry.Name, "ppt/slides/slide") || !strings.HasSuffix(entry.Name, ".xml") {
+			continue
+		}
+		opened, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(opened)
+		opened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(body), `show="0"`) {
+			marked++
+		}
+	}
+	if marked != 1 {
+		t.Fatalf("%d of the exported slides are marked as skipped, want exactly 1", marked)
 	}
 }

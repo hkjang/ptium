@@ -614,6 +614,7 @@ function normalizeSlide(slide: Record<string, unknown>, index = 0): Slide {
     frames: normalizeFrames(content.frames),
     styles: normalizeStyles(content.styles),
     speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
+    skipped: Boolean(slide.skipped ?? content.skipped) || undefined,
     imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
     accent: String(slide.accent || content.accent || '') || undefined,
   }

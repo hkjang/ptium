@@ -183,6 +183,10 @@ export function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         frames: slide.frames || {},
         styles: slide.styles || {},
         bullets: slideBodyLines(slide),
+        // Kept out of the talk, kept in the deck. The server reads it from the
+        // same place, which is what carries it through a duplicate, a restore
+        // and an export.
+        skipped: slide.skipped || undefined,
         accent: slide.accent,
       },
     }
@@ -239,4 +243,32 @@ export function moveSlideTo(slides: Slide[], from: number, to: number): Slide[] 
   const [moved] = next.splice(from, 1)
   next.splice(landing, 0, moved)
   return next.map((slide, index) => ({ ...slide, order: index + 1 }))
+}
+
+/**
+ * Presenting walks past the slides marked skipped.
+ *
+ * They stay in the deck, in the rail and in the exported file — where
+ * PowerPoint reads the same flag — so this is the only place that leaves them
+ * out. A deck where every slide is skipped still presents: an empty show is
+ * never what the person pressing F5 meant.
+ */
+export function slidesToPresent(slides: Slide[]): Slide[] {
+  const shown = slides.filter((slide) => !slide.skipped)
+  return shown.length > 0 ? shown : slides
+}
+
+/**
+ * Where a slide sits in the show, given where it sits in the deck.
+ *
+ * Presenting from a slide that is skipped starts at the next one that is not,
+ * because there is nowhere else for it to start.
+ */
+export function presentIndexOf(slides: Slide[], deckIndex: number): number {
+  const shown = slidesToPresent(slides)
+  for (let index = deckIndex; index < slides.length; index++) {
+    const at = shown.indexOf(slides[index])
+    if (at !== -1) return at
+  }
+  return Math.max(0, shown.length - 1)
 }

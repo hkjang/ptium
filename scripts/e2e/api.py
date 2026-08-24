@@ -196,6 +196,32 @@ if [f for f in (after.get("findings") or []) if f.get("kind") == "trimmed"]:
     failures.append("carrying the rest onto a second slide did not settle the finding")
 call("DELETE", f"/presentations/{trimmed_deck['id']}", expect=204)
 
+# A slide kept for the questions afterwards is walked past in the talk and is
+# still in the deck and in the file. The flag rides in the slide's content, so
+# what this is really checking is that it survives the four hands it passes
+# through: the source language, the stored slide, the file, and the source
+# written back out.
+skip_deck = data_of(call("POST", "/presentations", {"title": f"건너뛰는 장 {RUN}", "prompt": "부록"}, expect=201))
+call("PUT", f"/presentations/{skip_deck['id']}/source", {"source":
+     "# 요약\n@cover\n> 올해 계획\n\n# 부록: 산출 근거\n@content\n!skip\n- 계산 방법\n"}, expect=200)
+kept = data_of(call("GET", f"/presentations/{skip_deck['id']}", expect=200)) or {}
+marks = [bool((slide.get("content") or {}).get("skipped")) for slide in kept.get("slides") or []]
+if marks != [False, True]:
+    failures.append(f"the skipped slide is not marked in the stored deck: {marks}")
+written = (data_of(call("GET", f"/presentations/{skip_deck['id']}/source", expect=200)) or {}).get("source", "")
+if "!skip" not in written:
+    failures.append("the source written back out lost the skip")
+status, skip_pptx = call("GET", f"/presentations/{skip_deck['id']}/export?format=pptx", raw=True, expect=200)
+try:
+    package = zipfile.ZipFile(io.BytesIO(skip_pptx))
+    hidden = [name for name in package.namelist() if name.startswith("ppt/slides/slide")
+              and b'show="0"' in package.read(name)]
+    if len(hidden) != 1:
+        failures.append(f"the exported file marks {len(hidden)} slides hidden, expected 1")
+except Exception as error:
+    failures.append(f"the exported pptx could not be read: {error}")
+call("DELETE", f"/presentations/{skip_deck['id']}", expect=204)
+
 call("GET", f"/presentations/{deck_id}/preview.svg?slide=1&width=400", raw=True, expect=200)
 status, pptx = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True, expect=200)
 try:

@@ -224,6 +224,7 @@ export function GuidePage() {
             <div><dt><code>-</code></dt><dd>요점. 두 칸 들여쓰면 하위 요점</dd></div>
             <div><dt><code>::지표 … ::</code></dt><dd>컴포넌트. 행은 <code>이름 | 값 | 설명</code></dd></div>
             <div><dt><code>!notes</code></dt><dd>발표자 노트</dd></div>
+            <div><dt><code>!skip</code></dt><dd>발표에서 건너뛰기. 덱과 내려받은 파일에는 남습니다</dd></div>
           </dl>
           <p className="guide-note">전체 문법은 <a href="https://github.com/hkjang/ptium/blob/main/docs/deck-source.md" target="_blank" rel="noreferrer">deck-source 문서</a>에 있습니다.
             코드를 적용하면 슬라이드가 다시 그려지고, 캔버스에서 옮겨 둔 위치는 유지됩니다.</p>

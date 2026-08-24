@@ -46,6 +46,9 @@ type SourceSlide struct {
 	Blocks   []SourceBlock
 	Images   []SourceImage
 	Notes    string
+	// Skipped keeps this slide out of the talk without taking it out of the deck:
+	// an appendix slide, a backup number, the chart somebody always asks for.
+	Skipped bool
 	// BareBullets are the points that were written without a "- " in front of
 	// them. Everything else about them is the same; what it says is that the
 	// author was not writing a list when they wrote that line.
@@ -326,6 +329,15 @@ func ParseSource(source string) Source {
 				} else {
 					warn(line, "!source needs a title: !source 1 | 2026 시장 조사 보고서 | p.42")
 				}
+				continue
+			}
+			// A slide kept for the questions afterwards is still part of the deck
+			// and still part of the file; it is only not part of the talk. Saying
+			// so in the source is what carries it through an export, a duplicate
+			// and a restore — a flag that only lived in the workspace would be
+			// lost by every one of them.
+			if lowered == "skip" || lowered == "건너뛰기" {
+				current.Skipped = true
 				continue
 			}
 			if !strings.HasPrefix(lowered, "note") {

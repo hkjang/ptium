@@ -1037,3 +1037,32 @@ func TestFormatKeepsAColumnHeadingFoundMidBody(t *testing.T) {
 		}
 	}
 }
+
+// A slide kept for the questions afterwards is part of the deck and part of the
+// file; it is only not part of the talk. Saying so in the source is what makes
+// it survive an export, a duplicate and a restore.
+func TestASkippedSlideSurvivesARoundTrip(t *testing.T) {
+	manifest := testManifest()
+	source := "# 본론\n@content\n- 첫 줄\n\n# 부록: 상세 수치\n@content\n!skip\n- 물어보면 보여 줄 표\n"
+	first := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	if len(first.Slides) != 2 {
+		t.Fatalf("compiled %d slides", len(first.Slides))
+	}
+	if Decode(first.Slides[0].Content).Skipped {
+		t.Error("the slide that is part of the talk was marked skipped")
+	}
+	if !Decode(first.Slides[1].Content).Skipped {
+		t.Fatal("the appendix slide was not marked skipped")
+	}
+	formatted := Format(model.Presentation{Slides: first.Slides}, manifest)
+	if !strings.Contains(formatted, "!skip") {
+		t.Fatalf("writing the deck back lost the mark:\n%s", formatted)
+	}
+	second := Compile(ParseSource(formatted), manifest, CompileOptions{Language: "ko"})
+	if !Decode(second.Slides[1].Content).Skipped || Decode(second.Slides[0].Content).Skipped {
+		t.Fatalf("a round trip moved or lost the mark:\n%s", formatted)
+	}
+	if len(second.Warnings) > 0 {
+		t.Fatalf("the directive was not understood: %v", second.Warnings)
+	}
+}

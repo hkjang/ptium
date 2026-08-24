@@ -22,6 +22,7 @@ produces most reliably.
 - 예상 절감 | 18%
 ::                            the component ends
 !notes 예산 질문이 나오면…      speaker notes, continuing over following lines
+!skip                          keep this slide out of the talk (!건너뛰기 도 같습니다)
 // a comment
 ```
 
@@ -199,6 +200,18 @@ silently skipped.
 | `GET /api/v1/assets` | list your images |
 | `GET /api/v1/assets/{id}` | the image's bytes |
 | `DELETE /api/v1/assets/{id}` | remove it |
+
+### Slides that are not in the talk
+
+`!skip` on a slide keeps it out of the talk and in the deck: the appendix, the
+backup number, the chart somebody always asks for. Presenting walks past it, the
+rail draws it dimmed, and the exported file marks it the way PowerPoint marks its
+own hidden slides — so the same deck opened in PowerPoint skips the same slides.
+`!건너뛰기` is the same directive.
+
+In the workspace it is the eye button beside 복제 and 삭제. Nothing is deleted:
+the slide is still exported, still measured, and still there when the question
+comes.
 
 ## Compiling
 

@@ -95,6 +95,10 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 				}
 			}
 		}
+		// A slide kept out of the talk says so, or the next export forgets it.
+		if content.Skipped {
+			builder.WriteString("!skip\n")
+		}
 		// Where the slide's figures came from, written back the way it was
 		// written in: a round trip that dropped the evidence would be a slow
 		// deletion of the one thing a reader asks about.

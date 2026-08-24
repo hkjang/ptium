@@ -292,6 +292,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			content.Sources = content.Sources[:MaxSlideSources]
 		}
 		notes := strings.TrimSpace(slide.Notes)
+		content.Skipped = slide.Skipped
 		result.Slides = append(result.Slides, model.Slide{
 			Position:     index + 1,
 			Title:        truncate(title, 200),

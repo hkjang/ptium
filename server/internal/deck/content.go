@@ -41,11 +41,15 @@ type Content struct {
 	Frames map[string]SlotFrame `json:"frames,omitempty"`
 	// Styles changes how a region's text is set on this slide: its size, colour,
 	// weight and alignment. A slot with no entry keeps the template's own type.
-	Styles  map[string]pptx.Style `json:"styles,omitempty"`
-	Bullets []string              `json:"bullets,omitempty"`
-	Body    string                `json:"body,omitempty"`
-	Accent  string                `json:"accent,omitempty"`
-	Notes   string                `json:"notes,omitempty"`
+	Styles map[string]pptx.Style `json:"styles,omitempty"`
+	// Skipped is a slide the presenter walks past. It stays in the deck, in the
+	// file and in the exported pptx — where PowerPoint reads the same flag — and
+	// only presenting and the presenter's own screen leave it out.
+	Skipped bool     `json:"skipped,omitempty"`
+	Bullets []string `json:"bullets,omitempty"`
+	Body    string   `json:"body,omitempty"`
+	Accent  string   `json:"accent,omitempty"`
+	Notes   string   `json:"notes,omitempty"`
 	// Sources are where this slide's figures came from. They travel with the
 	// slide rather than in a table of their own, so duplicating a deck, restoring
 	// a version or exporting a file carries the evidence with the claim.
@@ -558,6 +562,9 @@ func BuildWithImages(presentation model.Presentation, manifest pptx.Manifest, au
 		rendered.Number = index + 1
 		rendered.HideNumber = layout.Role == pptx.RoleTitle
 		content := Decode(slide.Content)
+		// A slide the presenter walks past is still written to the file, marked
+		// the way PowerPoint marks its own hidden slides.
+		rendered.Skipped = content.Skipped
 		// A region someone dragged on the canvas moves for this slide only; the
 		// layout it came from is untouched, so every other slide keeps the design.
 		rendered.Frames = slotFramesInEMU(content.Frames, slideWidth, slideHeight)

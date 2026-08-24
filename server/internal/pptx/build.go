@@ -52,6 +52,10 @@ type Slide struct {
 	// styling, so a deck looks like its template until someone decides otherwise.
 	Styles map[string]Style `json:"styles,omitempty"`
 	Notes  string           `json:"notes,omitempty"`
+	// Skipped is a slide that stays in the file and out of the talk. PowerPoint
+	// reads the same flag off the slide part, so a deck exported from here walks
+	// past it too.
+	Skipped bool `json:"skipped,omitempty"`
 	// Sources are where the slide's figures came from. They are printed at the
 	// end of the speaker notes, which is where a presenter looks when someone
 	// asks — and where PowerPoint keeps them without touching the slide.
@@ -658,7 +662,13 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		freeform.WriteString(element.drawingML(shapeID))
 		shapeID++
 	}
-	return xmlDeclaration + `<p:sld ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
+	// show="0" is how the format says "not part of the show". Written only when
+	// it is true: the attribute's absence is the default in every reader.
+	shown := ""
+	if slide.Skipped {
+		shown = ` show="0"`
+	}
+	return xmlDeclaration + `<p:sld ` + presentationNamespaces + shown + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		shapes.String() + components.String() + freeform.String() +
 		sourceNoteXML(shapeID, slideSourceNote(layout, slide, language), language) +
 		slideNumberXML(shapeID+1, layout, slide, language) +
