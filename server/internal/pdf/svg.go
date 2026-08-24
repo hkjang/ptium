@@ -48,12 +48,18 @@ type svgPainter struct {
 	link string
 }
 
-type gradient struct{ from, to string }
+// A wash across a shape. The ends are fractions of the shape's own box, which
+// is how SVG states them by default and how the drawing writes them.
+type gradient struct {
+	from, to       string
+	x1, y1, x2, y2 Point
+}
 
 func (p *svgPainter) collectGradients(drawing string) {
 	decoder := xml.NewDecoder(strings.NewReader(drawing))
 	id := ""
 	var stops []string
+	var ends [4]Point
 	for {
 		token, err := decoder.Token()
 		if err != nil {
@@ -64,6 +70,8 @@ func (p *svgPainter) collectGradients(drawing string) {
 			switch element.Name.Local {
 			case "linearGradient":
 				id, stops = attribute(element, "id"), nil
+				ends = [4]Point{number32(attribute(element, "x1")), number32(attribute(element, "y1")),
+					number32(attribute(element, "x2")), number32(attribute(element, "y2"))}
 			case "stop":
 				if id != "" {
 					stops = append(stops, attribute(element, "stop-color"))
@@ -71,7 +79,8 @@ func (p *svgPainter) collectGradients(drawing string) {
 			}
 		case xml.EndElement:
 			if element.Name.Local == "linearGradient" && id != "" && len(stops) > 0 {
-				p.gradients[id] = gradient{from: stops[0], to: stops[len(stops)-1]}
+				p.gradients[id] = gradient{from: stops[0], to: stops[len(stops)-1],
+					x1: ends[0], y1: ends[1], x2: ends[2], y2: ends[3]}
 				id = ""
 			}
 		}
@@ -104,23 +113,32 @@ func (p *svgPainter) element(decoder *xml.Decoder, start xml.StartElement) error
 }
 
 func (p *svgPainter) rect(start xml.StartElement) {
+	x, y := number32(attribute(start, "x")), number32(attribute(start, "y"))
+	width, height := number32(attribute(start, "width")), number32(attribute(start, "height"))
+	if wash, ok := p.wash(start); ok {
+		p.page.RectShaded(x, y, width, height, wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
+		return
+	}
 	fill := p.fill(start)
 	if fill == "" {
 		return
 	}
-	p.page.Rect(number32(attribute(start, "x")), number32(attribute(start, "y")),
-		number32(attribute(start, "width")), number32(attribute(start, "height")), fill)
+	p.page.Rect(x, y, width, height, fill)
 }
 
 func (p *svgPainter) ellipse(start xml.StartElement) {
-	fill := p.fill(start)
-	if fill == "" {
-		return
-	}
 	cx, cy := number32(attribute(start, "cx")), number32(attribute(start, "cy"))
 	rx, ry := number32(attribute(start, "rx")), number32(attribute(start, "ry"))
 	if radius := number32(attribute(start, "r")); radius > 0 {
 		rx, ry = radius, radius
+	}
+	if wash, ok := p.wash(start); ok {
+		p.page.EllipseShaded(cx, cy, rx, ry, wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
+		return
+	}
+	fill := p.fill(start)
+	if fill == "" {
+		return
 	}
 	p.page.Ellipse(cx, cy, rx, ry, fill)
 }
@@ -287,18 +305,26 @@ func (p *svgPainter) draw(line textRun, text string) {
 	}
 }
 
-// fill is a shape's colour, resolving a gradient to the colour it starts from:
-// a PDF can hold a gradient, and a slide's decoration reads the same either
-// way, so the simpler file wins.
+// wash is the gradient a shape is filled with, if it is filled with one.
+func (p *svgPainter) wash(start xml.StartElement) (gradient, bool) {
+	id, ok := strings.CutPrefix(attribute(start, "fill"), "url(#")
+	if !ok {
+		return gradient{}, false
+	}
+	found, ok := p.gradients[strings.TrimSuffix(id, ")")]
+	if !ok {
+		return gradient{}, false
+	}
+	found.from = strings.TrimPrefix(found.from, "#")
+	found.to = strings.TrimPrefix(found.to, "#")
+	return found, true
+}
+
+// fill is a shape's flat colour, or nothing where the shape is not filled with
+// one.
 func (p *svgPainter) fill(start xml.StartElement) string {
 	fill := attribute(start, "fill")
-	if fill == "" || fill == "none" {
-		return ""
-	}
-	if id, ok := strings.CutPrefix(fill, "url(#"); ok {
-		if found, ok := p.gradients[strings.TrimSuffix(id, ")")]; ok {
-			return strings.TrimPrefix(found.from, "#")
-		}
+	if fill == "" || fill == "none" || strings.HasPrefix(fill, "url(#") {
 		return ""
 	}
 	return strings.TrimPrefix(fill, "#")

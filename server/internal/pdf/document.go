@@ -22,6 +22,7 @@ type Document struct {
 	used          map[uint16]rune
 	pages         []*Page
 	images        []*imageXObject
+	shadings      []shading
 }
 
 // New starts a document of the given page size, drawn in the given font.
@@ -37,6 +38,10 @@ type Page struct {
 	document *Document
 	content  bytes.Buffer
 	links    []link
+	// What this page draws with, so its resources name what it uses and not
+	// what every other page happens to use.
+	images   []string
+	shadings []string
 }
 
 type link struct {
@@ -161,6 +166,7 @@ func (p *Page) Image(x, y, width, height Point, image *Image) {
 		data: image.Data, colorSpace: image.ColorSpace, filter: image.Filter, bits: image.Bits,
 		softMask: image.Alpha}
 	p.document.images = append(p.document.images, object)
+	p.images = append(p.images, name)
 	fmt.Fprintf(&p.content, "q %s 0 0 %s %s %s cm /%s Do Q\n",
 		number(width), number(height), number(x), number(p.flip(y+height)), name)
 }
@@ -221,10 +227,17 @@ func (p *Page) Ellipse(cx, cy, rx, ry Point, color string) {
 	if rx <= 0 || ry <= 0 {
 		return
 	}
-	const kappa = 0.5523
-	y := p.flip(cy)
 	red, green, blue := rgb(color)
 	fmt.Fprintf(&p.content, "%s %s %s rg\n", number(red), number(green), number(blue))
+	p.ellipsePath(cx, cy, rx, ry)
+	p.content.WriteString("f\n")
+}
+
+// ellipsePath walks the four bezier arcs every renderer draws an ellipse with —
+// a PDF has no ellipse of its own.
+func (p *Page) ellipsePath(cx, cy, rx, ry Point) {
+	const kappa = 0.5523
+	y := p.flip(cy)
 	fmt.Fprintf(&p.content, "%s %s m\n", number(cx-rx), number(y))
 	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
 		number(cx-rx), number(y+ry*kappa), number(cx-rx*kappa), number(y+ry), number(cx), number(y+ry))
@@ -232,7 +245,7 @@ func (p *Page) Ellipse(cx, cy, rx, ry Point, color string) {
 		number(cx+rx*kappa), number(y+ry), number(cx+rx), number(y+ry*kappa), number(cx+rx), number(y))
 	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
 		number(cx+rx), number(y-ry*kappa), number(cx+rx*kappa), number(y-ry), number(cx), number(y-ry))
-	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\nf\n",
+	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
 		number(cx-rx*kappa), number(y-ry), number(cx-rx), number(y-ry*kappa), number(cx-rx), number(y))
 }
 
@@ -267,3 +280,41 @@ func (p *Page) Polyline(points []Position, color string, width Point) {
 
 // Pages is how many pages the document holds.
 func (d *Document) Pages() int { return len(d.pages) }
+
+// shading is a wash across one shape, kept until the file is written because a
+// PDF states it as a resource of the page rather than inside the drawing.
+type shading struct {
+	name           string
+	from, to       string
+	x1, y1, x2, y2 Point
+}
+
+// RectShaded fills a rectangle with a wash. The ends are fractions of the
+// rectangle's own box, the way the drawing states them.
+func (p *Page) RectShaded(x, y, width, height Point, from, to string, x1, y1, x2, y2 Point) {
+	if width <= 0 || height <= 0 {
+		return
+	}
+	name := p.shade(from, to, x+x1*width, y+y1*height, x+x2*width, y+y2*height)
+	fmt.Fprintf(&p.content, "q %s %s %s %s re W n /%s sh Q\n",
+		number(x), number(p.flip(y+height)), number(width), number(height), name)
+}
+
+// EllipseShaded fills an ellipse with a wash.
+func (p *Page) EllipseShaded(cx, cy, rx, ry Point, from, to string, x1, y1, x2, y2 Point) {
+	if rx <= 0 || ry <= 0 {
+		return
+	}
+	name := p.shade(from, to, cx-rx+x1*rx*2, cy-ry+y1*ry*2, cx-rx+x2*rx*2, cy-ry+y2*ry*2)
+	p.content.WriteString("q\n")
+	p.ellipsePath(cx, cy, rx, ry)
+	fmt.Fprintf(&p.content, "W n /%s sh Q\n", name)
+}
+
+func (p *Page) shade(from, to string, x1, y1, x2, y2 Point) string {
+	name := fmt.Sprintf("Sh%d", len(p.document.shadings)+1)
+	p.document.shadings = append(p.document.shadings, shading{name: name, from: from, to: to,
+		x1: x1, y1: p.flip(y1), x2: x2, y2: p.flip(y2)})
+	p.shadings = append(p.shadings, name)
+	return name
+}

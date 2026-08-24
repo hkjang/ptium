@@ -320,6 +320,9 @@ except Exception as error:
     failures.append(f"the exported pptx could not be read: {error}")
 # The deck on paper: one page per slide, at the deck's own size, with the words
 # where the screen puts them and the links still live.
+# Which of this deployment's templates paints a wash, if any.
+wash_template = next((t.get("id") for t in (data_of(call("GET", "/templates?limit=50", expect=200)) or [])
+                      if "Wash" in (t.get("name") or "")), "")
 status, pdf_bytes = call("GET", f"/presentations/{deck_id}/export?format=pdf", raw=True, expect=200)
 if not pdf_bytes.startswith(b"%PDF-") or not pdf_bytes.rstrip().endswith(b"%%EOF"):
     failures.append("the PDF export is not a PDF")
@@ -332,6 +335,17 @@ else:
         failures.append("the PDF does not carry the font its text is set in")
     if "/ToUnicode" not in body:
         failures.append("the PDF's text cannot be copied out as words")
+    # A template whose background is a wash prints as one: resolving it to a
+    # flat colour would be a page that disagrees with every other drawing of the
+    # same slide.
+    wash = data_of(call("POST", "/presentations", {"title": f"워시 {RUN}", "prompt": "점검",
+                                                   "templateId": wash_template}, expect=201)) if wash_template else None
+    if wash:
+        call("PUT", f"/presentations/{wash['id']}/source", {"source": "# 표지입니다\n@cover\n> 부제목\n"}, expect=200)
+        status, washed = call("GET", f"/presentations/{wash['id']}/export?format=pdf", raw=True, expect=200)
+        if b"/ShadingType 2" not in washed:
+            failures.append("a wash on the screen printed as a flat colour")
+        call("DELETE", f"/presentations/{wash['id']}", expect=204)
     print(f"   pdf {len(pdf_bytes):,} bytes, {pages} pages")
 status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
                            note="a format nothing can write must be refused with a reason")

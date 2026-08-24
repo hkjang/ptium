@@ -46,6 +46,18 @@ func (d *Document) Bytes() []byte {
 		imageObjects[image.name] = stream(dictionary, image.data)
 	}
 
+	shadingObjects := make(map[string]int, len(d.shadings))
+	for _, wash := range d.shadings {
+		fromRed, fromGreen, fromBlue := rgb(wash.from)
+		toRed, toGreen, toBlue := rgb(wash.to)
+		shadingObjects[wash.name] = object(fmt.Sprintf(
+			"<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [%s %s %s %s] /Extend [true true] "+
+				"/Function << /FunctionType 2 /Domain [0 1] /C0 [%s %s %s] /C1 [%s %s %s] /N 1 >> >>",
+			number(wash.x1), number(wash.y1), number(wash.x2), number(wash.y2),
+			number(fromRed), number(fromGreen), number(fromBlue),
+			number(toRed), number(toGreen), number(toBlue)))
+	}
+
 	// The page tree is written after its pages, so each page can name it: the
 	// number is known before anything is written because it is allocated here.
 	pagesObject := len(offsets) + len(d.pages)*2 + d.annotationCount()
@@ -60,13 +72,22 @@ func (d *Document) Bytes() []byte {
 			}
 			annotations = " /Annots [" + strings.Join(ids, " ") + "]"
 		}
+		// A page names what it draws with. Listing every picture in the deck on
+		// every page is not wrong, and it is not what the page is.
 		resources := fmt.Sprintf("<< /Font << /%s %d 0 R >>", d.fontName, fontObject)
-		if len(imageObjects) > 0 {
+		if len(page.images) > 0 {
 			var xobjects []string
-			for name, id := range imageObjects {
-				xobjects = append(xobjects, fmt.Sprintf("/%s %d 0 R", name, id))
+			for _, name := range page.images {
+				xobjects = append(xobjects, fmt.Sprintf("/%s %d 0 R", name, imageObjects[name]))
 			}
 			resources += " /XObject << " + strings.Join(xobjects, " ") + " >>"
+		}
+		if len(page.shadings) > 0 {
+			var washes []string
+			for _, name := range page.shadings {
+				washes = append(washes, fmt.Sprintf("/%s %d 0 R", name, shadingObjects[name]))
+			}
+			resources += " /Shading << " + strings.Join(washes, " ") + " >>"
 		}
 		resources += " >>"
 		pageObjects = append(pageObjects, object(fmt.Sprintf(

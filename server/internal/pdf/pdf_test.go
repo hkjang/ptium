@@ -96,3 +96,63 @@ func TestWhatWasDrawnIsWhatIsDescribed(t *testing.T) {
 
 func itoa(value int) string { return strconv.Itoa(value) }
 func hex4(value int) string { return fmt.Sprintf("<%04X>", value) }
+
+// A wash on the screen is a wash on paper. Resolving it to one of its colours
+// would be a page that disagrees with every other drawing of the same slide.
+func TestAWashIsDrawnAsOne(t *testing.T) {
+	font, err := BuiltinFont()
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := New(960, 540, "워시", font)
+	page := document.AddPage()
+	drawing := `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540">` +
+		`<rect x="0" y="0" width="960" height="540" fill="url(#g1)"/>` +
+		`<rect x="40" y="40" width="80" height="6" fill="#2563EB"/>` +
+		`<defs><linearGradient id="g1" x1="0.000" y1="1.000" x2="1.000" y2="0.000">` +
+		`<stop offset="0.000" stop-color="#8C5CF6"/><stop offset="1.000" stop-color="#4C2FA8"/>` +
+		`</linearGradient></defs></svg>`
+	if err := DrawSVG(page, drawing); err != nil {
+		t.Fatal(err)
+	}
+	out := string(document.Bytes())
+	if !strings.Contains(out, "/ShadingType 2") || !strings.Contains(out, "/Shading <<") {
+		t.Fatalf("the wash was not drawn as a wash: %s", out[:min(400, len(out))])
+	}
+	// Both ends of it, and the direction the drawing gave.
+	for _, wanted := range []string{"/C0 [0.549 0.361 0.965]", "/C1 [0.298 0.184 0.659]", "/Coords [0.000 0.000 960.000 540.000]"} {
+		if !strings.Contains(out, wanted) {
+			t.Errorf("the wash does not carry %s", wanted)
+		}
+	}
+	// The drawing itself, before it is compressed into the file.
+	if !strings.Contains(page.content.String(), "re W n /Sh1 sh") {
+		t.Errorf("the wash is not held to the shape it fills: %s", page.content.String())
+	}
+}
+
+// A page states what it draws with. Listing every picture in the deck on every
+// page is not wrong, and it is not what the page is.
+func TestAPageNamesOnlyWhatItDraws(t *testing.T) {
+	font, err := BuiltinFont()
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := New(960, 540, "자원", font)
+	first := document.AddPage()
+	first.Text(10, 20, 12, "000000", "그림 없는 장", false, false)
+	second := document.AddPage()
+	second.Image(0, 0, 100, 100, &Image{Width: 2, Height: 2, Data: deflate([]byte{
+		255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255}), ColorSpace: "DeviceRGB", Filter: "FlateDecode", Bits: 8})
+	out := string(document.Bytes())
+	pages := strings.SplitAfter(out, "/Type /Page ")
+	if len(pages) < 3 {
+		t.Fatalf("expected two pages, got %d", len(pages)-1)
+	}
+	if strings.Contains(pages[1][:min(300, len(pages[1]))], "/XObject") {
+		t.Error("a page with nothing on it lists a picture")
+	}
+	if !strings.Contains(pages[2][:min(300, len(pages[2]))], "/XObject") {
+		t.Error("the page that draws the picture does not list it")
+	}
+}
