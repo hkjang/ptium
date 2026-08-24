@@ -202,7 +202,7 @@ func fitOneLine(text string, size, width int) string {
 // sourceNoteXML draws the line as an ordinary text box rather than a
 // placeholder: it belongs to this slide, not to the design, and nobody editing
 // the template should find an empty "sources" box waiting on every layout.
-func sourceNoteXML(shapeID int, note *sourceNote, language string) string {
+func sourceNoteXML(shapeID int, note *sourceNote, language string, links *linkTable) string {
 	if note == nil {
 		return ""
 	}
@@ -218,13 +218,15 @@ func sourceNoteXML(shapeID int, note *sourceNote, language string) string {
 	}
 	properties += `</a:rPr>`
 	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="Source Note"` +
-		` descr="` + escapeAttribute(note.Text) + `"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
+		` descr="` + escapeAttribute(PlainText(note.Text)) + `"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
 		`<p:spPr><a:xfrm><a:off x="` + strconv.Itoa(note.X) + `" y="` + strconv.Itoa(note.Y) + `"/>` +
 		`<a:ext cx="` + strconv.Itoa(note.Width) + `" cy="` + strconv.Itoa(note.Height) + `"/></a:xfrm>` +
 		`<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>` +
 		`<p:txBody><a:bodyPr lIns="` + strconv.Itoa(note.Inset) + `" tIns="0" rIns="0" bIns="0" anchor="ctr" wrap="none"/><a:lstStyle/>` +
-		`<a:p><a:pPr algn="l"><a:buNone/></a:pPr><a:r>` + properties +
-		`<a:t>` + escapeText(note.Text) + `</a:t></a:r>` +
+		// The line is on the slide, so a link written in it is one of the slide's:
+		// "출처: [분기 보고서](https://…)" draws the words and clicks through, the
+		// same as any other line of the deck.
+		`<a:p><a:pPr algn="l"><a:buNone/></a:pPr>` + runsXML(note.Text, properties, links) +
 		`<a:endParaRPr lang="` + escapeAttribute(language) + `"/></a:p></p:txBody></p:sp>`
 }
 
@@ -239,6 +241,14 @@ func previewSourceNote(note *sourceNote, theme Theme, scale float64) string {
 	}
 	drawn := float64(note.FontSize) / 100 * (float64(EMUPerPoint) * scale)
 	y := float64(note.Y)*scale + float64(note.Height)*scale/2 + drawn*0.35
+	// The exported line draws its links; the picture of it says the same, or the
+	// two disagree about a line that is on the same slide.
+	linkColor := theme.Color("hlink")
+	if linkColor == "" {
+		linkColor = colour
+	}
+	runs := SplitRuns(note.Text)
 	return fmt.Sprintf(`<text x="%.1f" y="%.1f" text-anchor="start" font-size="%.1f" fill="#%s"%s>%s</text>`,
-		float64(note.X+note.Inset)*scale, y, drawn, colour, fontAttribute(note.Font), escapeText(note.Text))
+		float64(note.X+note.Inset)*scale, y, drawn, colour, fontAttribute(note.Font),
+		markedUpLine(PlainText(note.Text), runs, linkColor))
 }

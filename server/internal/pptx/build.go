@@ -326,8 +326,9 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		chartParts := addSlideCharts(pkg, slidePart, &chartIndex, charts)
 		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts, links))
 		if notesPart != "" {
-			pkg.SetText(notesPart, notesSlideXML(notesWithSources(slide, language), language))
-			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart))
+			notesMarkup, notesLinks := notesSlideXML(notesWithSources(slide, language), language)
+			pkg.SetText(notesPart, notesMarkup)
+			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart, notesLinks))
 		}
 		slideRelIDs = append(slideRelIDs, fmt.Sprintf("rId%d", nextRelationshipID))
 		nextRelationshipID++
@@ -672,7 +673,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design,
 	}
 	return xmlDeclaration + `<p:sld ` + presentationNamespaces + shown + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		shapes.String() + components.String() + freeform.String() +
-		sourceNoteXML(shapeID, slideSourceNote(layout, slide, language), language) +
+		sourceNoteXML(shapeID, slideSourceNote(layout, slide, language), language, links) +
 		slideNumberXML(shapeID+1, layout, slide, language) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`, charts, links.links
 }
@@ -925,6 +926,13 @@ func paragraphsXML(paragraphs []Paragraph, language string) string {
 	return styledParagraphsXML(paragraphs, language, Placeholder{}, Style{}, nil)
 }
 
+// paragraphsWithLinksXML is paragraphsXML for a part that can carry links of
+// its own: the notes, whose relationships are the notes part's, not the
+// slide's.
+func paragraphsWithLinksXML(paragraphs []Paragraph, language string, links *linkTable) string {
+	return styledParagraphsXML(paragraphs, language, Placeholder{}, Style{}, links)
+}
+
 // runsXML draws one paragraph as the runs it is made of: one run for text with
 // no link in it, and a run of its own for each link.
 //
@@ -1127,10 +1135,19 @@ func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []p
 	return relationshipsDocument(relationships)
 }
 
-func notesRelationshipsXML(notesPart, notesMasterPart, slidePart string) string {
-	return relationshipsDocument(
-		`<Relationship Id="rId1" Type="` + relationshipNamespace + `/notesMaster" Target="` + escapeAttribute(relativePath(notesPart, notesMasterPart)) + `"/>` +
-			`<Relationship Id="rId2" Type="` + relationshipNamespace + `/slide" Target="` + escapeAttribute(relativePath(notesPart, slidePart)) + `"/>`)
+func notesRelationshipsXML(notesPart, notesMasterPart, slidePart string, links []slideLink) string {
+	relationships := `<Relationship Id="rId1" Type="` + relationshipNamespace + `/notesMaster" Target="` + escapeAttribute(relativePath(notesPart, notesMasterPart)) + `"/>` +
+		`<Relationship Id="rId2" Type="` + relationshipNamespace + `/slide" Target="` + escapeAttribute(relativePath(notesPart, slidePart)) + `"/>`
+	for _, link := range links {
+		if link.Slide > 0 {
+			relationships += `<Relationship Id="` + link.ID + `" Type="` + relationshipNamespace +
+				`/slide" Target="` + escapeAttribute(relativePath(notesPart, fmt.Sprintf("ppt/slides/slide%d.xml", link.Slide))) + `"/>`
+			continue
+		}
+		relationships += `<Relationship Id="` + link.ID + `" Type="` + relationshipNamespace +
+			`/hyperlink" Target="` + escapeAttribute(link.Target) + `" TargetMode="External"/>`
+	}
+	return relationshipsDocument(relationships)
 }
 
 func presentationRelationshipsXML(pkg *Package, slideRelIDs []string, notesMasterRelID, notesMasterPart,
@@ -1431,16 +1448,20 @@ func notesWithSources(slide Slide, language string) string {
 	return strings.Join(lines, "\n")
 }
 
-func notesSlideXML(notes, language string) string {
+// notesSlideXML writes the speaker's own page, and says which links it carries:
+// a link written in the notes is a link a presenter clicks while presenting from
+// PowerPoint, and the address has to survive the trip to be one.
+func notesSlideXML(notes, language string) (string, []slideLink) {
 	var paragraphs []Paragraph
 	for _, line := range strings.Split(strings.ReplaceAll(notes, "\r\n", "\n"), "\n") {
 		paragraphs = append(paragraphs, Paragraph{Text: line})
 	}
+	links := &linkTable{}
 	return xmlDeclaration + `<p:notes ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		`<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>` +
 		`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>` +
-		`<p:txBody><a:bodyPr/><a:lstStyle/>` + paragraphsXML(paragraphs, language) + `</p:txBody></p:sp>` +
-		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`
+		`<p:txBody><a:bodyPr/><a:lstStyle/>` + paragraphsWithLinksXML(paragraphs, language, links) + `</p:txBody></p:sp>` +
+		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`, links.links
 }
 
 func minimalTheme(theme Theme) string {

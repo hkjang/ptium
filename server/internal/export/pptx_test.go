@@ -328,3 +328,57 @@ func TestAMarkedWordReachesTheFileOnce(t *testing.T) {
 		t.Errorf("the marks did not reach the file: %s", slide)
 	}
 }
+
+// A link in the speaker notes is one the presenter clicks while presenting from
+// PowerPoint. Splitting the line into runs without somewhere to put the
+// relationship would draw the words and drop the address — the one place the
+// address was written down, gone.
+func TestALinkInTheNotesKeepsItsAddress(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 안내\n@content\n- 요점\n!notes 근거는 [분기 보고서](https://reports.example.com/q3)에 있습니다\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	file, err := PPTX(model.Presentation{Title: "노트 링크", Language: "ko", Slides: compiled.Slides},
+		Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := map[string]string{}
+	for _, entry := range archive.File {
+		opened, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(opened)
+		opened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts[entry.Name] = string(body)
+	}
+	notes, rels := parts["ppt/notesSlides/notesSlide1.xml"], parts["ppt/notesSlides/_rels/notesSlide1.xml.rels"]
+	if notes == "" {
+		t.Fatalf("the deck has no notes part: %v", len(parts))
+	}
+	if !strings.Contains(notes, "<a:t>분기 보고서</a:t>") || strings.Contains(notes, "](") {
+		t.Errorf("the notes do not draw the words: %s", notes)
+	}
+	if !strings.Contains(rels, `Target="https://reports.example.com/q3" TargetMode="External"`) {
+		t.Errorf("the address is not in the notes' relationships: %s", rels)
+	}
+	for _, id := range []string{"rIdL1"} {
+		if strings.Count(notes, `r:id="`+id+`"`) != 1 || strings.Count(rels, `Id="`+id+`"`) != 1 {
+			t.Errorf("%s does not appear on both sides: %s / %s", id, notes, rels)
+		}
+	}
+}

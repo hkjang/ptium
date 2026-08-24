@@ -262,6 +262,25 @@ call("PUT", f"/presentations/{link_deck['id']}/source", {"source":
 measured = data_of(call("GET", f"/presentations/{link_deck['id']}/inspect", expect=200)) or {}
 if not [f for f in (measured.get("findings") or []) if f.get("kind") == "link"]:
     failures.append("a link the deck cannot follow is not reported")
+# A link written in the speaker notes has to keep its address: the notes are
+# where the presenter wrote it down, and a link that draws its words and loses
+# where it points is worse than no link at all.
+notes_deck = data_of(call("POST", "/presentations", {"title": f"노트 링크 {RUN}", "prompt": "안내"}, expect=201))
+call("PUT", f"/presentations/{notes_deck['id']}/source", {"source":
+     "# 안내\n@content\n- 요점\n!notes 근거는 [분기 보고서](https://reports.example.com/q3)에 있습니다\n"}, expect=200)
+status, notes_pptx = call("GET", f"/presentations/{notes_deck['id']}/export?format=pptx", raw=True, expect=200)
+try:
+    package = zipfile.ZipFile(io.BytesIO(notes_pptx))
+    notes = package.read("ppt/notesSlides/notesSlide1.xml").decode("utf-8")
+    notes_rels = package.read("ppt/notesSlides/_rels/notesSlide1.xml.rels").decode("utf-8")
+    if "분기 보고서" not in notes or "](" in notes:
+        failures.append("the notes do not draw the words of the link")
+    if "https://reports.example.com/q3" not in notes_rels:
+        failures.append("the notes lost the address the link points at")
+except Exception as error:
+    failures.append(f"the exported notes could not be read: {error}")
+call("DELETE", f"/presentations/{notes_deck['id']}", expect=204)
+
 call("DELETE", f"/presentations/{link_deck['id']}", expect=204)
 
 # A word marked inside a line: the file carries the weight, the preview shows

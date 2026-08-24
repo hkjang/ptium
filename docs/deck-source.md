@@ -224,6 +224,10 @@ text box — draws the words and links them. Three targets are followed:
 | `[담당자](mailto:plan@example.com)` | a new mail to that address |
 | `[부록](#7)` | the deck's seventh slide |
 
+A link works in every line the deck writes out: a bullet, a lead, a title, a
+canvas text box, the `!source` line drawn on the slide, and the speaker notes —
+where the presenter is the one who clicks it.
+
 Everything else is left as the characters somebody typed, so a footnote written
 `[1](주석 3)` stays a footnote. That silence would be the wrong one for an author
 who meant a link, so the measurement reports it: `링크로 인식되지 않음`, with the
