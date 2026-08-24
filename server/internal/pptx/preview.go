@@ -404,7 +404,20 @@ func markedUpLine(line string, runs []TextRun, linkColor string) string {
 			continue
 		}
 		builder.WriteString(escapeText(rest[:at]))
-		builder.WriteString(`<tspan` + runStyleSVG(run, linkColor) + `>` + escapeText(run.Text) + `</tspan>`)
+		marked := `<tspan` + runStyleSVG(run, linkColor) + `>` + escapeText(run.Text) + `</tspan>`
+		if run.Href != "" {
+			// A drawing of a slide is a picture in most of the places it is used
+			// and a page in one: presenting draws this markup itself, so the link
+			// is a link there. A jump names the slide it goes to, which is the
+			// only part the page around it has to understand.
+			target := run.Href
+			if number, ok := SlideJump(target); ok {
+				target = fmt.Sprintf("#slide-%d", number)
+			}
+			marked = `<a href="` + escapeAttribute(target) + `" target="_blank" rel="noreferrer noopener">` +
+				marked + `</a>`
+		}
+		builder.WriteString(marked)
 		rest = rest[at+len(run.Text):]
 	}
 	builder.WriteString(escapeText(rest))

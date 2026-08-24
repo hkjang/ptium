@@ -158,8 +158,13 @@ func TestThePreviewDrawsTheWordsAsALink(t *testing.T) {
 		SlotBody:  {{Text: "자세한 내용은 [안내 문서](https://docs.example.com/a)를 보십시오"}},
 	}}
 	svg := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 900})
-	if strings.Contains(svg, "https://docs.example.com/a") || strings.Contains(svg, "](") {
+	// The address belongs in the link, never in the words: drawn text is what
+	// sits between the tags.
+	if strings.Contains(svg, ">https://docs.example.com/a") || strings.Contains(svg, "](") {
 		t.Errorf("the preview draws the markup: %s", svg)
+	}
+	if !strings.Contains(svg, `<a href="https://docs.example.com/a" target="_blank"`) {
+		t.Errorf("the drawing is not a link where the page can follow it: %s", svg)
 	}
 	if !strings.Contains(svg, "안내 문서") || !strings.Contains(svg, "자세한 내용은") {
 		t.Errorf("the preview lost the words: %s", svg)
@@ -288,5 +293,33 @@ func TestAMarkOnTopOfWhatTheRegionAlreadySays(t *testing.T) {
 	// Nothing marked, nothing changed: the common line is written as it was.
 	if plain := runsXML("보통", properties, nil); plain != `<a:r>`+properties+`<a:t>보통</a:t></a:r>` {
 		t.Errorf("an unmarked line was rewritten: %s", plain)
+	}
+}
+
+// A jump names the slide it goes to. The page around the drawing is what takes
+// somebody there, so what the drawing has to say is which slide.
+func TestThePreviewNamesTheSlideAJumpGoesTo(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	slide := Slide{LayoutID: layout.ID, Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "근거"}},
+		SlotBody:  {{Text: "근거는 [부록](#7)에 있습니다"}},
+	}}
+	svg := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 900})
+	if !strings.Contains(svg, `<a href="#slide-7"`) {
+		t.Errorf("the jump does not name its slide: %s", svg)
+	}
+	if strings.Contains(svg, ">#7<") || strings.Contains(svg, "](") {
+		t.Errorf("the preview draws the markup: %s", svg)
 	}
 }

@@ -231,8 +231,12 @@ call("PUT", f"/presentations/{link_deck['id']}/source", {"source":
      "- 근거는 [부록](#2)에 있습니다\n\n# 부록\n@content\n- 산출 근거\n"}, expect=200)
 status, preview = call("GET", f"/presentations/{link_deck['id']}/preview.svg?slide=1&width=900", raw=True, expect=200)
 drawn = preview.decode("utf-8", "replace")
-if "docs.example.com" in drawn or "](" in drawn:
+# The address belongs in the link the drawing carries, never in the words it
+# draws: what is drawn is what sits between the tags.
+if ">https://docs.example.com/plan" in drawn or "](" in drawn:
     failures.append("the preview draws the link markup")
+if '<a href="https://docs.example.com/plan"' not in drawn:
+    failures.append("the drawing does not carry the link where presenting can follow it")
 if "안내 문서" not in drawn or "text-decoration=\"underline\"" not in drawn:
     failures.append("the preview does not draw the link as one")
 status, linked_pptx = call("GET", f"/presentations/{link_deck['id']}/export?format=pptx", raw=True, expect=200)
@@ -248,6 +252,10 @@ try:
         failures.append("the jump to another slide is not a relationship of the exported slide")
 except Exception as error:
     failures.append(f"the exported pptx could not be read: {error}")
+# Presenting draws the slide itself so a link on it can be clicked; a jump has
+# to name the slide it goes to.
+if '<a href="#slide-2"' not in drawn:
+    failures.append("the drawing does not name the slide a jump goes to")
 # A target the deck will not follow draws as its own markup, and is reported.
 call("PUT", f"/presentations/{link_deck['id']}/source", {"source":
      "# 안내\n@content\n- [문서](www.example.com)를 보십시오\n"}, expect=200)

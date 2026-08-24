@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, Grid3X3, Keyboard, LoaderCircle, Maximize2, Minimize2, MonitorPlay, Pointer, Square, X,
 } from 'lucide-react'
@@ -90,6 +91,39 @@ export function useSlideImages(presentationId: string, total: number, version: s
   return images
 }
 
+/**
+ * The same drawings as useSlideImages, as markup the page draws itself.
+ *
+ * Presenting is the one place a slide is not a picture: a link on a slide has
+ * to be clickable, and nothing inside an <img> ever is. The markup comes from
+ * the workspace's own server, drawn by the same code that draws every preview.
+ */
+export function useSlideMarkup(presentationId: string, total: number, version: string | number, index: number, width = 1600) {
+  const [markup, setMarkup] = useState<Record<number, string>>({})
+  const cache = useRef<Map<number, string>>(new Map())
+  useEffect(() => {
+    cache.current = new Map()
+    setMarkup({})
+  }, [presentationId, version, width])
+  useEffect(() => {
+    let active = true
+    const wanted = [index, index + 1, index - 1, index + 2].filter((position) => position >= 0 && position < total)
+    void (async () => {
+      for (const position of wanted) {
+        if (cache.current.has(position)) continue
+        try {
+          const drawn = await api.slidePreviewMarkup(presentationId, position + 1, width)
+          if (!active) return
+          cache.current.set(position, drawn)
+          setMarkup((current) => ({ ...current, [position]: drawn }))
+        } catch { /* a slide that will not draw shows as an empty frame */ }
+      }
+    })()
+    return () => { active = false }
+  }, [presentationId, total, index, version, width])
+  return markup
+}
+
 function elapsed(from: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - from) / 1000))
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -119,7 +153,7 @@ export function PresentationView({ presentationId, title, slides, version, start
   const stage = useRef<HTMLDivElement>(null)
   const idleTimer = useRef(0)
   const total = slides.length
-  const images = useSlideImages(presentationId, total, version, index)
+  const drawings = useSlideMarkup(presentationId, total, version, index)
   const thumbs = useSlideImages(presentationId, overview ? total : 0, version, 0, 320)
 
   const step = useCallback((delta: number) => {
@@ -225,7 +259,25 @@ export function PresentationView({ presentationId, title, slides, version, start
     return () => window.removeEventListener('keydown', onKey)
   }, [step, total, overview, jump, onClose, post, toggleFullscreen, openPresenter, shortcuts])
 
-  const image = images[index]
+  const drawn = drawings[index]
+
+  /**
+   * A click on a link in the slide. A jump goes to the slide it names; anything
+   * else opens where it points, and neither one advances the deck — clicking a
+   * link and losing your place is not what anybody meant by it.
+   */
+  const followLink = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const link = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+    if (!link) return
+    event.stopPropagation()
+    const href = link.getAttribute('href') || ''
+    const jumped = href.match(/^#slide-(\d+)$/)
+    if (!jumped) return
+    event.preventDefault()
+    const wanted = Number(jumped[1]) - 1
+    setIndex(Math.min(total - 1, Math.max(0, wanted)))
+    setBlackout('none')
+  }
   return <div
     ref={stage}
     className={`presentation-mode ${idle && !overview ? 'idle' : ''} ${blackout !== 'none' ? `blackout-${blackout}` : ''}`}
@@ -235,8 +287,14 @@ export function PresentationView({ presentationId, title, slides, version, start
     onClick={(event) => { if (!overview && event.target === event.currentTarget) step(1) }}
   >
     <div className="present-stage" onClick={() => !overview && step(1)}>
-      {image
-        ? <img src={image} alt={`${index + 1}번 슬라이드`} />
+      {drawn
+        ? <div
+            className="present-slide"
+            role="img"
+            aria-label={`${index + 1}번 슬라이드`}
+            onClickCapture={followLink}
+            dangerouslySetInnerHTML={{ __html: drawn }}
+          />
         : <span className="present-loading"><LoaderCircle className="spin" size={26} /></span>}
     </div>
 

@@ -329,6 +329,19 @@ async function fetchImage(path: string) {
   return URL.createObjectURL(await response.blob())
 }
 
+async function fetchText(path: string) {
+  const headers = new Headers({ Accept: 'image/svg+xml' })
+  const token = session.token(); const secret = session.secret()
+  if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+  if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+  const response = await fetch(`${API_BASE}${path}`, { headers, credentials: 'include' })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new ApiError(errorMessage(body, `미리보기를 불러오지 못했습니다 (${response.status})`), response.status)
+  }
+  return response.text()
+}
+
 export function authLoginUrl(config?: AuthConfig, returnTo = '/dashboard') {
   if (config?.loginUrl) return config.loginUrl
   return `${API_BASE}/auth/login?return_to=${encodeURIComponent(returnTo)}`
@@ -1193,6 +1206,17 @@ export const api = {
       : `/templates/${encodeURIComponent(id)}/preview.svg`
     return fetchImage(`${path}?width=${width}`)
   },
+  /**
+   * The same drawing as slidePreview, as markup rather than as a picture.
+   *
+   * Presenting draws it itself, because a picture of a slide cannot be clicked
+   * and a slide with a link on it has to be.
+   */
+  async slidePreviewMarkup(presentationId: string, slide: number, width = 1600) {
+    const query = new URLSearchParams({ slide: String(slide), width: String(width), freeform: 'true' })
+    return fetchText(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?${query.toString()}`)
+  },
+
   slidePreview(presentationId: string, slide: number, width = 960, includeFreeform = true,
     options: { exclude?: string[]; only?: string } = {}) {
     const query = new URLSearchParams({ slide: String(slide), width: String(width), freeform: String(includeFreeform) })

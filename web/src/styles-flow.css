@@ -194,6 +194,9 @@
 .presentation-mode.idle .present-controls{opacity:0;pointer-events:none}
 .present-stage{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
 .present-stage img{max-width:100vw;max-height:100vh;width:auto;height:auto;object-fit:contain}
+.present-slide{display:flex;align-items:center;justify-content:center;width:100vw;height:100vh}
+.present-slide svg{max-width:100vw;max-height:100vh;width:auto;height:auto}
+.present-slide a{cursor:pointer}
 .presentation-mode.blackout-black .present-stage,.presentation-mode.blackout-white .present-stage{visibility:hidden}
 .presentation-mode.blackout-white{background:#fff}
 .present-loading{color:#666}

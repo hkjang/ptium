@@ -232,7 +232,8 @@ target it refused. A literal bracket is written `\[`.
 The exported pptx carries the link as PowerPoint's own, which is why the
 downloaded file opens the address when somebody clicks it — in PowerPoint, in
 Keynote, in Google Slides after an import. In the workspace the preview draws it
-underlined, in the template's hyperlink colour.
+underlined, in the template's hyperlink colour, and presenting can follow it:
+a link opens where it points, and a jump goes to the slide it names.
 
 ### Slides that are not in the talk
 
