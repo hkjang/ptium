@@ -174,7 +174,10 @@ type Presentation struct {
 	// RewriteInstruction is what the author asked for the last time they sent
 	// this deck back to be rewritten, in their own words. It is read by the
 	// worker, which picks the deck up minutes after the asking.
-	RewriteInstruction  string `json:"rewriteInstruction,omitempty"`
+	RewriteInstruction string `json:"rewriteInstruction,omitempty"`
+	// GenerationStage is the pass a generation is in right now — planning,
+	// writing, fitting, notes — for the screen that waits on it.
+	GenerationStage     string `json:"generationStage,omitempty"`
 	Theme               string `json:"theme"`
 	Language            string `json:"language"`
 	Audience            string `json:"audience"`

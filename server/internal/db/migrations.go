@@ -277,6 +277,10 @@ var migrations = []string{
 	// lives on the deck because the rewrite is queued: the words have to survive
 	// the wait between asking and the worker picking it up.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS rewrite_instruction text NOT NULL DEFAULT ''`,
+	// Where a generation has got to. A deck takes a minute or three to write on a
+	// self-hosted model, and until now the screen said "생성하고 있어요" for all of
+	// it — the same words at five seconds and at three minutes.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_stage text NOT NULL DEFAULT ''`,
 }
 
 var defaultSettings = map[string]struct {

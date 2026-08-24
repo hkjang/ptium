@@ -4351,7 +4351,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.12.2
+            service.version: 1.12.3
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -4403,6 +4403,13 @@ components:
         templateName:
           type: string
           description: Read-only display name of the selected template.
+        generationStage:
+          type: string
+          description: >
+            Which pass a generation is in — `planning`, `writing`, `binding`,
+            `fitting`, `notes` — for a screen that waits on it. Empty once the
+            deck is finished.
+          example: writing
         generationNotes:
           type: array
           readOnly: true

@@ -162,6 +162,10 @@ func main() {
 		}
 		return deck.ContentImage{AssetID: asset.ID, Name: asset.Name}, true
 	}
+	// Which pass a deck is in, for the screen that waits on it.
+	generator.Reached = func(ctx context.Context, presentationID, stage string) {
+		dataStore.SetGenerationStage(ctx, presentationID, stage)
+	}
 	generator.Used = func(ctx context.Context, ownerID, snippetID string) {
 		dataStore.MarkSnippetUsed(ctx, snippetID, ownerID)
 	}

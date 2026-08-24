@@ -55,6 +55,8 @@ export interface Presentation {
   errorMessage?: string
   /** What generation did differently from what was asked, in the deck's language. */
   generationNotes?: string[]
+  /** Which pass a generation is in: planning · writing · fitting · notes · binding. */
+  generationStage?: string
 }
 
 /** What happened to one slide between two versions of a deck. */

@@ -42,7 +42,8 @@ func presentationListColumns(prefix string) string {
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
 		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
 		prefix + `version,` + prefix + `deleted_at,` +
-		`COALESCE(` + prefix + `rewrite_instruction,'')`
+		`COALESCE(` + prefix + `rewrite_instruction,''),` +
+		`COALESCE(` + prefix + `generation_stage,'')`
 }
 
 // presentationColumns builds the projection used by every presentation query.
@@ -59,7 +60,8 @@ func presentationColumns(prefix string) string {
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
 		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
 		prefix + `version,` + prefix + `deleted_at,` +
-		`COALESCE(` + prefix + `rewrite_instruction,'')`
+		`COALESCE(` + prefix + `rewrite_instruction,''),` +
+		`COALESCE(` + prefix + `generation_stage,'')`
 }
 
 func (s *Store) CreatePresentation(ctx context.Context, ownerID string, in PresentationInput) (model.Presentation, error) {
@@ -512,6 +514,14 @@ func (s *Store) QueueGeneration(ctx context.Context, id, ownerID string, admin b
 	return s.QueueGenerationWith(ctx, id, ownerID, admin, maximumSlides, "")
 }
 
+// SetGenerationStage records which pass a generation is in, so the screen that
+// waits can say more than "생성하고 있어요". It is written outside any
+// transaction and read by a poll: a stage that arrives late is a screen a second
+// behind, which is what a stage is for.
+func (s *Store) SetGenerationStage(ctx context.Context, id, stage string) {
+	_, _ = s.Pool.Exec(ctx, `UPDATE presentations SET generation_stage=$2 WHERE id=$1`, id, stage)
+}
+
 // QueueGenerationWith queues a deck with what the author asked for in their own
 // words, which the worker reads when it picks the deck up. A rewrite that
 // forgets the instruction between the click and the queue is a rewrite of
@@ -521,7 +531,7 @@ func (s *Store) QueueGenerationWith(ctx context.Context, id, ownerID string, adm
 	if maximumSlides < 1 || maximumSlides > 50 {
 		maximumSlides = 50
 	}
-	query := `UPDATE presentations SET status='queued',error_message='',generation_started_at=NULL,generation_ended_at=NULL,rewrite_instruction=$3,version=version+1,updated_at=now() WHERE id=$1 AND requested_slide_count<=$2 AND deleted_at IS NULL`
+	query := `UPDATE presentations SET status='queued',error_message='',generation_started_at=NULL,generation_ended_at=NULL,generation_stage='',rewrite_instruction=$3,version=version+1,updated_at=now() WHERE id=$1 AND requested_slide_count<=$2 AND deleted_at IS NULL`
 	args := []any{id, maximumSlides, strings.TrimSpace(instruction)}
 	if !admin {
 		query += ` AND owner_id=$4`
@@ -607,7 +617,7 @@ func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.
 		recorded = []byte(`[]`)
 	}
 	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,source=$3,
-		generation_notes=$4,error_message='',generation_ended_at=now(),version=version+1,updated_at=now()
+		generation_notes=$4,error_message='',generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now()
 		WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, outline, source, recorded)
 	if err != nil {
 		return err
@@ -681,5 +691,5 @@ func presentationScan(p *model.Presentation) []any {
 	return []any{&p.ID, &p.OwnerID, &p.Title, &p.Prompt, &p.Status, &p.Theme, &p.Language, &p.Audience, &p.Tone,
 		&p.RequestedSlideCount, &p.Outline, &p.ErrorMessage, &p.CreatedAt, &p.UpdatedAt,
 		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.Source, &p.TemplateName,
-		&p.GenerationNotes, &p.Version, &p.DeletedAt, &p.RewriteInstruction}
+		&p.GenerationNotes, &p.Version, &p.DeletedAt, &p.RewriteInstruction, &p.GenerationStage}
 }

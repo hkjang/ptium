@@ -58,7 +58,11 @@ type Generator struct {
 	// Without it a deck can name a picture and not carry one: the source says
 	// ::image 현장 자동화 and the slide is drawn without it.
 	ResolveImage func(ctx context.Context, ownerID, reference string) (deck.ContentImage, bool)
-	Used         func(ctx context.Context, ownerID, snippetID string)
+	// Reached says which pass a generation is in. A self-hosted model takes a
+	// minute or three to write a deck, and a screen that says the same sentence
+	// for all of it cannot be told from one that has stopped.
+	Reached func(ctx context.Context, presentationID, stage string)
+	Used    func(ctx context.Context, ownerID, snippetID string)
 	// Now is what day it is, for the brief. A model has no clock, and a brief
 	// that says "하반기" without a year makes it guess one — a deck written this
 	// week came back titled 2024. Injected so a test can hold the date still.
@@ -187,6 +191,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "generation.outline_pass", &outlinePass)
 	planNote := ""
 	if outlinePass && presentation.RequestedSlideCount > 2 {
+		g.reached(ctx, presentation.ID, StagePlanning)
 		plan, err := g.plan(ctx, endpoint, modelName, apiKey, request)
 		if err != nil {
 			// The plan is an aid, not a requirement. Whatever went wrong in this
@@ -203,10 +208,12 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 			request.Plan = plan
 		}
 	}
+	g.reached(ctx, presentation.ID, StageWriting)
 	written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)
 	if err != nil {
 		return g.withoutTheModel(ctx, presentation, profile, template, err)
 	}
+	g.reached(ctx, presentation.ID, StageBinding)
 	result := g.fromLibrary(ctx, presentation, profile, template, written)
 	if planNote != "" {
 		result.Warnings = append(result.Warnings, "the narrative pass was skipped: "+planNote)
@@ -348,6 +355,26 @@ func pictureEntries(ctx context.Context, read func(context.Context, string) []st
 // a deck pays for, and a model handed two hundred of them is being asked to
 // browse rather than to write.
 const maximumOfferedPictures = 24
+
+// The passes a deck goes through, in the order it goes through them. The names
+// are keys rather than sentences: the workspace writes them in the reader's
+// language, and a stage stored as prose would be stored in whichever language
+// the deployment was speaking when it ran.
+const (
+	StagePlanning = "planning"
+	StageWriting  = "writing"
+	StageFitting  = "fitting"
+	StageNotes    = "notes"
+	StageBinding  = "binding"
+)
+
+// reached records a pass, if anybody is listening.
+func (g *Generator) reached(ctx context.Context, presentationID, stage string) {
+	if g.Reached == nil || strings.TrimSpace(presentationID) == "" {
+		return
+	}
+	g.Reached(ctx, presentationID, stage)
+}
 
 // pictureNames is what this account can illustrate a deck with.
 //
@@ -659,9 +686,11 @@ func (g *Generator) finishDeck(ctx context.Context, request writingRequest, resu
 	// The deck is measured against the template before it is handed over, and the
 	// slides that do not fit are sent back to the model with the measurement.
 	if g.repairs > 0 {
+		g.reached(ctx, request.Presentation.ID, StageFitting)
 		result = g.repairDeck(ctx, request, result, writing)
 		// A slide can fit its region perfectly and still have nothing written to
 		// say over it, which no measurement of the drawing will ever catch.
+		g.reached(ctx, request.Presentation.ID, StageNotes)
 		result = g.writeMissingNotes(ctx, request, result, writing/2)
 	}
 	// A figure the brief never gave cannot be cut out of the sentence it sits in,
