@@ -1,5 +1,6 @@
 """The flows that change something: generating, editing text, applying source,
 saving a slide, uploading a template, restoring from the bin, admin settings."""
+import atexit
 import os, sys, json, time, urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -7,6 +8,26 @@ BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/")
 SECRET = os.environ.get("PTIUM_DEV_SECRET", "devsecret-devsecret-devsecret-devsecret")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
 failures = []
+
+
+# A sweep that stops early has still found what it found. When a page never
+# appears and playwright raises, the operator used to see a traceback and
+# nothing else — the thirteen routes that had already rendered nothing went
+# with it. The tally is printed however the run ends.
+def stopped_early(kind, error, trace):
+    failures.append(f"the sweep stopped early: {kind.__name__}: {error}".replace("\n", " ")[:300])
+    sys.__excepthook__(kind, error, trace)
+
+
+def report():
+    print()
+    print(f"{len(failures)} failures")
+    for failure in failures:
+        print(" \u2717 " + failure)
+
+
+sys.excepthook = stopped_early
+atexit.register(report)
 
 def api(path, method="GET", body=None):
     data = json.dumps(body).encode() if body is not None else None
@@ -180,8 +201,4 @@ with sync_playwright() as play:
 
     browser.close()
 
-print()
-print(f"{len(failures)} failures")
-for failure in failures:
-    print(" ✗ " + failure)
 sys.exit(1 if failures else 0)
