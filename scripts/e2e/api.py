@@ -3,7 +3,7 @@
 Every check states what it expects. A failure prints the request, the status and
 the body, so the next step is reading code rather than reproducing.
 """
-import json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time
+import json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time, re
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 RUN = str(int(time.time()))[-6:]  # each run works on its own names
@@ -707,6 +707,38 @@ if not any(p["id"] == copy["id"] for p in trashed):
 call("POST", f"/presentations/{copy['id']}/restore", {}, expect=200)
 call("DELETE", f"/presentations/{copy['id']}", expect=204)
 call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 404])
+
+# A brief that is mostly numbers earns a slide that draws them. Without a model
+# this deck used to come back as bullet lists: of the decks this workspace has
+# generated, 461 with a chart were written by hand and three by generation.
+print("── the numbers a brief gives, drawn ──")
+figures = data_of(call("POST", "/presentations", {"title": f"숫자 브리프 {RUN}",
+    "prompt": "지역별 처리 건수 보고. 서울 1,200건, 부산 860건, 대구 540건, 광주 410건. "
+              "채널 비중은 직판 46%, 대리점 33%, 온라인 21%.",
+    "requestedSlideCount": 8, "language": "ko"}, expect=201)) or {}
+call("POST", f"/presentations/{figures.get('id')}/generate", {}, expect=[200, 202])
+for _ in range(90):
+    time.sleep(2)
+    drawn_state = data_of(call("GET", f"/presentations/{figures.get('id')}", expect=200)) or {}
+    if drawn_state.get("status") in ("completed", "failed"):
+        break
+drawn_source = (data_of(call("GET", f"/presentations/{figures.get('id')}/source", expect=200)) or {}).get("source", "")
+kinds = re.findall(r"^::(\w+)", drawn_source, re.M)
+print("   components:", kinds)
+if not [kind for kind in kinds if kind in ("columns", "bars", "share", "line", "meter")]:
+    failures.append(f"a brief of nothing but numbers drew no chart: {kinds}")
+# What a component row is named. Prose may quote the brief; a bar may not — its
+# label is all a reader gets.
+component_rows = [line for line in drawn_source.split("\n") if line.startswith("- ") and " | " in line]
+for row in component_rows:
+    label = row[2:].split(" | ", 1)[0]
+    if label.startswith("보고.") or label.startswith("비중은") or re.search(r"[0-9]", label):
+        failures.append(f"a component row is named by the words around the number: {row!r}")
+        break
+measured_figures = data_of(call("GET", f"/presentations/{figures.get('id')}/inspect", expect=200)) or {}
+if measured_figures.get("defects"):
+    failures.append(f"the deck that draws its figures has {measured_figures.get('defects')} defect(s)")
+call("DELETE", f"/presentations/{figures.get('id')}", expect=204)
 
 print("── generation without an AI provider (the air-gapped path) ──")
 draft = data_of(call("POST", "/presentations", {

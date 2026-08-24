@@ -121,6 +121,10 @@ var figurePattern = regexp.MustCompile(`(?i)(\d[\d,.]*)\s*(%|퍼센트|억원|�
 	`people|users?|customers?|accounts?|systems?|teams?|sites?|stores?|cases?|` +
 	`percentage points?|pp|x)\b?`)
 
+// maximumBriefFigures bounds what one brief's numbers can fill: a deck states
+// the figures it argues from, and a brief with forty of them is a spreadsheet.
+const maximumBriefFigures = 8
+
 // topicSplitter breaks a subject into the things it names. Korean conjunctions
 // and list punctuation both appear constantly.
 // A topic never spans a full stop: two sentences are two thoughts, and joining
@@ -134,7 +138,16 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	if period := periodPattern.FindString(prompt); strings.TrimSpace(period) != "" {
 		outline.Period = strings.Join(strings.Fields(period), " ")
 	}
-	for _, match := range figurePattern.FindAllStringSubmatch(prompt, 8) {
+	// Every figure the brief states, then the first few that are figures. The
+	// cap used to be applied to the matches, and a year matches: a brief that
+	// says "2023년 820억, 2024년 910억, 2025년 1,040억" spent four of its eight on
+	// years that are thrown away one line below, so the percentages after them
+	// were never read at all — not into a chart, not into a kpi row, and not
+	// into the check that asks which numbers the brief never gave.
+	for _, match := range figurePattern.FindAllStringSubmatch(prompt, -1) {
+		if len(outline.Figures) >= maximumBriefFigures {
+			break
+		}
 		value := strings.TrimSpace(match[1] + match[2])
 		// A year is a timeframe, not a figure, and the period already carries it.
 		if outline.Period != "" && strings.Contains(outline.Period, match[1]) {
@@ -419,10 +432,32 @@ func headingName(name string) string {
 	trimmed := strings.TrimSpace(name)
 	if prefix := periodPattern.FindString(trimmed); prefix != "" && strings.HasPrefix(trimmed, prefix) {
 		if rest := strings.TrimSpace(trimmed[len(prefix):]); utf8.RuneCountInString(rest) >= 4 {
-			return rest
+			trimmed = rest
 		}
 	}
-	return trimmed
+	return withoutTrailingFigure(trimmed)
+}
+
+// withoutTrailingFigure drops a measurement from the end of a heading.
+//
+// A brief that says "채널 비중은 직판 46%, 대리점 33%" gives its first clause as a
+// subject, and the subject came out as the title of three slides — "채널 비중은
+// 직판 46% — 기대 효과". A title says what the slide is about; the number belongs
+// on it, drawn, and not in the heading twice.
+func withoutTrailingFigure(name string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(name), " ,·")
+	found := figurePattern.FindStringIndex(trimmed)
+	if found == nil || found[1] != len(trimmed) {
+		return name
+	}
+	rest := strings.TrimRight(strings.TrimSpace(trimmed[:found[0]]), " ,·")
+	// What is left has to still be a subject: "18억" alone is a figure, and a
+	// heading of one word that the brief only wrote as a label for a number is
+	// not better than the words it came with.
+	if utf8.RuneCountInString(rest) < 3 {
+		return name
+	}
+	return rest
 }
 
 // hasFigures reports whether the prompt supplied enough numbers to draw.

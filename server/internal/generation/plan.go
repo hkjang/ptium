@@ -198,7 +198,9 @@ func koreanPlan(outline promptOutline, title, audience, presenter string, phrase
 		ClosingNotes: fmt.Sprintf("%s 무엇을 승인해야 하는지 분명히 남기고 마칩니다.", josa(audience, "이", "가")),
 	}
 	plan.Section = func(topic promptTopic, part, share int) sectionPlan {
-		name := topic.Name
+		// An option in a comparison is named the way a heading is: a subject, not a
+		// measurement the slide is about to draw.
+		name := headingName(topic.Name)
 		section := sectionPlan{Title: partTitle("ko", headingName(name), topic.Frame, part, share), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:
@@ -302,7 +304,7 @@ func englishPlan(outline promptOutline, title, audience, presenter string, phras
 		ClosingNotes: "Leave the room clear on what was approved.",
 	}
 	plan.Section = func(topic promptTopic, part, share int) sectionPlan {
-		name := topic.Name
+		name := headingName(topic.Name)
 		section := sectionPlan{Title: capitalized(partTitle("en", headingName(name), topic.Frame, part, share)), Role: "content"}
 		switch topic.Frame {
 		case frameSequence:

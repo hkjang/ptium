@@ -70,6 +70,11 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 	// it has not.
 	previousFrame := ""
 	usedFrames := map[string]bool{}
+	// The shapes the brief's own numbers are in. Read once: a deck draws each of
+	// them at most once, and only where they belong.
+	charts := chartsFromFigures(outline.Figures, localizedCopy(plan.Language))
+	// The rows a chart has already put on a slide.
+	var drawn []string
 	for index, topic := range outline.Topics {
 		share := shares[index]
 		for part := 0; part < share; part++ {
@@ -102,10 +107,47 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 			if lead := withoutSubject(section.Lead, section.Title, topic.Name); lead != "" {
 				write("> %s", lead)
 			}
+			// A brief full of numbers earns a slide that draws them. The charts
+			// come from the figures the prompt gave and are used where the slide
+			// is already about those numbers — the case for doing this, and what
+			// changes if it happens — rather than being pushed onto a slide about
+			// something else.
+			if len(charts) > 0 && chartFrames[frame] {
+				chart := charts[0]
+				charts = charts[1:]
+				for _, row := range chart.Rows {
+					drawn = append(drawn, row)
+				}
+				write("::%s %s", chart.Kind, chart.Caption)
+				for _, row := range chart.Rows {
+					write("- %s", row)
+				}
+				write("::")
+				if section.Notes != "" {
+					write("!notes %s", section.Notes)
+				}
+				write("")
+				position++
+				continue
+			}
 			switch {
 			case section.Block != "" && len(section.Items) > 0:
+				items := section.Items
+				if section.Block == "kpi" {
+					// The same figures the deck already drew are not headline
+					// numbers a second time, and a label is the thing counted
+					// rather than the words in front of it in the brief.
+					items = headlineFigures(items, drawn)
+				}
+				if len(items) == 0 {
+					// Everything this block held is already on a chart.
+					for _, point := range section.Points {
+						write("- %s", point)
+					}
+					break
+				}
 				write("::%s%s", section.Block, optional(" ", section.BlockCaption))
-				for _, item := range section.Items {
+				for _, item := range items {
 					write("- %s", item)
 				}
 				write("::")
@@ -272,4 +314,43 @@ func unusedFrame(frame string, part int, previous string, used map[string]bool) 
 		}
 	}
 	return candidates[0], false
+}
+
+// chartFrames are the slides a chart belongs on: the ones already about the
+// numbers. A risk slide or a roadmap drawn as a bar chart is a chart put where
+// there was room, not where it says something.
+var chartFrames = map[string]bool{frameOutcome: true, frameCase: true, frameSituation: true}
+
+// headlineFigures is what a kpi block should carry: the numbers this deck has
+// not already drawn, named by the thing counted, and few enough to be headlines.
+//
+// The rows come from the brief's own figures, whose labels are the words that
+// stood in front of them — "보고. 서울", "달성률은 매출". On a chart that is a
+// bar nobody can read; in a headline it is worse, because a headline is all
+// there is.
+func headlineFigures(items []string, drawn []string) []string {
+	const headlines = 4
+	already := map[string]bool{}
+	for _, row := range drawn {
+		if _, value, ok := strings.Cut(row, "|"); ok {
+			already[strings.TrimSpace(value)] = true
+		}
+	}
+	kept := make([]string, 0, len(items))
+	for _, item := range items {
+		label, value, ok := strings.Cut(item, "|")
+		if !ok {
+			kept = append(kept, item)
+			continue
+		}
+		if already[strings.TrimSpace(value)] {
+			continue
+		}
+		tidy := chartLabel(reading{label: strings.TrimSpace(label), timely: timeLabel.MatchString(label)})
+		kept = append(kept, tidy+" | "+strings.TrimSpace(value))
+		if len(kept) == headlines {
+			break
+		}
+	}
+	return kept
 }
