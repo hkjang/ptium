@@ -12,7 +12,10 @@ web:
 	cd web && npm run dev
 
 test:
-	cd server && go test ./...
+	# -race, because the one generator this server keeps is used by the worker
+	# and by a person rewriting a slide at the same time, and the settings each
+	# of them reads used to be written onto it.
+	cd server && go test -race ./...
 	cd server && go vet ./...
 	cd web && npm run typecheck && npm run build
 

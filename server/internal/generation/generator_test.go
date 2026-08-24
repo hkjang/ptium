@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1190,5 +1191,67 @@ func TestEveryPassAsksTheProviderNotToThink(t *testing.T) {
 	_, _ = generator.complete(context.Background(), endpoint, "test-model", "test-key", "s", "u", 0.5)
 	if len(asked) != 2 || asked[0] || asked[1] {
 		t.Fatalf("reasoning is on, yet the switch was sent: %v", asked)
+	}
+}
+
+// One Generator serves the whole server: the worker writing a deck and a person
+// rewriting a slide use it at the same time. The settings each request reads
+// used to be written onto it, so two requests wrote over each other — the race
+// detector says so, and the consequence is worse than the warning: a fifty-slide
+// deck stretches the output budget, a slide rewrite starting a moment later put
+// it back, and the deck in flight was cut off mid-answer.
+//
+// Run this with -race. Without it the assertion below still holds, because the
+// shared generator must come out of a run exactly as it went in.
+func TestTwoRequestsAtOnceDoNotShareSettings(t *testing.T) {
+	answers := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"choices": []any{map[string]any{
+			"message": map[string]any{"role": "assistant", "content": "# 한 장\n@cover\n> 리드\n"}}}})
+	}))
+	defer answers.Close()
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": answers.URL,
+		"ai.model": "test-model", "ai.api_key": "test-key", "generation.outline_pass": false,
+	})
+	generator.client = answers.Client()
+	template := Template{ID: "t", Name: "점검", Manifest: manifest}
+	budget, reasoning, timeout := generator.maxOutputTokens, generator.reasoning, generator.client.Timeout
+
+	var group sync.WaitGroup
+	for round := 0; round < 6; round++ {
+		group.Add(2)
+		go func(slides int) {
+			defer group.Done()
+			_, _ = generator.Generate(context.Background(), model.Presentation{
+				Title: "동시 생성", Language: "ko", Prompt: "동시에 씁니다", RequestedSlideCount: slides,
+			}, model.Profile{}, template)
+		}(6 + round*8)
+		go func() {
+			defer group.Done()
+			_, _ = generator.ReviseSlide(context.Background(), Revision{
+				Presentation: model.Presentation{Title: "동시 수정", Language: "ko"},
+				Template:     template, Action: ReviseFit, Source: "# 한 장\n@cover\n> 리드\n",
+			})
+		}()
+	}
+	group.Wait()
+
+	if generator.maxOutputTokens != budget {
+		t.Errorf("a run left the shared budget at %d, not %d", generator.maxOutputTokens, budget)
+	}
+	if generator.reasoning != reasoning {
+		t.Errorf("a run left the shared thinking mode at %q, not %q", generator.reasoning, reasoning)
+	}
+	if generator.client.Timeout != timeout {
+		t.Errorf("a run left the shared timeout at %v, not %v", generator.client.Timeout, timeout)
 	}
 }

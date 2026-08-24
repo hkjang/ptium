@@ -80,7 +80,8 @@ func (g *Generator) ReviseSlide(ctx context.Context, revision Revision) (string,
 	if err != nil {
 		return "", err
 	}
-	g.applyProviderSettings(ctx)
+	// One slide, on this run's own settings: see forRun.
+	g = g.forRun(ctx, 0)
 	raw, err := g.completeSource(ctx, endpoint, modelName, apiKey,
 		sourceSystemPrompt+exampleDeck(revision.Presentation.Language)+"\n\n"+reviseSystemPrompt,
 		revisionPrompt(revision), 0.3)

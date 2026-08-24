@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -33,6 +34,11 @@ type Generator struct {
 	// outputTokensSet marks a budget an administrator chose. Theirs is used as
 	// it stands; the default is stretched to the deck being asked for.
 	outputTokensSet bool
+	// thinkingRejected remembers a provider that refuses the thinking switch, so
+	// the next run does not spend a round trip learning it again. It is shared
+	// between runs on purpose — it is about the provider, not about one deck —
+	// and it is the only thing that is.
+	thinkingRejected *atomic.Bool
 	// reasoning says whether to ask the provider not to think.
 	reasoning reasoningMode
 	// repairs bounds how many slides a generation may send back to the model
@@ -92,12 +98,13 @@ const (
 
 func New(settings SettingReader) *Generator {
 	return &Generator{
-		settings:        settings,
-		client:          &http.Client{Timeout: defaultRequestTimeout},
-		maxOutputTokens: defaultOutputTokens,
-		reasoning:       reasoningAuto,
-		repairs:         maximumRepairs,
-		Now:             time.Now,
+		settings:         settings,
+		client:           &http.Client{Timeout: defaultRequestTimeout},
+		maxOutputTokens:  defaultOutputTokens,
+		thinkingRejected: &atomic.Bool{},
+		reasoning:        reasoningAuto,
+		repairs:          maximumRepairs,
+		Now:              time.Now,
 	}
 }
 
@@ -135,8 +142,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "ai.base_url", &baseURL)
 	_ = g.settings.Get(ctx, "ai.model", &modelName)
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
-	g.applyProviderSettings(ctx)
-	g.budgetForDeck(presentation.RequestedSlideCount)
+	g = g.forRun(ctx, presentation.RequestedSlideCount)
 	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
 		if rewrite {
 			// Rewriting is the one thing the offline writer cannot stand in for: it
@@ -353,6 +359,27 @@ func (g *Generator) budgetForDeck(slides int) {
 	}
 }
 
+// forRun is this generator, set up for one deck.
+//
+// One Generator serves the whole server, and the settings a request reads —
+// the timeout, the output budget, whether to ask the provider not to think —
+// used to be written onto it. Two requests at once wrote over each other: the
+// race detector says so, and the consequence is worse than the warning. A
+// fifty-slide deck stretches the budget to twenty thousand tokens; a slide
+// rewrite starting a moment later put it back to eight thousand, and the deck
+// in flight was cut off mid-answer.
+//
+// So a run takes a copy. The http client is copied too — its timeout is a
+// field, and changing it under another request in flight is the same bug —
+// while the transport, which holds the connections, is shared.
+func (g *Generator) forRun(ctx context.Context, slides int) *Generator {
+	run := *g
+	run.client = &http.Client{Timeout: g.client.Timeout, Transport: g.client.Transport}
+	run.applyProviderSettings(ctx)
+	run.budgetForDeck(slides)
+	return &run
+}
+
 // applyProviderSettings reads the knobs a self-hosted provider needs.
 func (g *Generator) applyProviderSettings(ctx context.Context) {
 	seconds := int(defaultRequestTimeout / time.Second)
@@ -371,6 +398,10 @@ func (g *Generator) applyProviderSettings(ctx context.Context) {
 	}
 	mode := string(reasoningAuto)
 	_ = g.settings.Get(ctx, "ai.reasoning", &mode)
+	if g.thinkingRejected != nil && g.thinkingRejected.Load() && strings.EqualFold(mode, string(reasoningAuto)) {
+		// Already learned, on a previous run, that this provider will not take it.
+		mode = string(reasoningOn)
+	}
 	switch reasoningMode(strings.ToLower(strings.TrimSpace(mode))) {
 	case reasoningOff:
 		g.reasoning = reasoningOff
@@ -421,9 +452,12 @@ func (g *Generator) completeWith(ctx context.Context, endpoint, modelName, apiKe
 	}
 	var rejected rejectedRequest
 	if errors.As(err, &rejected) && rejected.status >= 400 && rejected.status < 500 {
-		// The provider does not take the thinking switch. Ask again without it, and
-		// stop sending it for the rest of this run.
+		// The provider does not take the thinking switch. Ask again without it,
+		// stop sending it for the rest of this run, and remember it for the next.
 		g.reasoning = reasoningOn
+		if g.thinkingRejected != nil {
+			g.thinkingRejected.Store(true)
+		}
 		return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, format, false)
 	}
 	return "", err
