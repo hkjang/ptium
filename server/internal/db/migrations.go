@@ -273,6 +273,10 @@ var migrations = []string{
 		resolved_at timestamptz,
 		created_at timestamptz NOT NULL DEFAULT now())`,
 	`CREATE INDEX IF NOT EXISTS slide_comments_deck_idx ON slide_comments(presentation_id,created_at)`,
+	// What the author asked for when they sent a deck back to be rewritten. It
+	// lives on the deck because the rewrite is queued: the words have to survive
+	// the wait between asking and the worker picking it up.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS rewrite_instruction text NOT NULL DEFAULT ''`,
 }
 
 var defaultSettings = map[string]struct {

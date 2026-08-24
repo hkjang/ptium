@@ -4,10 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/docs"
@@ -280,12 +283,35 @@ func (s *Server) rewritePresentation(writer http.ResponseWriter, request *http.R
 			"이 덱에는 다시 쓸 내용이 없습니다. 먼저 슬라이드를 만들거나 가져오세요", nil)
 		return
 	}
+	// What the author asked for, if they said. "다시 써 줘" with nothing after it
+	// is still a request, and the deck is rewritten the way it always was.
+	//
+	// The limit is generous on purpose: 2,000 Korean characters are 12,000 bytes
+	// once a JSON encoder escapes them, and a body cut short by a limit meant to
+	// be generous decodes to nothing at all. Which is the other half — a body
+	// that cannot be read is said so, rather than read as an empty request.
+	var asked struct {
+		Instruction string `json:"instruction"`
+	}
+	if request.Body != nil && request.ContentLength != 0 {
+		if err := json.NewDecoder(io.LimitReader(request.Body, 64<<10)).Decode(&asked); err != nil && !errors.Is(err, io.EOF) {
+			writeError(writer, request, http.StatusBadRequest, "invalid_json",
+				"이 요청의 본문을 읽지 못했습니다", nil)
+			return
+		}
+	}
+	if utf8.RuneCountInString(asked.Instruction) > 2000 {
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
+			"instruction must not exceed 2000 characters", nil)
+		return
+	}
 	if !s.aiProviderConfigured(request.Context()) {
 		writeError(writer, request, http.StatusConflict, "ai_provider_required",
 			"덱 다듬기는 AI 제공자가 설정되어 있어야 합니다. 관리자에게 서비스 설정의 AI 항목을 요청하세요", nil)
 		return
 	}
-	queued, err := s.store.QueueGeneration(request.Context(), presentation.ID, user.ID, false, s.maximumSlides(request.Context()))
+	queued, err := s.store.QueueGenerationWith(request.Context(), presentation.ID, user.ID, false,
+		s.maximumSlides(request.Context()), asked.Instruction)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "generation_queue_failed")
 		return

@@ -176,6 +176,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	// narrative for it would throw away the thing being improved.
 	if material := strings.TrimSpace(presentation.Source); material != "" && rewrite {
 		request.Material = material
+		request.Instruction = presentation.RewriteInstruction
 		written, err := g.writeDeck(ctx, endpoint, modelName, apiKey, request)
 		if err != nil {
 			return Deck{}, err

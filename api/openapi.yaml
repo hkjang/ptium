@@ -1050,9 +1050,26 @@ paths:
         one idea, speaker notes where there were none, and components where the
         deck already states figures, a sequence or a table.
 
+        Send `instruction` to say what to change in your own words — "3장은 요점
+        3개로 줄이고 5장에 비용 비교 표" — and everything the request does not
+        touch is left as it was. Without one the whole deck is rewritten, the way
+        it always was.
+
         The previous version stays in the deck's history, so a rewrite can be
         taken back.
       tags: [Presentations]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instruction:
+                  type: string
+                  maxLength: 2000
+                  description: What to change, in the author's own words.
+                  example: 3장은 요점 3개로 줄이고, 5장에 비용 비교 표를 넣어 주세요.
       responses:
         '202':
           description: The deck is queued for rewriting.
@@ -4334,7 +4351,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.12.1
+            service.version: 1.12.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 

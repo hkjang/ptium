@@ -15,6 +15,10 @@ type writingRequest struct {
 	Profile      model.Profile
 	Template     Template
 	Plan         *deckPlan
+	// Instruction is what the author asked for in their own words when they sent
+	// the deck back — "3장은 짧게, 5장에 표". Without it a rewrite is the product
+	// deciding what to change about somebody else's deck.
+	Instruction string
 	// Material is a deck that already exists, being rewritten rather than
 	// invented. Its facts are the author's and are not up for improvement; its
 	// wording, its titles and the shape of its argument are what the model is
@@ -267,6 +271,15 @@ func sourceUserPrompt(request writingRequest) string {
 			"Rewrite it; do not start again:\n\n")
 		builder.WriteString(material)
 		builder.WriteString("\n")
+		if instruction := strings.TrimSpace(request.Instruction); instruction != "" {
+			// What the author asked for, said last so it is the last thing read.
+			// Everything they did not ask about stays as they wrote it: a rewrite
+			// that improves the slides nobody mentioned is a rewrite of somebody
+			// else's decisions.
+			fmt.Fprintf(&builder, "\nThe author asks for this and nothing else: %s\n"+
+				"Leave every slide the request does not touch exactly as it is, including its\n"+
+				"title, its points, its component and its notes.\n", truncate(instruction, 2000))
+		}
 	}
 	writePictures(&builder, request.Pictures)
 	writeRegistered(&builder, request.Registered, request.Presentation.Prompt+" "+request.Presentation.Title)

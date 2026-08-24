@@ -170,12 +170,16 @@ type Presentation struct {
 	// for: a deck shorter than the count requested, a layout that could not
 	// hold a component, a figure with no source. The person who asked is the
 	// one who needs to know, so it travels with the deck rather than to a log.
-	GenerationNotes     []string `json:"generationNotes,omitempty"`
-	Theme               string   `json:"theme"`
-	Language            string   `json:"language"`
-	Audience            string   `json:"audience"`
-	Tone                string   `json:"tone"`
-	RequestedSlideCount int      `json:"requestedSlideCount"`
+	GenerationNotes []string `json:"generationNotes,omitempty"`
+	// RewriteInstruction is what the author asked for the last time they sent
+	// this deck back to be rewritten, in their own words. It is read by the
+	// worker, which picks the deck up minutes after the asking.
+	RewriteInstruction  string `json:"rewriteInstruction,omitempty"`
+	Theme               string `json:"theme"`
+	Language            string `json:"language"`
+	Audience            string `json:"audience"`
+	Tone                string `json:"tone"`
+	RequestedSlideCount int    `json:"requestedSlideCount"`
 	// Source is the deck written in Ptium's slide language. It is the editable
 	// form of the deck: compiling it reproduces the slides.
 	Source              string          `json:"source,omitempty"`

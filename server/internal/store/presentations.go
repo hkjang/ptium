@@ -41,7 +41,8 @@ func presentationListColumns(prefix string) string {
 		`''::text,` +
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
 		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
-		prefix + `version,` + prefix + `deleted_at`
+		prefix + `version,` + prefix + `deleted_at,` +
+		`COALESCE(` + prefix + `rewrite_instruction,'')`
 }
 
 // presentationColumns builds the projection used by every presentation query.
@@ -57,7 +58,8 @@ func presentationColumns(prefix string) string {
 		`COALESCE(` + prefix + `source,''),` +
 		`COALESCE((SELECT t.name FROM templates t WHERE t.id=` + prefix + `template_id),''),` +
 		`COALESCE(` + prefix + `generation_notes,'[]'::jsonb),` +
-		prefix + `version,` + prefix + `deleted_at`
+		prefix + `version,` + prefix + `deleted_at,` +
+		`COALESCE(` + prefix + `rewrite_instruction,'')`
 }
 
 func (s *Store) CreatePresentation(ctx context.Context, ownerID string, in PresentationInput) (model.Presentation, error) {
@@ -507,13 +509,22 @@ func (s *Store) RestorePresentationRevision(ctx context.Context, id, revisionID,
 }
 
 func (s *Store) QueueGeneration(ctx context.Context, id, ownerID string, admin bool, maximumSlides int) (model.Presentation, error) {
+	return s.QueueGenerationWith(ctx, id, ownerID, admin, maximumSlides, "")
+}
+
+// QueueGenerationWith queues a deck with what the author asked for in their own
+// words, which the worker reads when it picks the deck up. A rewrite that
+// forgets the instruction between the click and the queue is a rewrite of
+// something nobody asked about.
+func (s *Store) QueueGenerationWith(ctx context.Context, id, ownerID string, admin bool, maximumSlides int,
+	instruction string) (model.Presentation, error) {
 	if maximumSlides < 1 || maximumSlides > 50 {
 		maximumSlides = 50
 	}
-	query := `UPDATE presentations SET status='queued',error_message='',generation_started_at=NULL,generation_ended_at=NULL,version=version+1,updated_at=now() WHERE id=$1 AND requested_slide_count<=$2 AND deleted_at IS NULL`
-	args := []any{id, maximumSlides}
+	query := `UPDATE presentations SET status='queued',error_message='',generation_started_at=NULL,generation_ended_at=NULL,rewrite_instruction=$3,version=version+1,updated_at=now() WHERE id=$1 AND requested_slide_count<=$2 AND deleted_at IS NULL`
+	args := []any{id, maximumSlides, strings.TrimSpace(instruction)}
 	if !admin {
-		query += ` AND owner_id=$3`
+		query += ` AND owner_id=$4`
 		args = append(args, ownerID)
 	}
 	query += ` RETURNING ` + presentationColumns("presentations")
@@ -670,5 +681,5 @@ func presentationScan(p *model.Presentation) []any {
 	return []any{&p.ID, &p.OwnerID, &p.Title, &p.Prompt, &p.Status, &p.Theme, &p.Language, &p.Audience, &p.Tone,
 		&p.RequestedSlideCount, &p.Outline, &p.ErrorMessage, &p.CreatedAt, &p.UpdatedAt,
 		&p.GenerationStartedAt, &p.GenerationEndedAt, &p.TemplateID, &p.Source, &p.TemplateName,
-		&p.GenerationNotes, &p.Version, &p.DeletedAt}
+		&p.GenerationNotes, &p.Version, &p.DeletedAt, &p.RewriteInstruction}
 }

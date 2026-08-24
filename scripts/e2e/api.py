@@ -743,6 +743,16 @@ call("DELETE", f"/presentations/{figures.get('id')}", expect=204)
 # A deck can only carry a picture somebody already uploaded — an air-gapped
 # deployment has no web to fetch one from — so generation is told what this
 # account has and places the one a slide is named for.
+# A deck-wide rewrite takes what the author asked for, in their own words. It
+# needs a provider to run, so what is checked without one is that the words are
+# accepted, bounded, and refused for the right reason.
+call("POST", f"/presentations/{deck_id}/rewrite", {"instruction": "2장은 요점 3개로 줄여 주세요"}, expect=409,
+     note="rewriting needs a provider, and says so")
+status, refused_long = call("POST", f"/presentations/{deck_id}/rewrite", {"instruction": "가" * 2100}, expect=422,
+                            note="an instruction longer than the model will read is refused")
+if (refused_long or {}).get("error", {}).get("code") != "validation_error":
+    failures.append(f"an over-long instruction is refused for the wrong reason: {refused_long}")
+
 print("── the pictures an account already has ──")
 picture = data_of(call("POST", "/assets", files={"file": (f"현장 자동화 {RUN}.png", png(rgb=(30, 120, 200)), "image/png")},
                        expect=201)) or {}

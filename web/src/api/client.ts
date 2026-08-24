@@ -1148,8 +1148,13 @@ export const api = {
    * Asks the model to rewrite a deck that already exists — its facts kept, its
    * craft improved. Queued like generation, because it is the same round trip.
    */
-  async rewritePresentation(id: string) {
-    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/rewrite`, { method: 'POST' })
+  async rewritePresentation(id: string, instruction = '') {
+    const raw = await request<unknown>(`/presentations/${encodeURIComponent(id)}/rewrite`, {
+      method: 'POST',
+      // What the author asked for, if they said. An empty body is still a
+      // request, and means what it always meant.
+      body: JSON.stringify({ instruction }),
+    })
     return normalizePresentation(unwrapOne<Presentation & Record<string, unknown>>(raw, ['presentation', 'data']))
   },
 

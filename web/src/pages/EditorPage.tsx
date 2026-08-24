@@ -4,6 +4,7 @@ import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
   Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, Plus, RotateCcw, Trash2, Link2, MonitorPlay, WandSparkles, X, MessageSquareText } from 'lucide-react'
 import { markupFor } from './editor/model/markup'
+import { RewriteDialog } from './editor/RewriteDialog'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
@@ -94,6 +95,7 @@ export function EditorPage({ id }: { id: string }) {
   const [sourcePreviewError, setSourcePreviewError] = useState('')
   const [presenting, setPresenting] = useState(false)
   const [rewriting, setRewriting] = useState(false)
+  const [rewriteOpen, setRewriteOpen] = useState(false)
   const shortcuts = useShortcutSheet()
   const [presentIndex, setPresentIndex] = useState(0)
   const [exportOpen, setExportOpen] = useState(false)
@@ -1110,13 +1112,15 @@ export function EditorPage({ id }: { id: string }) {
    * improves. Version history is what makes this safe to try, so the old deck is
    * one click away in 버전 이력.
    */
-  const rewriteDeck = async () => {
-    if (!window.confirm('덱 전체를 AI가 다시 씁니다. 숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다. 이전 상태는 버전 이력에서 되돌릴 수 있습니다.')) return
+  const rewriteDeck = async (instruction: string) => {
+    setRewriteOpen(false)
     setRewriting(true)
     try {
       if (dirty) await save()
-      setPresentation(await api.rewritePresentation(id))
-      showToast('덱을 다시 쓰고 있습니다. 끝나면 이 화면이 바뀝니다.')
+      setPresentation(await api.rewritePresentation(id, instruction))
+      showToast(instruction
+        ? '요청한 내용으로 다시 쓰고 있습니다. 끝나면 이 화면이 바뀝니다.'
+        : '덱을 다시 쓰고 있습니다. 끝나면 이 화면이 바뀝니다.')
     } catch (err) { showToast(displayError(err), 'error') } finally { setRewriting(false) }
   }
 
@@ -1179,7 +1183,7 @@ export function EditorPage({ id }: { id: string }) {
                 ? <><AlertTriangle size={13} /> 품질 {deckScore ? deckScore.total : '—'} · 다듬을 곳 {advisories.length}</>
                 : <><Check size={13} /> 품질 {deckScore ? deckScore.total : 100}</>}
           </button><button className="save-status" disabled={saving || !dirty} onClick={() => void save().catch((err) => showToast(`저장하지 못했습니다: ${displayError(err)}`, 'error'))}>{saving ? <><LoaderCircle className="spin" size={13} /> 저장 중</> : dirty ? <><CircleAlert size={13} /> 지금 저장</> : <><Check size={13} /> {lastSaved ? '저장됨' : '모든 변경 저장됨'}</>}</button></div>
-		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setCommandPlan(null); setCommandOpen(true) }} title="말로 시킵니다. 예: 3번과 4번 합쳐줘 · 5번 삭제 · 10분 발표로 맞춰줘"><MessageSquare size={16} /> 명령</Button><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => void rewriteDeck()} title="숫자와 사실은 그대로 두고 제목·문장·구성을 다듬습니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()} title="이 덱의 체크포인트를 열어 되돌립니다"><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" onClick={() => setCommentsOpen(true)} title="공유 링크로 덱을 본 사람들이 남긴 의견"><MessageSquareText size={16} /> 의견{openComments > 0 ? ` ${openComments}` : ''}</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => setShareOpen(true)} title="계정이 없는 사람도 볼 수 있는 링크를 만듭니다"><Link2 size={16} /> 공유</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }} title="전체 화면으로 발표합니다"><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
+		<div className="editor-actions"><Button variant="ghost" size="small" onClick={() => shortcuts.setOpen(true)} title="단축키 (?)"><Keyboard size={16} /> 단축키</Button><a className="button button-ghost button-small" href="/guide" target="_blank" rel="noreferrer" title="사용 가이드를 새 탭에서 엽니다"><LifeBuoy size={16} /> 도움말</a><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setCommandPlan(null); setCommandOpen(true) }} title="말로 시킵니다. 예: 3번과 4번 합쳐줘 · 5번 삭제 · 10분 발표로 맞춰줘"><MessageSquare size={16} /> 명령</Button><Button variant="ghost" size="small" disabled={rewriting || slides.length === 0} onClick={() => setRewriteOpen(true)} title="무엇을 바꿀지 적어서 덱 전체를 다시 쓰게 합니다"><WandSparkles size={16} /> {rewriting ? '보내는 중…' : 'AI로 다듬기'}</Button><Button variant="ghost" size="small" onClick={() => void openHistory()} title="이 덱의 체크포인트를 열어 되돌립니다"><History size={16} /> 버전 이력</Button><Button variant="ghost" size="small" onClick={() => setCommentsOpen(true)} title="공유 링크로 덱을 본 사람들이 남긴 의견"><MessageSquareText size={16} /> 의견{openComments > 0 ? ` ${openComments}` : ''}</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => setShareOpen(true)} title="계정이 없는 사람도 볼 수 있는 링크를 만듭니다"><Link2 size={16} /> 공유</Button><Button variant="ghost" size="small" disabled={slides.length === 0} onClick={() => { setPresentIndex(0); setPresenting(true) }} title="전체 화면으로 발표합니다"><MonitorPlay size={16} /> 발표</Button><Button variant="secondary" size="small" disabled={slides.length === 0} onClick={() => setExportOpen(true)}><Download size={16} /> 내보내기 <ChevronDown size={14} /></Button></div>
       </header>
 
       {generationNotes.length > 0 && <div className="generation-notes" role="status">
@@ -1403,6 +1407,12 @@ export function EditorPage({ id }: { id: string }) {
       {/* The audience screen. Notes, the next slide and the clock live in the
           presenter's own window, which this one drives. */}
       <ShortcutSheet open={shortcuts.open} onClose={shortcuts.close} groups={editorShortcuts} title="편집기 단축키" />
+      <RewriteDialog
+        open={rewriteOpen}
+        busy={rewriting}
+        onRewrite={(instruction) => void rewriteDeck(instruction)}
+        onClose={() => setRewriteOpen(false)}
+      />
       {presenting && <PresentationView
         presentationId={id}
         title={presentation.title}
