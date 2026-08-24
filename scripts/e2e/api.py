@@ -256,6 +256,28 @@ if not [f for f in (measured.get("findings") or []) if f.get("kind") == "link"]:
     failures.append("a link the deck cannot follow is not reported")
 call("DELETE", f"/presentations/{link_deck['id']}", expect=204)
 
+# A word marked inside a line: the file carries the weight, the preview shows
+# it, and neither draws the stars.
+mark_deck = data_of(call("POST", "/presentations", {"title": f"강조 {RUN}", "prompt": "실적"}, expect=201))
+call("PUT", f"/presentations/{mark_deck['id']}/source", {"source":
+     "# 실적\n@content\n- 이번 분기 **매출이 12% 늘었습니다**\n- *가정은 인건비 동결입니다*\n- 3 * 4 = 12\n"}, expect=200)
+status, marked_svg = call("GET", f"/presentations/{mark_deck['id']}/preview.svg?slide=1&width=900", raw=True, expect=200)
+drawn = marked_svg.decode("utf-8", "replace")
+if "**" in drawn or "매출이 12% 늘었습니다" not in drawn:
+    failures.append("the preview draws the marks instead of the words")
+if 'font-weight="700"' not in drawn or 'font-style="italic"' not in drawn:
+    failures.append("the preview does not show the marked words as marked")
+if "3 * 4 = 12" not in drawn:
+    failures.append("a star with no partner was eaten")
+status, marked_pptx = call("GET", f"/presentations/{mark_deck['id']}/export?format=pptx", raw=True, expect=200)
+try:
+    slide = zipfile.ZipFile(io.BytesIO(marked_pptx)).read("ppt/slides/slide1.xml").decode("utf-8")
+    if "**" in slide or 'b="1"' not in slide or 'i="1"' not in slide:
+        failures.append("the exported slide does not carry the marks")
+except Exception as error:
+    failures.append(f"the exported pptx could not be read: {error}")
+call("DELETE", f"/presentations/{mark_deck['id']}", expect=204)
+
 call("GET", f"/presentations/{deck_id}/preview.svg?slide=1&width=400", raw=True, expect=200)
 status, pptx = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True, expect=200)
 try:

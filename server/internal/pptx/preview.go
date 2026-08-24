@@ -385,7 +385,7 @@ const previewFallbacks = `Segoe UI, Roboto, Noto Sans, Helvetica Neue, Arial, Li
 func markedUpLine(line string, runs []TextRun, linkColor string) string {
 	linked := false
 	for _, run := range runs {
-		if run.Href != "" {
+		if run.Href != "" || run.Bold || run.Italic {
 			linked = true
 			break
 		}
@@ -396,7 +396,7 @@ func markedUpLine(line string, runs []TextRun, linkColor string) string {
 	var builder strings.Builder
 	rest := line
 	for _, run := range runs {
-		if run.Href == "" || run.Text == "" {
+		if run.Text == "" || (run.Href == "" && !run.Bold && !run.Italic) {
 			continue
 		}
 		at := strings.Index(rest, run.Text)
@@ -404,10 +404,25 @@ func markedUpLine(line string, runs []TextRun, linkColor string) string {
 			continue
 		}
 		builder.WriteString(escapeText(rest[:at]))
-		builder.WriteString(`<tspan fill="#` + escapeAttribute(linkColor) +
-			`" text-decoration="underline">` + escapeText(run.Text) + `</tspan>`)
+		builder.WriteString(`<tspan` + runStyleSVG(run, linkColor) + `>` + escapeText(run.Text) + `</tspan>`)
 		rest = rest[at+len(run.Text):]
 	}
 	builder.WriteString(escapeText(rest))
 	return builder.String()
+}
+
+// runStyleSVG is what one marked stretch of a line looks like: the same weight,
+// slant and colour the exported file gives it.
+func runStyleSVG(run TextRun, linkColor string) string {
+	style := ""
+	if run.Bold {
+		style += ` font-weight="700"`
+	}
+	if run.Italic {
+		style += ` font-style="italic"`
+	}
+	if run.Href != "" {
+		style += ` fill="#` + escapeAttribute(linkColor) + `" text-decoration="underline"`
+	}
+	return style
 }

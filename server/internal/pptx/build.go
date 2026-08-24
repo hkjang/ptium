@@ -932,21 +932,44 @@ func paragraphsXML(paragraphs []Paragraph, language string) string {
 // are still drawn without their markup — a slide that cannot carry a link must
 // not print [보기](https://…) on the wall.
 func runsXML(text, properties string, links *linkTable) string {
-	parts := SplitLinks(text)
-	if len(parts) == 1 && parts[0].Href == "" {
+	parts := SplitRuns(text)
+	if len(parts) == 1 && parts[0].Href == "" && !parts[0].Bold && !parts[0].Italic {
 		return `<a:r>` + properties + `<a:t>` + escapeText(text) + `</a:t></a:r>`
 	}
 	var builder strings.Builder
 	for _, part := range parts {
 		run := properties
+		if part.Bold {
+			run = withRunAttribute(run, "b", "1")
+		}
+		if part.Italic {
+			run = withRunAttribute(run, "i", "1")
+		}
 		if part.Href != "" {
 			if id := links.id(part.Href); id != "" {
-				run = withHyperlink(properties, id, part.Href)
+				run = withHyperlink(run, id, part.Href)
 			}
 		}
 		builder.WriteString(`<a:r>` + run + `<a:t>` + escapeText(part.Text) + `</a:t></a:r>`)
 	}
 	return builder.String()
+}
+
+// withRunAttribute says something about one run on top of what the region
+// already says about all of them.
+//
+// The attribute is replaced rather than repeated: a region set in bold whose
+// author marked a word bold would otherwise write b="1" twice on the same
+// element, which is not XML at all — the file would open as a deck PowerPoint
+// offers to repair.
+func withRunAttribute(properties, name, value string) string {
+	if at := strings.Index(properties, ` `+name+`="`); at >= 0 {
+		start := at + len(name) + 3
+		if end := strings.Index(properties[start:], `"`); end >= 0 {
+			return properties[:start] + value + properties[start+end:]
+		}
+	}
+	return strings.Replace(properties, `<a:rPr`, `<a:rPr `+name+`="`+value+`"`, 1)
 }
 
 // withHyperlink puts the link inside a run's properties. hlinkClick is last in

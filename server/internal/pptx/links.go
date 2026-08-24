@@ -17,12 +17,16 @@ import (
 // a link to nowhere.
 
 // TextRun is a stretch of a paragraph drawn as one run: plain words, or words
-// that carry a link.
+// that carry a link, or words the author marked.
 type TextRun struct {
 	Text string
 	// Href is empty for plain words, a URL or mailto: address for a link that
 	// leaves the deck, and "#3" for a jump to the deck's third slide.
 	Href string
+	// Bold and Italic are what the author marked in the line itself, on top of
+	// whatever the template sets for the whole region.
+	Bold   bool
+	Italic bool
 }
 
 // SlideJump reads a link that points at another slide in the same deck and
@@ -69,47 +73,102 @@ func linkTarget(target string) (string, bool) {
 // SplitLinks reads a paragraph's text as the runs it draws as. Text with no
 // link in it comes back as a single run, which is what nearly every paragraph
 // is: the caller pays nothing for the feature it is not using.
-func SplitLinks(text string) []TextRun {
-	if !strings.Contains(text, "](") {
-		if !strings.Contains(text, `\[`) {
-			if text == "" {
-				return nil
-			}
-			return []TextRun{{Text: text}}
+func SplitRuns(text string) []TextRun {
+	if !strings.ContainsAny(text, "[*\\") {
+		if text == "" {
+			return nil
 		}
+		return []TextRun{{Text: text}}
 	}
+	return splitRuns(text, TextRun{})
+}
+
+// SplitLinks is what a paragraph draws as, kept under its first name for the
+// callers that only care about the links in it.
+func SplitLinks(text string) []TextRun { return SplitRuns(text) }
+
+// splitRuns walks the text once, carrying what is true of the words it is in
+// the middle of. A link's own label is walked the same way, which is what lets
+// **[안내 문서](https://…)** be one bold link rather than three runs of markup.
+func splitRuns(text string, carried TextRun) []TextRun {
 	var runs []TextRun
 	var plain strings.Builder
 	flush := func() {
 		if plain.Len() > 0 {
-			runs = append(runs, TextRun{Text: plain.String()})
+			run := carried
+			run.Text = plain.String()
+			runs = append(runs, run)
 			plain.Reset()
 		}
 	}
 	for index := 0; index < len(text); {
-		// A bracket somebody meant literally: \[ draws as [ and starts no link.
-		if text[index] == '\\' && index+1 < len(text) && text[index+1] == '[' {
-			plain.WriteByte('[')
+		// A mark somebody meant literally: \[ and \* draw as themselves.
+		if text[index] == '\\' && index+1 < len(text) && (text[index+1] == '[' || text[index+1] == '*') {
+			plain.WriteByte(text[index+1])
 			index += 2
 			continue
 		}
-		if text[index] != '[' {
-			plain.WriteByte(text[index])
-			index++
-			continue
+		if text[index] == '[' {
+			label, target, width, ok := readLink(text[index:])
+			if ok {
+				flush()
+				linked := carried
+				linked.Href = target
+				runs = append(runs, splitRuns(label, linked)...)
+				index += width
+				continue
+			}
 		}
-		label, target, width, ok := readLink(text[index:])
-		if !ok {
-			plain.WriteByte('[')
-			index++
-			continue
+		if text[index] == '*' {
+			marked, inner, width, ok := readEmphasis(text[index:])
+			if ok {
+				flush()
+				within := carried
+				if marked == emphasisBold {
+					within.Bold = true
+				} else {
+					within.Italic = true
+				}
+				runs = append(runs, splitRuns(inner, within)...)
+				index += width
+				continue
+			}
 		}
-		flush()
-		runs = append(runs, TextRun{Text: label, Href: target})
-		index += width
+		plain.WriteByte(text[index])
+		index++
 	}
 	flush()
 	return runs
+}
+
+const (
+	emphasisBold   = "**"
+	emphasisItalic = "*"
+)
+
+// readEmphasis reads **굵게** or *기울임* from the front of text. A star with no
+// partner is a star: an author writing "3 * 4" or a footnote marker gets what
+// they typed.
+func readEmphasis(text string) (mark, inner string, width int, ok bool) {
+	mark = emphasisItalic
+	if strings.HasPrefix(text, emphasisBold) {
+		mark = emphasisBold
+	}
+	rest := text[len(mark):]
+	// Nothing between the marks is not emphasis, and neither is a mark that
+	// opens on a space: "a * b * c" is arithmetic, not italics.
+	if rest == "" || rest[0] == ' ' || rest[0] == '\n' {
+		return "", "", 0, false
+	}
+	end := strings.Index(rest, mark)
+	if end <= 0 {
+		return "", "", 0, false
+	}
+	inner = rest[:end]
+	if strings.Contains(inner, "\n") || strings.HasSuffix(inner, " ") {
+		return "", "", 0, false
+	}
+	return mark, inner, len(mark)*2 + end, true
 }
 
 // readLink reads `[label](target)` from the front of text, and says how wide it

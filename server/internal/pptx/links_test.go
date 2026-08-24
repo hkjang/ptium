@@ -208,3 +208,85 @@ func TestALinkTheDeckWillNotFollowIsReported(t *testing.T) {
 		t.Errorf("the finding does not say where it is: %#v", reported[0])
 	}
 }
+
+func TestAWordCanBeMarkedInsideALine(t *testing.T) {
+	runs := SplitRuns("이번 분기 **매출이 12% 늘었습니다**. *가정은 인건비 동결입니다*")
+	if len(runs) != 4 {
+		t.Fatalf("expected four runs, got %d: %#v", len(runs), runs)
+	}
+	if runs[1].Text != "매출이 12% 늘었습니다" || !runs[1].Bold || runs[1].Italic {
+		t.Errorf("the bold run is wrong: %#v", runs[1])
+	}
+	if runs[3].Text != "가정은 인건비 동결입니다" || !runs[3].Italic || runs[3].Bold {
+		t.Errorf("the italic run is wrong: %#v", runs[3])
+	}
+	if plain := PlainText("이번 분기 **매출이 12% 늘었습니다**"); plain != "이번 분기 매출이 12% 늘었습니다" {
+		t.Errorf("what the slide draws is %q", plain)
+	}
+}
+
+// A star is a star. Arithmetic, a footnote marker and a bullet somebody typed
+// have to come back as themselves.
+func TestAStarWithNoPartnerIsAStar(t *testing.T) {
+	for _, text := range []string{
+		"3 * 4 = 12",
+		"매출 * 원가",
+		"주석 *",
+		"*",
+		"**",
+		`\*강조가 아닙니다\*`,
+		"* 항목",
+	} {
+		runs := SplitRuns(text)
+		for _, run := range runs {
+			if run.Bold || run.Italic {
+				t.Errorf("%q was read as emphasis: %#v", text, runs)
+			}
+		}
+		want := strings.ReplaceAll(text, `\*`, "*")
+		if PlainText(text) != want {
+			t.Errorf("%q draws as %q", text, PlainText(text))
+		}
+	}
+}
+
+// A link is a place in the line, and a mark is something true of the words
+// there: the two have to be able to hold at once.
+func TestAMarkedLink(t *testing.T) {
+	runs := SplitRuns("**[안내 문서](https://docs.example.com/a)**")
+	if len(runs) != 1 {
+		t.Fatalf("expected one run, got %#v", runs)
+	}
+	if !runs[0].Bold || runs[0].Href != "https://docs.example.com/a" || runs[0].Text != "안내 문서" {
+		t.Errorf("the run lost half of what it is: %#v", runs[0])
+	}
+	inner := SplitRuns("[**안내** 문서](https://docs.example.com/a)")
+	if len(inner) != 2 || !inner[0].Bold || inner[1].Bold {
+		t.Fatalf("a mark inside a label did not read: %#v", inner)
+	}
+	if inner[0].Href != inner[1].Href || inner[0].Href == "" {
+		t.Errorf("both halves of the label are the same link: %#v", inner)
+	}
+}
+
+// The region says one thing about all of its runs and the author says another
+// about one of them. Both are stated once.
+func TestAMarkOnTopOfWhatTheRegionAlreadySays(t *testing.T) {
+	properties := `<a:rPr lang="ko-KR" dirty="0" b="0" i="1"/>`
+	marked := runsXML("보통 **굵게**", properties, nil)
+	if strings.Count(marked, `b="0"`) != 1 || strings.Count(marked, `b="1"`) != 1 {
+		t.Errorf("the region's own weight was not replaced for the marked run: %s", marked)
+	}
+	for _, run := range strings.Split(marked, "<a:rPr")[1:] {
+		if end := strings.Index(run, ">"); end >= 0 {
+			run = run[:end]
+		}
+		if strings.Count(run, ` b="`) != 1 || strings.Count(run, ` i="`) != 1 {
+			t.Errorf("a run states an attribute twice: <a:rPr%s>", run)
+		}
+	}
+	// Nothing marked, nothing changed: the common line is written as it was.
+	if plain := runsXML("보통", properties, nil); plain != `<a:r>`+properties+`<a:t>보통</a:t></a:r>` {
+		t.Errorf("an unmarked line was rewritten: %s", plain)
+	}
+}

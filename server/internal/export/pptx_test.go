@@ -269,3 +269,62 @@ func TestALinkReachesTheFile(t *testing.T) {
 		}
 	}
 }
+
+// A word marked bold in the middle of a line is one run of the paragraph, and
+// the attribute has to be stated once: a region already set in bold whose
+// author marks a word bold would otherwise write b="1" twice on one element.
+func TestAMarkedWordReachesTheFileOnce(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 실적\n@content\n- 이번 분기 **매출이 12% 늘었습니다**\n- *가정은 인건비 동결입니다*\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	file, err := PPTX(model.Presentation{Title: "강조", Language: "ko", Slides: compiled.Slides},
+		Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var slide string
+	for _, entry := range archive.File {
+		if entry.Name != "ppt/slides/slide1.xml" {
+			continue
+		}
+		opened, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(opened)
+		opened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		slide = string(body)
+	}
+	if !strings.Contains(slide, `<a:t>매출이 12% 늘었습니다</a:t>`) || !strings.Contains(slide, `<a:t>이번 분기 </a:t>`) {
+		t.Errorf("the line was not split into the runs it draws: %s", slide)
+	}
+	if strings.Contains(slide, "**") || strings.Contains(slide, "*가정") {
+		t.Errorf("the slide draws the marks: %s", slide)
+	}
+	for _, run := range strings.Split(slide, "<a:rPr")[1:] {
+		properties := run
+		if end := strings.Index(properties, ">"); end >= 0 {
+			properties = properties[:end]
+		}
+		if strings.Count(properties, ` b="`) > 1 || strings.Count(properties, ` i="`) > 1 {
+			t.Errorf("a run states the same attribute twice: <a:rPr%s>", properties)
+		}
+	}
+	if !strings.Contains(slide, ` b="1"`) || !strings.Contains(slide, ` i="1"`) {
+		t.Errorf("the marks did not reach the file: %s", slide)
+	}
+}

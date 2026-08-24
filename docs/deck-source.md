@@ -24,6 +24,7 @@ produces most reliably.
 !notes 예산 질문이 나오면…      speaker notes, continuing over following lines
 !skip                          keep this slide out of the talk (!건너뛰기 도 같습니다)
 [안내 문서](https://…)          a link, in any line of prose
+**굵게**  *기울임*               a marked word inside a line
 // a comment
 ```
 
@@ -201,6 +202,16 @@ silently skipped.
 | `GET /api/v1/assets` | list your images |
 | `GET /api/v1/assets/{id}` | the image's bytes |
 | `DELETE /api/v1/assets/{id}` | remove it |
+
+### Marking a word
+
+`**굵게**` and `*기울임*` mark words inside a line, on top of whatever the
+template sets for the region they are in. A star with no partner is a star, so
+`3 * 4` and a footnote marker are left alone, and `\*` is a literal one.
+
+The exported pptx carries the mark as the run's own weight and slant, which is
+what makes a marked word read as marked in PowerPoint too — and the region keeps
+saying whatever the template said about the rest of the line.
 
 ### Links
 
