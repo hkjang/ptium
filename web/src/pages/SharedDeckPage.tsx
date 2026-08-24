@@ -28,7 +28,10 @@ export function SharedDeckPage({ token }: { token: string }) {
   // deck sent out for review is the one people read the links on: the source
   // behind a number, the document a slide refers to. Nothing inside an <img>
   // can be clicked.
-  const [drawn, setDrawn] = useState<Record<number, string>>({})
+  // Markup when the slide has a link on it, a picture when it does not: see
+  // useSlideDrawings for why one slide's photograph is a reason not to hold
+  // every slide as a string.
+  const [drawn, setDrawn] = useState<Record<number, { markup?: string; url?: string }>>({})
   // What has been fetched, kept out of the effect's own dependencies: asking
   // again for a slide already drawn is the loop that fetching-on-state-change
   // walks into.
@@ -48,8 +51,15 @@ export function SharedDeckPage({ token }: { token: string }) {
           `/api/v1/shared/${encodeURIComponent(token)}/preview.svg?slide=${slide}&width=1600`)
         if (!response.ok) { fetched.current.delete(slide); return }
         const markup = await response.text()
+        const drawing = markup.includes('<a href=')
+          ? { markup }
+          : { url: URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' })) }
+        // Kept whatever happened while it was in flight. This effect runs again
+        // as soon as the deck says how many slides it has, and dropping a
+        // drawing that arrived during that changeover — while the slide stays
+        // marked as fetched — is a slide that never appears at all.
+        setDrawn((current) => ({ ...current, [slide]: drawing }))
         if (!active) return
-        setDrawn((current) => ({ ...current, [slide]: markup }))
       }
     })()
     return () => { active = false }
@@ -131,7 +141,7 @@ export function SharedDeckPage({ token }: { token: string }) {
       </header>
       <div className="shared-deck-stage">
         <button type="button" aria-label="이전 슬라이드" disabled={position <= 1} onClick={() => move(-1)}><ChevronLeft size={20} /></button>
-        {drawn[position]
+        {drawn[position]?.markup
           ? <div
               className="shared-deck-slide"
               role="img"
@@ -145,9 +155,11 @@ export function SharedDeckPage({ token }: { token: string }) {
                 event.preventDefault()
                 setPosition(Math.min(deck.slideCount, Math.max(1, Number(jumped[1]))))
               }}
-              dangerouslySetInnerHTML={{ __html: drawn[position] }}
+              dangerouslySetInnerHTML={{ __html: drawn[position]!.markup! }}
             />
-          : <div className="shared-deck-slide loading"><LoaderCircle className="spin" size={22} /></div>}
+          : drawn[position]?.url
+            ? <img src={drawn[position]!.url} alt={deck.titles[position - 1] || `슬라이드 ${position}`} />
+            : <div className="shared-deck-slide loading"><LoaderCircle className="spin" size={22} /></div>}
         <button type="button" aria-label="다음 슬라이드" disabled={position >= deck.slideCount} onClick={() => move(1)}><ChevronRight size={20} /></button>
       </div>
       <section className="shared-deck-comments">

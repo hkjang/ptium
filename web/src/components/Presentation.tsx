@@ -92,36 +92,52 @@ export function useSlideImages(presentationId: string, total: number, version: s
 }
 
 /**
- * The same drawings as useSlideImages, as markup the page draws itself.
+ * The drawings for presenting: a picture, unless there is something to click.
  *
- * Presenting is the one place a slide is not a picture: a link on a slide has
- * to be clickable, and nothing inside an <img> ever is. The markup comes from
- * the workspace's own server, drawn by the same code that draws every preview.
+ * A slide with a link on it has to be drawn by the page, because nothing inside
+ * an <img> can ever be clicked. Drawing it by the page is not free: one slide
+ * carrying a photograph is most of a megabyte of base64 inside its markup, and
+ * holding four of those as strings — this slide and the ones either side —
+ * costs what an image the browser decodes once does not. So the rule is what a
+ * reader would say it is: a slide is a picture until it has a link in it.
+ *
+ * Either way it is one request for the same drawing.
  */
-export function useSlideMarkup(presentationId: string, total: number, version: string | number, index: number, width = 1600) {
-  const [markup, setMarkup] = useState<Record<number, string>>({})
-  const cache = useRef<Map<number, string>>(new Map())
+export function useSlideDrawings(presentationId: string, total: number, version: string | number, index: number, width = 1600) {
+  const [drawings, setDrawings] = useState<Record<number, { markup?: string; url?: string }>>({})
+  const known = useRef<Map<number, { markup?: string; url?: string }>>(new Map())
+  const release = () => {
+    for (const drawing of known.current.values()) if (drawing.url) URL.revokeObjectURL(drawing.url)
+    known.current = new Map()
+  }
   useEffect(() => {
-    cache.current = new Map()
-    setMarkup({})
+    release()
+    setDrawings({})
   }, [presentationId, version, width])
   useEffect(() => {
     let active = true
     const wanted = [index, index + 1, index - 1, index + 2].filter((position) => position >= 0 && position < total)
     void (async () => {
       for (const position of wanted) {
-        if (cache.current.has(position)) continue
+        if (known.current.has(position)) continue
         try {
-          const drawn = await api.slidePreviewMarkup(presentationId, position + 1, width)
+          const markup = await api.slidePreviewMarkup(presentationId, position + 1, width)
+          const drawing = markup.includes('<a href=')
+            ? { markup }
+            : { url: URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' })) }
+          // Kept even if the slide moved on while this was in flight: it is the
+          // drawing of a slide that is still in the deck, and the next time it
+          // is wanted there is nothing to fetch.
+          known.current.set(position, drawing)
+          setDrawings((current) => ({ ...current, [position]: drawing }))
           if (!active) return
-          cache.current.set(position, drawn)
-          setMarkup((current) => ({ ...current, [position]: drawn }))
         } catch { /* a slide that will not draw shows as an empty frame */ }
       }
     })()
     return () => { active = false }
   }, [presentationId, total, index, version, width])
-  return markup
+  useEffect(() => release, [])
+  return drawings
 }
 
 function elapsed(from: number, now: number) {
@@ -153,7 +169,7 @@ export function PresentationView({ presentationId, title, slides, version, start
   const stage = useRef<HTMLDivElement>(null)
   const idleTimer = useRef(0)
   const total = slides.length
-  const drawings = useSlideMarkup(presentationId, total, version, index)
+  const drawings = useSlideDrawings(presentationId, total, version, index)
   const thumbs = useSlideImages(presentationId, overview ? total : 0, version, 0, 320)
 
   const step = useCallback((delta: number) => {
@@ -287,15 +303,17 @@ export function PresentationView({ presentationId, title, slides, version, start
     onClick={(event) => { if (!overview && event.target === event.currentTarget) step(1) }}
   >
     <div className="present-stage" onClick={() => !overview && step(1)}>
-      {drawn
+      {drawn?.markup
         ? <div
             className="present-slide"
             role="img"
             aria-label={`${index + 1}번 슬라이드`}
             onClickCapture={followLink}
-            dangerouslySetInnerHTML={{ __html: drawn }}
+            dangerouslySetInnerHTML={{ __html: drawn.markup }}
           />
-        : <span className="present-loading"><LoaderCircle className="spin" size={26} /></span>}
+        : drawn?.url
+          ? <img src={drawn.url} alt={`${index + 1}번 슬라이드`} />
+          : <span className="present-loading"><LoaderCircle className="spin" size={26} /></span>}
     </div>
 
     {laser && <span className="present-laser" style={{ left: pointer.x, top: pointer.y }} aria-hidden="true" />}
