@@ -194,3 +194,36 @@ func TestAnAirGappedDeckCarriesTheAccountsPicture(t *testing.T) {
 		t.Errorf("no slide carries a picture")
 	}
 }
+
+// A subject is cut out of the brief's own sentence, and the cut can fall inside
+// a parenthesis. A heading with an orphan bracket reads as a mistake before it
+// reads as anything.
+func TestAHeadingDoesNotCarryABracketItDoesNotClose(t *testing.T) {
+	cases := map[string]string{
+		"20대) 도입 승인":         "도입 승인",
+		"자동화(AMR 20대) 도입 승인": "자동화 도입 승인", // the aside goes too, see below
+		"전환 계획(1단계":          "전환 계획",
+		"이관 계획]":             "이관 계획]",
+		"정상 제목":              "정상 제목",
+	}
+	for given, want := range cases {
+		if got := headingName(given); got != want {
+			t.Errorf("headingName(%q) = %q, want %q", given, got, want)
+		}
+	}
+}
+
+// What is inside a parenthesis is detail; a heading is the subject.
+func TestAHeadingDropsItsAside(t *testing.T) {
+	cases := map[string]string{
+		"물류센터 자동화(AMR 20대) 도입 승인": "물류센터 자동화 도입 승인",
+		"전환 계획(2026)":             "전환 계획",
+		"(임원 보고)":                 "(임원 보고)", // nothing left to call it
+		"보안 강화":                   "보안 강화",
+	}
+	for given, want := range cases {
+		if got := headingName(given); got != want {
+			t.Errorf("headingName(%q) = %q, want %q", given, got, want)
+		}
+	}
+}

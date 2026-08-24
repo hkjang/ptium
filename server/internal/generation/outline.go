@@ -117,6 +117,13 @@ var figurePattern = regexp.MustCompile(`(?i)(\d[\d,.]*)\s*(%|퍼센트|억원|�
 	// The same units as the Korean ones, in the characters Japanese and Chinese
 	// write them with: without these a brief's figures became slide titles.
 	`億円|亿元|万円|万元|千円|か月|ヶ月|カ月|个月|小時|小时|時間|パーセント|億|亿|万|千|倍|割|円|元|人|名|件|個|个|日|天|週|周|月|年|` +
+	// Counters a Korean brief uses for the things a company counts. Without them
+	// "서울 1,200곳" is not a number at all: it stayed in the text, the topic
+	// splitter made a slide subject of it, and a deck about four regions came out
+	// as four slides titled after their own measurements. 장 is deliberately not
+	// here — "10장으로 정리해줘" is how long the deck should be, not a figure.
+	`곳|대|팀|회|차|점|종|층|석|위|단계|포인트|퍼센트포인트|분기|분|초|` +
+	`[kmgt]b|km|kg|톤|평|㎡|m2|` +
 	`months?|weeks?|quarters?|years?|days?|hours?|minutes?|` +
 	`people|users?|customers?|accounts?|systems?|teams?|sites?|stores?|cases?|` +
 	`percentage points?|pp|x)\b?`)
@@ -175,11 +182,21 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		// "목표 가용성 99.95%" is a figure the deck should show, not a subject it
 		// should argue. Treating one as a topic gave it its own slides — and a
 		// twelve-slide deck came out with the same step diagram three times.
-		if figureClause(candidate, outline.Figures) {
+		if figureClause(candidate, outline.Figures) || measurementOnly(candidate) {
 			continue
 		}
 		name := topicPhrase(cleanTopic(candidate))
-		if name == "" || utf8.RuneCountInString(name) < 2 {
+		// Shortening can leave the measurement and drop the words: "2026년 채용
+		// 계획" became "2026년", and a section was titled after a year. The clause
+		// it was cut from is the better heading; if that is a measurement too,
+		// the brief did not name a subject here at all.
+		if measurementOnly(name) {
+			name = topicPhrase(cleanTopic(candidate + " "))
+			if fuller := cleanTopic(candidate); !measurementOnly(fuller) {
+				name = fuller
+			}
+		}
+		if name == "" || utf8.RuneCountInString(name) < 2 || measurementOnly(name) {
 			continue
 		}
 		frame := frameFor(name)
@@ -207,11 +224,40 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 func splitTopics(subject string) []string {
 	const shield = "\uE000"
 	guarded := insideNumber.ReplaceAllString(subject, "${1}"+shield+"${2}")
+	guarded = shieldBrackets(guarded, shield)
 	clauses := topicSplitter.Split(guarded, -1)
 	for index, clause := range clauses {
 		clauses[index] = strings.ReplaceAll(clause, shield, ",")
 	}
 	return clauses
+}
+
+// shieldBrackets hides the separators inside a parenthesis, because what is in
+// one is an aside rather than another subject.
+//
+// "물류센터 자동화(AMR 20대) 도입 승인" was split at the space inside the bracket
+// and became two topics: "물류센터 자동화(AMR" and "20대) 도입 승인". The deck then
+// had slides titled after both halves, one of them carrying a bracket it never
+// opened.
+func shieldBrackets(subject, shield string) string {
+	var out strings.Builder
+	depth := 0
+	for _, character := range subject {
+		switch character {
+		case '(', '（', '[', '｢', '「':
+			depth++
+		case ')', '）', ']', '｣', '」':
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth > 0 && (character == ',' || character == '，' || character == '·' || character == '/') {
+			out.WriteString(shield)
+			continue
+		}
+		out.WriteRune(character)
+	}
+	return out.String()
 }
 
 // insideNumber is a separator between two digits: part of the number, not a
@@ -246,6 +292,23 @@ func figureClause(clause string, figures []promptFigure) bool {
 	return false
 }
 
+// measurementOnly reports whether a clause is a measurement with barely a word
+// attached, whichever way the brief wrote it.
+//
+// figureClause needs the figure to have been read into the outline, and the
+// outline keeps only the first few. Past that cap "2026년" and "영업 6명" came
+// through as subjects, and each was given a section of its own: four slides
+// titled after a year.
+func measurementOnly(clause string) bool {
+	if !figurePattern.MatchString(clause) {
+		// A short subject is still a subject: "목차" is two letters and no number.
+		return false
+	}
+	words := strings.TrimSpace(figurePattern.ReplaceAllString(strings.TrimSpace(clause), " "))
+	words = strings.TrimSpace(strings.Join(strings.Fields(words), ""))
+	return utf8.RuneCountInString(words) < 3
+}
+
 // topicPhrase cuts a topic down to something that can sit inside a sentence.
 //
 // A topic is written into headings and leads — "…을 순서대로 나눠 봅니다" — so a
@@ -265,6 +328,12 @@ func topicPhrase(name string) string {
 		// A conjugated verb is never part of a subject. "보고합니다" is what the
 		// author asked for, not what the slide is about.
 		if verbLike(word) {
+			// A connective verb ends its clause rather than vanishing from it.
+			// Dropping "줄이고" out of "배치 지연 6시간을 30분으로 줄이고 저장 비용 40%
+			// 절감" glued the two halves into one heading that reads as neither.
+			if len(words) > 0 {
+				break
+			}
 			continue
 		}
 		words = append(words, word)
@@ -435,7 +504,7 @@ func headingName(name string) string {
 			trimmed = rest
 		}
 	}
-	return withoutTrailingFigure(trimmed)
+	return withoutTrailingFigure(withoutAside(withoutBrokenBrackets(trimmed)))
 }
 
 // withoutTrailingFigure drops a measurement from the end of a heading.
@@ -444,20 +513,130 @@ func headingName(name string) string {
 // subject, and the subject came out as the title of three slides — "채널 비중은
 // 직판 46% — 기대 효과". A title says what the slide is about; the number belongs
 // on it, drawn, and not in the heading twice.
+// withoutAside drops a parenthesis from a heading. What is inside one is detail
+// — "자동화(AMR 20대) 도입 승인" — and a heading is the subject: the detail belongs
+// on the slide, in a point or a figure, where there is room to read it.
+func withoutAside(name string) string {
+	trimmed := strings.TrimSpace(name)
+	for _, pair := range []struct{ open, close string }{{"(", ")"}, {"（", "）"}} {
+		for {
+			open := strings.Index(trimmed, pair.open)
+			if open < 0 {
+				break
+			}
+			close := strings.Index(trimmed[open:], pair.close)
+			if close < 0 {
+				break
+			}
+			candidate := strings.TrimSpace(trimmed[:open]) + " " + strings.TrimSpace(trimmed[open+close+len(pair.close):])
+			candidate = strings.TrimSpace(strings.Join(strings.Fields(candidate), " "))
+			if utf8.RuneCountInString(candidate) < 3 {
+				return trimmed
+			}
+			trimmed = candidate
+		}
+	}
+	return trimmed
+}
+
+// withoutBrokenBrackets drops a bracket a heading does not close.
+//
+// A subject is cut out of the brief's own sentence, and the cut can fall inside
+// a parenthesis: "물류센터 자동화(AMR 20대) 도입 승인" gave a slide titled
+// "20대) 도입 승인", and another titled "20대) 도입 승인 — 기대 효과". A heading
+// with an orphan bracket in it reads as a mistake before it reads as anything.
+func withoutBrokenBrackets(name string) string {
+	trimmed := strings.TrimSpace(name)
+	for _, pair := range []struct{ open, close string }{{"(", ")"}, {"（", "）"}, {"[", "]"}, {"{", "}"}} {
+		opens, closes := strings.Count(trimmed, pair.open), strings.Count(trimmed, pair.close)
+		if opens == closes {
+			continue
+		}
+		if closes > opens {
+			// The words before the stray closing bracket belong to a phrase this
+			// heading does not have: what is left after it is the subject.
+			if at := strings.Index(trimmed, pair.close); at >= 0 {
+				if rest := strings.TrimSpace(trimmed[at+len(pair.close):]); utf8.RuneCountInString(rest) >= 3 {
+					trimmed = rest
+					continue
+				}
+			}
+		}
+		// An opening bracket with nothing to close it: the heading ends where the
+		// bracket began.
+		if at := strings.LastIndex(trimmed, pair.open); at > 0 {
+			if rest := strings.TrimSpace(trimmed[:at]); utf8.RuneCountInString(rest) >= 3 {
+				trimmed = rest
+			}
+		}
+	}
+	return trimmed
+}
+
 func withoutTrailingFigure(name string) string {
 	trimmed := strings.TrimRight(strings.TrimSpace(name), " ,·")
-	found := figurePattern.FindStringIndex(trimmed)
-	if found == nil || found[1] != len(trimmed) {
-		return name
+	for {
+		shorter := withoutOneTrailingFigure(trimmed)
+		shorter = withoutTrailingParticle(shorter)
+		if shorter == trimmed {
+			return trimmed
+		}
+		trimmed = shorter
 	}
-	rest := strings.TrimRight(strings.TrimSpace(trimmed[:found[0]]), " ,·")
+}
+
+func withoutOneTrailingFigure(name string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(name), " ,·")
+	body := strings.TrimRight(trimmed, headingParticles)
+	// The last match, not the first: "…2026년 3분기" ends in a measurement even
+	// though the first one it contains sits in the middle.
+	all := figurePattern.FindAllStringIndex(body, -1)
+	if len(all) == 0 {
+		return trimmed
+	}
+	found := all[len(all)-1]
+	if found[1] != len(body) {
+		return trimmed
+	}
+	rest := strings.TrimRight(strings.TrimSpace(body[:found[0]]), " ,·")
 	// What is left has to still be a subject: "18억" alone is a figure, and a
 	// heading of one word that the brief only wrote as a label for a number is
 	// not better than the words it came with.
 	if utf8.RuneCountInString(rest) < 3 {
-		return name
+		return trimmed
 	}
 	return rest
+}
+
+// headingParticles are the 조사 that can sit behind a measurement in a heading —
+// "3분기에", "6시간을" — and are part of the sentence the figure was cut from
+// rather than part of the figure.
+const headingParticles = "은는이가의을를에서으로"
+
+// withoutTrailingParticle drops a case marker a heading was cut off in the
+// middle of: "유지보수 서비스를" is half a sentence, "유지보수 서비스" is a subject.
+//
+// Only the markers that a Korean noun does not end in are trimmed. 이, 가, 의
+// and 에 are left alone, because "전문가" and "회의" end in them and are words.
+func withoutTrailingParticle(name string) string {
+	trimmed := strings.TrimSpace(name)
+	fields := strings.Fields(trimmed)
+	if len(fields) < 2 {
+		return trimmed
+	}
+	last := fields[len(fields)-1]
+	for _, particle := range []string{"으로", "에서", "을", "를", "은", "는"} {
+		if !strings.HasSuffix(last, particle) {
+			continue
+		}
+		shortened := strings.TrimSuffix(last, particle)
+		if utf8.RuneCountInString(shortened) < 2 {
+			return trimmed
+		}
+		fields[len(fields)-1] = shortened
+		return strings.Join(fields, " ")
+	}
+	return trimmed
 }
 
 // hasFigures reports whether the prompt supplied enough numbers to draw.
