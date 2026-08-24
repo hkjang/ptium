@@ -143,3 +143,39 @@ func TestATopicIsCalledOneThingAcrossItsSlides(t *testing.T) {
 		}
 	}
 }
+
+// A figure label is cut out of the brief's sentence the same way a heading is,
+// and it goes wrong the same ways. The heading rules were applied to headings
+// only, and the label under the number on the same slide kept the bracket the
+// title had just lost.
+func TestAFigureLabelIsRepairedLikeAHeading(t *testing.T) {
+	cases := map[string]string{
+		"물류센터 자동화(AMR": "물류센터 자동화", // a bracket it never closes
+		"지연 6시간을":      "지연",       // a measurement labelling a measurement
+		"개발 속도":        "개발 속도",    // a label that is already a label
+		"인력 재배치":       "인력 재배치",
+		"目標可用性":        "目標可用性",
+	}
+	for given, want := range cases {
+		if got := figureLabelName(given); got != want {
+			t.Errorf("figureLabelName(%q) = %q, want %q", given, got, want)
+		}
+	}
+	// Through the door the deck actually uses, so the repair is wired in and not
+	// merely written.
+	if got := figureLabel("물류센터 자동화(AMR 20대) 도입 승인 요청.", "20대"); strings.ContainsAny(got, "()") {
+		t.Errorf("figureLabel = %q, want no bracket it does not close", got)
+	}
+}
+
+// A script without spaces still has words. Counting back a fixed number of
+// characters to find a label landed inside one.
+func TestALabelDoesNotStartInTheMiddleOfAWord(t *testing.T) {
+	got := figureLabel("平均オンボーディング期間5週間。", "5週")
+	if strings.HasPrefix(got, "ボー") || !strings.Contains(got, "オンボーディング") {
+		t.Errorf("figureLabel = %q, want the whole word オンボーディング", got)
+	}
+	if latin := figureLabel("Average onboarding period 5 weeks.", "5 week"); !strings.Contains(latin, "onboarding") {
+		t.Errorf("figureLabel = %q, want the Latin label intact", latin)
+	}
+}

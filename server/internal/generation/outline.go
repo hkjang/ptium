@@ -491,6 +491,76 @@ func frameFor(topic string) string {
 // figureLabel takes the few words before a number as its label, which is where
 // prompts put it: "전환 대상 42개 시스템".
 func figureLabel(prompt, match string) string {
+	return figureLabelName(rawFigureLabel(prompt, match))
+}
+
+// figureLabelName repairs a label the same way a heading is repaired. It is cut
+// out of the brief's sentence exactly as a heading is, and goes wrong the same
+// way: "물류센터 자동화(AMR 20대)" labelled its figure "물류센터 자동화(AMR", with a
+// bracket it never closes, and "배치 지연 6시간을 30분으로" labelled 30분 with
+// "지연 6시간을" — a measurement labelling another measurement.
+//
+// Only what is certainly not part of the label goes. A label is two words at
+// most already, and taking more would leave the number with nothing to say what
+// it counts.
+func figureLabelName(label string) string {
+	repaired := withoutBrokenBrackets(strings.TrimSpace(label))
+	if fields := strings.Fields(repaired); len(fields) > 1 {
+		last := fields[len(fields)-1]
+		if figurePattern.MatchString(last) {
+			if shorter := strings.TrimSpace(strings.Join(fields[:len(fields)-1], " ")); shorter != "" {
+				repaired = shorter
+			}
+		}
+	}
+	if repaired = strings.Trim(repaired, " .,·-—:()[]"); repaired == "" {
+		return strings.TrimSpace(label)
+	}
+	return repaired
+}
+
+// wordStart backs a cut out of the middle of a word.
+//
+// A script without spaces still has runs that are one word — katakana, Latin,
+// digits — and counting back a fixed number of characters lands inside one:
+// "平均オンボーディング期間" was labelled "ボーディング期間". The cut moves back to
+// where the run began, or forward past it if that reaches too far.
+func wordStart(runes []rune, start int) int {
+	if start <= 0 || start >= len(runes) {
+		return start
+	}
+	if !sameRun(runes[start-1], runes[start]) {
+		return start
+	}
+	const reachBack = 8
+	for back := start; back > 0 && start-back < reachBack; back-- {
+		if !sameRun(runes[back-1], runes[back]) {
+			return back
+		}
+	}
+	// The run is longer than the label may be. Start after it instead of inside.
+	for forward := start; forward < len(runes); forward++ {
+		if !sameRun(runes[forward-1], runes[forward]) {
+			return forward
+		}
+	}
+	return start
+}
+
+// sameRun reports whether two characters belong to the same unbroken word.
+func sameRun(before, after rune) bool {
+	switch {
+	case unicode.Is(unicode.Katakana, before) || before == 'ー':
+		return unicode.Is(unicode.Katakana, after) || after == 'ー'
+	case unicode.IsDigit(before):
+		return unicode.IsDigit(after) || after == '.' || after == ','
+	case unicode.Is(unicode.Latin, before):
+		return unicode.Is(unicode.Latin, after)
+	}
+	return false
+}
+
+func rawFigureLabel(prompt, match string) string {
 	index := strings.Index(prompt, match)
 	if index <= 0 {
 		return ""
@@ -519,7 +589,7 @@ func figureLabel(prompt, match string) string {
 			}
 		}
 		if len(runes) > reach {
-			runes = runes[len(runes)-reach:]
+			runes = runes[wordStart(runes, len(runes)-reach):]
 		}
 		return strings.TrimSpace(string(runes))
 	}
