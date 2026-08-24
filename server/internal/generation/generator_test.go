@@ -1145,3 +1145,50 @@ func TestTheOutputBudgetGrowsWithTheDeck(t *testing.T) {
 		t.Errorf("an administrator's 3000 became %d", chosen.maxOutputTokens)
 	}
 }
+
+// Both passes ask the provider the same way. The pass that plans a deck used to
+// go through a wrapper that never sent the thinking switch, so the setting an
+// administrator chose was honoured when writing the deck and ignored when
+// planning it. Against a self-hosted reasoning model that cost 302 seconds and
+// 6,495 tokens for what takes 65 seconds and 1,349 tokens when the switch is
+// sent — so the plan was cut off or timed out, and the deck was written with no
+// design behind it.
+func TestEveryPassAsksTheProviderNotToThink(t *testing.T) {
+	var asked []bool
+	seen := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		kwargs, _ := body["chat_template_kwargs"].(map[string]any)
+		thinking, present := kwargs["enable_thinking"]
+		asked = append(asked, present && thinking == false)
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(map[string]any{"choices": []any{map[string]any{
+			"message": map[string]any{"role": "assistant", "content": `{"slides":[]}`}}}})
+	}))
+	defer seen.Close()
+	generator := New(testSettings{"ai.provider": "openai-compatible", "ai.base_url": seen.URL,
+		"ai.model": "test-model", "ai.api_key": "test-key"})
+	generator.client = seen.Client()
+	endpoint := seen.URL + "/chat/completions"
+
+	if _, err := generator.completeSource(context.Background(), endpoint, "test-model", "test-key",
+		"system", "user", 0.5); err != nil {
+		t.Fatalf("writing pass: %v", err)
+	}
+	if _, err := generator.complete(context.Background(), endpoint, "test-model", "test-key",
+		"system", "user", 0.5); err != nil {
+		t.Fatalf("planning pass: %v", err)
+	}
+	if len(asked) != 2 || !asked[0] || !asked[1] {
+		t.Fatalf("the switch was sent on %v of the two passes", asked)
+	}
+
+	// And a provider told to think is not asked to stop, on either pass.
+	asked = nil
+	generator.reasoning = reasoningOn
+	_, _ = generator.completeSource(context.Background(), endpoint, "test-model", "test-key", "s", "u", 0.5)
+	_, _ = generator.complete(context.Background(), endpoint, "test-model", "test-key", "s", "u", 0.5)
+	if len(asked) != 2 || asked[0] || asked[1] {
+		t.Fatalf("reasoning is on, yet the switch was sent: %v", asked)
+	}
+}

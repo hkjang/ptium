@@ -390,15 +390,31 @@ func (g *Generator) applyProviderSettings(ctx context.Context) {
 // immediate rejection from a hosted API that does not know the field.
 func (g *Generator) completeSource(ctx context.Context, endpoint, modelName, apiKey, system, user string,
 	temperature float64) (string, error) {
+	return g.completeWith(ctx, endpoint, modelName, apiKey, system, user, temperature, nil)
+}
+
+// completeWith is that order, once, for every pass that talks to the model.
+//
+// It used to be written out for the pass that writes the deck and not for the
+// pass that plans it, so the planning pass never asked the provider not to
+// think. Measured against a self-hosted reasoning model, that one omission cost
+// 302 seconds and 6,495 tokens for an answer the same model gives in 65 seconds
+// and 1,349 tokens when asked not to think — right up against the five-minute
+// timeout and four fifths of the output budget. The plan was routinely cut off
+// or timed out, and the deck was written with no design behind it. The setting
+// an administrator chose was being honoured at one door and ignored at the
+// other, so now there is one door.
+func (g *Generator) completeWith(ctx context.Context, endpoint, modelName, apiKey, system, user string,
+	temperature float64, format map[string]string) (string, error) {
 	quiet := g.reasoning != reasoningOn
-	raw, err := g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, nil, quiet)
+	raw, err := g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, format, quiet)
 	if err == nil {
 		return raw, nil
 	}
 	// The provider thought instead of answering. Ask once more, plainly.
 	if errors.Is(err, errReasonedWithoutAnswering) {
 		return g.send(ctx, endpoint, modelName, apiKey, system+plainlyPrompt, noThinkPrefix+user,
-			temperature, nil, quiet)
+			temperature, format, quiet)
 	}
 	if !quiet || g.reasoning != reasoningAuto {
 		return "", err
@@ -408,7 +424,7 @@ func (g *Generator) completeSource(ctx context.Context, endpoint, modelName, api
 		// The provider does not take the thinking switch. Ask again without it, and
 		// stop sending it for the rest of this run.
 		g.reasoning = reasoningOn
-		return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, nil, false)
+		return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, format, false)
 	}
 	return "", err
 }
@@ -655,12 +671,8 @@ func completionsEndpoint(baseURL string) (string, error) {
 }
 
 func (g *Generator) complete(ctx context.Context, endpoint, modelName, apiKey, system, user string, temperature float64) (string, error) {
-	raw, err := g.request(ctx, endpoint, modelName, apiKey, system, user, temperature, map[string]string{"type": "json_object"})
-	if errors.Is(err, errReasonedWithoutAnswering) {
-		return g.request(ctx, endpoint, modelName, apiKey, system+plainlyPrompt, noThinkPrefix+user,
-			temperature, map[string]string{"type": "json_object"})
-	}
-	return raw, err
+	return g.completeWith(ctx, endpoint, modelName, apiKey, system, user, temperature,
+		map[string]string{"type": "json_object"})
 }
 
 // A reasoning model that ignores the switch and thinks through its whole budget
@@ -686,11 +698,6 @@ const (
 	// answer is unaffected by it.
 	reasoningOn reasoningMode = "on"
 )
-
-func (g *Generator) request(ctx context.Context, endpoint, modelName, apiKey, system, user string,
-	temperature float64, format map[string]string) (string, error) {
-	return g.send(ctx, endpoint, modelName, apiKey, system, user, temperature, format, false)
-}
 
 // send performs one completion. quiet disables the provider's reasoning.
 func (g *Generator) send(ctx context.Context, endpoint, modelName, apiKey, system, user string,

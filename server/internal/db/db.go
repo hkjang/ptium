@@ -57,7 +57,12 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error
 		}
 	}
 	for key, setting := range defaultSettings {
-		_, err := conn.Exec(ctx, `INSERT INTO app_settings(key,value,sensitive,description) VALUES($1,$2::jsonb,$3,$4) ON CONFLICT DO NOTHING`, key, setting.Value, setting.Sensitive, setting.Description)
+		// The value is the administrator's and is never overwritten. The
+		// description is documentation, and a correction to it that only reached
+		// new installations would leave every existing one reading the old advice.
+		_, err := conn.Exec(ctx, `INSERT INTO app_settings(key,value,sensitive,description) VALUES($1,$2::jsonb,$3,$4)
+			ON CONFLICT(key) DO UPDATE SET description=EXCLUDED.description`,
+			key, setting.Value, setting.Sensitive, setting.Description)
 		if err != nil {
 			return fmt.Errorf("seed setting %q: %w", key, err)
 		}
