@@ -2,32 +2,32 @@
    shortcut tables it shares with the editor and the presentation. */
 .guide-layout{display:grid;grid-template-columns:212px minmax(0,1fr);gap:26px;align-items:start}
 .guide-toc{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
-.guide-toc a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--muted);font-size:10px;text-decoration:none}
+.guide-toc a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--muted);font-size:13px;text-decoration:none}
 .guide-toc a:hover{background:var(--surface-soft);color:var(--ink)}
 .guide-toc a.active{color:var(--violet);background:var(--violet-soft);font-weight:600}
 .guide-toc-cta{margin-top:10px;justify-content:center}
 .guide-body{display:flex;flex-direction:column;gap:14px}
 .guide-section{scroll-margin-top:84px;padding:22px 24px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
-.guide-section h2{display:flex;align-items:center;gap:9px;font-size:16px}
+.guide-section h2{display:flex;align-items:center;gap:9px;font-size:17px}
 .guide-section h2 svg{color:var(--violet)}
-.guide-section>p,.guide-section li,.guide-section dd{color:var(--muted);font-size:11px;line-height:1.85}
+.guide-section>p,.guide-section li,.guide-section dd{color:var(--muted);font-size:13.5px;line-height:1.85}
 .guide-section b{color:var(--ink);font-weight:600}
-.guide-lead{margin-top:10px;font-size:12px !important}
+.guide-lead{margin-top:10px;font-size:14.5px !important}
 .guide-section p+p,.guide-section>ul,.guide-section>ol,.guide-section>dl,.guide-section>div,.guide-section>pre{margin-top:13px}
-.guide-subhead{margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line);font-size:12px;color:var(--ink)}
+.guide-subhead{margin:22px 0 10px;padding-bottom:7px;border-bottom:1px solid var(--line);font-size:14.5px;color:var(--ink)}
 .guide-steps{padding-left:19px;display:flex;flex-direction:column;gap:7px}
 .guide-checklist{list-style:none;padding-left:2px;display:flex;flex-direction:column;gap:9px}
 .guide-checklist li{position:relative;padding-left:16px}
 .guide-checklist li::before{content:"";position:absolute;left:2px;top:9px;width:5px;height:5px;border-radius:50%;background:var(--violet)}
-.guide-note{padding:11px 13px;border-radius:10px;border-left:3px solid var(--violet);background:var(--surface-soft);font-size:10px !important}
+.guide-note{padding:11px 13px;border-radius:10px;border-left:3px solid var(--violet);background:var(--surface-soft);font-size:13px !important}
 .guide-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .guide-card{padding:14px 15px;border:1px solid var(--line);border-radius:11px;background:var(--surface-soft)}
-.guide-card strong{font-size:11px}
-.guide-card p{margin-top:7px;color:var(--muted);font-size:10px;line-height:1.8}
+.guide-card strong{font-size:13.5px}
+.guide-card p{margin-top:7px;color:var(--muted);font-size:13px;line-height:1.8}
 .guide-compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .guide-compare>div{padding:13px 15px;border-radius:11px;border:1px solid var(--line)}
-.guide-compare span{display:block;font-size:9px;font-weight:600;letter-spacing:.04em}
-.guide-compare p{margin-top:7px;font-size:10px;line-height:1.8;color:var(--ink)}
+.guide-compare span{display:block;font-size:12px;font-weight:600;letter-spacing:.04em}
+.guide-compare p{margin-top:7px;font-size:13px;line-height:1.8;color:var(--ink)}
 .guide-compare-bad{background:color-mix(in srgb,#c2410c 6%,transparent)}
 .guide-compare-bad span{color:#c2410c}
 .guide-compare-good{background:color-mix(in srgb,#15803d 7%,transparent)}
@@ -35,26 +35,26 @@
 .guide-code{overflow:auto;padding:15px 17px;border-radius:11px;color:#e8e5f0;background:#24222d;font:10px/1.85 ui-monospace,SFMono-Regular,Consolas,monospace}
 .guide-syntax,.guide-faq{display:flex;flex-direction:column;gap:8px}
 .guide-syntax>div{display:grid;grid-template-columns:120px minmax(0,1fr);gap:12px;align-items:baseline}
-.guide-syntax code{font-size:10px}
+.guide-syntax code{font-size:13px}
 .guide-faq>div{padding:12px 14px;border:1px solid var(--line);border-radius:10px}
-.guide-faq dt{font-size:11px;font-weight:600;color:var(--ink)}
+.guide-faq dt{font-size:13.5px;font-weight:600;color:var(--ink)}
 .guide-faq dd{margin-top:5px}
 .guide-section kbd,.shortcut-group kbd{display:inline-block;min-width:20px;padding:2px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;background:var(--surface-soft);color:var(--ink);font:9px/1.6 inherit;text-align:center}
 /* Shared with the editor and the presentation overlay. */
 .shortcut-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 22px}
-.shortcut-group h4{margin-bottom:7px;font-size:10px;color:var(--violet);letter-spacing:.04em}
+.shortcut-group h4{margin-bottom:7px;font-size:13px;color:var(--violet);letter-spacing:.04em}
 .shortcut-group>dl{display:flex;flex-direction:column}
 .shortcut-group>dl>div{display:grid;grid-template-columns:minmax(120px,.9fr) minmax(0,1.1fr);gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
 .shortcut-group>dl>div:last-child{border:0}
 .shortcut-group dt{display:flex;flex-wrap:wrap;gap:4px}
-.shortcut-group dd{color:var(--muted);font-size:10px}
+.shortcut-group dd{color:var(--muted);font-size:13px}
 /* The sheet has to sit above a full-screen talk. */
 .presentation-mode .modal-backdrop{z-index:1200}
 @media(max-width:980px){.guide-layout{grid-template-columns:1fr}.guide-toc{position:static;flex-direction:row;flex-wrap:wrap}.guide-two,.guide-compare,.shortcut-groups{grid-template-columns:1fr}}
 /* Common answers, one click away, under a field someone may also type into. */
 .chip-row{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
-.chip-row button{padding:5px 9px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--muted);font-size:9px;cursor:pointer}
+.chip-row button{padding:5px 9px;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--muted);font-size:12px;cursor:pointer}
 .chip-row button:hover{border-color:var(--line-strong);color:var(--ink)}
 .chip-row button.active{border-color:var(--violet);background:var(--violet-soft);color:var(--violet-dark);font-weight:600}
 /* Dropping an image file onto the slide. */
-.freeform-drop-hint{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;gap:9px;border:2px dashed var(--violet);border-radius:8px;background:color-mix(in srgb,var(--violet) 10%,transparent);color:var(--violet-dark);font-size:11px;font-weight:600;pointer-events:none}
+.freeform-drop-hint{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;gap:9px;border:2px dashed var(--violet);border-radius:8px;background:color-mix(in srgb,var(--violet) 10%,transparent);color:var(--violet-dark);font-size:13.5px;font-weight:600;pointer-events:none}

@@ -96,11 +96,61 @@ func (s *Store) UpdateTemplate(ctx context.Context, id, ownerID string, admin bo
 
 // ListTemplates returns the templates a user may generate with: their own
 // uploads plus every shared and built-in design.
+// TemplateFilter narrows a listing to what a picker is showing.
+//
+// A service that generates decks against Ptium chooses a template first, and a
+// person choosing one filters before they scroll. Both had to read every
+// template and sort it out themselves.
+type TemplateFilter struct {
+	// Kind is "builtin" for the designs that ship, "uploaded" for the customer's
+	// own. Empty means both.
+	Kind string
+	// Search matches a template's name.
+	//
+	// Not the tags: those are read out of a template's own design when it is
+	// listed rather than stored beside it, so there is nothing to match against
+	// in the database. A picker filters by kind and by name.
+	Search string
+}
+
 func (s *Store) ListTemplates(ctx context.Context, ownerID string, limit, offset int) ([]model.Template, int, error) {
+	return s.ListTemplatesFiltered(ctx, ownerID, TemplateFilter{}, limit, offset)
+}
+
+func (s *Store) ListTemplatesFiltered(ctx context.Context, ownerID string, filter TemplateFilter,
+	limit, offset int) ([]model.Template, int, error) {
 	limit, offset = clampPage(limit, offset)
-	const visible = `(owner_id=$1 OR scope='shared' OR kind='builtin')`
+	// The owner is always $1. The count query takes the filters from $2; the
+	// listing takes limit and offset at $2 and $3 and its filters from $4, so the
+	// two clauses are numbered separately from the same list of conditions.
+	type condition struct {
+		clause string
+		value  any
+	}
+	var conditions []condition
+	if kind := strings.ToLower(strings.TrimSpace(filter.Kind)); kind == "builtin" || kind == "uploaded" {
+		conditions = append(conditions, condition{"kind=$%d", kind})
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		conditions = append(conditions, condition{"name ILIKE $%d", "%" + search + "%"})
+	}
+	where := func(from int) string {
+		clause := `(owner_id=$1 OR scope='shared' OR kind='builtin')`
+		for index, one := range conditions {
+			clause += " AND " + fmt.Sprintf(one.clause, from+index)
+		}
+		return clause
+	}
+	countArguments := []any{ownerID}
+	listArguments := []any{ownerID, limit, offset}
+	for _, one := range conditions {
+		countArguments = append(countArguments, one.value)
+		listArguments = append(listArguments, one.value)
+	}
+	visible := where(4)
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM templates WHERE `+visible, ownerID).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM templates WHERE `+where(2),
+		countArguments...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	// The counts are this person's own decks, not everyone's. A library is only
@@ -114,7 +164,7 @@ func (s *Store) ListTemplates(ctx context.Context, ownerID string, limit, offset
 			WHERE p.template_id=templates.id AND p.owner_id=$1 AND p.deleted_at IS NULL),
 		EXISTS(SELECT 1 FROM favorites f WHERE f.owner_id=$1 AND f.kind='template' AND f.ref_id=templates.id)
 		FROM templates WHERE `+visible+`
-		ORDER BY kind='builtin', (owner_id=$1) DESC, updated_at DESC LIMIT $2 OFFSET $3`, ownerID, limit, offset)
+		ORDER BY kind='builtin', (owner_id=$1) DESC, updated_at DESC LIMIT $2 OFFSET $3`, listArguments...)
 	if err != nil {
 		return nil, 0, err
 	}

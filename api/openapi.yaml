@@ -2787,6 +2787,24 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
+        - name: kind
+          in: query
+          description: |
+            Narrow to `builtin` for the designs Ptium ships or `uploaded` for
+            the customer's own. Any other value is ignored and the whole
+            library is returned.
+          schema:
+            type: string
+            enum: [builtin, uploaded]
+        - name: search
+          in: query
+          description: |
+            Narrow to templates whose name contains this text, case-insensitively.
+            Tags are read out of a template's design as it is listed rather than
+            stored, so they cannot be searched.
+          schema:
+            type: string
+            maxLength: 120
       responses:
         '200':
           description: Templates ordered with uploads first, then built-in designs.
@@ -4294,7 +4312,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.7.0
+            service.version: 1.8.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

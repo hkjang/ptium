@@ -3,7 +3,7 @@
 Every check states what it expects. A failure prints the request, the status and
 the body, so the next step is reading code rather than reproducing.
 """
-import json, os, sys, urllib.request, urllib.error, zipfile, io, zlib, struct, time
+import json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 RUN = str(int(time.time()))[-6:]  # each run works on its own names
@@ -80,6 +80,40 @@ print(f"   {len(templates)} templates")
 builtin = [t for t in templates if t["kind"] == "builtin"]
 if len(builtin) < 50:
     failures.append(f"built-in template count is {len(builtin)}, expected 50")
+# Another service picks a template before it asks for a deck, and a picker
+# narrows before it scrolls. Both used to have to read the whole library.
+narrowed = call("GET", "/templates?kind=builtin&limit=100", expect=200)
+shipped = data_of(narrowed) or []
+if not shipped or any(t["kind"] != "builtin" for t in shipped):
+    failures.append("kind=builtin returned something that is not a built-in design")
+own = data_of(call("GET", "/templates?kind=uploaded&limit=100", expect=200)) or []
+if any(t["kind"] != "uploaded" for t in own):
+    failures.append("kind=uploaded returned something that was not uploaded")
+if len(shipped) + len(own) != len(templates):
+    failures.append(f"the two kinds hold {len(shipped)}+{len(own)} of {len(templates)} templates")
+named = data_of(call("GET", f"/templates?search={urllib.parse.quote(shipped[0]['name'])}", expect=200)) or []
+if not any(t["id"] == shipped[0]["id"] for t in named):
+    failures.append(f"searching for {shipped[0]['name']!r} did not find it")
+if len(data_of(call("GET", "/templates?kind=nonsense&limit=100", expect=200)) or []) != len(templates):
+    failures.append("an unknown kind narrowed the listing instead of being ignored")
+
+# The whole point of listing them: name one, and the deck is built on it.
+chosen = shipped[0]
+on_template = data_of(call("POST", "/presentations/generate", {
+    "title": f"템플릿 지정 {RUN}", "prompt": "사내 보안 교육 계획을 팀장들에게 보고합니다.",
+    "language": "ko", "slideCount": 5, "templateId": chosen["id"]}, expect=202))
+if (on_template or {}).get("templateId") != chosen["id"]:
+    failures.append(f"a deck asked for on {chosen['name']} came back on {(on_template or {}).get('templateId')}")
+else:
+    for _ in range(120):
+        built = data_of(call("GET", f"/presentations/{on_template['id']}", expect=200)) or {}
+        if built.get("status") in ("ready", "completed", "failed"):
+            break
+        time.sleep(1)
+    if built.get("templateName") != chosen["name"]:
+        failures.append(f"the generated deck reports template {built.get('templateName')!r}")
+    call("DELETE", f"/presentations/{on_template['id']}", expect=204)
+
 first = templates[0]
 call("GET", f"/templates/{first['id']}", expect=200)
 call("GET", f"/templates/{first['id']}/preview.svg?width=320", raw=True, expect=200)
