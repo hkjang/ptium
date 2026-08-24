@@ -7,6 +7,7 @@ import {
   Table2, Trash2, Type, Underline, Ungroup, Unlock, Undo2, WandSparkles, ZoomIn, ZoomOut,
 } from 'lucide-react'
 import { api } from '../api/client'
+import { markupFor } from '../pages/editor/model/markup'
 import type { CanvasRegion, SlideBlock, SlideElement, SlotFrame, SlotStyle } from '../types'
 import { SlidePreview } from './SlidePreview'
 
@@ -208,6 +209,29 @@ export function FreeformCanvas({
   const [regionSlot, setRegionSlot] = useState('')
   const [regionEditing, setRegionEditing] = useState('')
   const [regionDraft, setRegionDraft] = useState('')
+
+  /**
+   * Ctrl+B, Ctrl+I and Ctrl+K over whichever textarea has the cursor.
+   *
+   * The marks are the text — **굵게**, [보이는 말](주소) — so the gesture is a
+   * rewrite of the value and a new selection, and the browser's own undo would
+   * lose it: the write goes through the caller, and what it selects afterwards
+   * is what the person still has to type.
+   */
+  const applyMarkup = (event: ReactKeyboardEvent<HTMLTextAreaElement>, write: (value: string) => void) => {
+    const gesture = markupFor(event)
+    if (!gesture) return false
+    const field = event.currentTarget
+    const marked = gesture(field.value, field.selectionStart, field.selectionEnd)
+    event.preventDefault()
+    event.stopPropagation()
+    write(marked.text)
+    requestAnimationFrame(() => {
+      field.setSelectionRange(marked.start, marked.end)
+      field.focus()
+    })
+    return true
+  }
   const [regionOffset, setRegionOffset] = useState<{ x: number; y: number } | null>(null)
   const [guides, setGuides] = useState<{ axis: 'x' | 'y'; at: number }[]>([])
   // A rubber band drawn over empty page, and the menu a right-click opens.
@@ -984,6 +1008,7 @@ export function FreeformCanvas({
                     onPointerDown={(event) => event.stopPropagation()}
                     onBlur={() => finishEditing(element)}
                     onKeyDown={(event) => {
+                      if (applyMarkup(event, (text) => patchSelected({ text }, false))) return
                       /* The editor's own key handling stops at a textarea, so without
                          this the only way out of a text box was to click elsewhere. */
                       if (event.key === 'Escape' || (event.key === 'Enter' && (event.ctrlKey || event.metaKey))) {
@@ -1254,6 +1279,7 @@ export function FreeformCanvas({
                 onChange={(event) => setRegionDraft(event.target.value)}
                 onBlur={commitRegionEdit}
                 onKeyDown={(event) => {
+                  if (applyMarkup(event, setRegionDraft)) return
                   // Escape ends the edit and keeps what was typed. Every editor
                   // people come from behaves that way, and throwing away a
                   // sentence someone just wrote — silently — is not a shortcut.

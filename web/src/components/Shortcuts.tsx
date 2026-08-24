@@ -36,6 +36,14 @@ export const editorShortcuts: ShortcutGroup[] = [
     ],
   },
   {
+    title: '글 안에서',
+    items: [
+      { keys: [modifier, 'B'], label: '고른 말을 굵게 (한 번 더 누르면 해제)' },
+      { keys: [modifier, 'I'], label: '고른 말을 기울임' },
+      { keys: [modifier, 'K'], label: '고른 말에 링크 걸기' },
+    ],
+  },
+  {
     title: '캔버스 · 개체',
     items: [
       { keys: ['더블클릭'], label: '글상자 · 영역 텍스트 편집' },

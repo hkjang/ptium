@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
   Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, Plus, RotateCcw, Trash2, Link2, MonitorPlay, WandSparkles, X, MessageSquareText } from 'lucide-react'
+import { markupFor } from './editor/model/markup'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
@@ -1280,6 +1281,17 @@ export function EditorPage({ id }: { id: string }) {
                 className="source-editor-code"
                 spellCheck={false}
                 value={source}
+                onKeyDown={(event) => {
+                  // The same three keys the canvas has, over the deck's own
+                  // source: what they write is what the source says.
+                  const gesture = markupFor(event)
+                  if (!gesture) return
+                  const field = event.currentTarget
+                  const marked = gesture(field.value, field.selectionStart, field.selectionEnd)
+                  event.preventDefault()
+                  setSource(marked.text)
+                  requestAnimationFrame(() => { field.setSelectionRange(marked.start, marked.end); field.focus() })
+                }}
                 onChange={(event) => setSource(event.target.value)}
                 aria-label="덱 소스"
                 placeholder={'# 슬라이드 제목\n@content\n> 한 줄 리드\n- 핵심 요점\n::kpi 핵심 지표\n- 전환 대상 | 42개\n::\n::image 로고 | 브랜드 마크'}

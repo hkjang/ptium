@@ -560,10 +560,18 @@ newest = (data_of(call("GET", f"/presentations/{deck_id}/revisions", expect=200)
 if not newest:
     failures.append("overwriting a deck kept no checkpoint of what it replaced")
 else:
-    call("POST", f"/presentations/{deck_id}/revisions/{newest[0]['id']}/restore", {}, expect=200)
+    # Which checkpoint this is matters as much as what it gives back: the
+    # overwrite is what made it, so anything else at the front of the list means
+    # the checkpoint the restore needs was never written.
+    marker = newest[0]
+    call("POST", f"/presentations/{deck_id}/revisions/{marker['id']}/restore", {}, expect=200)
     back = ((data_of(call("GET", f"/presentations/{deck_id}/source", expect=200)) or {}).get("source") or "").strip()
     if back != before:
-        failures.append("a restored checkpoint did not give the deck back")
+        failures.append(
+            "a restored checkpoint did not give the deck back — newest checkpoint was "
+            f"{marker.get('reason')} at version {marker.get('version')} ({marker.get('createdAt')}); "
+            f"the deck now starts {back.splitlines()[:1]} and should start {before.splitlines()[:1]}; "
+            f"checkpoints: {[(r.get('reason'), r.get('version')) for r in newest[:5]]}")
         print("   lost:", [l for l in before.split("\n") if l not in back.split("\n")][:4])
         print("   gained:", [l for l in back.split("\n") if l not in before.split("\n")][:4])
 

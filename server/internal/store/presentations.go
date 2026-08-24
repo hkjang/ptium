@@ -328,6 +328,15 @@ func (s *Store) DuplicatePresentation(ctx context.Context, id, ownerID, title st
 }
 
 // ListPresentationRevisions returns compact checkpoint metadata, newest first.
+//
+// Newest is decided by the deck's own version rather than by the clock. A
+// checkpoint's version is the version it was taken at, and a deck's version only
+// ever counts up, so ordering by it cannot be wrong. Wall-clock time can:
+// 7 checkpoints of 2,795 decks in one workspace carry a created_at earlier than
+// the checkpoint before them — a clock that stepped backwards under a
+// virtualised host is enough — and the deck's history then lists the wrong
+// checkpoint first. Restoring "the newest" gave back a deck from four changes
+// ago, which is the one thing version history must never do.
 func (s *Store) ListPresentationRevisions(ctx context.Context, id, ownerID string, limit, offset int) ([]model.PresentationRevision, int, error) {
 	limit, offset = clampPage(limit, offset)
 	var exists bool
@@ -347,7 +356,7 @@ func (s *Store) ListPresentationRevisions(ctx context.Context, id, ownerID strin
 	rows, err := s.Pool.Query(ctx, `SELECT r.id::text,r.presentation_id::text,r.version,r.reason,r.title,r.slide_count,r.created_at
 		FROM presentation_revisions r JOIN presentations p ON p.id=r.presentation_id
 		WHERE r.presentation_id=$1 AND p.owner_id=$2 AND p.deleted_at IS NULL
-		ORDER BY r.created_at DESC LIMIT $3 OFFSET $4`, id, ownerID, limit, offset)
+		ORDER BY r.version DESC, r.created_at DESC LIMIT $3 OFFSET $4`, id, ownerID, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
