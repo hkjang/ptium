@@ -44,4 +44,13 @@ cp "$repository_root/scripts/load-offline.ps1" "$dist/load-ptium-$version.ps1"
 cp "$repository_root/scripts/load-offline.sh" "$dist/load-ptium-$version.sh"
 
 docker image inspect "$image" "$alias_image" > /dev/null
+
+# What the archive holds is what a target site will run, so it is worth running
+# once here: an empty database, the bootstrap administrator, and a deck.
+if command -v python3 > /dev/null; then
+    python3 "$repository_root/scripts/e2e/firstrun.py" --image "$image" || {
+        echo "The image that was just built does not come up on an empty database." >&2
+        exit 1
+    }
+fi
 printf 'Created %s\nSHA256  %s\n' "$archive" "$digest"

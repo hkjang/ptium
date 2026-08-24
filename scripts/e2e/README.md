@@ -17,6 +17,9 @@ python3 scripts/e2e/flows.py .  # generate, edit, apply source, save a slide, ex
 python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter window, keyboard
 python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
 
+# the released image itself, on a database that has never been used
+python3 scripts/e2e/firstrun.py
+
 # several people at once, against a server built with the race detector
 cd server && go build -race -o /tmp/ptium-race ./cmd/ptium
 DATABASE_URL=... /tmp/ptium-race > /tmp/ptium-race.log 2>&1 &
@@ -28,6 +31,13 @@ writers, administrators, image readers and a generation at the same time, then
 reads the detector's own output. It found the generator's shared settings and a
 first sign-in answering five hundred when a browser opened several tabs of it at
 once. It cleans up every deck it queues.
+
+`firstrun.py` is the only one that does not talk to the development server. It
+loads the image built for the release, starts it against an empty PostgreSQL,
+signs in as the bootstrap administrator and makes a deck — the first hour of a
+deployment, which every other check here skips because it runs against a binary
+from the working tree and a database that has been alive for days. It needs
+docker and a postgres image on the host.
 
 The editor's pure logic — how a measurement is written in the reader's words,
 how a slide's fields map to template slots — is tested next to the code instead,
