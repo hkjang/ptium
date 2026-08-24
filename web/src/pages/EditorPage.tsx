@@ -23,12 +23,14 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, blockLabel, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
+import { replaceInDeck } from './editor/model/search'
 import { versionToSend } from './editor/model/saving'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
+import { FindDialog } from './editor/FindDialog'
 import { QualityDialog } from './editor/QualityDialog'
 import { HistoryDialog } from './editor/HistoryDialog'
 import { ShareDialog } from './editor/ShareDialog'
@@ -99,6 +101,7 @@ export function EditorPage({ id }: { id: string }) {
   // What the people who were sent the link had to say, and how many of them are
   // still waiting for an answer.
   const [commentsOpen, setCommentsOpen] = useState(false)
+  const [findOpen, setFindOpen] = useState(false)
   const [openComments, setOpenComments] = useState(0)
   const [exporting, setExporting] = useState(false)
   const [retrying, setRetrying] = useState(false)
@@ -270,6 +273,18 @@ export function EditorPage({ id }: { id: string }) {
     const row = railRef.current?.querySelector<HTMLElement>('.slide-thumbnail-row.active')
     row?.scrollIntoView({ block: 'nearest' })
   }, [activeId, slides.length])
+
+  // Replacing across the deck is one edit, undone in one step.
+  const replaceEverywhere = (query: string, replacement: string,
+                             options: { matchCase: boolean; wholeWord: boolean },
+                             only?: { slideId?: string }) => {
+    const result = replaceInDeck(slides, query, replacement, options, blockLabel, only)
+    if (result.replaced === 0) return 0
+    markEdited()
+    setSlides(result.slides)
+    setDirty(true)
+    return result.places
+  }
 
   const undoStack = useRef<{ slideId: string; slide: Slide; reason: string; at: number }[]>([])
   const redoStack = useRef<{ slideId: string; slide: Slide }[]>([])
@@ -613,6 +628,11 @@ export function EditorPage({ id }: { id: string }) {
       if (event.key === 'F5' && !control) {
         event.preventDefault()
         if (slides.length > 0) { (document.activeElement as HTMLElement | null)?.blur?.(); setPresentIndex(activeIndex); setPresenting(true) }
+        return
+      }
+      if (control && !event.altKey && (event.key.toLowerCase() === 'f' || event.key.toLowerCase() === 'h')) {
+        event.preventDefault()
+        setFindOpen(true)
         return
       }
       if (typing) return
@@ -1327,6 +1347,13 @@ export function EditorPage({ id }: { id: string }) {
         onAIFix={(group) => void fixFindingsWithAI(group)}
         onFixEverything={() => void fixEverythingWithAI()}
         onClose={() => setFindingsOpen(false)}
+      />
+      <FindDialog
+        open={findOpen}
+        slides={slides}
+        onClose={() => setFindOpen(false)}
+        onOpenSlide={(position) => { const target = slides[position - 1]; if (target) setActiveId(target.id) }}
+        onReplace={replaceEverywhere}
       />
       <CommentsDialog
         open={commentsOpen}

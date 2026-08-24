@@ -27,6 +27,7 @@ export const editorShortcuts: ShortcutGroup[] = [
   {
     title: '슬라이드',
     items: [
+      { keys: [modifier, 'F'], label: '덱 전체에서 찾기 · 바꾸기 (Ctrl+H도 같습니다)' },
       { keys: [modifier, 'Enter'], label: '슬라이드 추가' },
       { keys: ['Alt', '↑'], label: '슬라이드를 앞으로' },
       { keys: ['Alt', '↓'], label: '슬라이드를 뒤로' },
