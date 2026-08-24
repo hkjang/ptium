@@ -1093,3 +1093,32 @@ func TestALinkSurvivesARoundTrip(t *testing.T) {
 		t.Errorf("writing it twice gave two different decks:\n%s\n---\n%s", written, second)
 	}
 }
+
+// A directive written against the next word. A model that writes "!notes이 장은"
+// means the note to start with 이, and the reader has always known that; the
+// splitter that makes it work knew only some of the directives, so !skip
+// written the same way was an unknown directive and the slide stayed in the
+// talk.
+func TestADirectiveWrittenAgainstTheNextWord(t *testing.T) {
+	parsed := ParseSource("# 제목\n@content\n- 요점\n!notes이 장은 핵심입니다\n!skip이 장은 부록입니다\n")
+	if len(parsed.Slides) != 1 {
+		t.Fatalf("expected one slide, got %d", len(parsed.Slides))
+	}
+	slide := parsed.Slides[0]
+	if slide.Notes != "이 장은 핵심입니다" {
+		t.Errorf("the note lost its first word: %q", slide.Notes)
+	}
+	if !slide.Skipped {
+		t.Errorf("the slide was not kept out of the talk")
+	}
+	for _, warning := range parsed.Warnings {
+		if strings.Contains(warning, "unknown directive") {
+			t.Errorf("a directive the reader knows was called unknown: %s", warning)
+		}
+	}
+	// A word that only looks like a directive is still not one.
+	other := ParseSource("# 제목\n@content\n- 요점\n!noteworthy 이건 지시어가 아닙니다\n")
+	if other.Slides[0].Notes != "" {
+		t.Errorf("!noteworthy was read as a note: %q", other.Slides[0].Notes)
+	}
+}

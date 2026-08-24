@@ -340,7 +340,12 @@ func ParseSource(source string) Source {
 				current.Skipped = true
 				continue
 			}
-			if !strings.HasPrefix(lowered, "note") {
+			// The directive itself, not a word that begins like it. A prefix
+			// match read !noteworthy as a note and put the rest of the line in
+			// the presenter's page, which is the same loose matching that once
+			// had this product accusing a slide of citing a figure because one
+			// number's digits appeared inside another's.
+			if lowered != "note" && lowered != "notes" {
 				warn(line, "unknown directive %q", name)
 				continue
 			}
@@ -753,7 +758,11 @@ func parseCitation(value string, line int) (SourceCitation, bool) {
 // word cannot be part of a directive's own name — Korean text, a digit — so
 // "!notesomething" stays the unknown directive it is.
 func splitDirective(token string) (string, string, bool) {
-	for _, known := range []string{"notes", "note", "source", "출처"} {
+	// Every directive a line can carry. A directive left out of this list is one
+	// the reader knows and the splitter does not, which is how !skip written
+	// against the next word became "unknown directive" while !notes written the
+	// same way was read.
+	for _, known := range []string{"notes", "note", "source", "출처", "skip", "건너뛰기"} {
 		if token == known || !strings.HasPrefix(token, known) {
 			continue
 		}

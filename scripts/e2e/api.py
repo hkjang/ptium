@@ -166,6 +166,26 @@ call("POST", f"/presentations/{deck_id}/source/preview.svg?slide=2&width=400", {
 call("PUT", f"/presentations/{deck_id}/source", {"source": "# 한 장\n@cover\n", "version": 1}, expect=409, note="a stale version must conflict")
 call("PUT", f"/presentations/{deck_id}/source", {"source": ""}, expect=422, note="empty source produces no slides")
 call("PUT", f"/presentations/{deck_id}/source", {"source": "# x\n" * 40000}, expect=422, note="oversized source is refused")
+# A model writes a directive against the next word when that word starts with a
+# Korean particle. The reader has always taken !notes이 that way; every other
+# directive has to be read the same, and a word that merely begins like one is
+# not a directive at all.
+glued = data_of(call("POST", "/presentations", {"title": f"붙여 쓴 지시어 {RUN}", "prompt": "점검"}, expect=201))
+applied = data_of(call("PUT", f"/presentations/{glued['id']}/source", {"source":
+    "# 제목\n@content\n- 요점\n!notes이 장은 핵심입니다\n!skip이 장은 부록입니다\n"}, expect=200)) or {}
+if [w for w in (applied.get("warnings") or []) if "unknown directive" in w]:
+    failures.append(f"a directive the reader knows was called unknown: {applied.get('warnings')}")
+stored = data_of(call("GET", f"/presentations/{glued['id']}", expect=200)) or {}
+glued_slide = (stored.get("slides") or [{}])[0]
+if (glued_slide.get("speakerNotes") or "") != "이 장은 핵심입니다":
+    failures.append(f"the note lost its first word: {glued_slide.get('speakerNotes')!r}")
+if not (glued_slide.get("content") or {}).get("skipped"):
+    failures.append("a slide told to be skipped was kept in the talk")
+noted = data_of(call("PUT", f"/presentations/{glued['id']}/source", {"source":
+    "# 제목\n@content\n- 요점\n!noteworthy 이건 지시어가 아닙니다\n"}, expect=200)) or {}
+if not [w for w in (noted.get("warnings") or []) if "unknown directive" in w]:
+    failures.append("a word that only begins like a directive was read as one")
+call("DELETE", f"/presentations/{glued['id']}", expect=204)
 
 print("── inspect, preview, export ──")
 inspected = data_of(call("GET", f"/presentations/{deck_id}/inspect", expect=200))
