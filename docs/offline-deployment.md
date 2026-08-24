@@ -140,6 +140,26 @@ least the administrator-configured `generation.max_template_mb` (default 32
 MiB) — template uploads carry a whole PowerPoint package. The bundled manifest
 sets `proxy-body-size: 64m` for the nginx ingress controller.
 
+## What it costs to run
+
+The manifest asks for 192Mi and limits the pod to 768Mi. What that headroom is
+for, measured on this build:
+
+| Work | Time | Peak memory |
+| --- | --- | --- |
+| Four 40-slide decks, a photograph on every slide, printed to PDF at once | 0.7s | 169 MB |
+| Twelve exports at once (pptx, PDF and handout, small decks) | 5s | 87 MB |
+| 31,599 mixed requests over a minute, including 110 PDFs | — | no failures |
+
+Printing is the heaviest thing the server does per request: it draws every slide
+and embeds a font. It is still bounded — the font is embedded once per document
+and a picture used on twenty slides is stored once — so a deck of forty slides
+prints in under a second and the memory comes back.
+
+Analysing an uploaded template is the other peak, and it is what the 768Mi is
+sized for: the package is held in memory while it is read, so leave headroom
+above `generation.max_template_mb` (32 MB by default).
+
 ## Authentication
 
 The examples start safely with both OIDC and development authentication

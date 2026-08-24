@@ -81,8 +81,15 @@ def writers():
             continue
         deck = made["id"]
         note("apply source", call("PUT", f"/presentations/{deck}/source",
-                                  {"source": "# 한 장\n@cover\n> 리드\n\n# 두 장\n@content\n- 첫 줄\n- 둘째 줄\n"})[0])
+                                  {"source": "# 한 장\n@cover\n> 리드\n\n# 두 장\n@content\n"
+                                             "- 첫 줄과 [문서](https://example.com/a)\n- **둘째 줄**\n"
+                                             "!notes 노트에도 [링크](https://example.com/n)\n"})[0])
         note("export", call("GET", f"/presentations/{deck}/export?format=pptx", raw=True)[0])
+        # Paper is drawn from the same drawing every screen uses, embeds a font
+        # and holds a document's worth of state per request. Whatever that costs,
+        # it has to cost it under load too.
+        note("print", call("GET", f"/presentations/{deck}/export?format=pdf", raw=True)[0])
+        note("handout", call("GET", f"/presentations/{deck}/export?format=pdf&notes=true", raw=True)[0])
         note("delete", call("DELETE", f"/presentations/{deck}")[0], (204,))
 
 
