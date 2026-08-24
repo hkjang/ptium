@@ -28,3 +28,10 @@ compose-up:
 
 compose-down:
 	docker compose down
+
+# Several people at once, against a server built with the race detector. Needs a
+# database and a running server; see scripts/e2e/README.md.
+race-sweep:
+	cd server && go build -race -o /tmp/ptium-race ./cmd/ptium
+	@echo "start /tmp/ptium-race with your DATABASE_URL, logging to /tmp/ptium-race.log, then:"
+	@echo "  python3 scripts/e2e/race.py --log /tmp/ptium-race.log --seconds 90"

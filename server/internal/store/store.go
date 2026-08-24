@@ -64,7 +64,37 @@ func userScan(user *model.User) []any {
 		&user.Disabled, &user.LastLogin, &user.CreatedAt, &user.UpdatedAt, &user.HasPassword, &user.PasswordUpdatedAt}
 }
 
+// UpsertUser records the person behind a request, creating them on first sight.
+//
+// Every request that carries no user id in its claims comes through here, so a
+// browser opening the workspace runs it several times at once — and the first
+// time a person signs in, those requests race to create the same row. The
+// statement below names the subject index as the one it arbitrates on, so the
+// insert that loses collides with the unique index on the email instead, which
+// it is not arbitrating on, and Postgres raises rather than updating. One in a
+// handful of first sign-ins answered five hundred.
+//
+// The loser only has to look again: by then the winner's row is there, and the
+// same statement takes its update path.
 func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, roles []string, admin bool) (model.User, error) {
+	user, err := s.upsertUserOnce(ctx, subject, email, name, roles, admin)
+	if isUniqueViolation(err) {
+		user, err = s.upsertUserOnce(ctx, subject, email, name, roles, admin)
+		if isUniqueViolation(err) {
+			// Not a race then: this address already belongs to another identity.
+			// One account per address is this product's rule, and a person who
+			// hits it needs to be told, not handed a five hundred.
+			return model.User{}, fmt.Errorf("%w: this email address already belongs to another sign-in identity", ErrConflict)
+		}
+	}
+	if err != nil {
+		return model.User{}, fmt.Errorf("upsert user: %w", err)
+	}
+	_, _ = s.Pool.Exec(ctx, `INSERT INTO profiles(user_id,display_name) VALUES($1,$2) ON CONFLICT DO NOTHING`, user.ID, user.Name)
+	return user, nil
+}
+
+func (s *Store) upsertUserOnce(ctx context.Context, subject, email, name string, roles []string, admin bool) (model.User, error) {
 	var user model.User
 	err := s.Pool.QueryRow(ctx, `
 		INSERT INTO users(subject,email,name,roles,is_admin,last_login)
@@ -74,11 +104,13 @@ func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, rol
 			is_admin=(users.is_admin OR EXCLUDED.is_admin),last_login=now(),updated_at=now()
 		RETURNING `+userColumns,
 		subject, email, name, roles, admin).Scan(userScan(&user)...)
-	if err != nil {
-		return model.User{}, fmt.Errorf("upsert user: %w", err)
-	}
-	_, _ = s.Pool.Exec(ctx, `INSERT INTO profiles(user_id,display_name) VALUES($1,$2) ON CONFLICT DO NOTHING`, user.ID, user.Name)
-	return user, nil
+	return user, err
+}
+
+// isUniqueViolation reports the one Postgres error this has to tell apart.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 func (s *Store) GetUser(ctx context.Context, id string) (model.User, error) {

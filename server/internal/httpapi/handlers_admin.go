@@ -80,7 +80,18 @@ func (s *Server) adminPutSettings(writer http.ResponseWriter, request *http.Requ
 			writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), map[string]any{"key": update.Key})
 			return
 		}
-		prepared = append(prepared, settings.Update{Key: update.Key, Value: update.Value, Sensitive: update.Sensitive || sensitiveSettingKey(update.Key), Description: update.Description})
+		sensitive := update.Sensitive || sensitiveSettingKey(update.Key)
+		if sensitive {
+			// Clearing a secret is typing whitespace into a box that shows
+			// nothing. Stored as it was typed, a single space is a secret as far
+			// as the settings are concerned — reported as configured, and read
+			// back at boot as unset. It means "remove this", so remove it.
+			var typed string
+			if err := json.Unmarshal(update.Value, &typed); err == nil && strings.TrimSpace(typed) == "" {
+				update.Value = json.RawMessage(`""`)
+			}
+		}
+		prepared = append(prepared, settings.Update{Key: update.Key, Value: update.Value, Sensitive: sensitive, Description: update.Description})
 	}
 	if err := s.validateSettingRelationships(request.Context(), prepared); err != nil {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
@@ -141,11 +152,12 @@ func (s *Server) putSetting(writer http.ResponseWriter, request *http.Request, u
 
 func (s *Server) validateSettingRelationships(ctx context.Context, updates []settings.Update) error {
 	defaultSlides, maximumSlides := 10, 50
-	issuer, clientID := "", ""
+	issuer, clientID, clientSecret := "", "", ""
 	_ = s.settings.Get(ctx, "generation.default_slide_count", &defaultSlides)
 	_ = s.settings.Get(ctx, "generation.max_slides", &maximumSlides)
 	_ = s.settings.Get(ctx, "auth.oidc.issuer_url", &issuer)
 	_ = s.settings.Get(ctx, "auth.oidc.client_id", &clientID)
+	_ = s.settings.Get(ctx, "auth.oidc.client_secret", &clientSecret)
 	for _, update := range updates {
 		switch update.Key {
 		case "generation.default_slide_count":
@@ -156,6 +168,8 @@ func (s *Server) validateSettingRelationships(ctx context.Context, updates []set
 			_ = json.Unmarshal(update.Value, &issuer)
 		case "auth.oidc.client_id":
 			_ = json.Unmarshal(update.Value, &clientID)
+		case "auth.oidc.client_secret":
+			_ = json.Unmarshal(update.Value, &clientSecret)
 		}
 	}
 	if defaultSlides > maximumSlides {
@@ -163,6 +177,11 @@ func (s *Server) validateSettingRelationships(ctx context.Context, updates []set
 	}
 	if strings.TrimSpace(issuer) != "" && strings.TrimSpace(clientID) == "" {
 		return errors.New("OIDC client ID is required when an issuer is configured")
+	}
+	if strings.TrimSpace(clientSecret) != "" && strings.TrimSpace(clientID) == "" {
+		// A secret with no client is a secret for nobody, and the server refuses
+		// to start on it. Better said now than at the next rollout.
+		return errors.New("OIDC client ID is required when a client secret is set")
 	}
 	return nil
 }
@@ -249,6 +268,14 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 	case "auth.oidc.client_id":
 		if _, err := decodeString(); err != nil {
 			return err
+		}
+	case "auth.oidc.client_secret":
+		value, err := decodeString()
+		if err != nil {
+			return err
+		}
+		if utf8.RuneCountInString(value) > 500 {
+			return errors.New("OIDC client secret must be at most 500 characters")
 		}
 	case "auth.oidc.admin_roles":
 		var roles []string

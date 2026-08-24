@@ -358,7 +358,15 @@ func (source layeredAuthSource) Lookup(key string) (string, bool) {
 	return source.database.Lookup(key)
 }
 
-func databaseAuthSource(ctx context.Context, service *settings.Service) auth.ValueSource {
+// settingLookup is the little of the settings service this needs, so the rule
+// below — environment first, stored value second — can be tested without a
+// database. It is the rule an administrator relies on when they type an OIDC
+// client secret into the workspace instead of into a deployment manifest.
+type settingLookup interface {
+	Get(ctx context.Context, key string, target any) error
+}
+
+func databaseAuthSource(ctx context.Context, service settingLookup) auth.ValueSource {
 	values := auth.MapSource{}
 	if !anyEnvironment("OIDC_ISSUER_URL", "PTIUM_OIDC_ISSUER_URL", "PTIUM_AUTH_OIDC_ISSUER", "KEYCLOAK_URL", "PTIUM_KEYCLOAK_URL") {
 		var value string

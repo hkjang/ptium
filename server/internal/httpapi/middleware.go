@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/model"
+	"github.com/hkjang/ptium/server/internal/store"
 )
 
 type responseRecorder struct {
@@ -154,6 +156,11 @@ func (s *Server) identityMiddleware(next http.Handler) http.Handler {
 		if user.ID == "" && err == nil {
 			admin := principal.HasAnyRole(s.adminRoles...) || containsFold(s.bootstrapAdminEmails, principal.Email) || contains(s.bootstrapAdminSubjects, principal.Subject)
 			user, err = s.store.UpsertUser(request.Context(), principal.Subject, principal.Email, principal.Name, principal.Roles, admin)
+		}
+		if errors.Is(err, store.ErrConflict) {
+			writeError(writer, request, http.StatusConflict, "email_already_registered",
+				"This email address is already registered to another sign-in identity. Ask an administrator to remove the old account or sign in with the original identity.", nil)
+			return
 		}
 		if err != nil {
 			s.internalError(writer, request, "identity_provision_failed", err)

@@ -429,6 +429,30 @@ call("PUT", f"/grids/e2e-raci-{RUN}", {"name": f"e2e-raci-{RUN}", "title": "E2E 
      "order": ["R", "A"], "legend": True}, expect=[200, 201])
 call("DELETE", f"/grids/e2e-raci-{RUN}", expect=[204, 200])
 
+# An OIDC client secret can be registered in the workspace rather than in a
+# deployment manifest. It is stored encrypted, never read back, and a secret
+# with no client to belong to is refused before it can stop the next rollout.
+print("── the OIDC client secret ──")
+def oidc_secret_row():
+    rows = data_of(call("GET", "/admin/settings", expect=200)) or []
+    rows = rows.get("settings") if isinstance(rows, dict) else rows
+    return next((r for r in rows if r.get("key") == "auth.oidc.client_secret"), {})
+
+call("PUT", "/admin/settings", {"settings": [{"key": "auth.oidc.client_id", "value": ""},
+                                             {"key": "auth.oidc.client_secret", "value": "orphan-secret"}]},
+     expect=422, note="a client secret with no client ID must be refused")
+call("PUT", "/admin/settings", {"settings": [{"key": "auth.oidc.client_id", "value": f"ptium-web-{RUN}"}]}, expect=200)
+call("PUT", "/admin/settings", {"settings": [{"key": "auth.oidc.client_secret", "value": f"secret-{RUN}"}]}, expect=200)
+if not oidc_secret_row().get("configured"):
+    failures.append("a saved OIDC client secret is not reported as configured")
+status, body = call("GET", "/admin/settings", raw=True, expect=200)
+if f"secret-{RUN}".encode() in body:
+    failures.append("the OIDC client secret is echoed back in the settings response")
+call("PUT", "/admin/settings", {"settings": [{"key": "auth.oidc.client_secret", "value": " "}]}, expect=200)
+if oidc_secret_row().get("configured"):
+    failures.append("clearing the OIDC client secret left it configured")
+call("PUT", "/admin/settings", {"settings": [{"key": "auth.oidc.client_id", "value": ""}]}, expect=200)
+
 print("── revisions, duplicate, trash ──")
 revisions = data_of(call("GET", f"/presentations/{deck_id}/revisions", expect=200)) or []
 print("   revisions:", len(revisions))
