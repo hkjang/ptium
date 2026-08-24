@@ -197,3 +197,53 @@ func TestTheWordsAreWrittenForASlideThatHasNone(t *testing.T) {
 		t.Errorf("the deck's source does not carry what was written:\n%s", deck.Source)
 	}
 }
+
+// A slide the model was asked about and gave nothing better for belongs to the
+// author now. The measurement panel says what is wrong with it; only the deck's
+// notes can say that the product already tried — without which the author
+// spends a minute pressing "fix it" to learn what the generation knew.
+func TestASlideTheModelWouldNotImproveIsReported(t *testing.T) {
+	template := testTemplate(t)
+	asked := 0
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		_, _ = io.ReadAll(request.Body)
+		asked++
+		writer.Header().Set("Content-Type", "application/json")
+		// A deck whose second slide says the same thing twice, and a rewrite
+		// that says it twice again.
+		// What a model actually returns: one point, and the same point with more
+		// words on the end.
+		crowded := "# 근거\\n@content\\n- 2026년 3분기 출시 일정 승인 요청\\n" +
+			"- 2026년 3분기 출시 일정 승인 요청 및 즉각적인 행동 유도\\n!notes 숫자를 먼저 말합니다\\n"
+		content := "# 표지\\n@cover\\n> 한 줄\\n!notes 왜 지금인지 말합니다\\n\\n" + crowded
+		if asked > 1 {
+			content = crowded
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"` +
+			content + `"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	deck, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "실적", Prompt: "매출이 늘었습니다", Language: "ko", RequestedSlideCount: 2},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if asked < 2 {
+		t.Fatalf("the model was not asked to rewrite anything: %d request(s)", asked)
+	}
+	said := strings.Join(deck.Notes, " ")
+	if !strings.Contains(said, "그대로 두었습니다") {
+		t.Errorf("the deck does not say the model was asked and declined: %#v", deck.Notes)
+	}
+	// And the slide is still the author's own words rather than a worse draft.
+	if len(deck.Slides) != 2 {
+		t.Fatalf("expected two slides, got %d", len(deck.Slides))
+	}
+}

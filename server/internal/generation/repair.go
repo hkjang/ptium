@@ -44,7 +44,7 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 	if len(worst) == 0 {
 		return result
 	}
-	repaired, attempted := 0, 0
+	repaired, attempted, declined := 0, 0, 0
 	for _, candidate := range worst {
 		if attempted >= maximumRepairs || attempted >= g.repairs {
 			break
@@ -52,6 +52,8 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 		if attempted > 0 && time.Now().After(deadline) {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("%d more slide(s) do not fit, and there was no time left to rewrite them", len(worst)-attempted))
+			result.Notes = append(result.Notes,
+				noTimeLeftNote(len(worst)-attempted, request.Presentation.Language))
 			break
 		}
 		if ctx.Err() != nil {
@@ -91,6 +93,7 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 		if lost := structureLost(result.Slides[position-1], proposal); lost != "" {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("slide %d was left as written: the rewrite %s", position, lost))
+			declined++
 			continue
 		}
 		before := candidate.count
@@ -100,11 +103,18 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 			// churn the author's deck for nothing.
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("slide %d was left as written: %s", position, strings.Join(candidate.details, "; ")))
+			declined++
 			continue
 		}
 		result.Slides[position-1] = proposal
 		presentation.Slides = result.Slides
 		repaired++
+	}
+	// A slide the model was asked about and gave nothing better for is the
+	// author's now, and they should be told rather than left to discover it by
+	// pressing the same button.
+	if declined > 0 {
+		result.Notes = append(result.Notes, leftAsWrittenNote(declined, request.Presentation.Language))
 	}
 	if repaired > 0 {
 		result.Warnings = append(result.Warnings,
@@ -361,4 +371,39 @@ func (g *Generator) writeMissingNotes(ctx context.Context, request writingReques
 func slideArgumentChanged(before, after model.Slide) bool {
 	return strings.TrimSpace(before.Title) != strings.TrimSpace(after.Title) ||
 		!bytes.Equal(bytes.TrimSpace(before.Content), bytes.TrimSpace(after.Content))
+}
+
+// leftAsWrittenNote tells the author what the product tried and could not do.
+//
+// The measurement panel already shows what is wrong with a slide. It does not
+// say that the deck was sent back to the model about that slide and came back no
+// better, and the difference matters to whoever opens the deck next: pressing
+// "AI로 고치기" on a slide the model has already declined is a minute spent
+// learning what the generation already knew.
+func leftAsWrittenNote(count int, language string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(language), "ja"):
+		return fmt.Sprintf("%d 枚はモデルに書き直させても良くならなかったため、そのままにしました。手で直すか、別の言い回しを指示してください。", count)
+	case strings.HasPrefix(strings.ToLower(language), "zh"):
+		return fmt.Sprintf("有 %d 页请模型重写后并没有变好，因此保持原样。请手动修改或换一种说法。", count)
+	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
+		return fmt.Sprintf("%d장은 모델에게 다시 쓰게 했지만 나아지지 않아 그대로 두었습니다. 손으로 고치거나 다른 표현을 지시해 주세요.", count)
+	}
+	return fmt.Sprintf("%d slide(s) were sent back to the model and came back no better, so they were left as written. "+
+		"Fix them by hand, or say what to change.", count)
+}
+
+// noTimeLeftNote says the deck was handed over before every slide had been
+// measured against the template — which is the author's to finish, with the
+// workspace's own "fix it" on the slides the panel lists.
+func noTimeLeftNote(count int, language string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(language), "ja"):
+		return fmt.Sprintf("残り %d 枚は書き直す時間がありませんでした。編集画面の測定結果から直せます。", count)
+	case strings.HasPrefix(strings.ToLower(language), "zh"):
+		return fmt.Sprintf("还有 %d 页没有时间重写。可在编辑器的检查结果中修复。", count)
+	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
+		return fmt.Sprintf("%d장은 다시 쓸 시간이 없었습니다. 편집기의 검사 결과에서 고칠 수 있습니다.", count)
+	}
+	return fmt.Sprintf("%d more slide(s) had no time left to be rewritten. The editor's measurements will fix them.", count)
 }
