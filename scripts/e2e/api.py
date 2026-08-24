@@ -353,7 +353,8 @@ print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
                                                       "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}
 call("PUT", f"/presentations/{shared_deck.get('id')}/source",
-     {"source": f"# 공유 점검 {RUN}\n@cover\n> 링크로 여는 덱\n\n# 현황\n@content\n- 첫 줄\n- 둘째 줄\n"})
+     {"source": f"# 공유 점검 {RUN}\n@cover\n> 링크로 여는 덱\n\n# 현황\n@content\n- 첫 줄\n"
+                "- 근거는 [자료](https://example.com/근거)에 있습니다\n"})
 made = data_of(call("POST", f"/presentations/{shared_deck.get('id')}/shares", {"label": "임원 검토", "days": 7}, expect=201)) or {}
 link = made.get("url", "")
 token = link.rsplit("/", 1)[-1] if link else ""
@@ -372,8 +373,12 @@ if seen.get("slideCount") != 2 or f"공유 점검 {RUN}" not in (seen.get("title
 try:
     with urllib.request.urlopen(urllib.request.Request(BASE + f"/shared/{token}/preview.svg?slide=2&width=600")) as response:
         drawn = response.read().decode()
-    if "<svg" not in drawn or "둘째 줄" not in drawn:
+    if "<svg" not in drawn or "자료" not in drawn:
         failures.append("a shared link drew something other than the slide")
+    # A deck sent out for review is where links are read: the page draws the
+    # slide itself, so the drawing has to carry them.
+    if '<a href="https://example.com/' not in drawn:
+        failures.append("a shared slide draws its links as words nobody can follow")
 except urllib.error.HTTPError as error:
     failures.append(f"a shared slide did not draw: {error.code}")
 # The link carries nothing else: the deck's source is not readable through it.

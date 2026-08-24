@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
 
 /**
@@ -24,6 +24,36 @@ export function SharedDeckPage({ token }: { token: string }) {
   const [author, setAuthor] = useState(() => window.localStorage.getItem('ptium.reviewer') || '')
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  // The drawing is drawn by this page rather than shown as a picture, because a
+  // deck sent out for review is the one people read the links on: the source
+  // behind a number, the document a slide refers to. Nothing inside an <img>
+  // can be clicked.
+  const [drawn, setDrawn] = useState<Record<number, string>>({})
+  // What has been fetched, kept out of the effect's own dependencies: asking
+  // again for a slide already drawn is the loop that fetching-on-state-change
+  // walks into.
+  const fetched = useRef<Set<number>>(new Set())
+
+  useEffect(() => {
+    let active = true
+    void (async () => {
+      // The next slide is pulled while this one is read, and nothing past the
+      // end of the deck: a slide that does not exist cannot be cached as
+      // fetched, so asking for it again is what a loop is made of.
+      const last = deck?.slideCount ?? position
+      for (const slide of [position, position + 1]) {
+        if (slide < 1 || slide > last || fetched.current.has(slide)) continue
+        fetched.current.add(slide)
+        const response = await fetch(
+          `/api/v1/shared/${encodeURIComponent(token)}/preview.svg?slide=${slide}&width=1600`)
+        if (!response.ok) { fetched.current.delete(slide); return }
+        const markup = await response.text()
+        if (!active) return
+        setDrawn((current) => ({ ...current, [slide]: markup }))
+      }
+    })()
+    return () => { active = false }
+  }, [token, position, deck?.slideCount])
 
   useEffect(() => {
     let active = true
@@ -101,10 +131,23 @@ export function SharedDeckPage({ token }: { token: string }) {
       </header>
       <div className="shared-deck-stage">
         <button type="button" aria-label="이전 슬라이드" disabled={position <= 1} onClick={() => move(-1)}><ChevronLeft size={20} /></button>
-        <img
-          src={`/api/v1/shared/${encodeURIComponent(token)}/preview.svg?slide=${position}&width=1600`}
-          alt={deck.titles[position - 1] || `슬라이드 ${position}`}
-        />
+        {drawn[position]
+          ? <div
+              className="shared-deck-slide"
+              role="img"
+              aria-label={deck.titles[position - 1] || `슬라이드 ${position}`}
+              onClickCapture={(event) => {
+                // A link in a shared deck goes where it points; a jump moves this
+                // page to the slide it names rather than leaving the review.
+                const link = (event.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null
+                const jumped = link?.getAttribute('href')?.match(/^#slide-(\d+)$/)
+                if (!jumped) return
+                event.preventDefault()
+                setPosition(Math.min(deck.slideCount, Math.max(1, Number(jumped[1]))))
+              }}
+              dangerouslySetInnerHTML={{ __html: drawn[position] }}
+            />
+          : <div className="shared-deck-slide loading"><LoaderCircle className="spin" size={22} /></div>}
         <button type="button" aria-label="다음 슬라이드" disabled={position >= deck.slideCount} onClick={() => move(1)}><ChevronRight size={20} /></button>
       </div>
       <section className="shared-deck-comments">
