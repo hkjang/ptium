@@ -1,0 +1,244 @@
+package pptx
+
+import (
+	"strconv"
+	"strings"
+)
+
+// A link written in a slide's text. The text is what the deck stores, drawn as
+// `[보이는 말](주소)`, because a link that needed its own field would have to be
+// carried by every hand the text passes through — the source language, the
+// stored slide, the editor, the file — and the text is already carried by all
+// of them.
+//
+// Only a target the drawing can honour makes a link: the web, an address, or
+// another slide in the same deck. Anything else is left as the words somebody
+// typed, so a footnote written [1](주석 3) stays a footnote rather than becoming
+// a link to nowhere.
+
+// TextRun is a stretch of a paragraph drawn as one run: plain words, or words
+// that carry a link.
+type TextRun struct {
+	Text string
+	// Href is empty for plain words, a URL or mailto: address for a link that
+	// leaves the deck, and "#3" for a jump to the deck's third slide.
+	Href string
+}
+
+// SlideJump reads a link that points at another slide in the same deck and
+// returns its 1-based number. The second result is false for every other link.
+func SlideJump(href string) (int, bool) {
+	if !strings.HasPrefix(href, "#") {
+		return 0, false
+	}
+	number := 0
+	for _, digit := range href[1:] {
+		if digit < '0' || digit > '9' {
+			return 0, false
+		}
+		number = number*10 + int(digit-'0')
+		if number > 1000 {
+			return 0, false
+		}
+	}
+	if number < 1 {
+		return 0, false
+	}
+	return number, true
+}
+
+// linkTarget says whether a target is one the deck can point at, and gives it
+// back in the form the file and the browser both want.
+func linkTarget(target string) (string, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" || strings.ContainsAny(target, " \t\"'<>") {
+		return "", false
+	}
+	if _, ok := SlideJump(target); ok {
+		return target, true
+	}
+	lowered := strings.ToLower(target)
+	for _, scheme := range []string{"https://", "http://", "mailto:"} {
+		if strings.HasPrefix(lowered, scheme) && len(target) > len(scheme) {
+			return target, true
+		}
+	}
+	return "", false
+}
+
+// SplitLinks reads a paragraph's text as the runs it draws as. Text with no
+// link in it comes back as a single run, which is what nearly every paragraph
+// is: the caller pays nothing for the feature it is not using.
+func SplitLinks(text string) []TextRun {
+	if !strings.Contains(text, "](") {
+		if !strings.Contains(text, `\[`) {
+			if text == "" {
+				return nil
+			}
+			return []TextRun{{Text: text}}
+		}
+	}
+	var runs []TextRun
+	var plain strings.Builder
+	flush := func() {
+		if plain.Len() > 0 {
+			runs = append(runs, TextRun{Text: plain.String()})
+			plain.Reset()
+		}
+	}
+	for index := 0; index < len(text); {
+		// A bracket somebody meant literally: \[ draws as [ and starts no link.
+		if text[index] == '\\' && index+1 < len(text) && text[index+1] == '[' {
+			plain.WriteByte('[')
+			index += 2
+			continue
+		}
+		if text[index] != '[' {
+			plain.WriteByte(text[index])
+			index++
+			continue
+		}
+		label, target, width, ok := readLink(text[index:])
+		if !ok {
+			plain.WriteByte('[')
+			index++
+			continue
+		}
+		flush()
+		runs = append(runs, TextRun{Text: label, Href: target})
+		index += width
+	}
+	flush()
+	return runs
+}
+
+// readLink reads `[label](target)` from the front of text, and says how wide it
+// was. A label that runs into another bracket, a newline, or the end of the
+// text is not a link.
+func readLink(text string) (label, target string, width int, ok bool) {
+	end := strings.IndexAny(text[1:], "[]\n")
+	if end < 0 || text[1+end] != ']' {
+		return "", "", 0, false
+	}
+	label = text[1 : 1+end]
+	rest := text[1+end+1:]
+	if label == "" || !strings.HasPrefix(rest, "(") {
+		return "", "", 0, false
+	}
+	shut := strings.IndexAny(rest[1:], ")\n")
+	if shut < 0 || rest[1+shut] != ')' {
+		return "", "", 0, false
+	}
+	target, ok = linkTarget(rest[1 : 1+shut])
+	if !ok {
+		return "", "", 0, false
+	}
+	return label, target, 1 + end + 1 + 1 + shut + 1, true
+}
+
+// PlainText is the words a paragraph draws, with the link markup taken out.
+// Everything that measures a slide reads this rather than the stored text:
+// measuring the markup would call a line too long that draws well within its
+// region, and the deck would be repaired for a defect it does not have.
+func PlainText(text string) string {
+	runs := SplitLinks(text)
+	if len(runs) == 1 && runs[0].Href == "" {
+		return runs[0].Text
+	}
+	var builder strings.Builder
+	for _, run := range runs {
+		builder.WriteString(run.Text)
+	}
+	return builder.String()
+}
+
+// HasLink says whether a paragraph draws any link at all.
+func HasLink(text string) bool {
+	for _, run := range SplitLinks(text) {
+		if run.Href != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// linkTable collects the links one slide draws. A link is a relationship of the
+// slide part, so the run can only name it by an id the package also writes: the
+// table is what keeps the two in step.
+//
+// The ids are their own series rather than a continuation of rId1, rId2 …,
+// because the picture and chart ids are counted from how many of each the slide
+// has. A link numbered into that series would have to be counted the same way
+// from a third place, and any drawing added later between them would silently
+// take an id that a run already refers to.
+type linkTable struct {
+	links []slideLink
+	byID  map[string]string
+}
+
+type slideLink struct {
+	ID string
+	// Target is the address for a link that leaves the deck, and empty for a
+	// jump to another slide.
+	Target string
+	// Slide is the 1-based slide a jump points at, and 0 for every other link.
+	Slide int
+}
+
+// id gives the relationship id for a target, adding it to the slide if this is
+// the first run to use it: the same address linked from three runs is one
+// relationship, the way PowerPoint writes it.
+func (table *linkTable) id(target string) string {
+	if table == nil {
+		return ""
+	}
+	if id, ok := table.byID[target]; ok {
+		return id
+	}
+	link := slideLink{ID: "rIdL" + strconv.Itoa(len(table.links)+1)}
+	if number, ok := SlideJump(target); ok {
+		link.Slide = number
+	} else {
+		link.Target = target
+	}
+	if table.byID == nil {
+		table.byID = map[string]string{}
+	}
+	table.byID[target] = link.ID
+	table.links = append(table.links, link)
+	return link.ID
+}
+
+// asDrawn is the slide as it reaches the wall: the link markup taken out of
+// every paragraph, leaving the words a reader sees.
+//
+// Measurement reads this rather than the stored slide. A line written
+// [분기 보고서](https://reports.example.com/2026/q3) is twenty characters on the
+// wall and sixty in the deck, so measuring the stored text would call it too
+// long for its region, and the deck would be repaired — split across two slides,
+// or its font stepped down — for a defect nobody can see.
+func (slide Slide) asDrawn() Slide {
+	linked := false
+	for _, paragraphs := range slide.Fields {
+		for _, paragraph := range paragraphs {
+			if HasLink(paragraph.Text) {
+				linked = true
+				break
+			}
+		}
+	}
+	if !linked {
+		return slide
+	}
+	fields := make(map[string][]Paragraph, len(slide.Fields))
+	for slot, paragraphs := range slide.Fields {
+		drawn := make([]Paragraph, len(paragraphs))
+		copy(drawn, paragraphs)
+		for index := range drawn {
+			drawn[index].Text = PlainText(drawn[index].Text)
+		}
+		fields[slot] = drawn
+	}
+	slide.Fields = fields
+	return slide
+}

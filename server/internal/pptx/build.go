@@ -321,10 +321,10 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		// Pictures become package parts and slide relationships before the slide
 		// itself is written, because the shape refers to them by relationship id.
 		pictures := addSlidePictures(pkg, slidePart, index+1, slide, layout)
-		markup, charts := slideXML(layout, slide, language, design, pictures)
+		markup, charts, links := slideXML(layout, slide, language, design, pictures)
 		pkg.SetText(slidePart, markup)
 		chartParts := addSlideCharts(pkg, slidePart, &chartIndex, charts)
-		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts))
+		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts, links))
 		if notesPart != "" {
 			pkg.SetText(notesPart, notesSlideXML(notesWithSources(slide, language), language))
 			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart))
@@ -580,9 +580,11 @@ func freeformPictureXML(shapeID int, element Element, placed placedPicture) stri
 // slideXML writes the slide, and returns the charts it placed on it in the
 // order their relationship ids were handed out. The parts themselves are
 // written by the caller, which is the one holding the package.
-func slideXML(layout Layout, slide Slide, language string, design Design, pictures []placedPicture) (string, []*ChartPart) {
+func slideXML(layout Layout, slide Slide, language string, design Design,
+	pictures []placedPicture) (string, []*ChartPart, []slideLink) {
 	var shapes, components, freeform strings.Builder
 	var charts []*ChartPart
+	links := &linkTable{}
 	// A chart is a relationship of the slide, and the picture relationships came
 	// first.
 	chartRelationship := func(chart *ChartPart) string {
@@ -641,7 +643,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		}
 		_, moved := slide.Frames[placeholder.Slot]
 		shapes.WriteString(placeholderShapeXML(shapeID, placeholder, paragraphs, language, moved,
-			slide.Styles[placeholder.Slot]))
+			slide.Styles[placeholder.Slot], links))
 		shapeID++
 	}
 	for _, element := range slide.Elements {
@@ -659,7 +661,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 			}
 			continue
 		}
-		freeform.WriteString(element.drawingML(shapeID))
+		freeform.WriteString(element.drawingML(shapeID, links))
 		shapeID++
 	}
 	// show="0" is how the format says "not part of the show". Written only when
@@ -672,7 +674,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design, pictur
 		shapes.String() + components.String() + freeform.String() +
 		sourceNoteXML(shapeID, slideSourceNote(layout, slide, language), language) +
 		slideNumberXML(shapeID+1, layout, slide, language) +
-		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`, charts
+		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`, charts, links.links
 }
 
 // slideNumberXML writes the page number where the design put its placeholder.
@@ -744,7 +746,7 @@ func slideNumberXML(shapeID int, layout Layout, slide Slide, language string) st
 }
 
 func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Paragraph, language string,
-	moved bool, style Style) string {
+	moved bool, style Style, links *linkTable) string {
 	name := placeholder.Name
 	if strings.TrimSpace(name) == "" {
 		name = fmt.Sprintf("%s %d", capitalize(placeholder.Slot), shapeID-1)
@@ -760,7 +762,7 @@ func placeholderShapeXML(shapeID int, placeholder Placeholder, paragraphs []Para
 	body := ""
 	if placeholder.AcceptsText() {
 		body = `<p:txBody>` + bodyPropertiesXML(placeholder, paragraphs) + `<a:lstStyle/>` +
-			styledParagraphsXML(paragraphs, language, placeholder, style) + `</p:txBody>`
+			styledParagraphsXML(paragraphs, language, placeholder, style, links) + `</p:txBody>`
 	}
 	// A placeholder normally inherits its box from the layout, which is what keeps
 	// a deck inside its template. A region the author dragged has to say where it
@@ -920,7 +922,51 @@ func autofit(placeholder Placeholder, paragraphs []Paragraph) (scale float64, li
 }
 
 func paragraphsXML(paragraphs []Paragraph, language string) string {
-	return styledParagraphsXML(paragraphs, language, Placeholder{}, Style{})
+	return styledParagraphsXML(paragraphs, language, Placeholder{}, Style{}, nil)
+}
+
+// runsXML draws one paragraph as the runs it is made of: one run for text with
+// no link in it, and a run of its own for each link.
+//
+// A caller with nowhere to put the relationships passes no table, and the words
+// are still drawn without their markup — a slide that cannot carry a link must
+// not print [보기](https://…) on the wall.
+func runsXML(text, properties string, links *linkTable) string {
+	parts := SplitLinks(text)
+	if len(parts) == 1 && parts[0].Href == "" {
+		return `<a:r>` + properties + `<a:t>` + escapeText(text) + `</a:t></a:r>`
+	}
+	var builder strings.Builder
+	for _, part := range parts {
+		run := properties
+		if part.Href != "" {
+			if id := links.id(part.Href); id != "" {
+				run = withHyperlink(properties, id, part.Href)
+			}
+		}
+		builder.WriteString(`<a:r>` + run + `<a:t>` + escapeText(part.Text) + `</a:t></a:r>`)
+	}
+	return builder.String()
+}
+
+// withHyperlink puts the link inside a run's properties. hlinkClick is last in
+// what the schema allows inside rPr, so it goes at the end of whatever the run
+// already said about itself; PowerPoint colours the run from the theme's own
+// hyperlink colour, and the underline is what makes it read as a link
+// everywhere else.
+func withHyperlink(properties, relationshipID, href string) string {
+	action := ""
+	if _, ok := SlideJump(href); ok {
+		action = ` action="ppaction://hlinksldjump"`
+	}
+	// r: is declared on the slide's root element, where every other relationship
+	// on the slide is named from.
+	link := `<a:hlinkClick r:id="` + relationshipID + `"` + action + `/>`
+	underlined := strings.Replace(properties, `<a:rPr `, `<a:rPr u="sng" `, 1)
+	if cut, ok := strings.CutSuffix(underlined, `/>`); ok {
+		return cut + `>` + link + `</a:rPr>`
+	}
+	return strings.TrimSuffix(underlined, `</a:rPr>`) + link + `</a:rPr>`
 }
 
 // styledParagraphsXML writes the paragraphs of a placeholder, stating only what
@@ -929,7 +975,8 @@ func paragraphsXML(paragraphs []Paragraph, language string) string {
 // A placeholder that says nothing inherits its type from the layout, which is
 // what keeps a deck inside its template — so nothing is written out unless
 // somebody changed it, and then only the part they changed.
-func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Placeholder, style Style) string {
+func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Placeholder, style Style,
+	links *linkTable) string {
 	if len(paragraphs) == 0 {
 		return `<a:p><a:endParaRPr lang="` + language + `"/></a:p>`
 	}
@@ -961,8 +1008,8 @@ func styledParagraphsXML(paragraphs []Paragraph, language string, placeholder Pl
 			continue
 		}
 		run := styleRunXML(language, placeholder, style, level)
-		builder.WriteString(`<a:p>` + properties + `<a:r>` + run + `<a:t>` +
-			escapeText(text) + `</a:t></a:r><a:endParaRPr lang="` + language + `" dirty="0"/></a:p>`)
+		builder.WriteString(`<a:p>` + properties + runsXML(text, run, links) +
+			`<a:endParaRPr lang="` + language + `" dirty="0"/></a:p>`)
 	}
 	return builder.String()
 }
@@ -1027,7 +1074,8 @@ func addSlideCharts(pkg *Package, slidePart string, index *int, charts []*ChartP
 	return parts
 }
 
-func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture, charts []string) string {
+func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []placedPicture, charts []string,
+	links []slideLink) string {
 	relationships := `<Relationship Id="rId1" Type="` + relationshipNamespace + `/slideLayout" Target="` + escapeAttribute(relativePath(slidePart, layoutPart)) + `"/>`
 	if notesPart != "" {
 		relationships += `<Relationship Id="rId2" Type="` + relationshipNamespace + `/notesSlide" Target="` + escapeAttribute(relativePath(slidePart, notesPart)) + `"/>`
@@ -1040,6 +1088,18 @@ func slideRelationshipsXML(slidePart, layoutPart, notesPart string, pictures []p
 		relationships += fmt.Sprintf(`<Relationship Id="rId%d" Type="%s/chart" Target="%s"/>`,
 			firstPictureRelationship+len(pictures)+index, relationshipNamespace,
 			escapeAttribute(relativePath(slidePart, part)))
+	}
+	for _, link := range links {
+		// A link out of the deck is external and written as the author gave it; a
+		// jump names another slide of the same package, which is a part like any
+		// other and so a plain relationship to it.
+		if link.Slide > 0 {
+			relationships += `<Relationship Id="` + link.ID + `" Type="` + relationshipNamespace +
+				`/slide" Target="` + fmt.Sprintf("slide%d.xml", link.Slide) + `"/>`
+			continue
+		}
+		relationships += `<Relationship Id="` + link.ID + `" Type="` + relationshipNamespace +
+			`/hyperlink" Target="` + escapeAttribute(link.Target) + `" TargetMode="External"/>`
 	}
 	return relationshipsDocument(relationships)
 }

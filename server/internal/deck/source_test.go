@@ -1066,3 +1066,30 @@ func TestASkippedSlideSurvivesARoundTrip(t *testing.T) {
 		t.Fatalf("the directive was not understood: %v", second.Warnings)
 	}
 }
+
+// A link is written in the text, so nothing between the source and the file has
+// to know about it — but that only holds if the text comes back unchanged.
+func TestALinkSurvivesARoundTrip(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 안내\n@content\n> 자세한 내용은 [안내 문서](https://docs.example.com/plan?a=1&b=2)에 있습니다\n" +
+		"- 근거는 [부록](#4)을 보십시오\n- 문의는 [담당자](mailto:plan@example.com)\n"
+	compiled := Compile(ParseSource(source), manifest, CompileOptions{Language: "ko"})
+	written := Format(model.Presentation{Slides: compiled.Slides}, manifest)
+	if !strings.Contains(written, "[안내 문서](https://docs.example.com/plan?a=1&b=2)") {
+		t.Errorf("the lead's link did not come back:\n%s", written)
+	}
+	if !strings.Contains(written, "[부록](#4)") || !strings.Contains(written, "[담당자](mailto:plan@example.com)") {
+		t.Errorf("a bullet's link did not come back:\n%s", written)
+	}
+	again := Compile(ParseSource(written), manifest, CompileOptions{Language: "ko"})
+	if second := Format(model.Presentation{Slides: again.Slides}, manifest); second != written {
+		t.Errorf("writing it twice gave two different decks:\n%s\n---\n%s", written, second)
+	}
+}

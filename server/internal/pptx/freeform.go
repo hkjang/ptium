@@ -146,7 +146,7 @@ func AlignmentIsKnown(align, verticalAlign string) bool {
 
 // drawingML emits an editable PowerPoint shape or text box. Images are emitted
 // by freeformPictureXML after their relationship id has been allocated.
-func (e Element) drawingML(shapeID int) string {
+func (e Element) drawingML(shapeID int, links *linkTable) string {
 	if e.Kind == "image" {
 		return ""
 	}
@@ -172,7 +172,7 @@ func (e Element) drawingML(shapeID int) string {
 	}
 	body := ""
 	if e.Kind == "text" || strings.TrimSpace(e.Text) != "" {
-		body = e.textBodyXML()
+		body = e.textBodyXML(links)
 	} else {
 		body = `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody>`
 	}
@@ -278,7 +278,7 @@ func (e Element) tableCellXML(text string, header bool) string {
 		`</a:rPr><a:t>` + escapeText(text) + `</a:t></a:r></a:p></a:txBody>` + properties + `</a:tc>`
 }
 
-func (e Element) textBodyXML() string {
+func (e Element) textBodyXML(links *linkTable) string {
 	anchor := verticalAnchors[strings.ToLower(strings.TrimSpace(e.VerticalAlign))]
 	if anchor == "" {
 		anchor = "t"
@@ -315,9 +315,10 @@ func (e Element) textBodyXML() string {
 	}
 	var paragraphs strings.Builder
 	for _, line := range lines {
-		paragraphs.WriteString(`<a:p><a:pPr algn="` + align + `"><a:buNone/></a:pPr><a:r><a:rPr lang="ko-KR" sz="` +
-			strconv.Itoa(size) + `" dirty="0"` + runFlags + `><a:solidFill>` + solidColor(color, e.opacity()) +
-			`</a:solidFill>` + font + `</a:rPr><a:t>` + escapeText(line) + `</a:t></a:r></a:p>`)
+		properties := `<a:rPr lang="ko-KR" sz="` + strconv.Itoa(size) + `" dirty="0"` + runFlags +
+			`><a:solidFill>` + solidColor(color, e.opacity()) + `</a:solidFill>` + font + `</a:rPr>`
+		paragraphs.WriteString(`<a:p><a:pPr algn="` + align + `"><a:buNone/></a:pPr>` +
+			runsXML(line, properties, links) + `</a:p>`)
 	}
 	return `<p:txBody><a:bodyPr wrap="square" lIns="45720" tIns="27432" rIns="45720" bIns="27432" anchor="` +
 		anchor + `"><a:normAutofit/></a:bodyPr><a:lstStyle/>` + paragraphs.String() + `</p:txBody>`
@@ -520,9 +521,13 @@ func (e Element) textSVG(x, y, width, height, scale float64) string {
 	if lineEm < 1 {
 		lineEm = 1
 	}
+	// A text box carries links the same way a bullet does, so the picture of it
+	// draws the words rather than the markup that puts them there.
+	var runs []TextRun
 	wrapped := make([]string, 0)
 	for _, line := range strings.Split(strings.ReplaceAll(e.Text, "\r\n", "\n"), "\n") {
-		pieces := wrapLines(line, lineEm)
+		runs = append(runs, SplitLinks(line)...)
+		pieces := wrapLines(PlainText(line), lineEm)
 		if len(pieces) == 0 {
 			pieces = []string{""}
 		}
@@ -567,7 +572,10 @@ func (e Element) textSVG(x, y, width, height, scale float64) string {
 	fmt.Fprintf(&builder, `<text x="%.2f" y="%.2f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, `+previewFallbacks+`"%s>`,
 		textX, top+fontSize*.84, colorOrGrey(color), fontSize, weight, anchor, escapeAttribute(family), style)
 	for index, line := range wrapped {
-		fmt.Fprintf(&builder, `<tspan x="%.2f" y="%.2f">%s</tspan>`, textX, top+fontSize*.84+float64(index)*lineHeight, escapeText(line))
+		fmt.Fprintf(&builder, `<tspan x="%.2f" y="%.2f">%s</tspan>`, textX, top+fontSize*.84+float64(index)*lineHeight,
+			// The exported run keeps the box's own colour, so the picture of it
+			// does too: the link is told by the underline, and the two agree.
+			markedUpLine(line, runs, colorOrGrey(color)))
 	}
 	builder.WriteString(`</text>`)
 	return builder.String()

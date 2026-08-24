@@ -237,6 +237,12 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	if color == "" {
 		color = theme.Color("tx1")
 	}
+	// A link is drawn in the template's own hyperlink colour, which is what the
+	// exported file uses for it too.
+	linkColor := theme.Color("hlink")
+	if linkColor == "" {
+		linkColor = color
+	}
 	family := placeholder.Font
 	if family == "" {
 		family = theme.MinorLatin
@@ -279,7 +285,8 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 		if available < 1 {
 			available = 1
 		}
-		for index, wrapped := range wrapLines(prefix+strings.TrimSpace(paragraph.Text), available) {
+		runs := SplitLinks(strings.TrimSpace(paragraph.Text))
+		for index, wrapped := range wrapLines(prefix+PlainText(strings.TrimSpace(paragraph.Text)), available) {
 			offset := indent
 			// A bullet's continuation lines hang under its text rather than under its
 			// marker. A paragraph with no marker has nothing to hang from, and
@@ -292,7 +299,8 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 				// would push it off that edge rather than in from it.
 				offset = 0
 			}
-			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+position*lineHeight, escapeText(wrapped))
+			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+position*lineHeight,
+				markedUpLine(wrapped, runs, linkColor))
 			position++
 		}
 		if paragraph.Lead {
@@ -365,3 +373,41 @@ const previewFallbacks = `Segoe UI, Roboto, Noto Sans, Helvetica Neue, Arial, Li
 	`Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, ` +
 	`Yu Gothic, Hiragino Sans, Meiryo, Noto Sans JP, ` +
 	`Microsoft YaHei, PingFang SC, Noto Sans SC, sans-serif`
+
+// markedUpLine draws one wrapped line, underlining the stretches of it that
+// carry a link.
+//
+// The line has already been wrapped, so a label can straddle the break; the
+// half that is on this line is found by looking for it, and a label that is not
+// found is drawn as the words it is. Underlined and in the link colour is what
+// a reader needs from a picture of a slide — the click itself belongs to the
+// file and to the workspace, which draw the same text with something behind it.
+func markedUpLine(line string, runs []TextRun, linkColor string) string {
+	linked := false
+	for _, run := range runs {
+		if run.Href != "" {
+			linked = true
+			break
+		}
+	}
+	if !linked {
+		return escapeText(line)
+	}
+	var builder strings.Builder
+	rest := line
+	for _, run := range runs {
+		if run.Href == "" || run.Text == "" {
+			continue
+		}
+		at := strings.Index(rest, run.Text)
+		if at < 0 {
+			continue
+		}
+		builder.WriteString(escapeText(rest[:at]))
+		builder.WriteString(`<tspan fill="#` + escapeAttribute(linkColor) +
+			`" text-decoration="underline">` + escapeText(run.Text) + `</tspan>`)
+		rest = rest[at+len(run.Text):]
+	}
+	builder.WriteString(escapeText(rest))
+	return builder.String()
+}

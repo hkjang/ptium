@@ -202,3 +202,70 @@ func TestASkippedSlideIsMarkedInTheFile(t *testing.T) {
 		t.Fatalf("%d of the exported slides are marked as skipped, want exactly 1", marked)
 	}
 }
+
+// A link on a slide is two halves that have to agree: the run names a
+// relationship, and the slide's own relationship part is where that id has to
+// exist. Either half alone opens as a deck PowerPoint repairs.
+func TestALinkReachesTheFile(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 안내\n@content\n- 자세한 내용은 [안내 문서](https://docs.example.com/plan)를 보십시오\n" +
+		"- 근거는 [부록](#2)에 있습니다\n\n# 부록\n@content\n- 산출 근거\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	presentation := model.Presentation{Title: "링크", Language: "ko", Slides: compiled.Slides}
+	file, err := PPTX(presentation, Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+	archive, err := zip.NewReader(bytes.NewReader(file), int64(len(file)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := map[string]string{}
+	for _, entry := range archive.File {
+		opened, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(opened)
+		opened.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts[entry.Name] = string(body)
+	}
+	slide := parts["ppt/slides/slide1.xml"]
+	rels := parts["ppt/slides/_rels/slide1.xml.rels"]
+	for _, wanted := range []string{
+		`<a:hlinkClick r:id="rIdL1"/>`,
+		`action="ppaction://hlinksldjump"`,
+		`<a:t>안내 문서</a:t>`,
+		`<a:t>자세한 내용은 </a:t>`,
+	} {
+		if !strings.Contains(slide, wanted) {
+			t.Errorf("the slide does not carry %s", wanted)
+		}
+	}
+	// The markup is how the link is written, never what is drawn.
+	if strings.Contains(slide, "https://docs.example.com/plan</a:t>") || strings.Contains(slide, "](") {
+		t.Errorf("the slide draws the link markup: %s", slide)
+	}
+	if !strings.Contains(rels, `Id="rIdL1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://docs.example.com/plan" TargetMode="External"`) {
+		t.Errorf("the external link is not a relationship of the slide: %s", rels)
+	}
+	if !strings.Contains(rels, `Id="rIdL2"`) || !strings.Contains(rels, `/slide" Target="slide2.xml"`) {
+		t.Errorf("the jump to slide 2 is not a relationship of the slide: %s", rels)
+	}
+	// Every id a run names has to be one the relationship part declares.
+	for _, id := range []string{"rIdL1", "rIdL2"} {
+		if strings.Count(slide, `r:id="`+id+`"`) == 0 || strings.Count(rels, `Id="`+id+`"`) != 1 {
+			t.Errorf("%s does not appear on both sides", id)
+		}
+	}
+}

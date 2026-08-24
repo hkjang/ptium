@@ -120,6 +120,9 @@ const (
 
 // InspectSlide reports what is wrong with one drawn slide.
 func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) []Finding {
+	// What is measured is what is drawn, which for a line carrying a link is the
+	// words rather than the markup that puts them there.
+	slide = slide.asDrawn()
 	var findings []Finding
 	slideWidth, slideHeight := manifest.SlideWidth, manifest.SlideHeight
 	if slideWidth <= 0 || slideHeight <= 0 {
