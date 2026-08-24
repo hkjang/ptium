@@ -28,6 +28,8 @@ type writingRequest struct {
 	// agreed. The deck is asked to name one rather than write its own version,
 	// and naming it is what lets the registered slide take its place.
 	Registered []string
+	// Pictures are the images this owner has uploaded, by name.
+	Pictures []string
 }
 
 // deckPlan is the narrative design produced by the first pass.
@@ -182,6 +184,26 @@ Rules for components:
 
 // planSystemPrompt's second pass used to be JSON; the plan itself stays JSON
 // because it is consumed by the writer, not by a person.
+// writePictures offers the deck the pictures this account already has.
+//
+// A deck of nothing but text is what a model writes when nothing tells it there
+// are pictures; a deck that names a picture nobody uploaded is worse. So the
+// names are given, and naming one that is not on the list is refused the way an
+// invented figure is.
+func writePictures(builder *strings.Builder, pictures []string) {
+	if len(pictures) == 0 {
+		return
+	}
+	builder.WriteString("\nPictures this account has uploaded. Where a slide is about one of them,\n" +
+		"write \"::image <name>\" on its own line in that slide, with the name exactly as\n" +
+		"it appears here and an optional \" | caption\" after it. Use at most two in a\n" +
+		"deck, never on the cover, and never name a picture that is not on this list —\n" +
+		"there is no other picture to draw:\n")
+	for _, name := range pictures {
+		builder.WriteString("- " + name + "\n")
+	}
+}
+
 // writeRegistered offers the deck the slides someone already made.
 //
 // The substitution that puts one into a deck matches by title, and a model left
@@ -229,6 +251,7 @@ func namedInBrief(registered []string, brief string) []string {
 func planUserPrompt(request writingRequest) string {
 	var builder strings.Builder
 	writeBrief(&builder, request)
+	writePictures(&builder, request.Pictures)
 	writeRegistered(&builder, request.Registered, request.Presentation.Prompt+" "+request.Presentation.Title)
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))
@@ -245,6 +268,7 @@ func sourceUserPrompt(request writingRequest) string {
 		builder.WriteString(material)
 		builder.WriteString("\n")
 	}
+	writePictures(&builder, request.Pictures)
 	writeRegistered(&builder, request.Registered, request.Presentation.Prompt+" "+request.Presentation.Title)
 	builder.WriteString("\nAvailable layouts in the customer's template:\n")
 	builder.WriteString(request.Template.Manifest.SummaryFor(request.Presentation.Language, 0))

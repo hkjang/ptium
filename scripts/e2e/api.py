@@ -740,6 +740,32 @@ if measured_figures.get("defects"):
     failures.append(f"the deck that draws its figures has {measured_figures.get('defects')} defect(s)")
 call("DELETE", f"/presentations/{figures.get('id')}", expect=204)
 
+# A deck can only carry a picture somebody already uploaded — an air-gapped
+# deployment has no web to fetch one from — so generation is told what this
+# account has and places the one a slide is named for.
+print("── the pictures an account already has ──")
+picture = data_of(call("POST", "/assets", files={"file": (f"현장 자동화 {RUN}.png", png(rgb=(30, 120, 200)), "image/png")},
+                       expect=201)) or {}
+call("PATCH", f"/assets/{picture.get('id')}", {"name": f"현장 자동화 {RUN}"}, expect=200)
+illustrated = data_of(call("POST", "/presentations", {"title": f"현장 자동화 {RUN}",
+    "prompt": f"현장 자동화 {RUN} 도입 계획을 임원에게 보고합니다. 투자 12억, 12개월.",
+    "requestedSlideCount": 6, "language": "ko"}, expect=201)) or {}
+call("POST", f"/presentations/{illustrated.get('id')}/generate", {}, expect=[200, 202])
+for _ in range(90):
+    time.sleep(2)
+    illustrated_state = data_of(call("GET", f"/presentations/{illustrated.get('id')}", expect=200)) or {}
+    if illustrated_state.get("status") in ("completed", "failed"):
+        break
+carrying = [slide for slide in (illustrated_state.get("slides") or []) if (slide.get("content") or {}).get("images")]
+print(f"   slides carrying the account's picture: {len(carrying)}")
+if not carrying:
+    failures.append("a deck about a picture the account has was written without it")
+illustrated_measured = data_of(call("GET", f"/presentations/{illustrated.get('id')}/inspect", expect=200)) or {}
+if illustrated_measured.get("defects"):
+    failures.append(f"the illustrated deck has {illustrated_measured.get('defects')} defect(s)")
+call("DELETE", f"/presentations/{illustrated.get('id')}", expect=204)
+call("DELETE", f"/assets/{picture.get('id')}", expect=204)
+
 print("── generation without an AI provider (the air-gapped path) ──")
 draft = data_of(call("POST", "/presentations", {
     "title": "오프라인 생성", "prompt": "2026년 하반기 클라우드 전환 로드맵과 투자 타당성을 6장으로 정리해줘",

@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -16,6 +17,14 @@ import (
 // person would actually present: a real narrative arc, layout variety and
 // speaker notes — not placeholder text.
 func Fallback(presentation model.Presentation, profile model.Profile, template Template) Deck {
+	return FallbackWithPictures(presentation, profile, template, nil, nil)
+}
+
+// FallbackWithPictures is Fallback for a deployment whose account has pictures.
+// Without a model there is nobody to choose one, so a picture is placed on the
+// slide about the thing it is named for, and nowhere else.
+func FallbackWithPictures(presentation model.Presentation, profile model.Profile, template Template,
+	pictures []library.Entry, resolveImage func(string) (deck.ContentImage, bool)) Deck {
 	count := presentation.RequestedSlideCount
 	if count < 1 {
 		count = 8
@@ -30,9 +39,9 @@ func Fallback(presentation model.Presentation, profile model.Profile, template T
 	// both produce a deck the template actually designed.
 	outline := outlinePrompt(presentation.Prompt, presentation.Title, phrases)
 	plan := newDeckPlan(outline, presentation, phrases, audience, presenterLine(profile))
-	source := writeSource(outline, plan, count)
+	source := writeSourceWith(outline, plan, count, pictures)
 
-	result := CompileSource(source, presentation, profile, template)
+	result := CompileSourceWithImages(source, presentation, profile, template, resolveImage)
 	// Compiling always yields as many slides as the source has. A brief with one
 	// subject cannot honestly fill twenty slides: each subject is argued from four
 	// angles and the closing questions are asked once, and past that a deck can

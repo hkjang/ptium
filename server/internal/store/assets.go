@@ -206,6 +206,33 @@ func (s *Store) ListAssets(ctx context.Context, ownerID string, query AssetQuery
 	return result, total, rows.Err()
 }
 
+// AssetNames is what an account can illustrate a deck with, newest first.
+//
+// The library's own listing puts starred images first, which is right for
+// somebody scrolling for one they pinned. It is wrong for generation: an
+// account whose old logos are all starred would offer a deck two hundred logos
+// and never the photograph uploaded for it this morning.
+func (s *Store) AssetNames(ctx context.Context, ownerID string, limit int) ([]string, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT name FROM assets
+		WHERE owner_id=$1 AND coalesce(name,'') <> '' ORDER BY created_at DESC LIMIT $2`, ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	names := make([]string, 0, limit)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
 // AssetTags lists the tags this person has used, with how many images carry
 // each, so the library offers what they already write rather than a free field.
 func (s *Store) AssetTags(ctx context.Context, ownerID string) ([]model.AssetTag, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/config"
 	"github.com/hkjang/ptium/server/internal/db"
+	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/httpapi"
 	"github.com/hkjang/ptium/server/internal/keys"
@@ -138,6 +139,28 @@ func main() {
 			})
 		}
 		return entries
+	}
+	// A deck can only carry a picture somebody already uploaded — there is no web
+	// to fetch one from — so generation is told what this account has, most used
+	// first, and may name one of those.
+	generator.Pictures = func(ctx context.Context, ownerID string) []string {
+		// Newest first, and not the order the library screen shows: that one puts
+		// starred images ahead of everything, so an account with two hundred
+		// starred logos would offer a deck two hundred logos.
+		names, err := dataStore.AssetNames(ctx, ownerID, 500)
+		if err != nil {
+			return nil
+		}
+		return names
+	}
+	// And what a name means, so a deck that writes "::image 현장 자동화" carries
+	// the picture rather than a warning.
+	generator.ResolveImage = func(ctx context.Context, ownerID, reference string) (deck.ContentImage, bool) {
+		asset, err := dataStore.ResolveAsset(ctx, ownerID, reference)
+		if err != nil {
+			return deck.ContentImage{}, false
+		}
+		return deck.ContentImage{AssetID: asset.ID, Name: asset.Name}, true
 	}
 	generator.Used = func(ctx context.Context, ownerID, snippetID string) {
 		dataStore.MarkSnippetUsed(ctx, snippetID, ownerID)

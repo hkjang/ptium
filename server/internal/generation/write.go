@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/hkjang/ptium/server/internal/library"
 )
 
 // writeSource turns an outline into deck source.
@@ -14,6 +16,17 @@ import (
 // ones it named, the figures are the ones it supplied, and the frames decide the
 // shape of each slide.
 func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
+	return writeSourceWith(outline, plan, count, nil)
+}
+
+// writeSourceWith is writeSource with the pictures this account has uploaded.
+//
+// Without a model there is nobody to choose one, so the choice is made the way
+// the slide library's is: by name. A topic called "현장 자동화" and a picture
+// called "현장 자동화" are the same subject, and a deck that leaves the picture
+// in the library while writing about it is a deck of nothing but text — which
+// is what every air-gapped deck was until now.
+func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictures []library.Entry) string {
 	var builder strings.Builder
 	write := func(format string, args ...any) {
 		fmt.Fprintf(&builder, format, args...)
@@ -70,6 +83,8 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 	// it has not.
 	previousFrame := ""
 	usedFrames := map[string]bool{}
+	// The pictures already placed, so one is never used twice.
+	placed := map[string]bool{}
 	// The shapes the brief's own numbers are in. Read once: a deck draws each of
 	// them at most once, and only where they belong.
 	charts := chartsFromFigures(outline.Figures, localizedCopy(plan.Language))
@@ -100,6 +115,13 @@ func writeSource(outline promptOutline, plan deckPlanCopy, count int) string {
 			write("# %s", section.Title)
 			if section.Role != "" {
 				write("@%s", section.Role)
+			}
+			// A picture goes on the slide about the thing it is a picture of, and
+			// on the first such slide only: the same photograph on four slides is
+			// wallpaper.
+			if picture, ok := pictureFor(topic.Name, section.Title, pictures, placed); ok {
+				placed[picture] = true
+				write("::image %s", picture)
 			}
 			// A lead that opens with the words already in the title says the same
 			// thing twice on one slide — the measurement calls that out, and a
@@ -353,4 +375,25 @@ func headlineFigures(items []string, drawn []string) []string {
 		}
 	}
 	return kept
+}
+
+// pictureFor is the picture this slide is about, if the account has one.
+//
+// The match is the library's, which is the same question asked of slides: is
+// what this is called what that is called? Nothing here searches the words of
+// the slide for something picture-ish — a deck that puts a photograph on a page
+// because both mention "현장" is decoration, and decoration nobody chose is
+// worse than white space.
+func pictureFor(topic, title string, pictures []library.Entry, placed map[string]bool) (string, bool) {
+	if len(pictures) == 0 || len(placed) >= 2 {
+		return "", false
+	}
+	for _, name := range []string{topic, title} {
+		entry, ok := library.Match(name, pictures)
+		if !ok || placed[entry.Name] {
+			continue
+		}
+		return entry.Name, true
+	}
+	return "", false
 }

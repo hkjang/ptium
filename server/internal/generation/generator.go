@@ -50,7 +50,15 @@ type Generator struct {
 	// deck that writes its own version of them is how a company's decks drift
 	// apart. Both are optional: without them nothing changes.
 	Library func(ctx context.Context, ownerID string) []library.Entry
-	Used    func(ctx context.Context, ownerID, snippetID string)
+	// Pictures is what this account has already uploaded, most used first. A
+	// deck may place one; it may not invent one, and a name nobody uploaded is
+	// reported rather than drawn.
+	Pictures func(ctx context.Context, ownerID string) []string
+	// ResolveImage turns a name a deck wrote into the stored picture it means.
+	// Without it a deck can name a picture and not carry one: the source says
+	// ::image 현장 자동화 and the slide is drawn without it.
+	ResolveImage func(ctx context.Context, ownerID, reference string) (deck.ContentImage, bool)
+	Used         func(ctx context.Context, ownerID, snippetID string)
 	// Now is what day it is, for the brief. A model has no clock, and a brief
 	// that says "하반기" without a year makes it guess one — a deck written this
 	// week came back titled 2024. Injected so a test can hold the date still.
@@ -150,7 +158,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 			return Deck{}, errors.New("rewriting a deck needs an AI provider; ask an administrator to configure one")
 		}
 		return g.fromLibrary(ctx, presentation, profile, template,
-			Fallback(presentation, profile, template)), nil
+			g.fallbackDeck(ctx, presentation, profile, template)), nil
 	}
 	if provider != "openai-compatible" && provider != "openai" {
 		return Deck{}, fmt.Errorf("unsupported AI provider %q", provider)
@@ -162,6 +170,7 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	}
 	request := writingRequest{Presentation: presentation, Profile: profile, Template: template, Today: g.today()}
 	request.Registered = registeredNames(ctx, g.Library, presentation.OwnerID)
+	request.Pictures = pictureNames(ctx, g.Pictures, presentation.OwnerID)
 	// A deck that already has slides is being rewritten, not invented. Its own
 	// text is the material, its structure is already decided, and planning a new
 	// narrative for it would throw away the thing being improved.
@@ -223,7 +232,8 @@ func (g *Generator) withoutTheModel(ctx context.Context, presentation model.Pres
 	if !modelCouldNotAnswer(cause) {
 		return Deck{}, cause
 	}
-	result := g.fromLibrary(ctx, presentation, profile, template, Fallback(presentation, profile, template))
+	result := g.fromLibrary(ctx, presentation, profile, template,
+		g.fallbackDeck(ctx, presentation, profile, template))
 	if len(result.Slides) == 0 {
 		return Deck{}, cause
 	}
@@ -292,6 +302,68 @@ func registeredNames(ctx context.Context, read func(context.Context, string) []l
 			names = append(names, name)
 		}
 		if len(names) >= 20 {
+			break
+		}
+	}
+	return names
+}
+
+// fallbackDeck writes a deck without a model, with whatever pictures the
+// account has to illustrate it.
+func (g *Generator) fallbackDeck(ctx context.Context, presentation model.Presentation,
+	profile model.Profile, template Template) Deck {
+	return FallbackWithPictures(presentation, profile, template,
+		pictureEntries(ctx, g.Pictures, presentation.OwnerID), g.imageResolver(ctx, presentation.OwnerID))
+}
+
+// imageResolver binds a picture's name to the picture, for the account this deck
+// belongs to.
+func (g *Generator) imageResolver(ctx context.Context, ownerID string) func(string) (deck.ContentImage, bool) {
+	if g.ResolveImage == nil || strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	return func(reference string) (deck.ContentImage, bool) {
+		return g.ResolveImage(ctx, ownerID, reference)
+	}
+}
+
+// pictureEntries is the account's pictures as the library matches names.
+// Every one of them, not the first two dozen: matching a name against a name
+// costs nothing, and the picture a deck wants is as likely to be the two
+// hundredth uploaded as the first.
+func pictureEntries(ctx context.Context, read func(context.Context, string) []string, ownerID string) []library.Entry {
+	if read == nil || strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	names := read(ctx, ownerID)
+	entries := make([]library.Entry, 0, len(names))
+	for _, name := range names {
+		entries = append(entries, library.Entry{Name: name})
+	}
+	return entries
+}
+
+// maximumOfferedPictures bounds the list a model is given. Every name is prompt
+// a deck pays for, and a model handed two hundred of them is being asked to
+// browse rather than to write.
+const maximumOfferedPictures = 24
+
+// pictureNames is what this account can illustrate a deck with.
+//
+// Ptium cannot fetch a picture — an air-gapped deployment has no web to fetch
+// from — so the pictures a deck can carry are the ones somebody already
+// uploaded. Naming them is what lets a deck use them: the same thing that made
+// the slide library work, where a model left to itself never guessed the name.
+func pictureNames(ctx context.Context, read func(context.Context, string) []string, ownerID string) []string {
+	if read == nil || strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	var names []string
+	for _, name := range read(ctx, ownerID) {
+		if trimmed := strings.TrimSpace(name); trimmed != "" {
+			names = append(names, trimmed)
+		}
+		if len(names) >= maximumOfferedPictures {
 			break
 		}
 	}

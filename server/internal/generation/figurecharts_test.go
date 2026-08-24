@@ -1,8 +1,13 @@
 package generation
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/library"
+	"github.com/hkjang/ptium/server/internal/model"
 )
 
 func figuresOf(pairs ...string) []promptFigure {
@@ -129,5 +134,63 @@ func TestAHeadingDoesNotEndInAMeasurement(t *testing.T) {
 		if got := headingName(given); got != want {
 			t.Errorf("headingName(%q) = %q, want %q", given, got, want)
 		}
+	}
+}
+
+// A deck can only carry a picture somebody already uploaded. Without a model
+// the choice is made by name, the way the slide library's is — and a picture
+// nobody named after this subject is left alone.
+func TestAPictureIsPlacedOnTheSlideItIsNamedFor(t *testing.T) {
+	pictures := []library.Entry{{Name: "현장 자동화"}, {Name: "조직도"}}
+	placed := map[string]bool{}
+	if name, ok := pictureFor("현장 자동화", "현장 자동화 — 기대 효과", pictures, placed); !ok || name != "현장 자동화" {
+		t.Fatalf("the picture named for the topic was not placed: %q %v", name, ok)
+	}
+	placed["현장 자동화"] = true
+	if _, ok := pictureFor("현장 자동화", "현장 자동화 — 리스크", pictures, placed); ok {
+		t.Error("the same picture was placed twice")
+	}
+	if _, ok := pictureFor("예산 계획", "예산 계획", pictures, placed); ok {
+		t.Error("a picture was placed on a slide nobody named it for")
+	}
+	// Two is a deck's worth; the third slide about a picture gets words.
+	full := map[string]bool{"현장 자동화": true, "조직도": true}
+	if _, ok := pictureFor("조직도", "조직도", pictures, full); ok {
+		t.Error("a third picture was placed")
+	}
+}
+
+// The whole path, without a model: an account with pictures, a brief about one
+// of them, and a deck that places it.
+func TestAnAirGappedDeckCarriesTheAccountsPicture(t *testing.T) {
+	template := testTemplate(t)
+	generator := New(testSettings{"ai.provider": "fallback"})
+	generator.ResolveImage = func(ctx context.Context, ownerID, reference string) (deck.ContentImage, bool) {
+		return deck.ContentImage{AssetID: "asset-" + reference, Name: reference}, true
+	}
+	generator.Pictures = func(ctx context.Context, ownerID string) []string {
+		if ownerID == "" {
+			t.Error("the generator asked for pictures without saying whose")
+		}
+		return []string{"현장 자동화", "조직도"}
+	}
+	deck, err := generator.Generate(context.Background(), model.Presentation{
+		OwnerID: "owner-1", Title: "현장 자동화", Language: "ko", RequestedSlideCount: 6,
+		Prompt: "현장 자동화 도입 계획과 조직도 개편을 임원에게 보고합니다. 투자 12억, 12개월.",
+	}, model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if !strings.Contains(deck.Source, "::image 현장 자동화") {
+		t.Errorf("the deck about 현장 자동화 does not carry the picture of it:\n%s", deck.Source)
+	}
+	carried := 0
+	for _, slide := range deck.Slides {
+		if strings.Contains(string(slide.Content), "\"images\"") {
+			carried++
+		}
+	}
+	if carried == 0 {
+		t.Errorf("no slide carries a picture")
 	}
 }
