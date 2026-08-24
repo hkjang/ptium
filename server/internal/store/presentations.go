@@ -566,7 +566,7 @@ func (s *Store) ClaimGeneration(ctx context.Context) (model.Presentation, error)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	// Reclaim work abandoned by a crashed process after ten minutes.
-	_, _ = tx.Exec(ctx, `UPDATE presentations SET status='queued',updated_at=now() WHERE status='generating' AND deleted_at IS NULL AND generation_started_at < now()-interval '10 minutes'`)
+	_, _ = tx.Exec(ctx, `UPDATE presentations SET status='queued',generation_stage='',updated_at=now() WHERE status='generating' AND deleted_at IS NULL AND generation_started_at < now()-interval '10 minutes'`)
 	var p model.Presentation
 	err = tx.QueryRow(ctx, `SELECT `+presentationColumns("presentations")+`
 		FROM presentations WHERE status='queued' AND deleted_at IS NULL ORDER BY updated_at FOR UPDATE OF presentations SKIP LOCKED LIMIT 1`).Scan(presentationScan(&p)...)
@@ -683,7 +683,7 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 }
 
 func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),version=version+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL`, id, message)
+	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL`, id, message)
 	return err
 }
 
