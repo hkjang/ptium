@@ -44,6 +44,7 @@ def oldest_image():
     return f"ptium:{tags[0]}"
 
 
+owner_moved = False
 old_image = options.old or oldest_image()
 if not old_image:
     print("no older ptium image on this host: nothing to upgrade from")
@@ -154,6 +155,7 @@ try:
             docker("exec", database, "psql", "-U", "postgres", "-d", "ptium", "-c",
                    f"update presentations set owner_id=(select id from users where email='admin@example.com') "
                    f"where id='{deck['id']}'")
+            owner_moved = True
             new_call("/api/v1/auth/login", {"username": "admin@example.com", "password": password})
             carried = new_call(f"/api/v1/presentations/{deck['id']}") or {}
             slides = len(carried.get("slides") or [])
@@ -174,6 +176,32 @@ try:
             if b"<svg" not in drawn:
                 failures.append("a deck from an old release does not draw")
             print(f"   exported and drawn · source {len(source.splitlines())} lines")
+
+            # And back again. An operator whose upgrade goes wrong redeploys the
+            # tag they had; what makes that possible is that no migration takes
+            # anything away, and the day one does, this is where it shows.
+            docker("rm", "-f", after)
+            docker("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
+                   "-e", f"DATABASE_URL={dsn}", "-e", "DEV_AUTH_ENABLED=true", "-e", f"DEV_AUTH_SECRET={secret}",
+                   "-e", "DEV_AUTH_ALLOW_REMOTE=true", "-e", "DEV_AUTH_EMAIL=up@ptium.local", old_image)
+            if not wait_for(f"http://127.0.0.1:{old_port}/readyz"):
+                print(docker("logs", before, check=False))
+                failures.append(f"{old_image} does not come up again on a database {new_image} has written")
+            else:
+                if owner_moved:
+                    # Give it back, so the old release is asked as the identity
+                    # that made it.
+                    docker("exec", database, "psql", "-U", "postgres", "-d", "ptium", "-c",
+                           f"update presentations set owner_id=(select id from users where email='up@ptium.local') "
+                           f"where id='{deck['id']}'")
+                try:
+                    back = old_call(f"/presentations/{deck['id']}")
+                    kept = len(back.get("slides") or [])
+                    print(f"   rolled back to {old_image}: the deck still opens with {kept} slide(s)")
+                    if kept != made:
+                        failures.append(f"after a rollback the deck has {kept} slide(s), not {made}")
+                except Exception as error:
+                    failures.append(f"after a rollback the deck cannot be read: {error}")
 finally:
     docker("rm", "-f", before, after, database, check=False)
     docker("network", "rm", network, check=False)

@@ -36,11 +36,11 @@ To reproduce the same bundle from source on a build host:
 ## Import on the target host
 
 ```powershell
-.\load-ptium-1.11.9.ps1 -Archive .\ptium-1.11.9.tar.gz
+.\load-ptium-1.11.10.ps1 -Archive .\ptium-1.11.10.tar.gz
 ```
 
 ```bash
-./load-ptium-1.11.9.sh ptium-1.11.9.tar.gz
+./load-ptium-1.11.10.sh ptium-1.11.10.tar.gz
 ```
 
 Both loaders verify the adjacent `.sha256` file and stop before import if it
@@ -48,9 +48,9 @@ does not match. Pass `-SkipChecksum` only when verification has already been
 enforced by the network-transfer process. Without a helper:
 
 ```bash
-sha256sum -c ptium-1.11.9.tar.gz.sha256
-gzip -dc ptium-1.11.9.tar.gz | docker load
-docker image inspect ptium-1.11.9:latest ptium:1.11.9 >/dev/null
+sha256sum -c ptium-1.11.10.tar.gz.sha256
+gzip -dc ptium-1.11.10.tar.gz | docker load
+docker image inspect ptium-1.11.10:latest ptium:1.11.10 >/dev/null
 ```
 
 ## Provide the database
@@ -114,8 +114,8 @@ Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
 every remaining placeholder:
 
 ```bash
-docker compose --env-file .env -f docker-compose.ptium-1.11.9.yml up -d
-docker compose --env-file .env -f docker-compose.ptium-1.11.9.yml ps
+docker compose --env-file .env -f docker-compose.ptium-1.11.10.yml up -d
+docker compose --env-file .env -f docker-compose.ptium-1.11.10.yml ps
 curl --fail http://localhost:8080/readyz
 ```
 
@@ -127,7 +127,7 @@ Ptium is then available at `http://<host>:8080`.
 kubectl create secret generic ptium \
   --from-literal=DATABASE_URL='postgres://ptium:...@postgres:5432/ptium?sslmode=require' \
   --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
-kubectl apply -f ptium-1.11.9.kubernetes.yaml
+kubectl apply -f ptium-1.11.10.kubernetes.yaml
 ```
 
 The manifest runs two replicas as a non-root user with a read-only root
@@ -216,3 +216,27 @@ browser. Leave it unset for a public client.
 Migrations are applied during start and are safe to run from several replicas at
 once. Built-in templates are regenerated from code on every boot, so a new
 release picks up design changes without any extra step.
+
+Every release is built by writing a database with an older image and bringing
+the new one up on it, so the path above is walked before the archive is
+published — a deck made two hundred releases ago opens, measures, draws and
+exports after the migrations have run.
+
+### Going back
+
+Redeploying the previous tag works: no migration takes anything away, so an
+older image comes up on a database a newer one has written and every deck still
+opens. Measured back to 1.10.0, 1.9.0 and 0.1.0 — all three started healthy and
+read a deck a newer release had written — and every release build walks it once
+more with the oldest image on the build host.
+
+What an older image cannot do is understand what it never knew:
+
+- A line written `[보이는 말](주소)` or `**굵게**` draws its markup on the slide,
+  because the release that draws them as a link and as bold is the one you left.
+- `!skip` is ignored, so a slide kept out of the talk is back in it.
+- PDF export answers `422`; it did not exist before 1.11.0.
+
+Nothing is lost by going back, and nothing is repaired by it either — the deck is
+as the newer release left it. Restore the database backup only if a migration
+itself is what went wrong.
