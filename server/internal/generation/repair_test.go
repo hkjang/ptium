@@ -1,6 +1,10 @@
 package generation
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -138,5 +142,58 @@ func TestAComponentDrawingLessThanItHoldsIsSentBackForARewrite(t *testing.T) {
 	}
 	if got := defectsOnSlide(manifest, presentation, 1, presentation.Slides[0]); got == 0 {
 		t.Error("the slide that holds eight measures clean, so no rewrite could be judged better")
+	}
+}
+
+// A slide can fit its region perfectly and have nothing written to say over it.
+// A live run of a 122B model returned eight slides with five of them bare, and
+// nothing in the drawing shows it: the deck looks finished.
+func TestTheWordsAreWrittenForASlideThatHasNone(t *testing.T) {
+	template := testTemplate(t)
+	var asked []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		asked = append(asked, string(body))
+		writer.Header().Set("Content-Type", "application/json")
+		// The first answer is the deck, with one slide carrying no notes. What
+		// comes back after that is that slide, with them.
+		content := "# 표지\\n@cover\\n> 한 줄\\n!notes 왜 지금인지 말합니다\\n\\n" +
+			"# 근거\\n@content\\n- 매출이 늘었습니다\\n- 비용은 그대로입니다\\n"
+		if len(asked) > 1 {
+			content = "# 근거\\n@content\\n- 매출이 늘었습니다\\n- 비용은 그대로입니다\\n" +
+				"!notes 숫자의 출처를 먼저 말하고, 가정이 흔들리면 결론도 흔들린다고 덧붙입니다\\n"
+		}
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"` +
+			content + `"}}]}`))
+	}))
+	defer server.Close()
+
+	generator := New(testSettings{
+		"ai.provider": "openai-compatible", "ai.base_url": server.URL,
+		"ai.model": "local", "ai.api_key": "k", "generation.outline_pass": false,
+	})
+	generator.client = server.Client()
+	deck, err := generator.Generate(context.Background(),
+		model.Presentation{Title: "실적", Prompt: "매출이 늘었습니다", Language: "ko", RequestedSlideCount: 2},
+		model.Profile{}, template)
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if len(deck.Slides) != 2 {
+		t.Fatalf("expected two slides, got %d", len(deck.Slides))
+	}
+	if strings.TrimSpace(deck.Slides[1].SpeakerNotes) == "" {
+		t.Errorf("the slide with nothing to say was left with nothing to say")
+	}
+	// What the slide says was already measured and fitted; only the notes were
+	// missing, so only the notes changed.
+	if !strings.Contains(deck.Slides[1].Title, "근거") {
+		t.Errorf("the slide's own words were rewritten: %q", deck.Slides[1].Title)
+	}
+	if len(asked) < 2 {
+		t.Errorf("the model was not asked for the words: %d request(s)", len(asked))
+	}
+	if !strings.Contains(deck.Source, "!notes 숫자의 출처") {
+		t.Errorf("the deck's source does not carry what was written:\n%s", deck.Source)
 	}
 }

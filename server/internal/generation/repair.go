@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sort"
@@ -261,4 +262,103 @@ func deckTitles(slides []model.Slide, position int) []string {
 		titles = append(titles, fmt.Sprintf("%d. %s%s", index+1, strings.TrimSpace(slide.Title), marker))
 	}
 	return titles
+}
+
+// maximumNoteWrites bounds how many slides one generation asks the model to
+// find the words for. A deck where nothing has notes is one the model did not
+// follow the brief on, and the measurement says so plainly.
+const maximumNoteWrites = 4
+
+// writeMissingNotes asks for what to say over the slides that have nothing.
+//
+// A slide that carries an argument and has no speaker notes is half finished:
+// the brief the model is given says every slide but the cover ends with a notes
+// line, and a live run of a 122B model returned eight slides with five of them
+// bare. That is not a defect anyone can see in the drawing, which is exactly why
+// it survives to the room — the deck looks done.
+//
+// Only the notes are asked for. The slide is already measured and fitted; a
+// rewrite that also moved its words would undo work that is finished, so the
+// result is kept only when the argument on the slide is unchanged.
+func (g *Generator) writeMissingNotes(ctx context.Context, request writingRequest, result Deck,
+	budget time.Duration) Deck {
+	if len(result.Slides) == 0 {
+		return result
+	}
+	deadline := time.Now().Add(budget)
+	manifest := request.Template.Manifest
+	presentation := request.Presentation
+	presentation.Slides = result.Slides
+
+	var bare []int
+	for _, finding := range pptx.InspectDeck(manifest, deck.Build(presentation, manifest, "")) {
+		if finding.Kind == pptx.FindingNotes && finding.Slide > 0 && finding.Slide <= len(result.Slides) {
+			bare = append(bare, finding.Slide)
+		}
+	}
+	if len(bare) == 0 {
+		return result
+	}
+	written := 0
+	for attempted, position := range bare {
+		if attempted >= maximumNoteWrites || ctx.Err() != nil {
+			break
+		}
+		if attempted > 0 && time.Now().After(deadline) {
+			break
+		}
+		single := presentation
+		single.Slides = []model.Slide{result.Slides[position-1]}
+		revised, err := g.ReviseSlide(ctx, Revision{
+			Presentation: presentation,
+			Profile:      request.Profile,
+			Template:     request.Template,
+			Source:       deck.Format(single, manifest),
+			Action:       ReviseNotes,
+			Findings:     []string{"no speaker notes: nothing is written down to say over this slide"},
+			DeckOutline:  deckTitles(result.Slides, position),
+		})
+		if err != nil {
+			break
+		}
+		compiled := CompileGenerated(revised, single, request.Profile, request.Template)
+		if len(compiled.Slides) != 1 {
+			continue
+		}
+		proposal := compiled.Slides[0]
+		proposal.ID = result.Slides[position-1].ID
+		proposal.Position = position
+		if strings.TrimSpace(proposal.SpeakerNotes) == "" {
+			continue
+		}
+		// The slide itself is not what was asked about. A draft that came back
+		// with different words on it is a rewrite nobody asked for, and the words
+		// it replaced were already measured against the template.
+		if changed := slideArgumentChanged(result.Slides[position-1], proposal); changed {
+			// Take the notes and leave the slide as it was written.
+			kept := result.Slides[position-1]
+			kept.SpeakerNotes = proposal.SpeakerNotes
+			proposal = kept
+		}
+		if defectsOnSlide(manifest, presentation, position, proposal) >
+			defectsOnSlide(manifest, presentation, position, result.Slides[position-1]) {
+			continue
+		}
+		result.Slides[position-1] = proposal
+		presentation.Slides = result.Slides
+		written++
+	}
+	if written > 0 {
+		result.Warnings = append(result.Warnings,
+			fmt.Sprintf("%d slide(s) had nothing written to say, and the words were written", written))
+		result.Source = deck.Format(presentation, manifest)
+	}
+	return result
+}
+
+// slideArgumentChanged says whether a draft altered what the slide says, rather
+// than only what is said about it.
+func slideArgumentChanged(before, after model.Slide) bool {
+	return strings.TrimSpace(before.Title) != strings.TrimSpace(after.Title) ||
+		!bytes.Equal(bytes.TrimSpace(before.Content), bytes.TrimSpace(after.Content))
 }

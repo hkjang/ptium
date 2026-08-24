@@ -444,7 +444,7 @@ func TestGenerateAsksTheProviderNotToThink(t *testing.T) {
 		body, _ := io.ReadAll(request.Body)
 		bodies = append(bodies, string(body))
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n- 요점 둘\n"}}]}`))
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n!notes 무엇을 말할지 적어 둡니다\n- 요점 둘\n"}}]}`))
 	}))
 	defer server.Close()
 
@@ -484,7 +484,7 @@ func TestGenerateStopsAskingWhenTheProviderRefuses(t *testing.T) {
 			_, _ = writer.Write([]byte(`{"error":{"message":"Unrecognized request argument: chat_template_kwargs"}}`))
 			return
 		}
-		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n"}}]}`))
+		_, _ = writer.Write([]byte(`{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"# 제목\n@content\n- 요점 하나\n!notes 무엇을 말할지 적어 둡니다\n"}}]}`))
 	}))
 	defer server.Close()
 

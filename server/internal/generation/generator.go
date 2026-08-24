@@ -587,6 +587,9 @@ func (g *Generator) finishDeck(ctx context.Context, request writingRequest, resu
 	// slides that do not fit are sent back to the model with the measurement.
 	if g.repairs > 0 {
 		result = g.repairDeck(ctx, request, result, writing)
+		// A slide can fit its region perfectly and still have nothing written to
+		// say over it, which no measurement of the drawing will ever catch.
+		result = g.writeMissingNotes(ctx, request, result, writing/2)
 	}
 	// A figure the brief never gave cannot be cut out of the sentence it sits in,
 	// so the deck keeps it and names it. The room will ask about it. Measured
