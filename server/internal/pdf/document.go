@@ -23,6 +23,7 @@ type Document struct {
 	font          *TrueType
 	fontName      string
 	used          map[uint16]rune
+	undrawn       map[rune]int
 	pages         []*Page
 	images        []*imageXObject
 	imageNames    map[string]string
@@ -32,7 +33,7 @@ type Document struct {
 // New starts a document of the given page size, drawn in the given font.
 func New(width, height Point, title string, font *TrueType) *Document {
 	return &Document{Width: width, Height: height, Title: title, font: font,
-		fontName: "F1", used: map[uint16]rune{}}
+		fontName: "F1", used: map[uint16]rune{}, undrawn: map[rune]int{}}
 }
 
 // Page is one slide's worth of drawing. Coordinates come in the way a slide is
@@ -100,7 +101,10 @@ func (p *Page) Text(x, y Point, size Point, color, text string, bold, italic boo
 		glyph, ok := font.Glyph(character)
 		if !ok {
 			// A character this font cannot draw is drawn as a space rather than
-			// as glyph 0, which most readers draw as a hollow box.
+			// as glyph 0, which most readers draw as a hollow box. It is counted
+			// on the way past: a word that leaves the page as blanks is a thing
+			// the author has to be told, not something to find in print.
+			p.document.undrawn[character]++
 			glyph, ok = font.Glyph(' ')
 			if !ok {
 				continue
@@ -129,6 +133,21 @@ func (p *Page) Text(x, y Point, size Point, color, text string, bold, italic boo
 	}
 	fmt.Fprintf(&p.content, "<%s> Tj\nET\n", glyphs.String())
 	return width
+}
+
+// Undrawn is every character the font had no glyph for, with how many times it
+// was met. A PDF built from a deck written in a script the built-in face does
+// not cover comes out with those characters missing, and nothing on the page
+// says so.
+func (d *Document) Undrawn() map[rune]int {
+	if len(d.undrawn) == 0 {
+		return nil
+	}
+	out := make(map[rune]int, len(d.undrawn))
+	for character, count := range d.undrawn {
+		out[character] = count
+	}
+	return out
 }
 
 // TextWidth is how wide a run would be drawn, without drawing it.

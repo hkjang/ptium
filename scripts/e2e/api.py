@@ -343,6 +343,40 @@ except Exception as error:
 # Which of this deployment's templates paints a wash, if any.
 wash_template = next((t.get("id") for t in (data_of(call("GET", "/templates?limit=50", expect=200)) or [])
                       if "Wash" in (t.get("name") or "")), "")
+# The built-in PDF face covers Korean, Latin and kana. A deck written in
+# Japanese 新字体 or simplified Chinese reaches past it and those characters
+# print as blank space, so the export has to say which ones it dropped: finding
+# out here is the difference from finding out in print.
+print("── what the pdf face cannot draw ──")
+japanese = data_of(call("POST", "/presentations", {"title": "四半期実績", "prompt": "四半期実績の報告。",
+                                                   "language": "ja", "requestedSlideCount": 3}, expect=201))
+if japanese:
+    call("PUT", f"/presentations/{japanese['id']}/source",
+         {"source": "# 四半期実績\n- 売上と直販の実績\n- 业绩と销售额\n"}, expect=200)
+
+
+    def export_headers(deck):
+        request = urllib.request.Request(f"{BASE}/presentations/{deck}/export?format=pdf",
+                                         headers={"X-Ptium-Dev-Secret": SECRET})
+        with urllib.request.urlopen(request) as response:
+            return response.headers.get("X-Ptium-Missing-Characters") or "", response.read()
+
+    reported, printed = export_headers(japanese["id"])
+    reported = urllib.parse.unquote_plus(reported)
+    checks += 1
+    if not printed.startswith(b"%PDF-"):
+        failures.append("a Japanese deck did not export as a PDF at all")
+    for character in "実売业":
+        checks += 1
+        if character not in reported:
+            failures.append(f"{character!r} prints as a blank and the export did not say so: {reported!r}")
+    print(f"   reported as undrawable: {reported!r}")
+    korean, _ = export_headers(deck_id)
+    checks += 1
+    if korean:
+        failures.append(f"a Korean deck reported characters it could draw: {korean!r}")
+    call("DELETE", f"/presentations/{japanese['id']}", expect=204)
+
 status, pdf_bytes = call("GET", f"/presentations/{deck_id}/export?format=pdf", raw=True, expect=200)
 if not pdf_bytes.startswith(b"%PDF-") or not pdf_bytes.rstrip().endswith(b"%%EOF"):
     failures.append("the PDF export is not a PDF")

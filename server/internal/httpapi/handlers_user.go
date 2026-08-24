@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -452,7 +453,7 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 		// A handout is the deck with what the presenter meant to say under each
 		// slide, which is a different document from the deck itself.
 		options.WithNotes = request.URL.Query().Get("notes") == "true" || request.URL.Query().Get("notes") == "1"
-		data, err := export.PDF(presentation, options)
+		data, missing, err := export.PDFWithMissing(presentation, options)
 		if errors.Is(err, export.ErrNothingToPrint) {
 			// The deck is fine and so is the server: every slide is marked
 			// skipped, and the handout would be empty paper.
@@ -469,6 +470,17 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 			filename = safeFilename(presentation.Title) + " (발표자 노트).pdf"
 		}
 		writer.Header().Set("Content-Type", "application/pdf")
+		if len(missing) > 0 {
+			// The built-in face has no glyph for these, and a PDF prints them as
+			// blank space. The file is still the one that was asked for, so it is
+			// sent — with what it lost written on the envelope, in a header the
+			// browser hands to the page that fetched it.
+			writer.Header().Set("X-Ptium-Missing-Characters", url.QueryEscape(string(missing)))
+			writer.Header().Set("Access-Control-Expose-Headers", "X-Ptium-Missing-Characters")
+			s.logger.Warn("the pdf font cannot draw every character in the deck",
+				"request_id", RequestID(request.Context()), "presentation_id", presentation.ID,
+				"characters", string(missing))
+		}
 		writer.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		writer.WriteHeader(http.StatusOK)

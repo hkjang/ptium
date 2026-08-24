@@ -3,6 +3,7 @@ package export
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/deck"
@@ -28,24 +29,39 @@ var ErrNothingToPrint = errors.New("every slide in the deck is skipped, so there
 // not carry it, and a PDF reader has no Korean face of its own, so the file is
 // set in the one face the workspace ships. The exported pptx is where the
 // deck's own design lives; this is where it can be read anywhere.
+// PDF prints the deck. What the built-in face could not draw is reported by
+// PDFWithMissing; a caller that does not ask is not told.
 func PDF(presentation model.Presentation, options Options) ([]byte, error) {
+	data, _, err := PDFWithMissing(presentation, options)
+	return data, err
+}
+
+// PDFWithMissing prints the deck and says which characters the built-in face
+// has no glyph for.
+//
+// The face covers Korean, Latin and kana. Japanese 新字体 and simplified
+// Chinese reach past it — 売, 実, 业, 绩 — and those characters leave the page
+// as blank space. Printing them away silently is the worst of the three
+// possible answers; this one is told to the author while the file is still on
+// screen.
+func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, []rune, error) {
 	if len(presentation.Slides) == 0 {
-		return nil, errors.New("the presentation does not contain any slide")
+		return nil, nil, errors.New("the presentation does not contain any slide")
 	}
 	manifest := options.Manifest
 	if manifest.Version != pptx.ManifestVersion || len(manifest.Layouts) == 0 {
 		if len(options.TemplateData) == 0 {
-			return nil, errors.New("the presentation template is unavailable")
+			return nil, nil, errors.New("the presentation template is unavailable")
 		}
 		_, analyzed, err := pptx.AnalyzeBytes(options.TemplateData)
 		if err != nil {
-			return nil, fmt.Errorf("analyze presentation template: %w", err)
+			return nil, nil, fmt.Errorf("analyze presentation template: %w", err)
 		}
 		manifest = analyzed
 	}
 	font, err := pdf.BuiltinFont()
 	if err != nil {
-		return nil, fmt.Errorf("read the built-in font: %w", err)
+		return nil, nil, fmt.Errorf("read the built-in font: %w", err)
 	}
 	widthEMU, heightEMU := manifest.SlideWidth, manifest.SlideHeight
 	if widthEMU <= 0 || heightEMU <= 0 {
@@ -76,18 +92,18 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 		page := document.AddPage()
 		if !options.WithNotes {
 			if err := pdf.DrawSVG(page, drawing); err != nil {
-				return nil, fmt.Errorf("draw slide %d: %w", index+1, err)
+				return nil, nil, fmt.Errorf("draw slide %d: %w", index+1, err)
 			}
 			continue
 		}
 		if err := printWithNotes(document, page, drawing, slide, presentation.Language, width, height); err != nil {
-			return nil, fmt.Errorf("draw slide %d: %w", index+1, err)
+			return nil, nil, fmt.Errorf("draw slide %d: %w", index+1, err)
 		}
 	}
 	if document.Pages() == 0 {
-		return nil, ErrNothingToPrint
+		return nil, nil, ErrNothingToPrint
 	}
-	return document.Bytes(), nil
+	return document.Bytes(), missingRunes(document), nil
 }
 
 // printWithNotes is the handout: the slide at the top of the page and what the
@@ -96,6 +112,21 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 // The slide keeps its shape — a deck is 16:9 and cropping it to fit more words
 // would be printing a different deck — so the room for notes is what is left of
 // the page under it.
+// missingRunes is what the face could not draw, in a stable order so the same
+// deck reports the same list twice.
+func missingRunes(document *pdf.Document) []rune {
+	undrawn := document.Undrawn()
+	if len(undrawn) == 0 {
+		return nil
+	}
+	out := make([]rune, 0, len(undrawn))
+	for character := range undrawn {
+		out = append(out, character)
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a] < out[b] })
+	return out
+}
+
 func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slide pptx.Slide,
 	language string, width, height float64) error {
 	const margin = 36

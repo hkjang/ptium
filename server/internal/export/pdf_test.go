@@ -221,3 +221,41 @@ func drawnText(file []byte) string {
 		rest = rest[end+len("\nendstream"):]
 	}
 }
+
+// The built-in face covers Korean, Latin and kana. A deck written in Japanese
+// 新字体 or simplified Chinese reaches past it, and those characters are drawn
+// as blank space — so the export says which ones, rather than letting the
+// author find out in print.
+func TestThePDFSaysWhatItCouldNotDraw(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	printed := func(source, language string) []rune {
+		t.Helper()
+		compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: language})
+		_, missing, err := PDFWithMissing(
+			model.Presentation{Title: "인쇄", Language: language, Slides: compiled.Slides},
+			Options{TemplateData: data, Manifest: manifest})
+		if err != nil {
+			t.Fatalf("pdf: %v", err)
+		}
+		return missing
+	}
+	missing := printed("# 四半期実績\n- 売上と直販の実績\n- 业绩と销售额\n", "ja")
+	if len(missing) == 0 {
+		t.Fatal("the deck holds characters the face has no glyph for, and none were reported")
+	}
+	for _, character := range []rune{'実', '売', '业'} {
+		if !strings.ContainsRune(string(missing), character) {
+			t.Errorf("%q prints as a blank and was not reported: %q", character, string(missing))
+		}
+	}
+	if none := printed("# 물류센터 자동화\n- 도입 승인 요청\n", "ko"); len(none) > 0 {
+		t.Errorf("a Korean deck reported %q", string(none))
+	}
+}

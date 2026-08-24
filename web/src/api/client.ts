@@ -1065,7 +1065,12 @@ export const api = {
       const body = await response.json().catch(() => null)
       throw new ApiError(errorMessage(body, `내보내기에 실패했습니다 (${response.status})`), response.status, response.headers.get('x-request-id') || undefined, body)
     }
-    return response.blob()
+    // The PDF face covers Korean, Latin and kana; Japanese 新字体 and simplified
+    // Chinese reach past it, and those characters print as blank space. The
+    // server names them in a header so the page that asked can say so.
+    const missing = response.headers.get('X-Ptium-Missing-Characters')
+    const blob = await response.blob()
+    return { blob, missing: missing ? decodeURIComponent(missing.replace(/\+/g, ' ')) : '' }
   },
 
   /** Slides someone saved to use again. */

@@ -1129,9 +1129,14 @@ export function EditorPage({ id }: { id: string }) {
     setExporting(true)
     try {
       if (dirty) await save()
-      const blob = await api.exportPresentation(id, format)
+      const { blob, missing } = await api.exportPresentation(id, format)
       const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${presentation?.title || 'ptium'}${format === 'pdf-notes' ? ' (발표자 노트)' : ''}.${format === 'pptx' ? 'pptx' : 'pdf'}`; anchor.click(); URL.revokeObjectURL(url)
-      showToast(`${format === 'pdf-notes' ? '발표자 노트 PDF' : format.toUpperCase()} 파일을 다운로드했습니다.`); setExportOpen(false)
+      // A file that lost characters is still the file that was asked for, and
+      // saying which ones is the difference between finding out here and
+      // finding out in print.
+      showToast(missing
+        ? `${format === 'pdf-notes' ? '발표자 노트 PDF' : format.toUpperCase()} 파일을 다운로드했습니다. 다만 내장 글꼴에 없는 문자는 빈칸으로 나옵니다: ${missing}`
+        : `${format === 'pdf-notes' ? '발표자 노트 PDF' : format.toUpperCase()} 파일을 다운로드했습니다.`, missing ? 'error' : undefined); setExportOpen(false)
     } catch (err) { showToast(displayError(err), 'error') } finally { setExporting(false) }
   }
 
