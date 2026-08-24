@@ -34,6 +34,7 @@ export function findingLabel(kind: string) {
     case 'repeat': return '같은 말을 두 번 함'
     case 'echo': return '앞 장과 같은 내용'
     case 'trimmed': return '일부가 안 그려짐'
+    case 'link': return '링크로 인식되지 않음'
     case 'source': return '숫자의 출처 없음'
   }
   return kind
@@ -82,6 +83,8 @@ export function findingDetail(detail: string) {
       (m) => `이 장의 요점 ${m[2]}개 중 ${m[1]}개를 ${m[3]}번 슬라이드에서 이미 말했습니다`],
     [/^(\w+) draws (\d+) of its (\d+) entries; the rest are on no slide$/,
       (m) => `${named(m[1])} 컴포넌트가 ${m[3]}개 중 ${m[2]}개만 그립니다. 나머지는 어느 슬라이드에도 없습니다`],
+    [/^"(.+)" is not a link the deck can follow, so the line draws its markup; .+$/,
+      (m) => `"${m[1]}"${subjectParticle(m[1])} 링크로 인식되지 않아 대괄호와 주소가 그대로 그려집니다. https://… , mailto:… 또는 다른 슬라이드로 가는 #3 이어야 합니다`],
     [/^no speaker notes: .+$/, () => '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
     [/^figures with no source: (.+)$/,
       (m) => `브리프에 없는 숫자에 출처가 없습니다: ${m[1]}. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다`],

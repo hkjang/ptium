@@ -41,6 +41,7 @@ var dimensionOf = map[string]string{
 	FindingDensity:   DimensionReadability,
 	FindingOrphan:    DimensionReadability,
 	FindingTrimmed:   DimensionReadability,
+	FindingLink:      DimensionReadability,
 	FindingNotes:     DimensionStructure,
 	FindingRepeat:    DimensionStructure,
 	FindingEcho:      DimensionStructure,
@@ -60,6 +61,9 @@ func weightOf(finding Finding) int {
 			return 6
 		case FindingTrimmed:
 			// Content that is on no slide is worse than content that is crowded.
+			return 10
+		case FindingLink:
+			// The markup is printed on the wall, which every reader can see.
 			return 10
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.

@@ -222,6 +222,40 @@ except Exception as error:
     failures.append(f"the exported pptx could not be read: {error}")
 call("DELETE", f"/presentations/{skip_deck['id']}", expect=204)
 
+# A link is written in the text and drawn as words. What the sweep is watching
+# for is the markup reaching a screen: the preview and the file both have to
+# draw 안내 문서, and neither may draw the brackets or the address.
+link_deck = data_of(call("POST", "/presentations", {"title": f"링크 {RUN}", "prompt": "안내"}, expect=201))
+call("PUT", f"/presentations/{link_deck['id']}/source", {"source":
+     "# 안내\n@content\n- 자세한 내용은 [안내 문서](https://docs.example.com/plan)를 보십시오\n"
+     "- 근거는 [부록](#2)에 있습니다\n\n# 부록\n@content\n- 산출 근거\n"}, expect=200)
+status, preview = call("GET", f"/presentations/{link_deck['id']}/preview.svg?slide=1&width=900", raw=True, expect=200)
+drawn = preview.decode("utf-8", "replace")
+if "docs.example.com" in drawn or "](" in drawn:
+    failures.append("the preview draws the link markup")
+if "안내 문서" not in drawn or "text-decoration=\"underline\"" not in drawn:
+    failures.append("the preview does not draw the link as one")
+status, linked_pptx = call("GET", f"/presentations/{link_deck['id']}/export?format=pptx", raw=True, expect=200)
+try:
+    package = zipfile.ZipFile(io.BytesIO(linked_pptx))
+    slide = package.read("ppt/slides/slide1.xml").decode("utf-8")
+    rels = package.read("ppt/slides/_rels/slide1.xml.rels").decode("utf-8")
+    if "hlinkClick" not in slide or "](" in slide:
+        failures.append("the exported slide does not carry the link")
+    if "https://docs.example.com/plan" not in rels or 'TargetMode="External"' not in rels:
+        failures.append("the link is not a relationship of the exported slide")
+    if "slide2.xml" not in rels:
+        failures.append("the jump to another slide is not a relationship of the exported slide")
+except Exception as error:
+    failures.append(f"the exported pptx could not be read: {error}")
+# A target the deck will not follow draws as its own markup, and is reported.
+call("PUT", f"/presentations/{link_deck['id']}/source", {"source":
+     "# 안내\n@content\n- [문서](www.example.com)를 보십시오\n"}, expect=200)
+measured = data_of(call("GET", f"/presentations/{link_deck['id']}/inspect", expect=200)) or {}
+if not [f for f in (measured.get("findings") or []) if f.get("kind") == "link"]:
+    failures.append("a link the deck cannot follow is not reported")
+call("DELETE", f"/presentations/{link_deck['id']}", expect=204)
+
 call("GET", f"/presentations/{deck_id}/preview.svg?slide=1&width=400", raw=True, expect=200)
 status, pptx = call("GET", f"/presentations/{deck_id}/export?format=pptx", raw=True, expect=200)
 try:

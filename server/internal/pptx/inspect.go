@@ -41,6 +41,9 @@ const (
 	// writing to a line count pads rather than stops, and a padded slide reads as
 	// generated — so it is measured rather than hoped away.
 	FindingRepeat = "repeat"
+	// FindingLink is a line written as a link whose target is not one the deck
+	// will follow, so the slide draws the markup rather than the words.
+	FindingLink = "link"
 	// FindingSource is a slide that states figures and says nowhere they came
 	// from. In a company the first question asked of any number on a slide is
 	// where it is from, and a deck that cannot answer is not finished — however
@@ -426,6 +429,12 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		// A link somebody wrote that the deck will not follow draws as what it
+		// says: the words, the brackets and the address, printed on the wall.
+		for _, finding := range refusedLinks(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
@@ -528,6 +537,32 @@ func unbriefedFigures(slide Slide, brief BriefFigures) []string {
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// refusedLinks reports a line written as a link that is not one.
+//
+// Only three kinds of target are followed — the web, an address, and another
+// slide of the same deck — and everything else is left as the characters
+// somebody typed. That is the right default: a footnote written [1](주석 3) is a
+// footnote. It is the wrong silence: an author who meant a link gets the markup
+// drawn on the slide, and nobody finds out until it is on a screen.
+func refusedLinks(slide Slide) []Finding {
+	var findings []Finding
+	slots := make([]string, 0, len(slide.Fields))
+	for slot := range slide.Fields {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		for _, paragraph := range slide.Fields[slot] {
+			for _, target := range RefusedLinks(paragraph.Text) {
+				findings = append(findings, Finding{Slot: slot, Kind: FindingLink, Advisory: true,
+					Detail: fmt.Sprintf("%q is not a link the deck can follow, so the line draws its markup; "+
+						"a link is https://…, mailto:… or #3 for another slide", target)})
+			}
+		}
+	}
+	return findings
 }
 
 // trimmedComponents reports a component that holds more than it draws.

@@ -242,3 +242,57 @@ func (slide Slide) asDrawn() Slide {
 	slide.Fields = fields
 	return slide
 }
+
+// RefusedLinks lists the targets in a paragraph that are written as links and
+// are not ones the deck will follow.
+//
+// A line that says [문서](www.example.com) draws exactly those characters on the
+// wall: the words, the brackets and the address. Nothing is broken, and nobody
+// finds out until the slide is on a screen — which is what the measurement is
+// for.
+func RefusedLinks(text string) []string {
+	if !strings.Contains(text, "](") {
+		return nil
+	}
+	var refused []string
+	for index := 0; index < len(text); {
+		if text[index] == '\\' && index+1 < len(text) && text[index+1] == '[' {
+			index += 2
+			continue
+		}
+		if text[index] != '[' {
+			index++
+			continue
+		}
+		if _, _, width, ok := readLink(text[index:]); ok {
+			index += width
+			continue
+		}
+		target, width, ok := readRefusedLink(text[index:])
+		if !ok {
+			index++
+			continue
+		}
+		refused = append(refused, target)
+		index += width
+	}
+	return refused
+}
+
+// readRefusedLink reads the shape of a link — [something](something) — without
+// asking whether the target is one the deck can point at.
+func readRefusedLink(text string) (target string, width int, ok bool) {
+	end := strings.IndexAny(text[1:], "[]\n")
+	if end < 0 || text[1+end] != ']' || end == 0 {
+		return "", 0, false
+	}
+	rest := text[1+end+1:]
+	if !strings.HasPrefix(rest, "(") {
+		return "", 0, false
+	}
+	shut := strings.IndexAny(rest[1:], ")\n")
+	if shut < 0 || rest[1+shut] != ')' || shut == 0 {
+		return "", 0, false
+	}
+	return rest[1 : 1+shut], 1 + end + 1 + 1 + shut + 1, true
+}

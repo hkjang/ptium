@@ -168,3 +168,43 @@ func TestThePreviewDrawsTheWordsAsALink(t *testing.T) {
 		t.Errorf("the link is not drawn as one: %s", svg)
 	}
 }
+
+// The words are drawn, the markup is not — unless the target is one the deck
+// will not follow, and then the markup is what a room reads off the wall.
+func TestALinkTheDeckWillNotFollowIsReported(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	deck := Deck{Slides: []Slide{{LayoutID: layout.ID, Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "안내"}},
+		SlotBody: {
+			{Text: "[문서](www.example.com)를 보십시오"},
+			{Text: "[제대로 된 것](https://example.com)"},
+			{Text: "각주 [1] 참조"},
+		},
+	}}}}
+	var reported []Finding
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingLink {
+			reported = append(reported, finding)
+		}
+	}
+	if len(reported) != 1 {
+		t.Fatalf("expected one refused link, got %d: %#v", len(reported), reported)
+	}
+	if !strings.Contains(reported[0].Detail, "www.example.com") || !reported[0].Advisory {
+		t.Errorf("the finding does not say what was refused: %#v", reported[0])
+	}
+	if reported[0].Slide != 1 || reported[0].Slot != SlotBody {
+		t.Errorf("the finding does not say where it is: %#v", reported[0])
+	}
+}

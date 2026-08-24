@@ -23,6 +23,7 @@ produces most reliably.
 ::                            the component ends
 !notes 예산 질문이 나오면…      speaker notes, continuing over following lines
 !skip                          keep this slide out of the talk (!건너뛰기 도 같습니다)
+[안내 문서](https://…)          a link, in any line of prose
 // a comment
 ```
 
@@ -200,6 +201,27 @@ silently skipped.
 | `GET /api/v1/assets` | list your images |
 | `GET /api/v1/assets/{id}` | the image's bytes |
 | `DELETE /api/v1/assets/{id}` | remove it |
+
+### Links
+
+`[보이는 말](주소)` in any line of prose — a lead, a bullet, a title, a canvas
+text box — draws the words and links them. Three targets are followed:
+
+| Written | Goes to |
+| --- | --- |
+| `[안내 문서](https://docs.example.com/plan)` | the web |
+| `[담당자](mailto:plan@example.com)` | a new mail to that address |
+| `[부록](#7)` | the deck's seventh slide |
+
+Everything else is left as the characters somebody typed, so a footnote written
+`[1](주석 3)` stays a footnote. That silence would be the wrong one for an author
+who meant a link, so the measurement reports it: `링크로 인식되지 않음`, with the
+target it refused. A literal bracket is written `\[`.
+
+The exported pptx carries the link as PowerPoint's own, which is why the
+downloaded file opens the address when somebody clicks it — in PowerPoint, in
+Keynote, in Google Slides after an import. In the workspace the preview draws it
+underlined, in the template's hyperlink colour.
 
 ### Slides that are not in the talk
 

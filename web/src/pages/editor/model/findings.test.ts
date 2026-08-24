@@ -62,14 +62,19 @@ describe('a measurement in the reader’s words', () => {
       source: 'figures with no source: 28.5%, 1,200건',
       echo: "2 of this slide's 4 points were already made on slide 3",
       trimmed: 'steps draws 5 of its 6 entries; the rest are on no slide',
+      link: '"www.example.com" is not a link the deck can follow, so the line draws its markup; a link is https://…, mailto:… or #3 for another slide',
     }
     for (const [kind, detail] of Object.entries(measured)) {
-      expect(findingDetail(detail).replace(/#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, ''), kind).not.toMatch(/[a-z]{3,}/)
+      // A colour, a directive, a scheme and the author's own address are the
+      // same in every language; what a rule wrote around them must not be.
+      const written = findingDetail(detail)
+        .replace(/"[^"]*"|https?:\/\/|mailto:|#[0-9a-f]{3,8}|[!:]{1,2}[a-z]+/g, '')
+      expect(written, kind).not.toMatch(/[a-z]{3,}/)
     }
   })
 
   it('names every kind the measurement can report', () => {
-    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed']
+    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed', 'link']
     for (const kind of kinds) {
       expect(findingLabel(kind), kind).not.toBe(kind)
     }
