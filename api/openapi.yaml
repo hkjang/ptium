@@ -2538,7 +2538,9 @@ paths:
             that open anywhere: the same drawing the workspace shows, with links
             and slide jumps live, set in the font the workspace carries because a
             template names its typeface without carrying it. A slide marked
-            skipped is not printed.
+            skipped is not printed — a deck whose every slide is skipped is
+            answered `409 presentation_has_no_printable_slides`, because that is
+            the caller's to fix rather than a server that failed.
           schema:
             type: string
             enum: [pptx, pdf]
@@ -4322,7 +4324,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.11.2
+            service.version: 1.11.3
         requestId:
           $ref: '#/components/schemas/RequestID'
 

@@ -92,6 +92,9 @@ const byCode: Record<string, string> = {
   database_unavailable: '데이터베이스가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.',
   temporarily_unavailable: '서비스를 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.',
   rate_limited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
+  presentation_has_no_slides: '슬라이드가 없습니다. 먼저 생성하거나 한 장 추가한 뒤 내보내세요.',
+  presentation_has_no_printable_slides: '모든 슬라이드가 건너뛰기로 표시되어 인쇄할 장이 없습니다. 한 장 이상 발표에 넣어 주세요.',
+  unsupported_export_format: '이 형식으로는 내보낼 수 없습니다.',
 }
 
 export function errorText(code: string, message: string) {

@@ -9,6 +9,15 @@ describe('what the server refused, in the reader’s words', () => {
       .toBe('내보내려면 먼저 슬라이드를 만들어 주세요.')
   })
 
+  // A deck whose every slide is skipped is a deck the person can fix, and the
+  // toast has to say which thing to do.
+  it('says what to do about a deck with nothing to print', () => {
+    const said = errorText('presentation_has_no_printable_slides',
+      'Every slide is marked skipped, so the PDF would have no pages')
+    expect(said).toContain('건너뛰기')
+    expect(said).not.toMatch(/[a-z]{4,}/)
+  })
+
   it('falls back to the code when the message is one nobody listed', () => {
     expect(errorText('validation_error', 'some new rule nobody has written yet'))
       .toBe('입력한 값이 올바르지 않습니다.')

@@ -360,6 +360,19 @@ else:
         failures.append(f"one picture on five slides is stored {stored} times")
     call("DELETE", f"/presentations/{picture_deck['id']}", expect=204)
     call("DELETE", f"/assets/{logo.get('id')}", expect=204)
+# A deck whose every slide is skipped has no page to print. That is the person's
+# to fix, so it is answered as such rather than as a server that broke.
+skipped_deck = data_of(call("POST", "/presentations", {"title": f"전부 건너뜀 {RUN}", "prompt": "점검"}, expect=201))
+call("PUT", f"/presentations/{skipped_deck['id']}/source",
+     {"source": "# 부록\n@content\n!skip\n- 물어보면 보여 줄 표\n"}, expect=200)
+status, refused = call("GET", f"/presentations/{skipped_deck['id']}/export?format=pdf", expect=409,
+                       note="a deck with nothing to print must say so, not fail")
+if (refused or {}).get("error", {}).get("code") != "presentation_has_no_printable_slides":
+    failures.append(f"the refusal does not say what is wrong: {refused}")
+call("GET", f"/presentations/{skipped_deck['id']}/export?format=pptx", raw=True, expect=200,
+     note="the same deck still exports as pptx, where a hidden slide is still a slide")
+call("DELETE", f"/presentations/{skipped_deck['id']}", expect=204)
+
 status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
                            note="a format nothing can write must be refused with a reason")
 if not (unsupported or {}).get("error", {}).get("code") == "unsupported_export_format":

@@ -10,6 +10,11 @@ import (
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
+// ErrNothingToPrint is a deck whose every slide is kept out of the talk. It is
+// not a broken deck and it is not a broken server: there is simply no page to
+// print, and the person asking is the one who can fix it.
+var ErrNothingToPrint = errors.New("every slide in the deck is skipped, so there is nothing to print")
+
 // PDF puts the deck on paper: one page per slide, at the deck's own size.
 //
 // Each page is the drawing the workspace already makes of that slide —
@@ -73,7 +78,7 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 		}
 	}
 	if document.Pages() == 0 {
-		return nil, errors.New("every slide in the deck is skipped")
+		return nil, ErrNothingToPrint
 	}
 	return document.Bytes(), nil
 }

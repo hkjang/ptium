@@ -450,6 +450,13 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 		// rather than in the manifest.
 		options.Media = templateMedia(templateData)
 		data, err := export.PDF(presentation, options)
+		if errors.Is(err, export.ErrNothingToPrint) {
+			// The deck is fine and so is the server: every slide is marked
+			// skipped, and the handout would be empty paper.
+			writeError(writer, request, http.StatusConflict, "presentation_has_no_printable_slides",
+				"Every slide is marked skipped, so the PDF would have no pages", nil)
+			return
+		}
 		if err != nil {
 			s.internalError(writer, request, "presentation_export_failed", err)
 			return

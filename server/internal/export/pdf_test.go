@@ -1,6 +1,7 @@
 package export
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -68,3 +69,24 @@ func mediaBox(body string) string {
 
 // trimZeros writes a page size the way the file does.
 func trimZeros(value float64) string { return strconv.FormatFloat(value, 'f', 3, 64) }
+
+// A deck whose every slide is skipped has nothing to print. That is a deck the
+// person can fix — unskip one — and saying so is the difference between a 409
+// somebody acts on and a 500 they report as a bug.
+func TestADeckWithNothingToPrintSaysSo(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled := deck.Compile(deck.ParseSource("# 부록\n@content\n!skip\n- 물어보면 보여 줄 표\n"),
+		manifest, deck.CompileOptions{Language: "ko"})
+	_, err = PDF(model.Presentation{Title: "전부 건너뜀", Language: "ko", Slides: compiled.Slides},
+		Options{TemplateData: data, Manifest: manifest})
+	if !errors.Is(err, ErrNothingToPrint) {
+		t.Fatalf("expected the deck to say it has nothing to print, got %v", err)
+	}
+}
