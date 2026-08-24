@@ -2525,21 +2525,27 @@ paths:
       - $ref: '#/components/parameters/PresentationID'
     get:
       operationId: exportPresentation
-      summary: Export a presentation as PowerPoint
+      summary: Export a presentation as PowerPoint or PDF
       tags: [Presentations]
       x-ptium-api-key-scopes: [presentations:read]
       parameters:
         - name: format
           in: query
           required: false
-          description: Export format. PPTX is the only supported value and is the default.
+          description: >
+            Export format. `pptx` is the deck in its own template — its typeface,
+            its master, editable — and is the default. `pdf` is the deck as pages
+            that open anywhere: the same drawing the workspace shows, with links
+            and slide jumps live, set in the font the workspace carries because a
+            template names its typeface without carrying it. A slide marked
+            skipped is not printed.
           schema:
             type: string
-            enum: [pptx]
+            enum: [pptx, pdf]
             default: pptx
       responses:
         '200':
-          description: PowerPoint presentation file.
+          description: PowerPoint presentation or PDF file.
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestID'
@@ -2549,6 +2555,10 @@ paths:
                 type: string
           content:
             application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+            application/pdf:
               schema:
                 type: string
                 format: binary
@@ -4312,7 +4322,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.10.9
+            service.version: 1.11.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

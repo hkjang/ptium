@@ -318,13 +318,25 @@ try:
         failures.append(f"the exported package is corrupt at {bad}")
 except Exception as error:
     failures.append(f"the exported pptx could not be read: {error}")
-# PDF export is not offered yet, and the product says so in the export dialog
-# and the guide. What matters is that it is refused clearly rather than half done.
-status, body = call("GET", f"/presentations/{deck_id}/export?format=pdf", expect=422,
-                    note="until PDF exists, it must be refused with a reason")
-if not (body or {}).get("error", {}).get("code") == "unsupported_export_format":
-    failures.append(f"the pdf refusal does not say why: {body}")
-call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422)
+# The deck on paper: one page per slide, at the deck's own size, with the words
+# where the screen puts them and the links still live.
+status, pdf_bytes = call("GET", f"/presentations/{deck_id}/export?format=pdf", raw=True, expect=200)
+if not pdf_bytes.startswith(b"%PDF-") or not pdf_bytes.rstrip().endswith(b"%%EOF"):
+    failures.append("the PDF export is not a PDF")
+else:
+    body = pdf_bytes.decode("latin-1")
+    pages = body.count("/Type /Page ")
+    if pages != 4:
+        failures.append(f"a four-slide deck printed {pages} pages")
+    if "/Subtype /Type0" not in body or "/FontFile2" not in body:
+        failures.append("the PDF does not carry the font its text is set in")
+    if "/ToUnicode" not in body:
+        failures.append("the PDF's text cannot be copied out as words")
+    print(f"   pdf {len(pdf_bytes):,} bytes, {pages} pages")
+status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
+                           note="a format nothing can write must be refused with a reason")
+if not (unsupported or {}).get("error", {}).get("code") == "unsupported_export_format":
+    failures.append(f"the refusal does not say why: {unsupported}")
 
 print("── canvas ──")
 regions = data_of(call("GET", f"/presentations/{deck_id}/slides/2/regions", expect=200))

@@ -417,8 +417,11 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 	if format == "" {
 		format = "pptx"
 	}
-	if format != "pptx" {
-		writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_export_format", "Only pptx export is currently supported", map[string]any{"supported": []string{"pptx"}})
+	if format == "" && strings.HasSuffix(request.URL.Path, ".pdf") {
+		format = "pdf"
+	}
+	if format != "pptx" && format != "pdf" {
+		writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_export_format", "Only pptx and pdf export are supported", map[string]any{"supported": []string{"pptx", "pdf"}})
 		return
 	}
 	user, _ := UserFromContext(request.Context())
@@ -440,8 +443,26 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 	if profile, profileErr := s.store.GetProfile(request.Context(), user.ID); profileErr == nil && strings.TrimSpace(profile.Company) != "" {
 		author = strings.TrimSpace(profile.Company)
 	}
-	data, err := export.PPTX(presentation, export.Options{TemplateData: templateData, Manifest: manifest,
-		Author: author, Images: s.imageSource(request, user.ID)})
+	options := export.Options{TemplateData: templateData, Manifest: manifest,
+		Author: author, Images: s.imageSource(request, user.ID)}
+	if format == "pdf" {
+		// Paper draws the template's own artwork, which lives in the package
+		// rather than in the manifest.
+		options.Media = templateMedia(templateData)
+		data, err := export.PDF(presentation, options)
+		if err != nil {
+			s.internalError(writer, request, "presentation_export_failed", err)
+			return
+		}
+		filename := safeFilename(presentation.Title) + ".pdf"
+		writer.Header().Set("Content-Type", "application/pdf")
+		writer.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write(data)
+		return
+	}
+	data, err := export.PPTX(presentation, options)
 	if err != nil {
 		s.internalError(writer, request, "presentation_export_failed", err)
 		return

@@ -23,6 +23,9 @@ type Options struct {
 	// Images resolves the pictures a deck places. Without it a deck's images are
 	// left out rather than failing the export.
 	Images deck.ImageSource
+	// Media resolves the template's own artwork — the pictures a design paints
+	// on its layouts — for the renderings that draw the design themselves.
+	Media pptx.MediaResolver
 }
 
 // PPTX renders a presentation into a PowerPoint file that reuses the

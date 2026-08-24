@@ -210,3 +210,60 @@ func sortedGlyphs(used map[uint16]rune) []uint16 {
 	sort.Slice(glyphs, func(a, b int) bool { return glyphs[a] < glyphs[b] })
 	return glyphs
 }
+
+// Position is a point on the page, measured the way a slide is: from the top
+// left.
+type Position struct{ X, Y Point }
+
+// Ellipse fills an ellipse, drawn as the four bezier arcs every renderer uses
+// for one — a PDF has no ellipse of its own.
+func (p *Page) Ellipse(cx, cy, rx, ry Point, color string) {
+	if rx <= 0 || ry <= 0 {
+		return
+	}
+	const kappa = 0.5523
+	y := p.flip(cy)
+	red, green, blue := rgb(color)
+	fmt.Fprintf(&p.content, "%s %s %s rg\n", number(red), number(green), number(blue))
+	fmt.Fprintf(&p.content, "%s %s m\n", number(cx-rx), number(y))
+	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
+		number(cx-rx), number(y+ry*kappa), number(cx-rx*kappa), number(y+ry), number(cx), number(y+ry))
+	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
+		number(cx+rx*kappa), number(y+ry), number(cx+rx), number(y+ry*kappa), number(cx+rx), number(y))
+	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\n",
+		number(cx+rx), number(y-ry*kappa), number(cx+rx*kappa), number(y-ry), number(cx), number(y-ry))
+	fmt.Fprintf(&p.content, "%s %s %s %s %s %s c\nf\n",
+		number(cx-rx*kappa), number(y-ry), number(cx-rx), number(y-ry*kappa), number(cx-rx), number(y))
+}
+
+// Polygon fills a closed shape.
+func (p *Page) Polygon(points []Position, color string) {
+	if len(points) < 3 {
+		return
+	}
+	red, green, blue := rgb(color)
+	fmt.Fprintf(&p.content, "%s %s %s rg\n%s %s m\n", number(red), number(green), number(blue),
+		number(points[0].X), number(p.flip(points[0].Y)))
+	for _, point := range points[1:] {
+		fmt.Fprintf(&p.content, "%s %s l\n", number(point.X), number(p.flip(point.Y)))
+	}
+	p.content.WriteString("h f\n")
+}
+
+// Polyline strokes an open line.
+func (p *Page) Polyline(points []Position, color string, width Point) {
+	if len(points) < 2 {
+		return
+	}
+	red, green, blue := rgb(color)
+	fmt.Fprintf(&p.content, "%s %s %s RG %s w 1 J 1 j\n%s %s m\n",
+		number(red), number(green), number(blue), number(width),
+		number(points[0].X), number(p.flip(points[0].Y)))
+	for _, point := range points[1:] {
+		fmt.Fprintf(&p.content, "%s %s l\n", number(point.X), number(p.flip(point.Y)))
+	}
+	p.content.WriteString("S\n")
+}
+
+// Pages is how many pages the document holds.
+func (d *Document) Pages() int { return len(d.pages) }
