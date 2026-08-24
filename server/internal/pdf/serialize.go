@@ -131,7 +131,29 @@ func (d *Document) annotation(page *Page, one link) string {
 			rectangle, one.page-1)
 	}
 	return fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect %s /Border [0 0 0] /A << /Type /Action /S /URI /URI %s >> >>",
-		rectangle, literal(one.target))
+		rectangle, uriLiteral(one.target))
+}
+
+// uriLiteral writes an address. A URI in a PDF is an ASCII string — the format
+// says so, and a reader that has to guess at UTF-16 for a link is a reader that
+// may open the wrong thing. A character outside ASCII is percent-encoded, which
+// is what a URL does with them anyway.
+func uriLiteral(value string) string {
+	var out bytes.Buffer
+	out.WriteByte('(')
+	for _, part := range []byte(value) {
+		switch {
+		case part == '(' || part == ')' || part == '\\':
+			out.WriteByte('\\')
+			out.WriteByte(part)
+		case part < 0x20 || part > 0x7E:
+			fmt.Fprintf(&out, "%%%02X", part)
+		default:
+			out.WriteByte(part)
+		}
+	}
+	out.WriteByte(')')
+	return out.String()
 }
 
 // literal writes a PDF string. Text goes out as UTF-16 so a Korean title

@@ -80,7 +80,7 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 			}
 			continue
 		}
-		if err := printWithNotes(document, page, drawing, slide, width, height); err != nil {
+		if err := printWithNotes(document, page, drawing, slide, presentation.Language, width, height); err != nil {
 			return nil, fmt.Errorf("draw slide %d: %w", index+1, err)
 		}
 	}
@@ -97,7 +97,7 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 // would be printing a different deck — so the room for notes is what is left of
 // the page under it.
 func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slide pptx.Slide,
-	width, height float64) error {
+	language string, width, height float64) error {
 	const margin = 36
 	const gap = 22
 	scale := 0.62
@@ -118,12 +118,21 @@ func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slid
 	top := margin + drawnHeight + gap
 	page.Text(left, top, 9, "8A8D96", noteHeading(slide), false, false)
 	top += 16
-	notes := strings.TrimSpace(slide.Notes)
+	// The same thing the exported file's notes page carries: what to say, and
+	// where the figures came from.
+	notes := strings.TrimSpace(pptx.NotesWithSources(slide, language))
 	if notes == "" {
 		page.Text(left, top, 10.5, "AFB2BA", "적어 둔 말이 없습니다", false, true)
 		return nil
 	}
-	for _, line := range document.WrapText(notes, 10.5, drawnWidth) {
+	// The notes are written the way every other line of the deck is — a link, a
+	// marked word — so they are drawn the same way. Printing [보기](https://…)
+	// on a handout is the markup reaching a reader, which is the one thing the
+	// drawing of a slide never does.
+	runs := pptx.SplitRuns(notes)
+	plain := pptx.PlainText(notes)
+	cursor := 0
+	for _, line := range document.WrapText(plain, 10.5, drawnWidth) {
 		// The last line has to sit above the margin, not on it: a note that runs
 		// into the edge of the paper reads as a printing fault.
 		if top > height-margin-15 {
@@ -132,10 +141,53 @@ func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slid
 			page.Text(left, top, 10.5, "AFB2BA", "…", false, false)
 			break
 		}
-		page.Text(left, top, 10.5, "3C4250", line, false, false)
+		at := strings.Index(plain[cursor:], line)
+		if at < 0 {
+			page.Text(left, top, 10.5, "3C4250", line, false, false)
+			top += 15
+			continue
+		}
+		start := cursor + at
+		cursor = start + len(line)
+		drawNoteLine(document, page, runs, plain, start, cursor, left, top)
 		top += 15
 	}
 	return nil
+}
+
+// drawNoteLine draws one wrapped line of the notes as the runs it is made of.
+//
+// The line is a stretch of the plain text, and every run knows where it sits in
+// that same text, so what belongs to this line is an overlap rather than a
+// search for the words again.
+func drawNoteLine(document *pdf.Document, page *pdf.Page, runs []pptx.TextRun, plain string,
+	from, to int, x, y float64) {
+	at := 0
+	for _, run := range runs {
+		start, end := at, at+len(run.Text)
+		at = end
+		if end <= from || start >= to {
+			continue
+		}
+		piece := run.Text[max(from-start, 0):min(to-start, len(run.Text))]
+		if piece == "" {
+			continue
+		}
+		colour := "3C4250"
+		if run.Href != "" {
+			colour = "1155CC"
+		}
+		width := page.Text(x, y, 10.5, colour, piece, run.Bold, run.Italic)
+		if run.Href != "" {
+			page.Underline(x, y, width, colour, 10.5)
+			target, jump := run.Href, 0
+			if number, ok := pptx.SlideJump(run.Href); ok {
+				target, jump = "", number
+			}
+			page.Link(x, y-8.4, width, 11, target, jump)
+		}
+		x += width
+	}
 }
 
 func noteHeading(slide pptx.Slide) string {

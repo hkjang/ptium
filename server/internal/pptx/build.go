@@ -1412,6 +1412,17 @@ func notesMasterXML(manifest Manifest) string {
 // notesWithSources is what the notes page says: what the presenter wrote, then
 // where the slide's figures came from. A source nobody can see is not a source,
 // and the notes page is the one place it can stand without changing the design.
+// NotesWithSources is what the presenter reads: what they wrote to say, and
+// under it where the slide's figures came from, stated in full rather than as
+// the short line the slide itself draws.
+//
+// The notes page of the exported file and the printed handout are the same
+// document for the same person, so they are written from here rather than each
+// deciding what a presenter needs.
+func NotesWithSources(slide Slide, language string) string {
+	return notesWithSources(slide, language)
+}
+
 func notesWithSources(slide Slide, language string) string {
 	notes := strings.TrimSpace(slide.Notes)
 	if len(slide.Sources) == 0 {

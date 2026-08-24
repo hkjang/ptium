@@ -382,6 +382,16 @@ elif len(handout) <= len(pdf_bytes):
     failures.append(f"the handout ({len(handout):,}) carries no more than the deck ({len(pdf_bytes):,})")
 else:
     print(f"   handout {len(handout):,} bytes")
+# The notes are written the way every other line is, so the handout draws the
+# words rather than the markup — and the link in them is one a reader follows.
+notes_handout = data_of(call("POST", "/presentations", {"title": f"노트 마크업 {RUN}", "prompt": "실적"}, expect=201))
+call("PUT", f"/presentations/{notes_handout['id']}/source", {"source":
+     "# 근거\n@content\n- 매출이 늘었습니다\n"
+     "!notes 근거는 [분기 보고서](https://reports.example.com/q3)에 있습니다\n!source 매출 | 사내 결산\n"}, expect=200)
+status, printed = call("GET", f"/presentations/{notes_handout['id']}/export?format=pdf&notes=true", raw=True, expect=200)
+if b"/URI (https://reports.example.com/q3)" not in printed:
+    failures.append("the handout's notes carry no link a reader can follow")
+call("DELETE", f"/presentations/{notes_handout['id']}", expect=204)
 
 status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
                            note="a format nothing can write must be refused with a reason")
