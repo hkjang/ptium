@@ -31,7 +31,7 @@ def docker(*arguments, check=True):
     result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
     if check and result.returncode != 0:
         print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
-        sys.exit(1)
+        sys.exit(2)
     return result.stdout.strip()
 
 
@@ -64,17 +64,30 @@ def run_container(*arguments):
     for a port nothing is using. A check that fails for that reason is reporting
     on the host, not on the image, and a release stopped by it is stopped for
     nothing."""
+    name = arguments[arguments.index("--name") + 1] if "--name" in arguments else None
+    if name:
+        # A container a killed run left behind holds the name, and docker then
+        # refuses to start this one. That is the check's own mess, not a verdict
+        # on the image.
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
     result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout.strip()
     if "ports are not available" not in result.stderr:
         print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
-        sys.exit(1)
+        # Exit 2 says the check could not be run. Exit 1 says the image failed
+        # it, and saying that when docker would not start a container accuses
+        # the release of something it did not do.
+        sys.exit(2)
     time.sleep(2)
     return docker(*arguments)
 
 
-run = f"ptium-upgrade-{random.randint(1000, 9999)}"
+# The name carries this process, so two checks running at once cannot collide.
+# A four-digit draw repeats, and a container a killed run left behind takes the
+# name with it: docker then refuses to start, which reads exactly like the image
+# being broken.
+run = f"ptium-upgrade-{os.getpid()}-{random.randint(1000, 9999)}"
 network, database, before, after = f"{run}-net", f"{run}-db", f"{run}-old", f"{run}-new"
 old_port, new_port = free_port(), free_port()
 secret = "devsecret-devsecret-devsecret-devsecret"

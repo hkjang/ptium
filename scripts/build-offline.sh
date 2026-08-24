@@ -50,14 +50,28 @@ docker image inspect "$image" "$alias_image" > /dev/null
 # Every check below has to be able to stop the release. Piping this script's
 # output through anything (tail, tee) hides its exit code, so it says so itself.
 if command -v python3 > /dev/null; then
+    # Exit 2 is the check saying it could not run — docker would not start a
+    # container, the host would not give up a port. The release still stops,
+    # because an unrun check has proved nothing, but it is not told it failed
+    # something it was never asked.
     python3 "$repository_root/scripts/e2e/firstrun.py" --image "$image" || {
-        echo "The image that was just built does not come up on an empty database." >&2
+        status=$?
+        if [ "$status" -eq 2 ]; then
+            echo "The first-run check could not be run on this host; nothing was proved about the image." >&2
+        else
+            echo "The image that was just built does not come up on an empty database." >&2
+        fi
         exit 1
     }
     # And on a database an older release wrote, which is what an upgrade runs.
     # Skips itself when no older image is on this host.
     python3 "$repository_root/scripts/e2e/upgrade.py" --to "$image" || {
-        echo "The image that was just built does not open a database an older release wrote." >&2
+        status=$?
+        if [ "$status" -eq 2 ]; then
+            echo "The upgrade check could not be run on this host; nothing was proved about the image." >&2
+        else
+            echo "The image that was just built does not open a database an older release wrote." >&2
+        fi
         exit 1
     }
 fi

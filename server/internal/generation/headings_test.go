@@ -179,3 +179,34 @@ func TestALabelDoesNotStartInTheMiddleOfAWord(t *testing.T) {
 		t.Errorf("figureLabel = %q, want the Latin label intact", latin)
 	}
 }
+
+// A label is read out of the sentence the number sits in, and only that one.
+func TestALabelStaysInsideItsSentence(t *testing.T) {
+	prompt := "물류센터 자동화(AMR 20대) 도입 승인 요청. 투자 18억, 3년 내 회수, 인력 재배치 12명."
+	want := map[string]string{"20대": "물류센터 자동화", "18억": "투자", "3년": "회수", "12명": "인력 재배치"}
+	outline := outlinePrompt(prompt, "자동화 승인", koreanCopy)
+	got := map[string]string{}
+	for _, figure := range outline.Figures {
+		got[figure.Value] = figure.Label
+	}
+	for value, label := range want {
+		if got[value] != label {
+			t.Errorf("%s is labelled %q, want %q", value, got[value], label)
+		}
+	}
+}
+
+// A figure with no label is dropped from the chart, so the brief says something
+// the deck never shows. The term is read after the number when it is not before.
+func TestAFigureIsNotLostForWantOfALabel(t *testing.T) {
+	for _, prompt := range []string{
+		"투자 18억, 3년 내 회수.",
+		"목표 계약 240곳, 18개월 손익분기.",
+	} {
+		for _, figure := range outlinePrompt(prompt, "회수", koreanCopy).Figures {
+			if figure.Label == "" {
+				t.Errorf("%q: %q has no label and would be dropped from the chart", prompt, figure.Value)
+			}
+		}
+	}
+}

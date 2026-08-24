@@ -491,7 +491,50 @@ func frameFor(topic string) string {
 // figureLabel takes the few words before a number as its label, which is where
 // prompts put it: "전환 대상 42개 시스템".
 func figureLabel(prompt, match string) string {
-	return figureLabelName(rawFigureLabel(prompt, match))
+	if label := figureLabelName(rawFigureLabel(prompt, match)); label != "" {
+		return label
+	}
+	// Korean puts the term after the number as readily as before it — "3년 내
+	// 회수", "18개월 손익분기" — and a figure with no label is dropped from the
+	// chart entirely, so the brief said something the deck never shows.
+	return figureLabelName(trailingFigureLabel(prompt, match))
+}
+
+// trailingFigureLabel reads the words after a number, for when nothing before
+// it names what it counts.
+func trailingFigureLabel(prompt, match string) string {
+	index := strings.Index(prompt, match)
+	if index < 0 {
+		return ""
+	}
+	after := strings.TrimSpace(prompt[index+len(match):])
+	if cut := strings.IndexAny(after, ",:·、，;；：/.。!?！？"); cut >= 0 {
+		after = strings.TrimSpace(after[:cut])
+	}
+	if after == "" {
+		return ""
+	}
+	if spacelessScript(after) {
+		runes := []rune(after)
+		const reach = 8
+		if len(runes) > reach {
+			runes = runes[:reach]
+		}
+		return strings.TrimSpace(string(runes))
+	}
+	fields := strings.Fields(after)
+	// "3년 내 회수" is the payback, not the 내: a positional word on its own says
+	// where rather than what.
+	if len(fields) > 1 && positionalWords[fields[0]] {
+		fields = fields[1:]
+	}
+	return strings.Join(fields[:min(len(fields), 2)], " ")
+}
+
+// positionalWords say where something sits rather than what it is.
+var positionalWords = map[string]bool{
+	"내": true, "안": true, "후": true, "뒤": true, "이내": true, "이후": true, "만에": true,
+	"within": true, "after": true, "over": true, "per": true,
 }
 
 // figureLabelName repairs a label the same way a heading is repaired. It is cut
@@ -569,7 +612,10 @@ func rawFigureLabel(prompt, match string) string {
 	// A label is the words immediately before the number, and it never reaches
 	// back past punctuation: "…도입 효과: 개발 속도 32%" labels the 32%, not the
 	// sentence it sits in.
-	if cut := strings.LastIndexAny(before, ",:·、，;；：/"); cut >= 0 {
+	// A sentence end is the firmest barrier of them all: "…도입 승인 요청. 투자
+	// 18억" labelled the 18억 with "요청. 투자", carrying a word out of the
+	// sentence before it.
+	if cut := strings.LastIndexAny(before, ",:·、，;；：/.。!?！？"); cut >= 0 {
 		// LastIndexAny reports a byte offset, and "、" is three bytes: stepping
 		// over it as though it were one left a stray byte at the front of the
 		// label, which is how a figure came out labelled "\ufffd予算".
