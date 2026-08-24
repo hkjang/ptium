@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, moveSlideTo, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -116,5 +116,34 @@ describe('a component that draws less than it holds', () => {
   it('does nothing when the slide draws everything it holds', () => {
     expect(carryTrimmedEntries(stepped(5), 'body', 5, 'new-1')).toBeNull()
     expect(carryTrimmedEntries(stepped(6), 'nosuchslot', 5, 'new-1')).toBeNull()
+  })
+})
+
+describe('moving a slide by dragging it', () => {
+  const deck = () => ['a', 'b', 'c', 'd'].map((id, index): Slide => ({
+    id, order: index + 1, layout: 'content', title: id.toUpperCase(),
+  }))
+  const order = (slides: Slide[]) => slides.map((slide) => slide.id).join('')
+
+  it('drops the slide in the gap it was dragged to', () => {
+    // "a" dragged to the gap before "d" lands third, not fourth: taking it out
+    // moved every gap behind it down by one.
+    expect(order(moveSlideTo(deck(), 0, 3))).toBe('bcad')
+    expect(order(moveSlideTo(deck(), 0, 4))).toBe('bcda')
+    expect(order(moveSlideTo(deck(), 3, 0))).toBe('dabc')
+    expect(order(moveSlideTo(deck(), 2, 1))).toBe('acbd')
+  })
+
+  it('renumbers what it moved', () => {
+    const moved = moveSlideTo(deck(), 3, 0)
+    expect(moved.map((slide) => slide.order)).toEqual([1, 2, 3, 4])
+    expect(moved[0].id).toBe('d')
+  })
+
+  it('leaves the deck alone when the slide would not move', () => {
+    const before = deck()
+    expect(moveSlideTo(before, 1, 1)).toBe(before)
+    expect(moveSlideTo(before, 1, 2)).toBe(before)
+    expect(moveSlideTo(before, 9, 0)).toBe(before)
   })
 })

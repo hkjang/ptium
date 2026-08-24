@@ -23,7 +23,7 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, blockLabel, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, blockLabel, moveSlideTo, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
@@ -284,6 +284,46 @@ export function EditorPage({ id }: { id: string }) {
     setSlides(result.slides)
     setDirty(true)
     return result.places
+  }
+
+  // Dragging a thumbnail to a new place. `dropAt` is a gap between slides —
+  // 0 is before the first, slides.length is after the last — which is what the
+  // line drawn between thumbnails is showing.
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [dropAt, setDropAt] = useState<number | null>(null)
+  const railScroll = useRef<number | null>(null)
+
+  // A fifty-slide rail is taller than the window, so a drag has to be able to
+  // reach the end of it: near the top or bottom edge the list keeps moving.
+  const followEdges = (clientY: number) => {
+    const rail = railRef.current
+    if (!rail) return
+    const box = rail.getBoundingClientRect()
+    const edge = 48
+    const speed = clientY < box.top + edge ? -12 : clientY > box.bottom - edge ? 12 : 0
+    if (speed === 0) {
+      if (railScroll.current !== null) { window.clearInterval(railScroll.current); railScroll.current = null }
+      return
+    }
+    if (railScroll.current !== null) return
+    railScroll.current = window.setInterval(() => { rail.scrollTop += speed }, 16)
+  }
+  const stopFollowing = () => {
+    if (railScroll.current !== null) { window.clearInterval(railScroll.current); railScroll.current = null }
+  }
+  useEffect(() => stopFollowing, [])
+
+  const dropSlide = (gap: number) => {
+    stopFollowing()
+    const from = dragging
+    setDragging(null)
+    setDropAt(null)
+    if (from === null) return
+    const next = moveSlideTo(slides, from, gap)
+    if (next === slides) return
+    markEdited()
+    setSlides(next)
+    setDirty(true)
   }
 
   const undoStack = useRef<{ slideId: string; slide: Slide; reason: string; at: number }[]>([])
@@ -1140,7 +1180,29 @@ export function EditorPage({ id }: { id: string }) {
           <div className="slide-list" ref={railRef}>{slides.map((slide, index) => {
             const holdings = slideHoldings(slide)
             const drawn = !slide.id.startsWith('new-') && index < savedSlideCount
-            return <button key={slide.id} className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}`} onClick={() => setActiveId(slide.id)}>
+            return <button
+              key={slide.id}
+              className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}${dragging === index ? ' dragging' : ''}${dropAt === index ? ' drop-before' : ''}${dropAt === index + 1 && index === slides.length - 1 ? ' drop-after' : ''}`}
+              draggable
+              onClick={() => setActiveId(slide.id)}
+              onDragStart={(event) => {
+                setDragging(index)
+                event.dataTransfer.effectAllowed = 'move'
+                // Firefox refuses to start a drag without payload.
+                event.dataTransfer.setData('text/plain', String(index))
+              }}
+              onDragOver={(event) => {
+                if (dragging === null) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = 'move'
+                const box = event.currentTarget.getBoundingClientRect()
+                setDropAt(event.clientY < box.top + box.height / 2 ? index : index + 1)
+                followEdges(event.clientY)
+              }}
+              onDrop={(event) => { event.preventDefault(); dropSlide(dropAt ?? index) }}
+              onDragEnd={() => { stopFollowing(); setDragging(null); setDropAt(null) }}
+              title="끌어서 순서를 바꿉니다"
+            >
               <span className="slide-number">{index + 1}</span>
               <div className="slide-thumbnail">
                 {/* The template's own drawing, not an approximation of it. */}

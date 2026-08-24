@@ -221,3 +221,22 @@ export function carryTrimmedEntries(slide: Slide, slot: string, drawn: number, n
   }
   return { kept, rest }
 }
+
+/**
+ * A slide moved to a new place in the deck.
+ *
+ * Dragging a thumbnail says "put this one here", where "here" is a gap between
+ * two slides — so `to` is a gap index from 0 to slides.length, not the index of
+ * a slide. Taking the slide out first shifts every gap after it down by one,
+ * which is the off-by-one that makes a dragged slide land one place too far.
+ */
+export function moveSlideTo(slides: Slide[], from: number, to: number): Slide[] {
+  if (from < 0 || from >= slides.length) return slides
+  const gap = Math.max(0, Math.min(to, slides.length))
+  const landing = gap > from ? gap - 1 : gap
+  if (landing === from) return slides
+  const next = [...slides]
+  const [moved] = next.splice(from, 1)
+  next.splice(landing, 0, moved)
+  return next.map((slide, index) => ({ ...slide, order: index + 1 }))
+}
