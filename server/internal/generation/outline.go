@@ -106,7 +106,7 @@ var instructionPattern = regexp.MustCompile(
 
 // periodPattern finds a stated timeframe, which belongs on the cover.
 var periodPattern = regexp.MustCompile(
-	`(?i)(20\d{2}\s*년?\s*(상반기|하반기|[1-4]\s*분기|[1-9]|1[0-2])?\s*(월|분기)?)|((FY|fy)\s?20\d{2})|(20\d{2}\s*[-~]\s*20\d{2})`)
+	`(?i)(20\d{2}\s*[년年]?\s*(상반기|하반기|上半期|下半期|[1-4]\s*분기|[1-9]|1[0-2])?\s*(월|月|분기|四半期)?)|((FY|fy)\s?20\d{2})|(20\d{2}\s*[-~]\s*20\d{2})`)
 
 // figurePattern finds a number with a unit attached, the kind a prompt supplies
 // as a fact: "18%", "42개", "120억", "3배", "400M KRW", "12 months".
@@ -300,6 +300,9 @@ func figureClause(clause string, figures []promptFigure) bool {
 // through as subjects, and each was given a section of its own: four slides
 // titled after a year.
 func measurementOnly(clause string) bool {
+	if latinPhrase(clause) {
+		return latinMeasurementOnly(clause)
+	}
 	if !figurePattern.MatchString(clause) {
 		// A short subject is still a subject: "목차" is two letters and no number.
 		return false
@@ -307,6 +310,43 @@ func measurementOnly(clause string) bool {
 	words := strings.TrimSpace(figurePattern.ReplaceAllString(strings.TrimSpace(clause), " "))
 	words = strings.TrimSpace(strings.Join(strings.Fields(words), ""))
 	return utf8.RuneCountInString(words) < 3
+}
+
+// latinMeasurementOnly reads the same question in a script where the units are
+// written as words and the number carries a currency mark rather than a counter:
+// figurePattern's list of Korean units cannot see "$1.8M".
+//
+// A figure line is a label and a number, in that order and nothing after it —
+// "Investment $1.8M", "Direct 46%". A subject that mentions a number has words
+// on both sides of it: "First half 2026 results", "Target 240 contracts".
+func latinMeasurementOnly(clause string) bool {
+	fields := strings.Fields(strings.TrimSpace(clause))
+	first := -1
+	for index, field := range fields {
+		if strings.ContainsAny(field, "0123456789") {
+			first = index
+			break
+		}
+	}
+	if first < 0 {
+		return false
+	}
+	before, after := 0, 0
+	for index, field := range fields {
+		if strings.ContainsAny(field, "0123456789") {
+			continue
+		}
+		word := strings.ToLower(strings.Trim(field, " .,:;()"))
+		if word == "" || latinPrepositions[word] || latinArticles[word] {
+			continue
+		}
+		if index < first {
+			before++
+			continue
+		}
+		after++
+	}
+	return after == 0 && before <= 1
 }
 
 // topicPhrase cuts a topic down to something that can sit inside a sentence.
@@ -500,7 +540,10 @@ func figureLabel(prompt, match string) string {
 func headingName(name string) string {
 	trimmed := strings.TrimSpace(name)
 	if prefix := periodPattern.FindString(trimmed); prefix != "" && strings.HasPrefix(trimmed, prefix) {
-		if rest := strings.TrimSpace(trimmed[len(prefix):]); utf8.RuneCountInString(rest) >= 4 {
+		// What a date was attached to comes with a particle — "2026年の採用計画"
+		// leaves "の採用計画" — and a heading does not open on one.
+		rest := strings.TrimLeft(strings.TrimSpace(trimmed[len(prefix):]), " のノ의・·、,")
+		if utf8.RuneCountInString(rest) >= 4 {
 			trimmed = rest
 		}
 	}
@@ -620,6 +663,29 @@ const headingParticles = "은는이가의을를에서으로"
 // and 에 are left alone, because "전문가" and "회의" end in them and are words.
 func withoutTrailingParticle(name string) string {
 	trimmed := strings.TrimSpace(name)
+	if latinPhrase(trimmed) {
+		// "Payback in 3 years" gives up its measurement and is left introducing
+		// something that is no longer there.
+		fields := strings.Fields(trimmed)
+		for len(fields) > 1 {
+			last := strings.ToLower(strings.Trim(fields[len(fields)-1], " .,"))
+			if !latinPrepositions[last] && !latinArticles[last] {
+				break
+			}
+			fields = fields[:len(fields)-1]
+		}
+		return strings.Join(fields, " ")
+	}
+	if spacelessScript(trimmed) {
+		// 売上は is what a sentence says about 売上, and a heading names the thing.
+		for _, particle := range []string{"は", "が", "を", "には", "では", "としては"} {
+			shortened := strings.TrimSuffix(trimmed, particle)
+			if shortened != trimmed && utf8.RuneCountInString(shortened) >= 2 {
+				return shortened
+			}
+		}
+		return trimmed
+	}
 	fields := strings.Fields(trimmed)
 	if len(fields) < 2 {
 		return trimmed

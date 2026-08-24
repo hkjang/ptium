@@ -84,3 +84,62 @@ func TestASectionIsNotNamedAfterAYear(t *testing.T) {
 		}
 	}
 }
+
+// The same reading of a heading, in the other two scripts the product writes.
+// A brief in English or Japanese is cut the same way and goes wrong the same
+// way: a date that leaves its marker behind, a phrase that ends on the word
+// introducing what was cut, a figure line given a section of its own.
+func TestAHeadingIsASubjectInEveryScript(t *testing.T) {
+	briefs := []struct{ lang, title, prompt string }{
+		{"en", "Warehouse automation", "Approval for warehouse automation (20 AMR units). Investment $1.8M, payback in 3 years, 12 staff redeployed."},
+		{"en", "Q2 results", "First half 2026 results. Revenue was $91M in 2024 and $104M in 2025. Direct 46%, partner 33%, online 21%."},
+		{"en", "Service launch", "We will launch the maintenance service in Q3 2026. Target 240 contracts, expected revenue $3.6M."},
+		{"ja", "採用計画", "2026年の採用計画。開発18名、営業6名、支援4名。平均オンボーディング期間5週間。"},
+		{"ja", "四半期実績", "2026年上半期の実績。売上は2024年910億、2025年1,040億。直販46%、代理店33%、オンライン21%。"},
+	}
+	// Written out rather than asked of the code under test, so that reverting a
+	// fix shows up here instead of moving both sides of the comparison.
+	danglingMarker := regexp.MustCompile(`^[年月의の・]`)
+	japaneseMarker := regexp.MustCompile(`[はがを]$`)
+	latinTail := regexp.MustCompile(`(?i)\s(in|on|at|to|of|for|from|by|with|and|or|a|an|the)$`)
+	figureLine := regexp.MustCompile(`(?i)^([$€£¥]?[\d,.]+\s*[%a-z]{0,3}|[a-z]+\s+[$€£¥]?[\d,.]+\s*[%a-z]{0,3})$`)
+	template := testTemplate(t)
+	for _, brief := range briefs {
+		presentation := model.Presentation{Title: brief.title, Prompt: brief.prompt, Language: brief.lang, RequestedSlideCount: 8}
+		for _, slide := range Fallback(presentation, model.Profile{}, template).Slides {
+			heading := strings.TrimSpace(strings.SplitN(slide.Title, " — ", 2)[0])
+			switch {
+			case danglingMarker.MatchString(heading):
+				t.Errorf("%s: heading %q opens on what a date left behind", brief.title, slide.Title)
+			case figureLine.MatchString(heading):
+				t.Errorf("%s: heading %q is a measurement, not a subject", brief.title, slide.Title)
+			case latinTail.MatchString(heading), japaneseMarker.MatchString(heading):
+				t.Errorf("%s: heading %q stops in the middle of a sentence", brief.title, slide.Title)
+			}
+		}
+	}
+}
+
+// A topic is one subject, so its slides carry one name. The slide that has no
+// aspect to add must not show a longer name than the ones that do.
+func TestATopicIsCalledOneThingAcrossItsSlides(t *testing.T) {
+	presentation := model.Presentation{
+		Title:               "Service launch",
+		Prompt:              "We will launch the maintenance service in Q3 2026. Target 240 contracts, expected revenue $3.6M.",
+		Language:            "en",
+		RequestedSlideCount: 8,
+	}
+	var bases []string
+	for _, slide := range Fallback(presentation, model.Profile{}, testTemplate(t)).Slides {
+		bases = append(bases, strings.TrimSpace(strings.SplitN(slide.Title, " — ", 2)[0]))
+	}
+	// One name shortened two ways leaves one a strict prefix of the other, which
+	// is what "…maintenance service in Q3" and "…maintenance" were.
+	for _, one := range bases {
+		for _, other := range bases {
+			if one != other && strings.HasPrefix(one, other) {
+				t.Errorf("the topic is called %q on one slide and %q on another", one, other)
+			}
+		}
+	}
+}

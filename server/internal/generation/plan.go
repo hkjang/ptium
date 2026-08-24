@@ -85,11 +85,14 @@ func coverLine(period, presenter, audience string) string {
 // slide about a subject the audience knows what it is — so a long name gives way
 // to the aspect alone.
 func partTitle(language, name, frame string, part, share int) string {
-	if share <= 1 || part == 0 {
+	if share <= 1 {
 		return name
 	}
 	suffix, ok := frameTitleSuffix[language][frame]
 	if !ok || suffix == "" {
+		if part == 0 {
+			return name
+		}
 		return fmt.Sprintf("%s (%d/%d)", name, part+1, share)
 	}
 	// Latin script needs more room for the same amount of meaning: twenty-four
@@ -108,6 +111,13 @@ func partTitle(language, name, frame string, part, share int) string {
 		if short := phraseWithin(name, room); short != "" {
 			display = short
 		}
+	}
+	// The first slide of the topic carries the name alone, and it is the same
+	// name: shortening it only on the slides that carry an aspect called one
+	// subject two things — "…maintenance service in Q3" and then "…maintenance —
+	// cost and return" — on consecutive slides.
+	if part == 0 {
+		return display
 	}
 	combined := display + " — " + suffix
 	if utf8.RuneCountInString(combined) <= limit {
