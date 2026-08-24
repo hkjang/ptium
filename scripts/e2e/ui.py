@@ -30,6 +30,57 @@ with sync_playwright() as play:
     page.on("response", lambda r: problems.append(("http", f"{r.status} {r.url[:90]}"))
             if r.status >= 400 and "/api/" in r.url else None)
 
+    # Two things a person notices before they read a word: text too small to
+    # read, and text drawn on top of other text. Both are measurable, so neither
+    # has to wait for somebody to look at the right screen — the workspace was
+    # set at 7-10px until v1.8.0, and three collisions had been sitting in the
+    # editor's own header for as long.
+    READABILITY = """
+    () => {
+      const small = [], collided = []
+      const own = (el) => [...el.childNodes].filter((n) => n.nodeType === 3)
+        .map((n) => n.textContent.trim()).join('').replace(/\\s+/g, '')
+      // A slide draws the deck's own typography, at whatever size the deck says.
+      const slide = '.slide-thumbnail, .generating-slide, .freeform-page, .present-slide, .slide-canvas, .preview-slide'
+      const elements = [...document.querySelectorAll('body *')]
+      for (const el of elements) {
+        if (own(el).length < 2 || !el.offsetParent || el.closest(slide)) continue
+        const style = getComputedStyle(el)
+        if (style.visibility === 'hidden' || style.opacity === '0') continue
+        const size = parseFloat(style.fontSize)
+        if (size && size < 11) small.push([el.className || el.tagName, Math.round(size * 10) / 10, own(el).slice(0, 30)])
+      }
+      // Block boxes only: a wrapped inline element's rectangle spans the whole
+      // line and would read as an overlap with everything else on it.
+      const boxes = []
+      for (const el of elements) {
+        if (own(el).length < 2 || !el.offsetParent || el.closest(slide)) continue
+        const style = getComputedStyle(el)
+        if (style.position !== 'static' || style.display.startsWith('inline')) continue
+        const rect = el.getBoundingClientRect()
+        if (rect.width > 2 && rect.height > 2) boxes.push([el, rect])
+      }
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const [a, ra] = boxes[i], [b, rb] = boxes[j]
+          if (a.contains(b) || b.contains(a) || a.parentElement !== b.parentElement) continue
+          const x = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left)
+          const y = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top)
+          if (x > 4 && y > 4) collided.push([(a.className || a.tagName) + ' over ' + (b.className || b.tagName),
+                                             Math.round(x) + 'x' + Math.round(y)])
+        }
+      }
+      return { small: small.slice(0, 6), collided: collided.slice(0, 6) }
+    }
+    """
+
+    def readable(path):
+        found = page.evaluate(READABILITY)
+        for row in found["small"]:
+            failures.append(f"{path}: interface text at {row[1]}px — {row[0]} {row[2]!r}")
+        for row in found["collided"]:
+            failures.append(f"{path}: two elements drawn over each other — {row[0]} ({row[1]})")
+
     def visit(path, wait=1600, expect_text=None):
         problems.clear()
         page.goto(BASE + path, wait_until="networkidle")
@@ -41,6 +92,7 @@ with sync_playwright() as play:
             failures.append(f"{path} does not show {expect_text!r}")
         for kind, message in problems:
             failures.append(f"{path}: {kind} {message}")
+        readable(path)
         return body
 
     print("── every route ──")
