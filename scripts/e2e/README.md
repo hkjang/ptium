@@ -20,6 +20,9 @@ python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pp
 # the released image itself, on a database that has never been used
 python3 scripts/e2e/firstrun.py
 
+# and on one an old release wrote, which is what an upgrade runs
+python3 scripts/e2e/upgrade.py
+
 # several people at once, against a server built with the race detector
 cd server && go build -race -o /tmp/ptium-race ./cmd/ptium
 DATABASE_URL=... /tmp/ptium-race > /tmp/ptium-race.log 2>&1 &
@@ -38,6 +41,10 @@ signs in as the bootstrap administrator and makes a deck — the first hour of a
 deployment, which every other check here skips because it runs against a binary
 from the working tree and a database that has been alive for days. It needs
 docker and a postgres image on the host.
+
+`upgrade.py` is its pair: it lets an old image write the database, brings the
+new one up on it, and asks whether a deck written that long ago still opens,
+measures, draws and exports. It skips itself when no older image is on the host.
 
 The editor's pure logic — how a measurement is written in the reader's words,
 how a slide's fields map to template slots — is tested next to the code instead,

@@ -52,5 +52,11 @@ if command -v python3 > /dev/null; then
         echo "The image that was just built does not come up on an empty database." >&2
         exit 1
     }
+    # And on a database an older release wrote, which is what an upgrade runs.
+    # Skips itself when no older image is on this host.
+    python3 "$repository_root/scripts/e2e/upgrade.py" --to "$image" || {
+        echo "The image that was just built does not open a database an older release wrote." >&2
+        exit 1
+    }
 fi
 printf 'Created %s\nSHA256  %s\n' "$archive" "$digest"
