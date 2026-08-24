@@ -90,3 +90,41 @@ func TestADeckWithNothingToPrintSaysSo(t *testing.T) {
 		t.Fatalf("expected the deck to say it has nothing to print, got %v", err)
 	}
 }
+
+// The handout is a different document from the deck: the slide at the top of
+// the page, and what the presenter meant to say under it.
+func TestAHandoutCarriesTheNotes(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := "# 실적\n@content\n- 매출이 늘었습니다\n!notes 숫자를 읽지 말고 흐름만 말합니다\n\n" +
+		"# 노트 없는 장\n@content\n- 요점만\n"
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{Language: "ko"})
+	presentation := model.Presentation{Title: "유인물", Language: "ko", Slides: compiled.Slides}
+	handout, err := PDF(presentation, Options{TemplateData: data, Manifest: manifest, WithNotes: true})
+	if err != nil {
+		t.Fatalf("handout: %v", err)
+	}
+	plain, err := PDF(presentation, Options{TemplateData: data, Manifest: manifest})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	if pages := strings.Count(string(handout), "/Type /Page "); pages != 2 {
+		t.Errorf("a two-slide handout has %d pages", pages)
+	}
+	// Both are the same deck at the same page size; only what is on the page
+	// differs.
+	if !strings.Contains(string(handout), "/MediaBox [0 0 960.000 540.000]") ||
+		!strings.Contains(string(plain), "/MediaBox [0 0 960.000 540.000]") {
+		t.Error("the handout is not the deck's own page size")
+	}
+	if len(handout) <= len(plain) {
+		t.Errorf("the handout (%d) is not longer than the deck (%d), so it carries nothing extra",
+			len(handout), len(plain))
+	}
+}

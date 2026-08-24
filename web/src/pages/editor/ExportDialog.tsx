@@ -1,4 +1,4 @@
-import { Download, FileText } from 'lucide-react'
+import { Download, FileText, MessageSquareText } from 'lucide-react'
 import { Button, LoadingState, Modal } from '../../components/UI'
 
 /**
@@ -14,7 +14,7 @@ import { Button, LoadingState, Modal } from '../../components/UI'
 export function ExportDialog({ open, exporting, onExport, onClose }: {
   open: boolean
   exporting: boolean
-  onExport: (format: 'pptx' | 'pdf') => void
+  onExport: (format: 'pptx' | 'pdf' | 'pdf-notes') => void
   onClose: () => void
 }) {
   return (
@@ -39,6 +39,14 @@ export function ExportDialog({ open, exporting, onExport, onClose }: {
           <div>
             <strong>PDF 문서 (.pdf)</strong>
             <p>어디서나 열리는 배포용. 링크와 발표 노트의 주소까지 살아 있고, 글꼴은 워크스페이스가 싣고 있는 나눔바른고딕입니다.</p>
+          </div>
+          <Download size={18} />
+        </button>
+        <button disabled={exporting} onClick={() => onExport('pdf-notes')}>
+          <span className="export-icon pdf"><MessageSquareText size={22} /></span>
+          <div>
+            <strong>PDF · 발표자 노트 (.pdf)</strong>
+            <p>한 장에 슬라이드 하나와 그 아래 발표 노트. 리허설하거나 대신 발표할 사람에게 넘길 때 쓰는 유인물입니다.</p>
           </div>
           <Download size={18} />
         </button>

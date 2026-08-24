@@ -1052,12 +1052,15 @@ export const api = {
   /** Closes one. The deck is untouched. */
   revokeShare: (id: string, shareId: string) => request<void>(
     `/presentations/${encodeURIComponent(id)}/shares/${encodeURIComponent(shareId)}`, { method: 'DELETE' }),
-  async exportPresentation(id: string, format: 'pptx' | 'pdf' = 'pptx') {
+  async exportPresentation(id: string, format: 'pptx' | 'pdf' | 'pdf-notes' = 'pptx') {
+    // The handout is the PDF with the notes under each slide, which the API
+    // states as what it is: the same format, asked for differently.
+    const query = format === 'pdf-notes' ? 'format=pdf&notes=true' : `format=${format}`
     const headers = new Headers({ Accept: format === 'pptx' ? 'application/vnd.openxmlformats-officedocument.presentationml.presentation' : 'application/pdf' })
     const token = session.token(); const secret = session.secret()
     if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
     if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
-    const response = await fetch(`${API_BASE}/presentations/${encodeURIComponent(id)}/export?format=${format}`, { headers, credentials: 'include' })
+    const response = await fetch(`${API_BASE}/presentations/${encodeURIComponent(id)}/export?${query}`, { headers, credentials: 'include' })
     if (!response.ok) {
       const body = await response.json().catch(() => null)
       throw new ApiError(errorMessage(body, `내보내기에 실패했습니다 (${response.status})`), response.status, response.headers.get('x-request-id') || undefined, body)

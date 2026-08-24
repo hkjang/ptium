@@ -2545,6 +2545,16 @@ paths:
             type: string
             enum: [pptx, pdf]
             default: pptx
+        - name: notes
+          in: query
+          required: false
+          description: >
+            With `format=pdf`, print each slide with the speaker notes under it —
+            a handout for rehearsing or for handing the talk to somebody else.
+            Ignored for `pptx`, where the notes are already a part of the file.
+          schema:
+            type: boolean
+            default: false
       responses:
         '200':
           description: PowerPoint presentation or PDF file.
@@ -4324,7 +4334,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.11.3
+            service.version: 1.11.4
         requestId:
           $ref: '#/components/schemas/RequestID'
 

@@ -373,6 +373,16 @@ call("GET", f"/presentations/{skipped_deck['id']}/export?format=pptx", raw=True,
      note="the same deck still exports as pptx, where a hidden slide is still a slide")
 call("DELETE", f"/presentations/{skipped_deck['id']}", expect=204)
 
+# The handout: the same deck, with what the presenter meant to say under each
+# slide. It is the notes that make it one, so an empty one is not a handout.
+status, handout = call("GET", f"/presentations/{deck_id}/export?format=pdf&notes=true", raw=True, expect=200)
+if not handout.startswith(b"%PDF-"):
+    failures.append("the handout is not a PDF")
+elif len(handout) <= len(pdf_bytes):
+    failures.append(f"the handout ({len(handout):,}) carries no more than the deck ({len(pdf_bytes):,})")
+else:
+    print(f"   handout {len(handout):,} bytes")
+
 status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
                            note="a format nothing can write must be refused with a reason")
 if not (unsupported or {}).get("error", {}).get("code") == "unsupported_export_format":

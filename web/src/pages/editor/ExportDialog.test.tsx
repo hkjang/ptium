@@ -10,6 +10,8 @@ describe('taking the deck out', () => {
     expect(onExport).toHaveBeenCalledWith('pptx')
     fireEvent.click(screen.getByText('PDF 문서 (.pdf)'))
     expect(onExport).toHaveBeenCalledWith('pdf')
+    fireEvent.click(screen.getByText('PDF · 발표자 노트 (.pdf)'))
+    expect(onExport).toHaveBeenCalledWith('pdf-notes')
   })
 
   // The two files are not the same deck in two wrappers, and somebody who sends
@@ -21,7 +23,7 @@ describe('taking the deck out', () => {
 
   it('cannot be asked twice while a file is being made', () => {
     render(<ExportDialog open exporting onExport={() => {}} onClose={() => {}} />)
-    for (const label of ['PowerPoint (.pptx)', 'PDF 문서 (.pdf)']) {
+    for (const label of ['PowerPoint (.pptx)', 'PDF 문서 (.pdf)', 'PDF · 발표자 노트 (.pdf)']) {
       expect(screen.getByText(label).closest('button')?.hasAttribute('disabled'), label).toBe(true)
     }
     expect(screen.getByText(/파일을 준비하고 있어요/)).toBeTruthy()

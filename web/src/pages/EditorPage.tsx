@@ -1120,13 +1120,13 @@ export function EditorPage({ id }: { id: string }) {
     } catch (err) { showToast(displayError(err), 'error') } finally { setRewriting(false) }
   }
 
-  const exportDeck = async (format: 'pptx' | 'pdf') => {
+  const exportDeck = async (format: 'pptx' | 'pdf' | 'pdf-notes') => {
     setExporting(true)
     try {
       if (dirty) await save()
       const blob = await api.exportPresentation(id, format)
-      const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${presentation?.title || 'ptium'}.${format}`; anchor.click(); URL.revokeObjectURL(url)
-      showToast(`${format.toUpperCase()} 파일을 다운로드했습니다.`); setExportOpen(false)
+      const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = `${presentation?.title || 'ptium'}${format === 'pdf-notes' ? ' (발표자 노트)' : ''}.${format === 'pptx' ? 'pptx' : 'pdf'}`; anchor.click(); URL.revokeObjectURL(url)
+      showToast(`${format === 'pdf-notes' ? '발표자 노트 PDF' : format.toUpperCase()} 파일을 다운로드했습니다.`); setExportOpen(false)
     } catch (err) { showToast(displayError(err), 'error') } finally { setExporting(false) }
   }
 

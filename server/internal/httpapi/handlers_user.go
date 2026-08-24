@@ -449,6 +449,9 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 		// Paper draws the template's own artwork, which lives in the package
 		// rather than in the manifest.
 		options.Media = templateMedia(templateData)
+		// A handout is the deck with what the presenter meant to say under each
+		// slide, which is a different document from the deck itself.
+		options.WithNotes = request.URL.Query().Get("notes") == "true" || request.URL.Query().Get("notes") == "1"
 		data, err := export.PDF(presentation, options)
 		if errors.Is(err, export.ErrNothingToPrint) {
 			// The deck is fine and so is the server: every slide is marked
@@ -462,6 +465,9 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 			return
 		}
 		filename := safeFilename(presentation.Title) + ".pdf"
+		if options.WithNotes {
+			filename = safeFilename(presentation.Title) + " (발표자 노트).pdf"
+		}
 		writer.Header().Set("Content-Type", "application/pdf")
 		writer.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
 		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))

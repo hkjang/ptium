@@ -349,3 +349,37 @@ func (p *Page) shade(from, to string, x1, y1, x2, y2 Point) string {
 	p.shadings = append(p.shadings, name)
 	return name
 }
+
+// WrapText breaks a paragraph into the lines it draws as, at a width and size.
+// It measures the face the page is set in rather than guessing from character
+// counts, which is how a Korean line and a Latin one can be measured the same
+// way.
+func (d *Document) WrapText(text string, size, width Point) []string {
+	var lines []string
+	for _, paragraph := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		if strings.TrimSpace(paragraph) == "" {
+			lines = append(lines, "")
+			continue
+		}
+		current := ""
+		for _, character := range paragraph {
+			candidate := current + string(character)
+			if d.TextWidth(candidate, size) <= width || current == "" {
+				current = candidate
+				continue
+			}
+			// Break at the last space where there is one: a line broken mid-word
+			// reads as a fault in Latin and is normal in Korean, so the rule is
+			// "prefer a space, and break anywhere rather than overflow".
+			if at := strings.LastIndex(current, " "); at > 0 {
+				lines = append(lines, current[:at])
+				current = strings.TrimPrefix(current[at+1:], " ") + string(character)
+				continue
+			}
+			lines = append(lines, current)
+			current = string(character)
+		}
+		lines = append(lines, current)
+	}
+	return lines
+}

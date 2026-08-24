@@ -3,6 +3,7 @@ package export
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
@@ -73,7 +74,13 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 		drawing := pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{
 			Width: int(width), Media: options.Media, Language: presentation.Language})
 		page := document.AddPage()
-		if err := pdf.DrawSVG(page, drawing); err != nil {
+		if !options.WithNotes {
+			if err := pdf.DrawSVG(page, drawing); err != nil {
+				return nil, fmt.Errorf("draw slide %d: %w", index+1, err)
+			}
+			continue
+		}
+		if err := printWithNotes(document, page, drawing, slide, width, height); err != nil {
 			return nil, fmt.Errorf("draw slide %d: %w", index+1, err)
 		}
 	}
@@ -81,4 +88,64 @@ func PDF(presentation model.Presentation, options Options) ([]byte, error) {
 		return nil, ErrNothingToPrint
 	}
 	return document.Bytes(), nil
+}
+
+// printWithNotes is the handout: the slide at the top of the page and what the
+// presenter meant to say underneath it.
+//
+// The slide keeps its shape — a deck is 16:9 and cropping it to fit more words
+// would be printing a different deck — so the room for notes is what is left of
+// the page under it.
+func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slide pptx.Slide,
+	width, height float64) error {
+	const margin = 36
+	const gap = 22
+	scale := 0.62
+	drawnWidth := width * scale
+	drawnHeight := height * scale
+	left := (width - drawnWidth) / 2
+	page.Rect(0, 0, width, height, "FFFFFF")
+	if err := pdf.DrawSVGAt(page, drawing, left, margin, scale); err != nil {
+		return err
+	}
+	// A hairline around the slide, so the page reads as "the slide, and then
+	// the notes" rather than as one drawing that stops.
+	page.Rect(left, margin, drawnWidth, 0.75, "D6D8DE")
+	page.Rect(left, margin+drawnHeight, drawnWidth, 0.75, "D6D8DE")
+	page.Rect(left, margin, 0.75, drawnHeight, "D6D8DE")
+	page.Rect(left+drawnWidth, margin, 0.75, drawnHeight, "D6D8DE")
+
+	top := margin + drawnHeight + gap
+	page.Text(left, top, 9, "8A8D96", noteHeading(slide), false, false)
+	top += 16
+	notes := strings.TrimSpace(slide.Notes)
+	if notes == "" {
+		page.Text(left, top, 10.5, "AFB2BA", "적어 둔 말이 없습니다", false, true)
+		return nil
+	}
+	for _, line := range document.WrapText(notes, 10.5, drawnWidth) {
+		// The last line has to sit above the margin, not on it: a note that runs
+		// into the edge of the paper reads as a printing fault.
+		if top > height-margin-15 {
+			// The rest of a very long note is on the slide's own notes page in
+			// the pptx; a handout that runs off the paper is not a handout.
+			page.Text(left, top, 10.5, "AFB2BA", "…", false, false)
+			break
+		}
+		page.Text(left, top, 10.5, "3C4250", line, false, false)
+		top += 15
+	}
+	return nil
+}
+
+func noteHeading(slide pptx.Slide) string {
+	title := ""
+	for _, paragraph := range slide.Fields[pptx.SlotTitle] {
+		title = strings.TrimSpace(pptx.PlainText(paragraph.Text))
+		break
+	}
+	if title == "" {
+		return fmt.Sprintf("%d — 발표자 노트", slide.Number)
+	}
+	return fmt.Sprintf("%d · %s — 발표자 노트", slide.Number, title)
 }

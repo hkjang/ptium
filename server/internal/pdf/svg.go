@@ -20,8 +20,16 @@ import (
 // Only the shapes that drawing uses are understood. Anything else is skipped
 // rather than guessed at.
 func DrawSVG(page *Page, drawing string) error {
+	return DrawSVGAt(page, drawing, 0, 0, 1)
+}
+
+// DrawSVGAt paints the drawing smaller, and somewhere other than the corner —
+// which is what a handout is: the slide at the top of the page with room under
+// it for what the presenter meant to say.
+func DrawSVGAt(page *Page, drawing string, x, y, scale Point) error {
 	decoder := xml.NewDecoder(strings.NewReader(drawing))
-	painter := &svgPainter{page: page, gradients: map[string]gradient{}}
+	painter := &svgPainter{page: page, gradients: map[string]gradient{},
+		offsetX: x, offsetY: y, scale: scale}
 	// Gradients are defined before they are used, but a first pass costs
 	// nothing and does not depend on that being true.
 	painter.collectGradients(drawing)
@@ -44,8 +52,28 @@ func DrawSVG(page *Page, drawing string) error {
 type svgPainter struct {
 	page      *Page
 	gradients map[string]gradient
+	// Where the drawing goes on the page, and how big. Everything the painter
+	// emits passes through here, links included: an annotation is placed in the
+	// page's own coordinates, so a transform the drawing operators carried
+	// would leave the clickable areas behind.
+	offsetX, offsetY, scale Point
 	// link is the address the text being drawn belongs to, if any.
 	link string
+}
+
+func (p *svgPainter) at(x, y Point) (Point, Point) {
+	return p.offsetX + x*p.scale, p.offsetY + y*p.scale
+}
+
+func (p *svgPainter) size(value Point) Point { return value * p.scale }
+
+// place moves a whole outline onto the page.
+func (p *svgPainter) place(points []Position) []Position {
+	placed := make([]Position, len(points))
+	for index, point := range points {
+		placed[index].X, placed[index].Y = p.at(point.X, point.Y)
+	}
+	return placed
 }
 
 // A wash across a shape. The ends are fractions of the shape's own box, which
@@ -116,14 +144,17 @@ func (p *svgPainter) rect(start xml.StartElement) {
 	x, y := number32(attribute(start, "x")), number32(attribute(start, "y"))
 	width, height := number32(attribute(start, "width")), number32(attribute(start, "height"))
 	if wash, ok := p.wash(start); ok {
-		p.page.RectShaded(x, y, width, height, wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
+		placedX, placedY := p.at(x, y)
+		p.page.RectShaded(placedX, placedY, p.size(width), p.size(height),
+			wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
 		return
 	}
 	fill := p.fill(start)
 	if fill == "" {
 		return
 	}
-	p.page.Rect(x, y, width, height, fill)
+	placedX, placedY := p.at(x, y)
+	p.page.Rect(placedX, placedY, p.size(width), p.size(height), fill)
 }
 
 func (p *svgPainter) ellipse(start xml.StartElement) {
@@ -133,14 +164,17 @@ func (p *svgPainter) ellipse(start xml.StartElement) {
 		rx, ry = radius, radius
 	}
 	if wash, ok := p.wash(start); ok {
-		p.page.EllipseShaded(cx, cy, rx, ry, wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
+		placedX, placedY := p.at(cx, cy)
+		p.page.EllipseShaded(placedX, placedY, p.size(rx), p.size(ry),
+			wash.from, wash.to, wash.x1, wash.y1, wash.x2, wash.y2)
 		return
 	}
 	fill := p.fill(start)
 	if fill == "" {
 		return
 	}
-	p.page.Ellipse(cx, cy, rx, ry, fill)
+	placedX, placedY := p.at(cx, cy)
+	p.page.Ellipse(placedX, placedY, p.size(rx), p.size(ry), fill)
 }
 
 func (p *svgPainter) polyline(start xml.StartElement, closed bool) {
@@ -149,7 +183,7 @@ func (p *svgPainter) polyline(start xml.StartElement, closed bool) {
 		return
 	}
 	if fill := p.fill(start); closed && fill != "" {
-		p.page.Polygon(points, fill)
+		p.page.Polygon(p.place(points), fill)
 		return
 	}
 	stroke := strings.TrimPrefix(attribute(start, "stroke"), "#")
@@ -160,7 +194,7 @@ func (p *svgPainter) polyline(start xml.StartElement, closed bool) {
 	if width <= 0 {
 		width = 1
 	}
-	p.page.Polyline(points, stroke, width)
+	p.page.Polyline(p.place(points), stroke, p.size(width))
 }
 
 func (p *svgPainter) line(start xml.StartElement) {
@@ -172,10 +206,10 @@ func (p *svgPainter) line(start xml.StartElement) {
 	if width <= 0 {
 		width = 1
 	}
-	p.page.Polyline([]Position{
+	p.page.Polyline(p.place([]Position{
 		{X: number32(attribute(start, "x1")), Y: number32(attribute(start, "y1"))},
 		{X: number32(attribute(start, "x2")), Y: number32(attribute(start, "y2"))},
-	}, stroke, width)
+	}), stroke, p.size(width))
 }
 
 func (p *svgPainter) path(start xml.StartElement) {
@@ -184,7 +218,7 @@ func (p *svgPainter) path(start xml.StartElement) {
 		return
 	}
 	if points := flattenPath(attribute(start, "d")); len(points) > 2 {
-		p.page.Polygon(points, fill)
+		p.page.Polygon(p.place(points), fill)
 	}
 }
 
@@ -197,8 +231,9 @@ func (p *svgPainter) image(start xml.StartElement) {
 	if image == nil {
 		return
 	}
-	p.page.Image(number32(attribute(start, "x")), number32(attribute(start, "y")),
-		number32(attribute(start, "width")), number32(attribute(start, "height")), image)
+	x, y := p.at(number32(attribute(start, "x")), number32(attribute(start, "y")))
+	p.page.Image(x, y, p.size(number32(attribute(start, "width"))),
+		p.size(number32(attribute(start, "height"))), image)
 }
 
 // text walks one <text> element and the tspans inside it, which is where the
@@ -252,7 +287,9 @@ func (p *svgPainter) text(decoder *xml.Decoder, start xml.StartElement) error {
 			}
 		case xml.CharData:
 			p.draw(line, string(element))
-			line.x += p.page.document.TextWidth(string(element), line.size)
+			// In the drawing's own units, so the next run on the line starts
+			// where this one ended whatever size the page draws it at.
+			line.x += p.page.document.TextWidth(string(element), p.size(line.size)) / p.scale
 			line.underline = false
 		case xml.EndElement:
 			if element.Name.Local == "a" {
@@ -282,17 +319,18 @@ func (p *svgPainter) draw(line textRun, text string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
-	x := line.x
+	x, y := p.at(line.x, line.y)
+	size := p.size(line.size)
 	// SVG hangs centred and right-set text off its own edge; PDF draws from
 	// where the pen starts, so the width has to be taken off first.
-	if width := p.page.document.TextWidth(text, line.size); line.anchor == "middle" {
+	if width := p.page.document.TextWidth(text, size); line.anchor == "middle" {
 		x -= width / 2
 	} else if line.anchor == "end" {
 		x -= width
 	}
-	width := p.page.Text(x, line.y, line.size, line.color, text, line.bold, line.italic)
+	width := p.page.Text(x, y, size, line.color, text, line.bold, line.italic)
 	if line.underline {
-		p.page.Underline(x, line.y, width, line.color, line.size)
+		p.page.Underline(x, y, width, line.color, size)
 	}
 	if p.link != "" {
 		target, page := p.link, 0
@@ -301,7 +339,7 @@ func (p *svgPainter) draw(line textRun, text string) {
 				target, page = "", parsed
 			}
 		}
-		p.page.Link(x, line.y-line.size*0.8, width, line.size*1.05, target, page)
+		p.page.Link(x, y-size*0.8, width, size*1.05, target, page)
 	}
 }
 

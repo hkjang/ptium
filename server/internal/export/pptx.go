@@ -23,6 +23,9 @@ type Options struct {
 	// Images resolves the pictures a deck places. Without it a deck's images are
 	// left out rather than failing the export.
 	Images deck.ImageSource
+	// WithNotes prints each slide with what the presenter meant to say under it,
+	// which is a handout rather than a deck.
+	WithNotes bool
 	// Media resolves the template's own artwork — the pictures a design paints
 	// on its layouts — for the renderings that draw the design themselves.
 	Media pptx.MediaResolver
