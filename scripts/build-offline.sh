@@ -47,6 +47,8 @@ docker image inspect "$image" "$alias_image" > /dev/null
 
 # What the archive holds is what a target site will run, so it is worth running
 # once here: an empty database, the bootstrap administrator, and a deck.
+# Every check below has to be able to stop the release. Piping this script's
+# output through anything (tail, tee) hides its exit code, so it says so itself.
 if command -v python3 > /dev/null; then
     python3 "$repository_root/scripts/e2e/firstrun.py" --image "$image" || {
         echo "The image that was just built does not come up on an empty database." >&2

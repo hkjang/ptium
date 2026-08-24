@@ -47,6 +47,22 @@ def free_port():
         return probe.getsockname()[1]
 
 
+def run_container(*arguments):
+    """Starts a container, retrying once on a port the host cannot publish.
+
+    Docker on a virtualised host occasionally answers "ports are not available"
+    for a port nothing is using. A check that fails for that reason is reporting
+    on the host, not on the image."""
+    result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    if "ports are not available" not in result.stderr:
+        print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
+        sys.exit(1)
+    time.sleep(2)
+    return docker(*arguments)
+
+
 def wait_for(url, seconds=90):
     deadline = time.time() + seconds
     while time.time() < deadline:
@@ -97,7 +113,7 @@ try:
         time.sleep(1)
     else:
         failures.append("the database never became ready")
-    docker("run", "-d", "--name", server, "--network", network, "-p", f"{port}:8080",
+    run_container("run", "-d", "--name", server, "--network", network, "-p", f"{port}:8080",
            "-e", f"DATABASE_URL=postgres://postgres:firstrun@{database}:5432/ptium?sslmode=disable",
            "-e", "BOOTSTRAP_ADMIN=admin@example.com",
            "-e", f"BOOTSTRAP_ADMIN_PASSWORD={password}",

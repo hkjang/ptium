@@ -57,6 +57,23 @@ def free_port():
         return probe.getsockname()[1]
 
 
+def run_container(*arguments):
+    """Starts a container, retrying once on a port the host cannot publish.
+
+    Docker on a virtualised host occasionally answers "ports are not available"
+    for a port nothing is using. A check that fails for that reason is reporting
+    on the host, not on the image, and a release stopped by it is stopped for
+    nothing."""
+    result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    if "ports are not available" not in result.stderr:
+        print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
+        sys.exit(1)
+    time.sleep(2)
+    return docker(*arguments)
+
+
 run = f"ptium-upgrade-{random.randint(1000, 9999)}"
 network, database, before, after = f"{run}-net", f"{run}-db", f"{run}-old", f"{run}-new"
 old_port, new_port = free_port(), free_port()
@@ -116,7 +133,7 @@ try:
             break
         time.sleep(1)
     dsn = f"postgres://postgres:up@{database}:5432/ptium?sslmode=disable"
-    docker("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
+    run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
            "-e", f"DATABASE_URL={dsn}", "-e", "DEV_AUTH_ENABLED=true", "-e", f"DEV_AUTH_SECRET={secret}",
            "-e", "DEV_AUTH_ALLOW_REMOTE=true", "-e", "DEV_AUTH_EMAIL=up@ptium.local", old_image)
     if not wait_for(f"http://127.0.0.1:{old_port}/readyz"):
@@ -138,7 +155,7 @@ try:
             failures.append(f"{old_image} could not make a deck to upgrade")
 
         docker("rm", "-f", before)
-        docker("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
+        run_container("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
                "-e", f"DATABASE_URL={dsn}", "-e", "BOOTSTRAP_ADMIN=admin@example.com",
                "-e", f"BOOTSTRAP_ADMIN_PASSWORD={password}", new_image)
         if not wait_for(f"http://127.0.0.1:{new_port}/readyz"):
@@ -181,7 +198,7 @@ try:
             # tag they had; what makes that possible is that no migration takes
             # anything away, and the day one does, this is where it shows.
             docker("rm", "-f", after)
-            docker("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
+            run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
                    "-e", f"DATABASE_URL={dsn}", "-e", "DEV_AUTH_ENABLED=true", "-e", f"DEV_AUTH_SECRET={secret}",
                    "-e", "DEV_AUTH_ALLOW_REMOTE=true", "-e", "DEV_AUTH_EMAIL=up@ptium.local", old_image)
             if not wait_for(f"http://127.0.0.1:{old_port}/readyz"):
