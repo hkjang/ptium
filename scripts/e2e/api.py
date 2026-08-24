@@ -347,6 +347,19 @@ else:
             failures.append("a wash on the screen printed as a flat colour")
         call("DELETE", f"/presentations/{wash['id']}", expect=204)
     print(f"   pdf {len(pdf_bytes):,} bytes, {pages} pages")
+    # The same picture on several slides is one picture in the file. A deck's
+    # logo carried on every slide made a forty-page PDF nine times heavier.
+    logo = data_of(call("POST", "/assets", files={"file": (f"repeat-{RUN}.png", png(rgb=(40, 90, 200)), "image/png")},
+                        expect=201)) or {}
+    picture_deck = data_of(call("POST", "/presentations", {"title": f"같은 그림 {RUN}", "prompt": "점검"}, expect=201))
+    call("PUT", f"/presentations/{picture_deck['id']}/source", {"source":
+         "".join(f"# {n}장\n@content\n- 요점\n::image {logo.get('name')} | 현장\n\n" for n in range(1, 6))}, expect=200)
+    status, repeated = call("GET", f"/presentations/{picture_deck['id']}/export?format=pdf", raw=True, expect=200)
+    stored = repeated.count(b"/Subtype /Image")
+    if stored != 1:
+        failures.append(f"one picture on five slides is stored {stored} times")
+    call("DELETE", f"/presentations/{picture_deck['id']}", expect=204)
+    call("DELETE", f"/assets/{logo.get('id')}", expect=204)
 status, unsupported = call("GET", f"/presentations/{deck_id}/export?format=keynote", expect=422,
                            note="a format nothing can write must be refused with a reason")
 if not (unsupported or {}).get("error", {}).get("code") == "unsupported_export_format":

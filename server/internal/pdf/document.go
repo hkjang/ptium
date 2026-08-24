@@ -3,7 +3,10 @@ package pdf
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +25,7 @@ type Document struct {
 	used          map[uint16]rune
 	pages         []*Page
 	images        []*imageXObject
+	imageNames    map[string]string
 	shadings      []shading
 }
 
@@ -161,12 +165,26 @@ func (p *Page) Image(x, y, width, height Point, image *Image) {
 	if image == nil || width <= 0 || height <= 0 {
 		return
 	}
-	name := fmt.Sprintf("Im%d", len(p.document.images)+1)
-	object := &imageXObject{name: name, width: image.Width, height: image.Height,
-		data: image.Data, colorSpace: image.ColorSpace, filter: image.Filter, bits: image.Bits,
-		softMask: image.Alpha}
-	p.document.images = append(p.document.images, object)
-	p.images = append(p.images, name)
+	// The same picture on twenty slides is one picture. A deck's logo, a divider's
+	// background, a photograph carried through a section: the drawing of each
+	// slide brings its own copy of the bytes, and embedding each one would make a
+	// forty-slide deck forty times heavier than it is.
+	key := imageKey(image)
+	name, known := p.document.imageNames[key]
+	if !known {
+		name = fmt.Sprintf("Im%d", len(p.document.images)+1)
+		p.document.images = append(p.document.images, &imageXObject{name: name,
+			width: image.Width, height: image.Height, data: image.Data,
+			colorSpace: image.ColorSpace, filter: image.Filter, bits: image.Bits,
+			softMask: image.Alpha})
+		if p.document.imageNames == nil {
+			p.document.imageNames = map[string]string{}
+		}
+		p.document.imageNames[key] = name
+	}
+	if !slices.Contains(p.images, name) {
+		p.images = append(p.images, name)
+	}
 	fmt.Fprintf(&p.content, "q %s 0 0 %s %s %s cm /%s Do Q\n",
 		number(width), number(height), number(x), number(p.flip(y+height)), name)
 }
@@ -180,6 +198,19 @@ type Image struct {
 	Bits          int
 	// Alpha is an 8-bit mask, or nil for a picture with none.
 	Alpha []byte
+}
+
+// imageKey is what makes two pictures the same picture: the bytes, and what
+// they are to be read as.
+func imageKey(image *Image) string {
+	sum := sha256.Sum256(image.Data)
+	mask := ""
+	if len(image.Alpha) > 0 {
+		alpha := sha256.Sum256(image.Alpha)
+		mask = hex.EncodeToString(alpha[:8])
+	}
+	return fmt.Sprintf("%s-%dx%d-%s-%s-%d-%s", hex.EncodeToString(sum[:16]),
+		image.Width, image.Height, image.ColorSpace, image.Filter, image.Bits, mask)
 }
 
 func rgb(color string) (float64, float64, float64) {

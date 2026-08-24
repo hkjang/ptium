@@ -156,3 +156,39 @@ func TestAPageNamesOnlyWhatItDraws(t *testing.T) {
 		t.Error("the page that draws the picture does not list it")
 	}
 }
+
+// A deck's logo is on every slide, and the drawing of each slide brings its own
+// copy of the bytes. Embedding each one made a forty-slide deck 24 MB when it
+// is 2.7 MB.
+func TestOnePictureIsStoredOnce(t *testing.T) {
+	font, err := BuiltinFont()
+	if err != nil {
+		t.Fatal(err)
+	}
+	document := New(960, 540, "로고", font)
+	logo := func() *Image {
+		return &Image{Width: 2, Height: 2, ColorSpace: "DeviceRGB", Filter: "FlateDecode", Bits: 8,
+			Data: deflate([]byte{255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255})}
+	}
+	other := &Image{Width: 2, Height: 2, ColorSpace: "DeviceRGB", Filter: "FlateDecode", Bits: 8,
+		Data: deflate([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12})}
+	for range 5 {
+		page := document.AddPage()
+		page.Image(0, 0, 100, 100, logo())
+		page.Image(200, 0, 100, 100, logo()) // twice on the same page, too
+	}
+	document.AddPage().Image(0, 0, 100, 100, other)
+	out := string(document.Bytes())
+	if pictures := strings.Count(out, "/Subtype /Image"); pictures != 2 {
+		t.Errorf("two distinct pictures were stored %d times", pictures)
+	}
+	pages := strings.SplitAfter(out, "/Type /Page ")
+	if len(pages) != 7 {
+		t.Fatalf("expected six pages, got %d", len(pages)-1)
+	}
+	// A page that draws the same picture twice names it once.
+	first := pages[1][:min(400, len(pages[1]))]
+	if strings.Count(first, "/Im1 ") != 1 {
+		t.Errorf("a page names the same picture %d times: %s", strings.Count(first, "/Im1 "), first)
+	}
+}
