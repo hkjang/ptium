@@ -111,10 +111,44 @@ with sync_playwright() as play:
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 
+
+    # A deck of fifty slides has a rail taller than any window, and a slide
+    # zoomed to 200% is wider than the canvas. Both live inside a grid whose
+    # items default to min-height:auto, so both used to grow to their content
+    # instead of scrolling — and everything past the first screenful was drawn
+    # where nobody could reach it.
+    SCROLLS = """
+    () => {
+      const box = (selector) => {
+        const el = document.querySelector(selector)
+        if (!el) return null
+        return { height: el.clientHeight, content: el.scrollHeight,
+                 scrolls: el.scrollHeight > el.clientHeight + 2 }
+      }
+      return { rail: box('.slide-list'), canvas: box('.freeform-scroll'),
+               inspector: box('.inspector-panel'), viewport: window.innerHeight }
+    }
+    """
+
+    def scrolls(path):
+        found = page.evaluate(SCROLLS)
+        for name, region in found.items():
+            if name == "viewport" or not region:
+                continue
+            # Nothing may be taller than the window it lives in: that is the
+            # shape of a region that grew instead of scrolling.
+            if region["height"] > found["viewport"]:
+                failures.append(f"{path}: the {name} is {region['height']}px tall in a "
+                                f"{found['viewport']}px window — it grew instead of scrolling")
+        return found
+
     print("── the editor's panels and modes ──")
     page.goto(f"{BASE}/presentations/{deck}/editor", wait_until="networkidle")
     page.wait_for_selector(".freeform-page", timeout=25000)
     page.wait_for_timeout(2000)
+    regions = scrolls(f"/presentations/{deck}/editor")
+    if regions["rail"] and not regions["rail"]["scrolls"] and regions["rail"]["content"] > regions["viewport"]:
+        failures.append("the slide rail holds more than the window and does not scroll")
     for name in ["내용", "디자인", "이미지", "슬라이드", "노트", "격자"]:
         problems.clear()
         page.get_by_role("button", name=name, exact=True).first.click()

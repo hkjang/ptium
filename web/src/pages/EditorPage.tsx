@@ -262,6 +262,15 @@ export function EditorPage({ id }: { id: string }) {
    * else instead. A checkpoint is the whole slide before a change; a run of the
    * same kind of change inside a second is one step, so typing is not thirty.
    */
+  // The rail scrolls, so the slide being edited is kept in sight. "nearest"
+  // means an already visible thumbnail is left where it is rather than being
+  // yanked to the middle on every click.
+  const railRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const row = railRef.current?.querySelector<HTMLElement>('.slide-thumbnail-row.active')
+    row?.scrollIntoView({ block: 'nearest' })
+  }, [activeId, slides.length])
+
   const undoStack = useRef<{ slideId: string; slide: Slide; reason: string; at: number }[]>([])
   const redoStack = useRef<{ slideId: string; slide: Slide }[]>([])
   const [historyDepth, setHistoryDepth] = useState({ undo: 0, redo: 0 })
@@ -1108,7 +1117,7 @@ export function EditorPage({ id }: { id: string }) {
       <div className="editor-workspace">
         <aside className="slide-rail">
           <div className="slide-rail-head"><strong>슬라이드</strong><span>{slides.length} / {MAX_SLIDES}</span></div>
-          <div className="slide-list">{slides.map((slide, index) => {
+          <div className="slide-list" ref={railRef}>{slides.map((slide, index) => {
             const holdings = slideHoldings(slide)
             const drawn = !slide.id.startsWith('new-') && index < savedSlideCount
             return <button key={slide.id} className={`slide-thumbnail-row ${activeId === slide.id ? 'active' : ''}`} onClick={() => setActiveId(slide.id)}>
