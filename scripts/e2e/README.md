@@ -36,6 +36,14 @@ key may do beyond its scopes, which doors want the administrator role, and what 
 link hands to whoever holds it. It found nothing the day it was written — it was
 written the day after a link was found drawing a slide marked `!skip`.
 
+It also asks what a person can make the product draw. The workspace and the
+shared page render these SVGs as HTML, so anything typed into a deck that
+survives as markup is script running in whoever opens it. Every drawing the
+product hands to a browser is fed `</text><script>…` and read back, and every
+address drawn as a link has to be one that can sit inside an attribute and a
+scheme a reader may follow. Taking the escaping out of `escapeText` makes four
+of those checks fail.
+
 `race.py` is the one that needs a server built with `-race`: it drives readers,
 writers, administrators, image readers and a generation at the same time, then
 reads the detector's own output. It found the generator's shared settings and a

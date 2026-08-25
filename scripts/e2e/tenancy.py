@@ -244,4 +244,68 @@ else:
         print("   a link shows the show, and nothing else")
     call(alice, "DELETE", f"/presentations/{shared['id']}")
 
+print("── what someone types cannot become markup ──")
+# Both the workspace and the shared page render these drawings as HTML, so
+# anything a person types into a deck that survives as markup is script running
+# in whoever opens it. Every drawing the product hands to a browser is asked.
+nasty = '</text><script>alert(1)</script><text x="0" y="0"'
+injected_source = (f"# {nasty}\n> {nasty}\n- {nasty}\n::kpi\n- {nasty} :: {nasty}\n::\n"
+                   f"!notes {nasty}\n!source {nasty}\n"
+                   f'- 열기: [여기](https://example.com/plan) 그리고 [저기](https://example.com/x"onmouseover="alert(1))\n')
+status, hostile = call(alice, "POST", "/presentations",
+                       {"title": f"주입 {nasty}", "prompt": "점검", "language": "ko"})
+checks += 1
+if status != 201:
+    failures.append(f"a deck could not be made to check drawing with: {status}")
+else:
+    call(alice, "PUT", f"/presentations/{hostile['id']}/source", {"source": injected_source})
+    status, saved = call(alice, "POST", "/snippets", {"name": f"주입 {RUN}", "source": f"# {nasty}\n- {nasty}\n"})
+    snippet_id = saved.get("id") if isinstance(saved, dict) else ""
+    templates = call(alice, "GET", "/templates?limit=1")[1]
+    rows = templates if isinstance(templates, list) else (templates or {}).get("items") or []
+    made = call(alice, "POST", f"/presentations/{hostile['id']}/shares", {})[1] or {}
+    link = (made.get("url") or "").rstrip("/").split("/")[-1]
+    drawings = [
+        ("the deck's own preview", "GET", f"/presentations/{hostile['id']}/preview.svg?slide=1&width=800", None),
+        ("a preview of unsaved source", "POST", f"/presentations/{hostile['id']}/source/preview.svg?slide=1&width=800",
+         {"source": injected_source}),
+    ]
+    if snippet_id:
+        drawings.append(("a saved slide's preview", "GET", f"/snippets/{snippet_id}/preview.svg?width=400", None))
+    if rows:
+        drawings.append(("a template's preview", "GET", f"/templates/{rows[0]['id']}/preview.svg?width=400", None))
+    if link:
+        drawings.append(("what a link draws", "GET", f"/shared/{link}/preview.svg?slide=1&width=800", None))
+    for name, method, path, body in drawings:
+        status, drawn = call(alice, method, path, body, raw=True)
+        drawing = drawn.decode(errors="replace") if status == 200 and isinstance(drawn, bytes) else ""
+        checks += 1
+        if status != 200:
+            failures.append(f"{name} did not draw: {status}")
+            continue
+        for probe in ["<script", "onerror=", "onload=", "<foreignObject", "<iframe"]:
+            checks += 1
+            if probe in drawing:
+                failures.append(f"{name} carries {probe!r} — what was typed became markup")
+        # Every address that is drawn as a link is one that can sit inside an
+        # attribute and is a scheme a reader may follow. "href=\"…\" target=" is
+        # the anchor's own attributes and not a break-out, so the addresses are
+        # read rather than the shape around them.
+        for address in re.findall(r'href="([^"]*)"', drawing):
+            checks += 1
+            if any(mark in address for mark in ('"', "<", ">", "\\")):
+                failures.append(f"{name} drew an address that cannot sit in an attribute: {address!r}")
+            checks += 1
+            if not address.startswith(("https://", "http://", "mailto:", "#")):
+                failures.append(f"{name} drew an address a reader should not follow: {address!r}")
+    status, drawn = call(alice, "GET", f"/presentations/{hostile['id']}/preview.svg?slide=1&width=800", raw=True)
+    drawing = drawn.decode(errors="replace") if status == 200 else ""
+    checks += 1
+    if 'rel="noreferrer noopener"' not in drawing:
+        failures.append("a link in a drawing opens without rel=\"noreferrer noopener\"")
+    print(f"   {len(drawings)} drawings carry the words and none of the markup")
+    if snippet_id:
+        call(alice, "DELETE", f"/snippets/{snippet_id}")
+    call(alice, "DELETE", f"/presentations/{hostile['id']}")
+
 sys.exit(1 if failures else 0)
