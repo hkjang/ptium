@@ -1,6 +1,6 @@
 # End-to-end sweep
 
-Seven scripts that drive a running Ptium the way a person and a client would, and
+Eight scripts that drive a running Ptium the way a person and a client would, and
 report what broke. They found the empty-upload five hundred, the responsive
 stylesheet that never applied, the Escape that threw away a sentence, and the
 deck titles that dropped their own subject.
@@ -16,6 +16,7 @@ python3 scripts/e2e/ui.py .     # every screen renders, nothing logs an error
 python3 scripts/e2e/flows.py .  # generate, edit, apply source, save a slide, export
 python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter window, keyboard
 python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
+python3 scripts/e2e/tenancy.py  # whose is whose: accounts, keys, admin doors, links
 
 # the released image itself, on a database that has never been used
 python3 scripts/e2e/firstrun.py
@@ -28,6 +29,12 @@ cd server && go build -race -o /tmp/ptium-race ./cmd/ptium
 DATABASE_URL=... /tmp/ptium-race > /tmp/ptium-race.log 2>&1 &
 python3 scripts/e2e/race.py --log /tmp/ptium-race.log --seconds 90
 ```
+
+`tenancy.py` needs nothing but development auth, and asks the questions that are
+only visible from another chair: what one account can reach of another's, what a
+key may do beyond its scopes, which doors want the administrator role, and what a
+link hands to whoever holds it. It found nothing the day it was written — it was
+written the day after a link was found drawing a slide marked `!skip`.
 
 `race.py` is the one that needs a server built with `-race`: it drives readers,
 writers, administrators, image readers and a generation at the same time, then
