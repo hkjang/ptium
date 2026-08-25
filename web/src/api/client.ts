@@ -1371,6 +1371,16 @@ export const api = {
     const raw = await request<Record<string, unknown>>('/admin/provider-check', { method: 'POST', body: '{}' })
     return unwrapOne<Record<string, unknown>>(raw, ['data'])
   },
+  /**
+   * The last reading of the model host, for a screen that shows it rather than
+   * a person who asked for it. A dashboard that knocks on somebody's host once
+   * per refresh — and writes an audit entry each time — is a dashboard making
+   * the record it is meant to help read.
+   */
+  async providerStatus() {
+    const raw = await request<Record<string, unknown>>('/admin/provider-check')
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
   /** What this deployment is keeping, and how much room is left for it. */
   async storageUsage() {
     const raw = await request<Record<string, unknown>>('/admin/storage')

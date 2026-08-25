@@ -899,6 +899,23 @@ call("PUT", "/admin/settings", {"values": {"ai.provider": was_provider or "fallb
 call("POST", "/admin/provider-check", {}, expect=403,
      headers={"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"},
      note="asking somebody's model host is the administrator's")
+# A screen showing the state is not a person asking for it. A dashboard that
+# writes an audit entry every time it opens fills the trail with itself.
+def provider_check_entries():
+    answered = call("GET", "/admin/audit?action=settings.provider_check&days=1&limit=1", expect=200)[1]
+    return int(((answered or {}).get("meta") or {}).get("total") or 0)
+
+
+trail_before = provider_check_entries()
+for _ in range(3):
+    call("GET", "/admin/provider-check", expect=200)
+checks += 1
+if provider_check_entries() != trail_before:
+    failures.append("a screen reading the provider's state writes itself into the audit trail")
+call("POST", "/admin/provider-check", {}, expect=200)
+checks += 1
+if provider_check_entries() != trail_before + 1:
+    failures.append("a person asking the provider is not written down")
 print(f"   asked: provider={checked.get('provider')!r} reachable={checked.get('reachable')} "
       f"{checked.get('milliseconds')}ms · a dead address says {str(missing.get('detail'))[:40]!r}")
 
@@ -940,18 +957,34 @@ else:
     # including after the worker that was mid-flight finishes.
     # The answer to the stop is the stopped deck, so the reason is read from it
     # rather than by polling: a poll races the worker and reports the race.
-    stopped = data_of(call("POST", f"/admin/generations/{someone_elses['id']}/cancel",
-                           {"reason": f"점검 중단 {RUN}"}, expect=200)) or {}
-    checks += 1
-    if stopped.get("errorMessage") != f"점검 중단 {RUN}":
-        failures.append(f"stopping a deck answers with {stopped.get('errorMessage')!r} rather than the reason given")
-    checks += 1
-    if stopped.get("status") != "failed":
-        failures.append(f"a stopped deck reads as {stopped.get('status')!r}")
-    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
-    checks += 1
-    if state.get("errorMessage") != f"점검 중단 {RUN}":
-        failures.append(f"the author is told {state.get('errorMessage')!r} rather than why it was stopped")
+    #
+    # The offline writer finishes a deck in about a second, so a stop can
+    # honestly arrive too late — and then it must say so rather than answer as
+    # though it had stopped something. Both endings are checked; neither is a
+    # deck quietly left running.
+    status, answered = call("POST", f"/admin/generations/{someone_elses['id']}/cancel",
+                            {"reason": f"점검 중단 {RUN}"}, expect=[200, 409])
+    if status == 200:
+        stopped = data_of((status, answered)) or {}
+        checks += 1
+        if stopped.get("errorMessage") != f"점검 중단 {RUN}":
+            failures.append(f"stopping a deck answers with {stopped.get('errorMessage')!r} rather than the reason given")
+        checks += 1
+        if stopped.get("status") != "failed":
+            failures.append(f"a stopped deck reads as {stopped.get('status')!r}")
+        state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+        checks += 1
+        if state.get("errorMessage") != f"점검 중단 {RUN}":
+            failures.append(f"the author is told {state.get('errorMessage')!r} rather than why it was stopped")
+    else:
+        # It finished first. The deck is whole, and the operator was told.
+        state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+        checks += 1
+        if state.get("status") not in ("completed", "failed"):
+            failures.append(f"a stop was refused as too late, but the deck reads as {state.get('status')!r}")
+        checks += 1
+        if state.get("errorMessage") == f"점검 중단 {RUN}":
+            failures.append("a stop was refused and stopped the deck anyway")
     time.sleep(4)
     state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
     checks += 1

@@ -91,7 +91,7 @@ export function AdminOverviewPage() {
   // Asked once when the screen opens. The panel used to say "연결됨" whatever
   // was true, which is worse than saying nothing: an operator reading a green
   // board while nothing can be generated is being told the wrong thing.
-  useEffect(() => { api.checkProvider().then(setProvider).catch(() => setProvider({ reachable: false, detail: '' })) }, [])
+  useEffect(() => { api.providerStatus().then(setProvider).catch(() => setProvider({ reachable: false, detail: '' })) }, [])
 
   return <AppShell title="관리자 개요" eyebrow="CONTROL CENTER" actions={!loading && !error ? <div className="live-status"><i /> API · DB 연결됨</div> : undefined}>
     {loading ? <LoadingState label="서비스 현황을 불러오는 중…" /> : error ? <ErrorState message={error} /> : <>

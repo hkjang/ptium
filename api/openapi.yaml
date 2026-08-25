@@ -3271,6 +3271,18 @@ paths:
           $ref: '#/components/responses/InternalError'
 
   /api/v1/admin/provider-check:
+    get:
+      operationId: providerStatus
+      tags: [Admin]
+      summary: The last reading of the model host
+      description: >
+        For a screen that shows the state rather than a person who asked for
+        it. Answers from a reading taken in the last thirty seconds when there
+        is one, and is not written to the audit trail: a dashboard that records
+        itself every time it opens fills the trail it is meant to help read.
+      responses:
+        '200': { description: What the host said, possibly from a moment ago }
+        '403': { description: Administrators only }
     post:
       operationId: checkProvider
       tags: [Admin]
@@ -3282,7 +3294,7 @@ paths:
         and reports whether it was reachable, how long it took and what came
         back. Administrators only.
       responses:
-        '200': { description: What the host said, or that this deployment uses the offline writer }
+        '200': { description: What the host said, asked fresh and written to the trail }
         '403': { description: Asking somebody's model host is the administrator's }
         '503': { description: This deployment has no generator at all }
   /api/v1/admin/storage:
@@ -3346,7 +3358,7 @@ paths:
               properties: { reason: { type: string, maxLength: 300 } }
       responses:
         '200': { description: The deck, stopped }
-        '409': { description: That deck is not waiting or being written }
+        '409': { description: That deck is not waiting or being written, or it finished before the stop arrived }
         '403': { description: Administrators only }
   /api/v1/admin/audit:
     get:
@@ -4466,7 +4478,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.5
+            service.version: 1.13.6
         requestId:
           $ref: '#/components/schemas/RequestID'
 

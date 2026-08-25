@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
 	"net/url"
@@ -373,19 +374,54 @@ func (s *Server) adminUpdateUser(writer http.ResponseWriter, request *http.Reque
 // Setting a provider and finding out whether it answers were two different
 // days: the only way to learn was to generate a deck and watch it fail. This
 // asks with the settings as stored and saves nothing.
+//
+// A POST is somebody asking, and is written down and always fresh. A GET is a
+// screen reading, and is neither: a dashboard that writes an audit entry every
+// time it opens fills the trail with itself, and one that knocks on a shared
+// model host on every refresh is a nuisance to whoever else uses it.
 func (s *Server) adminCheckProvider(writer http.ResponseWriter, request *http.Request) {
 	if s.generator == nil {
 		writeError(writer, request, http.StatusServiceUnavailable, "ai_unavailable",
 			"This deployment has no AI provider configured", nil)
 		return
 	}
-	actor, _ := UserFromContext(request.Context())
+	asked := request.Method == http.MethodPost
+	if !asked {
+		if cached, ok := s.recentProviderCheck(); ok {
+			writeData(writer, request, http.StatusOK, cached)
+			return
+		}
+	}
 	check := s.generator.CheckProvider(request.Context())
-	// Written down: asking a model host is a thing somebody did, and on a
-	// deployment where the host is shared it is worth being able to see who.
-	s.store.Audit(request.Context(), &actor.ID, "settings.provider_check", "settings", "ai.provider",
-		map[string]any{"reachable": check.Reachable, "ms": check.Milliseconds})
+	s.rememberProviderCheck(check)
+	if asked {
+		actor, _ := UserFromContext(request.Context())
+		// On a deployment where several installations share one model host, who
+		// knocked on it and when is itself worth being able to see.
+		s.store.Audit(request.Context(), &actor.ID, "settings.provider_check", "settings", "ai.provider",
+			map[string]any{"reachable": check.Reachable, "ms": check.Milliseconds})
+	}
 	writeData(writer, request, http.StatusOK, check)
+}
+
+// providerCheckFor is how long a reading of the provider stands. Long enough
+// that a dashboard being refreshed asks once, short enough that an operator
+// who just fixed the host does not read a stale "응답 없음" for long.
+const providerCheckFor = 30 * time.Second
+
+func (s *Server) recentProviderCheck() (generation.ProviderCheck, bool) {
+	s.providerCheckMu.Lock()
+	defer s.providerCheckMu.Unlock()
+	if s.providerCheckAt.IsZero() || time.Since(s.providerCheckAt) > providerCheckFor {
+		return generation.ProviderCheck{}, false
+	}
+	return s.providerCheck, true
+}
+
+func (s *Server) rememberProviderCheck(check generation.ProviderCheck) {
+	s.providerCheckMu.Lock()
+	defer s.providerCheckMu.Unlock()
+	s.providerCheck, s.providerCheckAt = check, time.Now()
 }
 
 // adminStorage is what this deployment is keeping and how much room is left.
@@ -467,18 +503,32 @@ func (s *Server) adminCancelGeneration(writer http.ResponseWriter, request *http
 	if reason == "" {
 		reason = "관리자가 생성을 중단했습니다"
 	}
-	if err := s.store.StopGeneration(request.Context(), deck.ID, reason); err != nil {
+	stopped, err := s.store.StopGeneration(request.Context(), deck.ID, reason)
+	if err != nil {
 		s.internalError(writer, request, "presentation_cancel_failed", err)
+		return
+	}
+	if !stopped {
+		// It finished between the queue being read and the button being pressed.
+		// Answering as though it had been stopped would leave an operator sure
+		// they stopped something they did not.
+		current, readErr := s.store.GetPresentation(request.Context(), deck.ID, "", true)
+		if readErr != nil {
+			s.handleStoreError(writer, request, readErr, "presentation_read_failed")
+			return
+		}
+		writeError(writer, request, http.StatusConflict, "not_in_the_queue",
+			"That deck finished before it could be stopped", map[string]any{"status": current.Status})
 		return
 	}
 	s.store.Audit(request.Context(), &actor.ID, "generation.cancel", "presentation", deck.ID,
 		map[string]any{"was": deck.Status, "reason": reason})
-	stopped, err := s.store.GetPresentation(request.Context(), deck.ID, "", true)
+	standing, err := s.store.GetPresentation(request.Context(), deck.ID, "", true)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "presentation_read_failed")
 		return
 	}
-	writeData(writer, request, http.StatusOK, stopped)
+	writeData(writer, request, http.StatusOK, standing)
 }
 
 // adminListAuditTrail answers what was written down about who did what.

@@ -699,11 +699,17 @@ func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
 // StopGeneration is an operator standing a deck down, with a reason its author
 // reads. Unlike a worker's failure it also takes a deck that is only waiting:
 // stopping the queue is most of the point of being able to see it.
-func (s *Store) StopGeneration(ctx context.Context, id, reason string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),
+// It answers whether it stopped anything. A deck that finished in the moment
+// between an operator reading the queue and pressing the button is not stopped,
+// and saying nothing there is telling them it was.
+func (s *Store) StopGeneration(ctx context.Context, id, reason string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),
 		generation_stage='',version=version+1,updated_at=now()
 		WHERE id=$1 AND status IN ('queued','generating') AND deleted_at IS NULL`, id, reason)
-	return err
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func presentationScan(p *model.Presentation) []any {

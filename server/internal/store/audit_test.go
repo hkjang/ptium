@@ -149,8 +149,14 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 
 	// Stopping one gives a reason, and the reason is what its author reads.
 	const reason = "예산 승인 전까지 중단합니다"
-	if err := store.StopGeneration(ctx, deck.ID, reason); err != nil {
-		t.Fatalf("stop it: %v", err)
+	didStop, err := store.StopGeneration(ctx, deck.ID, reason)
+	if err != nil || !didStop {
+		t.Fatalf("stop it: stopped=%v err=%v", didStop, err)
+	}
+	// And a deck that is no longer in the queue is not stopped, and says so
+	// rather than answering as though it were.
+	if again, err := store.StopGeneration(ctx, deck.ID, "두 번째 중단"); err != nil || again {
+		t.Errorf("stopping a deck that already finished answered stopped=%v (err %v)", again, err)
 	}
 	stopped, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
 	if err != nil {

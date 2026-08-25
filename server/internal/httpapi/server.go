@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,15 +76,20 @@ type Options struct {
 }
 
 type Server struct {
-	store                  *store.Store
-	settings               *settings.Service
-	keys                   *keys.Manager
-	worker                 *generation.Worker
-	generator              *generation.Generator
-	authenticator          auth.Authenticator
-	authPublic             AuthPublicConfig
-	version                string
-	assetDir               string
+	store         *store.Store
+	settings      *settings.Service
+	keys          *keys.Manager
+	worker        *generation.Worker
+	generator     *generation.Generator
+	authenticator auth.Authenticator
+	authPublic    AuthPublicConfig
+	version       string
+	assetDir      string
+	// The last reading of the model host, so a dashboard being refreshed does
+	// not knock on somebody's host once per refresh.
+	providerCheckMu        sync.Mutex
+	providerCheck          generation.ProviderCheck
+	providerCheckAt        time.Time
 	adminRoles             []string
 	bootstrapAdminEmails   []string
 	bootstrapAdminSubjects []string
@@ -258,8 +264,10 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
 	api.Handle("PATCH /api/v1/admin/errors/{id}", requireUUIDPath(s.requireAdmin("admin:errors", http.HandlerFunc(s.adminUpdateError))))
-	// Whether the model host this deployment points at answers.
+	// Whether the model host this deployment points at answers. Asking is a
+	// POST and reading is a GET, and they are not the same thing.
 	api.Handle("POST /api/v1/admin/provider-check", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminCheckProvider)))
+	api.Handle("GET /api/v1/admin/provider-check", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminCheckProvider)))
 	// What the deployment is keeping, and how much room is left for it.
 	api.Handle("GET /api/v1/admin/storage", s.requireAdmin("admin:users", http.HandlerFunc(s.adminStorage)))
 	// What is waiting, and the two things an operator can do about it.
