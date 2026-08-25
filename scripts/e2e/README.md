@@ -54,7 +54,10 @@ configured. What it holds: the deck completes, has no defects, is written in the
 language it was asked for, and says which numbers it introduced that the brief
 never gave. Names are not the deck's words — an image is named by whoever
 uploaded it and a layout by whoever made the template — so those lines are not
-read for language.
+read for language. It also asks for another draft of one slide, the other thing
+the model is for: a draft comes back written, an instruction to write it in
+English produces English, and nothing is saved — the deck on the server is as it
+was, because the author decides.
 
 `race.py` is the one that needs a server built with `-race`: it drives readers,
 writers, administrators, image readers and a generation at the same time, then

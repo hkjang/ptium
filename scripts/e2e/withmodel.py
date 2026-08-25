@@ -142,6 +142,43 @@ try:
               f"{measured.get('advisories')} advisory(ies), "
               f"{'said what it introduced' if notes.strip() else 'nothing introduced'}")
         call("DELETE", f"/presentations/{deck['id']}")
+    # Another draft of one slide, which is the other thing the model is for. It
+    # is offered and not saved: the author decides, and a deck that revised
+    # itself behind their back would be the worst of both.
+    print("── another draft of one slide ──")
+    status, drafting = call("POST", "/presentations", {"title": f"다시 쓰기 {RUN}", "prompt": "점검",
+                                                       "language": "ko"})
+    if status == 201:
+        call("PUT", f"/presentations/{drafting['id']}/source",
+             {"source": "# 현황과 문제\n- 전환 대상은 42개 시스템이며 이관 기간은 18개월로 예상됩니다\n"
+                        "- 운영 비용은 매년 12% 늘고 있습니다\n- 장애 복구는 평균 4시간이 걸립니다\n!notes 노트\n"})
+        held = data = call("GET", f"/presentations/{drafting['id']}")[1] or {}
+        before_slide = json.dumps((held.get("slides") or [{}])[0], ensure_ascii=False)
+        for name, ask in (("shorten", {"action": "shorten"}),
+                          ("in English", {"instruction": "이 슬라이드만 영어로 다시 써 주세요"})):
+            status, draft = call("POST", f"/presentations/{drafting['id']}/slides/1/revise", ask)
+            checks += 1
+            if status != 200:
+                failures.append(f"a revision asked for as {name} answered {status}: {str(draft)[:120]}")
+                continue
+            drafted = (draft or {}).get("source") or ""
+            checks += 1
+            if drafted.strip() == "":
+                failures.append(f"a revision asked for as {name} came back with nothing written")
+            checks += 1
+            if (draft or {}).get("applied"):
+                failures.append(f"a revision asked for as {name} saved itself without being asked to")
+            if name == "in English":
+                checks += 1
+                if not re.search(r"[A-Za-z]{4,}", drafted):
+                    failures.append("a slide asked for in English came back without a word of it")
+        after_slide = json.dumps(((call("GET", f"/presentations/{drafting['id']}")[1] or {}).get("slides")
+                                  or [{}])[0], ensure_ascii=False)
+        checks += 1
+        if after_slide != before_slide:
+            failures.append("the slide changed on the server although no revision was applied")
+        print("   drafts came back, and the deck is as it was")
+        call("DELETE", f"/presentations/{drafting['id']}")
 finally:
     restored = provider(was if isinstance(was, str) else "fallback")
     print("   provider put back:", json.dumps(was), restored)
