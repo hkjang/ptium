@@ -894,6 +894,19 @@ if missing.get("reachable"):
 checks += 1
 if not str(missing.get("detail") or "").strip():
     failures.append("a provider that did not answer gives no reason why")
+# A reading of a thing that has changed is not a reading of it: repointing the
+# provider must not leave a screen reporting the host it used to be. The screen
+# is asked straight after the change with nothing in between — an explicit check
+# refreshes the reading, and would hide this.
+checks += 1
+if missing.get("baseUrl") != "http://127.0.0.1:9/v1":
+    failures.append(f"after repointing the provider, the check still reads {missing.get('baseUrl')!r}")
+call("PUT", "/admin/settings", {"values": {"ai.base_url": PROVIDER_BASE_URL}}, expect=200)
+seen_by_a_screen = data_of(call("GET", "/admin/provider-check", expect=200)) or {}
+checks += 1
+if seen_by_a_screen.get("baseUrl") != PROVIDER_BASE_URL:
+    failures.append("a screen reads the provider as it was before the change: "
+                    f"{seen_by_a_screen.get('baseUrl')!r}, want {PROVIDER_BASE_URL!r}")
 call("PUT", "/admin/settings", {"values": {"ai.provider": was_provider or "fallback",
                                            "ai.base_url": PROVIDER_BASE_URL}}, expect=200)
 call("POST", "/admin/provider-check", {}, expect=403,

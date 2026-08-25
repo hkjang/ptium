@@ -102,6 +102,7 @@ func (s *Server) adminPutSettings(writer http.ResponseWriter, request *http.Requ
 		return
 	}
 	result, err := s.settings.PutBatch(request.Context(), user.ID, prepared)
+	s.forgetProviderCheckIfAI(keysOf(prepared))
 	if err != nil {
 		s.internalError(writer, request, "admin_settings_update_failed", err)
 		return
@@ -147,6 +148,7 @@ func (s *Server) putSetting(writer http.ResponseWriter, request *http.Request, u
 		return nil, false
 	}
 	setting, err := s.settings.Put(request.Context(), userID, input.Key, input.Value, sensitive, input.Description)
+	s.forgetProviderCheckIfAI([]string{input.Key})
 	if err != nil {
 		s.internalError(writer, request, "admin_setting_update_failed", err)
 		return nil, false
@@ -408,6 +410,33 @@ func (s *Server) adminCheckProvider(writer http.ResponseWriter, request *http.Re
 // that a dashboard being refreshed asks once, short enough that an operator
 // who just fixed the host does not read a stale "응답 없음" for long.
 const providerCheckFor = 30 * time.Second
+
+// forgetProviderCheckIfAI drops the remembered reading when the thing it was a
+// reading of has changed.
+//
+// An operator repoints the provider at another host and looks at the overview:
+// without this it reads the previous host, reported as answering, for another
+// half minute. A stale reading of a changed configuration is the same wrong as
+// the badge that always said "연결됨".
+func (s *Server) forgetProviderCheckIfAI(keys []string) {
+	for _, key := range keys {
+		if strings.HasPrefix(key, "ai.") {
+			s.providerCheckMu.Lock()
+			s.providerCheckAt = time.Time{}
+			s.providerCheckMu.Unlock()
+			return
+		}
+	}
+}
+
+// keysOf is the keys a batch of updates is about.
+func keysOf(updates []settings.Update) []string {
+	keys := make([]string, 0, len(updates))
+	for _, update := range updates {
+		keys = append(keys, update.Key)
+	}
+	return keys
+}
 
 func (s *Server) recentProviderCheck() (generation.ProviderCheck, bool) {
 	s.providerCheckMu.Lock()
