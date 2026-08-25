@@ -79,17 +79,47 @@ def run_container(*arguments):
     reserve()
     result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
     if result.returncode == 0:
-        return result.stdout.strip()
+        return published_port(arguments)
     if "ports are not available" not in result.stderr:
         print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
         # Exit 2 says the check could not be run. Exit 1 says the image failed
         # it, and saying that when docker would not start a container accuses
         # the release of something it did not do.
         sys.exit(2)
-    print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}\n   retrying once")
-    time.sleep(2)
-    reserve()
-    return docker(*arguments)
+    # The port is the thing that failed, so the retry does not ask for it again.
+    # Docker's forwarder answers 500 for a port nothing is using and keeps
+    # answering it for that port; another port works straight away.
+    attempts = list(arguments)
+    for attempt in range(3):
+        print(f"docker {' '.join(attempts)}\n{result.stderr.strip()}\n   retrying on another port")
+        time.sleep(2)
+        attempts = with_another_port(attempts)
+        reserve()
+        result = subprocess.run(["docker", *attempts], capture_output=True, text=True)
+        if result.returncode == 0:
+            return published_port(attempts)
+        if "ports are not available" not in result.stderr:
+            break
+    print(f"docker {' '.join(attempts)}\n{result.stderr.strip()}")
+    sys.exit(2)
+
+
+def with_another_port(arguments):
+    """The same command, asking for a host port that is free now."""
+    out = list(arguments)
+    for index, value in enumerate(out):
+        if value == "-p" and index + 1 < len(out) and ":" in out[index + 1]:
+            _, inside = out[index + 1].split(":", 1)
+            out[index + 1] = f"{free_port()}:{inside}"
+    return out
+
+
+def published_port(arguments):
+    """The host port a start ended up using, so the caller can talk to it."""
+    for index, value in enumerate(arguments):
+        if value == "-p" and index + 1 < len(arguments) and ":" in arguments[index + 1]:
+            return int(arguments[index + 1].split(":", 1)[0])
+    return 0
 
 
 # The name carries this process, so two checks running at once cannot collide.
@@ -113,6 +143,17 @@ def wait_for(url, seconds=90):
         except Exception:
             time.sleep(1)
     return False
+
+def blame_the_host(container):
+    """Whether a server that cannot be reached is running perfectly well.
+
+    A port the host will not forward — held by something else, or refused by
+    Docker's own forwarder — looks exactly like an image that will not start.
+    It is not, and saying it is accuses the release of something it did not do.
+    """
+    running = docker("inspect", "-f", "{{.State.Running}}", container, check=False).strip()
+    logs = docker("logs", container, check=False)
+    return running == "true" and "listening" in logs
 
 
 def old_call(path, body=None, method=None):
@@ -155,11 +196,14 @@ try:
             break
         time.sleep(1)
     dsn = f"postgres://postgres:up@{database}:5432/ptium?sslmode=disable"
-    run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
+    old_port = run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
            "-e", f"DATABASE_URL={dsn}", "-e", "DEV_AUTH_ENABLED=true", "-e", f"DEV_AUTH_SECRET={secret}",
            "-e", "DEV_AUTH_ALLOW_REMOTE=true", "-e", "DEV_AUTH_EMAIL=up@ptium.local", old_image)
     if not wait_for(f"http://127.0.0.1:{old_port}/readyz"):
         print(docker("logs", before, check=False))
+        if blame_the_host(before):
+            print("   the container is up and listening; this host will not forward its port")
+            sys.exit(2)
         failures.append(f"{old_image} never became ready")
     else:
         deck = old_call("/presentations", {"title": "예전 버전에서 만든 덱", "prompt": "업그레이드 점검",
@@ -177,7 +221,7 @@ try:
             failures.append(f"{old_image} could not make a deck to upgrade")
 
         docker("rm", "-f", before)
-        run_container("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
+        new_port = run_container("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
                "-e", f"DATABASE_URL={dsn}", "-e", "BOOTSTRAP_ADMIN=admin@example.com",
                "-e", f"BOOTSTRAP_ADMIN_PASSWORD={password}", new_image)
         if not wait_for(f"http://127.0.0.1:{new_port}/readyz"):
@@ -220,7 +264,7 @@ try:
             # tag they had; what makes that possible is that no migration takes
             # anything away, and the day one does, this is where it shows.
             docker("rm", "-f", after)
-            run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
+            old_port = run_container("run", "-d", "--name", before, "--network", network, "-p", f"{old_port}:8080",
                    "-e", f"DATABASE_URL={dsn}", "-e", "DEV_AUTH_ENABLED=true", "-e", f"DEV_AUTH_SECRET={secret}",
                    "-e", "DEV_AUTH_ALLOW_REMOTE=true", "-e", "DEV_AUTH_EMAIL=up@ptium.local", old_image)
             if not wait_for(f"http://127.0.0.1:{old_port}/readyz"):

@@ -120,6 +120,51 @@ func (t rawShapeTree) flatten() []rawShape {
 	return result
 }
 
+// placedShape is a shape with where it sits, so a reader can take the slide in
+// the order a person reads it rather than the order the file happens to store
+// it in.
+type placedShape struct {
+	Shape rawShape
+	Top   int
+	Left  int
+}
+
+// placed flattens the tree and says where each shape is. A shape inside a group
+// is placed at its group, because a group is one thing on the page and its
+// children keep the order they were written in.
+func (t rawShapeTree) placed() []placedShape {
+	result := make([]placedShape, 0, len(t.Shapes)+len(t.Pictures)+len(t.Frames))
+	for _, kind := range [][]rawShape{t.Shapes, t.Pictures, t.Frames} {
+		for _, shape := range kind {
+			top, left := shape.position()
+			result = append(result, placedShape{Shape: shape, Top: top, Left: left})
+		}
+	}
+	for _, group := range t.Groups {
+		top, left := 0, 0
+		if group.Transform != nil {
+			top, left = group.Transform.Off.Y, group.Transform.Off.X
+		}
+		for _, child := range group.placed() {
+			result = append(result, placedShape{Shape: child.Shape, Top: top, Left: left})
+		}
+	}
+	return result
+}
+
+// position is where a shape sits, in EMU. A shape with no transform of its own
+// takes its place from the layout, which readers of this cannot see: it sorts
+// first, keeping the order it was written in.
+func (s rawShape) position() (top, left int) {
+	if s.Xfrm != nil {
+		return s.Xfrm.Off.Y, s.Xfrm.Off.X
+	}
+	if s.SpPr != nil && s.SpPr.Xfrm != nil {
+		return s.SpPr.Xfrm.Off.Y, s.SpPr.Xfrm.Off.X
+	}
+	return 0, 0
+}
+
 type rawShape struct {
 	NvSpPr           *rawNonVisual `xml:"nvSpPr"`
 	NvPicPr          *rawNonVisual `xml:"nvPicPr"`

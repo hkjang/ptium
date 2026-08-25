@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -124,7 +125,13 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 		return ImportedSlide{}, false
 	}
 	slide := ImportedSlide{Role: slideRoleOf(pkg, part)}
-	for _, shape := range parsed.CSld.SpTree.flatten() {
+	// A slide is read the way a person reads it: down the page, then across.
+	// The file stores shapes in drawing order — all the text boxes, then the
+	// pictures, then the frames, and within each whatever order they were last
+	// touched in — so a deck written by hand came back with its argument out of
+	// order, which is the one thing an import is for.
+	for _, placed := range downThePage(parsed.CSld.SpTree.placed()) {
+		shape := placed.Shape
 		lines := shapeParagraphsWithLinks(shape, slideLinks(pkg, part, order))
 		if len(lines) == 0 {
 			continue
@@ -207,6 +214,25 @@ func runLinkTarget(hlink *struct {
 		return ""
 	}
 	return strings.TrimSpace(target)
+}
+
+// downThePage sorts shapes down the page and then across it.
+//
+// Tops within a quarter of an inch of each other are the same row: two boxes
+// side by side are rarely aligned to the EMU, and sorting them strictly by top
+// would put the lower-by-a-hair column first.
+func downThePage(shapes []placedShape) []placedShape {
+	const row = 228600 // a quarter inch in EMU
+	sorted := make([]placedShape, len(shapes))
+	copy(sorted, shapes)
+	sort.SliceStable(sorted, func(a, b int) bool {
+		bandA, bandB := sorted[a].Top/row, sorted[b].Top/row
+		if bandA != bandB {
+			return bandA < bandB
+		}
+		return sorted[a].Left < sorted[b].Left
+	})
+	return sorted
 }
 
 // linkResolver turns the relationship id a run carries into the address it
