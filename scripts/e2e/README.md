@@ -1,6 +1,6 @@
 # End-to-end sweep
 
-Eight scripts that drive a running Ptium the way a person and a client would, and
+Nine scripts that drive a running Ptium the way a person and a client would, and
 report what broke. They found the empty-upload five hundred, the responsive
 stylesheet that never applied, the Escape that threw away a sentence, and the
 deck titles that dropped their own subject.
@@ -17,6 +17,7 @@ python3 scripts/e2e/flows.py .  # generate, edit, apply source, save a slide, ex
 python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter window, keyboard
 python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
 python3 scripts/e2e/tenancy.py  # whose is whose: accounts, keys, admin doors, links
+python3 scripts/e2e/withmodel.py # generation with the provider, not the offline writer
 
 # the released image itself, on a database that has never been used
 python3 scripts/e2e/firstrun.py
@@ -43,6 +44,17 @@ product hands to a browser is fed `</text><script>…` and read back, and every
 address drawn as a link has to be one that can sit inside an attribute and a
 scheme a reader may follow. Taking the escaping out of `escapeText` makes four
 of those checks fail.
+
+`withmodel.py` is the only one that asks the model. Every other sweep runs
+offline, so the writer a deployment actually uses — the provider, the repair
+passes, the notes a deck keeps about what it did — was checked by nothing. It
+switches `ai.provider` on, generates in two languages, and puts the setting back
+the way it found it whatever happens. It skips itself when no provider is
+configured. What it holds: the deck completes, has no defects, is written in the
+language it was asked for, and says which numbers it introduced that the brief
+never gave. Names are not the deck's words — an image is named by whoever
+uploaded it and a layout by whoever made the template — so those lines are not
+read for language.
 
 `race.py` is the one that needs a server built with `-race`: it drives readers,
 writers, administrators, image readers and a generation at the same time, then
