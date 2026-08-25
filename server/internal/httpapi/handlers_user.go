@@ -304,8 +304,20 @@ func (s *Server) refitToTemplate(request *http.Request, ownerID string,
 	if err != nil {
 		return nil
 	}
+	// Slides are the authority, the same as they are when the source is read: a
+	// caller that edits a slide and changes the design in one request has those
+	// edits in the slides and not yet in the stored source, and compiling the
+	// stored one would throw the edit away.
+	source := full.Source
+	if formatted := deck.Format(full, manifest); formatted != "" &&
+		!deck.MatchesSlides(source, full, manifest) {
+		source = formatted
+	}
+	if strings.TrimSpace(source) == "" {
+		return nil
+	}
 	profile, _ := s.store.GetProfile(ctx, ownerID)
-	compiled := generation.CompileSourceWith(full.Source, full, profile,
+	compiled := generation.CompileSourceWith(source, full, profile,
 		generation.Template{ID: templateIDOf(full), Manifest: manifest},
 		s.resolveImage(request, ownerID), s.gridResolver(request, ownerID))
 	if len(compiled.Slides) == 0 {
@@ -314,7 +326,7 @@ func (s *Server) refitToTemplate(request *http.Request, ownerID string,
 	// What the author placed on the canvas is theirs and survives the change.
 	compiled.Slides = carryCanvasLayerAcross(full.Slides, compiled.Slides)
 	if err := s.store.ReplaceSlidesFromSource(ctx, full.ID, ownerID,
-		full.Source, compiled.Outline, compiled.Slides, nil); err != nil {
+		source, compiled.Outline, compiled.Slides, nil); err != nil {
 		return nil
 	}
 	refitted, err := s.store.GetPresentation(ctx, full.ID, ownerID, false)

@@ -916,8 +916,37 @@ if len(designs) >= 2:
             failures.append(f"slide {position} drawn one way when the deck moved to {designs[1].get('name')} "
                             f"and another way when it was compiled into it")
     call("DELETE", f"/presentations/{born.get('id')}", expect=204)
+    # The workspace sends the slides it has and the new design in one request,
+    # and when the deck is dirty those slides hold edits the stored source has
+    # never seen. Compiling the stored source would throw them away.
+    edited = data_of(call("POST", "/presentations", {"title": f"동시 편집 {RUN}", "prompt": "점검",
+                                                     "templateId": designs[0]["id"]}, expect=201)) or {}
+    call("PUT", f"/presentations/{edited.get('id')}/source",
+         {"source": "# 첫 장\n- 원래 요점\n\n# 둘째 장\n- 그대로 둘 요점\n"}, expect=200)
+    state = data_of(call("GET", f"/presentations/{edited.get('id')}", expect=200)) or {}
+    sending = []
+    for index, slide in enumerate(state.get("slides") or []):
+        body = slide.get("content")
+        if isinstance(body, str):
+            body = json.loads(body)
+        if index == 0:
+            body.setdefault("fields", {})["title"] = [{"text": "편집한 제목"}]
+        sending.append({"title": "편집한 제목" if index == 0 else slide.get("title"), "content": body,
+                        "layout": slide.get("layout"), "layoutId": slide.get("layoutId"),
+                        "speakerNotes": slide.get("speakerNotes") or ""})
+    call("PUT", f"/presentations/{edited.get('id')}",
+         {"slides": sending, "templateId": designs[1]["id"], "version": state.get("version")}, expect=200)
+    carried = data_of(call("GET", f"/presentations/{edited.get('id')}", expect=200)) or {}
+    checks += 1
+    if ((carried.get("slides") or [{}])[0]).get("title") != "편집한 제목":
+        failures.append("an edit sent with a design change was thrown away by the recompile")
+    written = (data_of(call("GET", f"/presentations/{edited.get('id')}/source", expect=200)) or {}).get("source", "")
+    checks += 1
+    if "편집한 제목" not in written:
+        failures.append("an edit sent with a design change is not in the deck's source")
+    call("DELETE", f"/presentations/{edited.get('id')}", expect=204)
     print(f"   {designs[0].get('name')} → {designs[1].get('name')}: drew differently, "
-          f"{moved_measured.get('defects')} defect(s), same as compiled into it")
+          f"{moved_measured.get('defects')} defect(s), same as compiled into it, edits kept")
     call("DELETE", f"/presentations/{moved.get('id')}", expect=204)
 
 print("── the numbers a brief gives, drawn ──")
