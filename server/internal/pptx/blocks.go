@@ -393,9 +393,21 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 			tileHeight = tileHeightFor(valueSize)
 		}
 		if tileHeight > available {
+			// The tile is cut to the room, so what is in it is cut to the tile:
+			// clamping the box alone drew the label, the figure and the note
+			// straight out of the bottom of the region.
 			tileHeight = available
+			for valueSize > d.Small && tileHeightFor(valueSize) > tileHeight {
+				valueSize -= 100
+			}
+			if labelLines > 1 && tileHeightFor(valueSize) > tileHeight {
+				labelLines = 1
+			}
 		}
 	}
+	// A note under the figure is the first thing to go when the room will not
+	// hold all three: the label says what it is and the figure is the point.
+	showDetail := tileHeightFor(valueSize) <= tileHeight
 	var primitives []Primitive
 	for row := 0; row < rows; row++ {
 		first := row * columns
@@ -420,13 +432,20 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 				line(item.Label), textOptions{Size: d.Small, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
 			cursor += labelHeight + d.Unit/2
 
-			valueHeight := lineHeightFor(valueSize)
+			// The figure is drawn in what is left of the tile. A tile cut down to
+			// a short region kept laying out from the top at full size, and the
+			// number was drawn below the tile it belongs to.
+			valueHeight := min(lineHeightFor(valueSize), max(inner.Bottom()-cursor, 0))
+			if valueHeight <= 0 {
+				continue
+			}
 			primitives = append(primitives, text(
 				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: valueHeight},
-				line(item.Display(block.Unit)), textOptions{Size: valueSize, Color: d.InkPrimary, Bold: true, Font: d.Major}))
+				line(item.Display(block.Unit)),
+				textOptions{Size: min(valueSize, sizeForLine(valueHeight)), Color: d.InkPrimary, Bold: true, Font: d.Major}))
 			cursor += valueHeight
 
-			if detail := strings.TrimSpace(item.Delta + " " + item.Detail); strings.TrimSpace(detail) != "" {
+			if detail := strings.TrimSpace(item.Delta + " " + item.Detail); showDetail && strings.TrimSpace(detail) != "" {
 				color := d.InkMuted
 				switch strings.ToLower(item.Trend) {
 				case "up", "good", "positive":
@@ -450,6 +469,46 @@ func hasDetail(items []Item) bool {
 		}
 	}
 	return false
+}
+
+// fitToHeight is the largest size at or below the one asked for at which the
+// text wraps into the room it has, never smaller than floor.
+//
+// A component's own text was bounded by a box and not by the words in it: a
+// detail that wrapped to more lines than the box holds was drawn below the
+// component, outside the region the template gave it and over whatever was
+// under it.
+func fitToHeight(size, width, height, floor int, lines ...string) int {
+	if width <= 0 || height <= 0 || size <= floor {
+		return size
+	}
+	fits := func(at int) bool {
+		used := 0
+		for _, line := range lines {
+			used += cellLines(line, at, width) * lineHeightFor(at)
+		}
+		return used <= height
+	}
+	for size > floor && !fits(size) {
+		size -= 100
+	}
+	if size < floor {
+		size = floor
+	}
+	return size
+}
+
+// roomForRunes is how many characters of a line fit in a height, at a size.
+// It is the count truncate needs, not a width: what does not fit is a line at
+// the bottom rather than a word at the end.
+func roomForRunes(value string, size, width, height int) int {
+	line := lineHeightFor(size)
+	if line <= 0 || width <= 0 {
+		return utf8.RuneCountInString(value)
+	}
+	rows := max(height/line, 1)
+	perRow := max(int(float64(width)/(float64(size)/100*EMUPerPoint)/0.6), 1)
+	return max(rows*perRow, 4)
 }
 
 // fitToWidth is the largest size at or below the one asked for at which every
@@ -579,6 +638,21 @@ func (d Design) layoutSteps(frame Frame, block Block) []Primitive {
 	}
 	var primitives []Primitive
 	badge := lineHeightFor(d.Heading) + d.Unit
+	titleHeight := lineHeightFor(d.Body) * 2
+	// The component is drawn into the room the template gave it. A short body
+	// region — the editorial layouts have one — held the badge and two lines of
+	// title and nothing else, and the rest was drawn below the region, over
+	// whatever was under it.
+	if badge+d.Unit*2+titleHeight > frame.Height {
+		titleHeight = lineHeightFor(d.Body)
+	}
+	if badge+d.Unit*2+titleHeight > frame.Height {
+		badge = max(frame.Height-d.Unit*2-titleHeight, d.Unit)
+	}
+	// And if the region is shorter than that, the title takes what is left of it
+	// rather than the room it wanted, at the size that room can hold.
+	titleHeight = min(titleHeight, max(frame.Height-badge-d.Unit*2, 0))
+	titleSize := min(d.Body, sizeForLine(titleHeight))
 	columns := frame.Columns(len(items), d.Unit*2)
 	// One connector behind the badges ties the steps together.
 	connectorY := frame.Y + badge/2
@@ -592,21 +666,39 @@ func (d Design) layoutSteps(frame Frame, block Block) []Primitive {
 		if block.Emphasis > 0 && block.Emphasis != index+1 {
 			fill, ink = d.Track(), d.InkSecondary
 		}
+		// The number is drawn inside the badge, so it is sized by the badge: a
+		// badge squeezed into a short region held a numeral taller than itself.
+		numberSize := min(d.Body, sizeForLine(badge))
 		primitives = append(primitives,
 			Primitive{Kind: shapeEllipse, Frame: Frame{X: column.X, Y: frame.Y, Width: badge, Height: badge}, Fill: fill},
 			text(Frame{X: column.X, Y: frame.Y, Width: badge, Height: badge},
-				line(strconv.Itoa(index+1)), textOptions{Size: d.Body, Color: ink, Bold: true, Align: "ctr", Anchor: "ctr", Font: d.Minor}))
+				line(strconv.Itoa(index+1)), textOptions{Size: numberSize, Color: ink, Bold: true, Align: "ctr", Anchor: "ctr", Font: d.Minor}))
 		cursor := frame.Y + badge + d.Unit*2
-		titleHeight := lineHeightFor(d.Body) * 2
 		primitives = append(primitives, text(
 			Frame{X: column.X, Y: cursor, Width: column.Width, Height: titleHeight},
-			line(item.Label), textOptions{Size: d.Body, Color: d.InkPrimary, Bold: true, Font: d.Minor, Wrap: true}))
+			line(item.Label), textOptions{Size: titleSize, Color: d.InkPrimary, Bold: true, Font: d.Minor, Wrap: true}))
 		cursor += titleHeight
 		if detail := strings.TrimSpace(item.Detail + item.Value); detail != "" {
+			said := strings.TrimSpace(item.Detail + " " + item.Value)
+			room := frame.Bottom() - cursor
+			if room < lineHeightFor(d.Micro) {
+				// There is no room for a word of it. A component that cannot show
+				// its details shows its steps, rather than spilling out of the
+				// region to say them.
+				continue
+			}
+			// The box was bounded by the frame and the words were not: a detail
+			// that wraps to more lines than the room holds is drawn below the
+			// component, over whatever is under it. It is set smaller until it
+			// fits, and cut where it cannot.
+			size := fitToHeight(d.Small, column.Width, room, d.Micro, said)
+			if lines := cellLines(said, size, column.Width); lines*lineHeightFor(size) > room {
+				said = truncate(said, roomForRunes(said, size, column.Width, room))
+			}
 			primitives = append(primitives, text(
-				Frame{X: column.X, Y: cursor, Width: column.Width, Height: frame.Bottom() - cursor},
-				line(strings.TrimSpace(item.Detail+" "+item.Value)),
-				textOptions{Size: d.Small, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
+				Frame{X: column.X, Y: cursor, Width: column.Width, Height: room},
+				line(said),
+				textOptions{Size: size, Color: d.InkMuted, Font: d.Minor, Wrap: true}))
 		}
 	}
 	return primitives
@@ -1547,6 +1639,15 @@ func (d Design) layoutShare(frame Frame, block Block) []Primitive {
 }
 
 // --- helpers ----------------------------------------------------------------
+
+// sizeForLine is the largest size whose line fits a height: the inverse of
+// lineHeightFor, for the places that are given room and have to choose a size.
+func sizeForLine(height int) int {
+	if height <= 0 {
+		return 100
+	}
+	return max(int(float64(height)/1.26/float64(EMUPerPoint)*100), 100)
+}
 
 func lineHeightFor(size int) int {
 	return int(float64(size) / 100 * float64(EMUPerPoint) * 1.26)

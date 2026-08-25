@@ -339,3 +339,36 @@ func TestAKPIValueFitsItsCard(t *testing.T) {
 		t.Fatalf("the value draws %d wide in a card of %d, past what the floor explains", widest, inner)
 	}
 }
+
+// A component is drawn into the room the template gave it. The editorial
+// layouts have a short body region, and steps held the badge and two lines of
+// title and drew the rest below the region — over whatever was under it, or off
+// the slide.
+func TestAComponentIsDrawnInsideItsRegion(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	design := NewDesign(manifest)
+	steps := Block{Kind: BlockSteps, Items: []Item{
+		{Label: "준비", Detail: "범위 · 조직 · 예산을 확정"},
+		{Label: "이행", Detail: "단계별로 적용하고 완료 조건을 확인"},
+		{Label: "안정화", Detail: "운영 이관과 점검 기준 확정"},
+	}}
+	kpi := Block{Kind: BlockKPI, Items: []Item{
+		{Label: "전환 시스템", Value: "42개"}, {Label: "절감", Value: "18억"}, {Label: "복구 시간", Value: "30분"},
+	}}
+	for _, height := range []int{3600000, 2400000, 1200000, 900000, 600000} {
+		frame := Frame{X: 800000, Y: 1800000, Width: 9000000, Height: height}
+		for name, block := range map[string]Block{"steps": steps, "kpi": kpi} {
+			primitives := RenderBlock(design, frame, block).Primitives
+			if len(primitives) == 0 {
+				continue
+			}
+			lowest := 0
+			for _, primitive := range primitives {
+				lowest = max(lowest, primitive.Frame.Bottom())
+			}
+			if over := lowest - frame.Bottom(); over > frame.Height/100 {
+				t.Errorf("%s in a %dEMU region draws %dEMU below it", name, height, over)
+			}
+		}
+	}
+}
