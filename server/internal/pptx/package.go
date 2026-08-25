@@ -255,6 +255,36 @@ func (p *Package) RelatedParts(sourcePart, shortType string) []string {
 }
 
 // RelationshipByID resolves a relationship identifier to a part name.
+// LinkByID resolves a relationship a hyperlink points through.
+//
+// RelationshipByID answers with parts and refuses external targets, which is
+// right for a picture and wrong for a link: a link's target is an address
+// outside the package almost every time. A link to another slide answers as the
+// deck source writes one — "#3" — when the caller says what order the slides
+// are in.
+func (p *Package) LinkByID(sourcePart, id string, slideParts []string) (string, bool) {
+	for _, relationship := range p.Relationships(sourcePart) {
+		if relationship.ID != id {
+			continue
+		}
+		target := strings.TrimSpace(relationship.Target)
+		if target == "" {
+			return "", false
+		}
+		if relationship.TargetMode == "External" {
+			return target, true
+		}
+		resolved := Resolve(sourcePart, target)
+		for index, part := range slideParts {
+			if part == resolved {
+				return fmt.Sprintf("#%d", index+1), true
+			}
+		}
+		return "", false
+	}
+	return "", false
+}
+
 func (p *Package) RelationshipByID(sourcePart, id string) (string, bool) {
 	for _, relationship := range p.Relationships(sourcePart) {
 		if relationship.ID == id && relationship.TargetMode != "External" {

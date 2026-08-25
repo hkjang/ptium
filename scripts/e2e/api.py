@@ -504,6 +504,45 @@ if document_id:
         if wanted not in written:
             failures.append(f"the imported spreadsheet lost {wanted!r}")
     print(f"   spreadsheet -> {imported.get('slides')} slides, cited")
+# A deck carried in from PowerPoint keeps what its runs said, not only what
+# they spelled. An address is the one part of a link nobody can type again from
+# looking at the slide, and it used to be dropped: the words came across and the
+# link did not. The file is stripped of what Ptium leaves in its own exports, so
+# the importer has to read the drawing the way it reads a stranger's deck.
+print("── a deck carried in keeps its links ──")
+linked = data_of(call("POST", "/presentations", {"title": f"링크 왕복 {RUN}", "prompt": "점검",
+                                                 "language": "ko"}, expect=201))
+if linked:
+    call("PUT", f"/presentations/{linked['id']}/source",
+         {"source": "# 링크 슬라이드\n- 자료는 [계획서](https://example.com/plan)에, **굵게**도 있습니다\n"}, expect=200)
+    _, carried = call("GET", f"/presentations/{linked['id']}/export?format=pptx", raw=True, expect=200)
+    stripped = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(carried)) as original:
+        with zipfile.ZipFile(stripped, "w", zipfile.ZIP_DEFLATED) as out:
+            for item in original.infolist():
+                body = original.read(item.filename)
+                if b"deckSource" in body:
+                    if item.filename.endswith(".rels") or item.filename.endswith("[Content_Types].xml"):
+                        body = re.sub(rb"<Relationship[^>]*deckSource[^>]*/>", b"", body)
+                        body = re.sub(rb"<Override[^>]*ptiumSource[^>]*/>", b"", body)
+                    else:
+                        continue
+                out.writestr(item, body)
+    brought = data_of(call("POST", "/presentations/import",
+                           files={"file": (f"남의덱-{RUN}.pptx", stripped.getvalue(),
+                                           "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                           expect=201)) or {}
+    brought_id = ((brought.get("presentation") or {}).get("id")) or ""
+    if brought_id:
+        read_back = (data_of(call("GET", f"/presentations/{brought_id}/source", expect=200)) or {}).get("source", "")
+        for wanted in ["https://example.com/plan", "**굵게**"]:
+            checks += 1
+            if wanted not in read_back:
+                failures.append(f"a deck carried in from PowerPoint lost {wanted!r}")
+        print(f"   link kept: {'https://example.com/plan' in read_back} · emphasis kept: {'**굵게**' in read_back}")
+        call("DELETE", f"/presentations/{brought_id}", expect=204)
+    call("DELETE", f"/presentations/{linked['id']}", expect=204)
+
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
      note="a file nothing here can read must say so")
 

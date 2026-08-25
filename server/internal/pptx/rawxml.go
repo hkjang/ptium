@@ -296,10 +296,17 @@ type rawParagraph struct {
 		RPr struct {
 			Size      int           `xml:"sz,attr"`
 			Bold      string        `xml:"b,attr"`
+			Italic    string        `xml:"i,attr"`
 			SolidFill *rawSolidFill `xml:"solidFill"`
 			Latin     struct {
 				Typeface string `xml:"typeface,attr"`
 			} `xml:"latin"`
+			// A link lives in the run that carries it, as a relationship id the
+			// slide's own rels resolve. Reading the text and not this is how an
+			// imported deck came back with the words of a link and no address.
+			HlinkClick *struct {
+				ID string `xml:"id,attr"`
+			} `xml:"hlinkClick"`
 		} `xml:"rPr"`
 		Text string `xml:"t"`
 	} `xml:"r"`

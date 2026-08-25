@@ -85,12 +85,16 @@ func ReadDeck(pkg *Package) ImportedDeck {
 	if !ok {
 		return deck
 	}
+	// The order is read first, because a link to another slide is written as its
+	// position — "#3" — and a slide cannot know its own place from the inside.
+	var order []string
 	for _, match := range slideIDPattern.FindAllStringSubmatch(presentation, -1) {
-		part, ok := pkg.RelationshipByID("ppt/presentation.xml", match[1])
-		if !ok {
-			continue
+		if part, ok := pkg.RelationshipByID("ppt/presentation.xml", match[1]); ok {
+			order = append(order, part)
 		}
-		if slide, ok := readSlide(pkg, part); ok {
+	}
+	for _, part := range order {
+		if slide, ok := readSlide(pkg, part, order); ok {
 			deck.Slides = append(deck.Slides, slide)
 		}
 	}
@@ -106,7 +110,7 @@ func ReadDeck(pkg *Package) ImportedDeck {
 }
 
 // readSlide turns one slide part into text.
-func readSlide(pkg *Package, part string) (ImportedSlide, bool) {
+func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) {
 	content, ok := pkg.Text(part)
 	if !ok {
 		return ImportedSlide{}, false
@@ -121,7 +125,7 @@ func readSlide(pkg *Package, part string) (ImportedSlide, bool) {
 	}
 	slide := ImportedSlide{Role: slideRoleOf(pkg, part)}
 	for _, shape := range parsed.CSld.SpTree.flatten() {
-		lines := shapeParagraphs(shape)
+		lines := shapeParagraphsWithLinks(shape, slideLinks(pkg, part, order))
 		if len(lines) == 0 {
 			continue
 		}
@@ -161,7 +165,76 @@ func readSlide(pkg *Package, part string) (ImportedSlide, bool) {
 }
 
 // shapeParagraphs reads a shape's text, one paragraph per line, keeping depth.
+// markedUpRun writes a run the way deck source spells it. Emphasis around an
+// empty or blank run would be markup with nothing inside it, so it is left off.
+func markedUpRun(text, bold, italic, target string) string {
+	if strings.TrimSpace(text) == "" {
+		return text
+	}
+	if target != "" {
+		// A link's own text may not carry the brackets that delimit it.
+		text = strings.NewReplacer("[", "(", "]", ")").Replace(text)
+		text = "[" + text + "](" + target + ")"
+		return text
+	}
+	if isOn(bold) {
+		text = "**" + text + "**"
+	}
+	if isOn(italic) {
+		text = "*" + text + "*"
+	}
+	return text
+}
+
+// isOn reads the "1"/"true"/"0" a DrawingML attribute is written with.
+func isOn(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "on":
+		return true
+	}
+	return false
+}
+
+// runLinkTarget resolves a run's link, if it has one this package can follow.
+func runLinkTarget(hlink *struct {
+	ID string `xml:"id,attr"`
+}, resolve linkResolver) string {
+	if hlink == nil || resolve == nil {
+		return ""
+	}
+	target, ok := resolve(hlink.ID)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(target)
+}
+
+// linkResolver turns the relationship id a run carries into the address it
+// points at. It is nil when the part has no relationships to read.
+type linkResolver func(id string) (string, bool)
+
+// slideLinks resolves a slide part's own relationships, including the external
+// ones: a hyperlink points outside the package almost every time.
+func slideLinks(pkg *Package, part string, order []string) linkResolver {
+	return func(id string) (string, bool) {
+		if strings.TrimSpace(id) == "" {
+			return "", false
+		}
+		return pkg.LinkByID(part, id, order)
+	}
+}
+
 func shapeParagraphs(shape rawShape) []ImportedLine {
+	return shapeParagraphsWithLinks(shape, nil)
+}
+
+// shapeParagraphsWithLinks reads a shape's text and keeps what the runs say
+// about it: a link's address, and bold and italic, written as the deck source
+// spells them. Concatenating the runs and dropping their properties is how a
+// deck imported from PowerPoint came back with the words of a link and no
+// address at all — the one part of a link that cannot be typed again from
+// looking at the slide.
+func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine {
 	if shape.TxBody == nil {
 		return nil
 	}
@@ -169,7 +242,7 @@ func shapeParagraphs(shape rawShape) []ImportedLine {
 	for _, paragraph := range shape.TxBody.Para {
 		var builder strings.Builder
 		for _, run := range paragraph.Runs {
-			builder.WriteString(run.Text)
+			builder.WriteString(markedUpRun(run.Text, run.RPr.Bold, run.RPr.Italic, runLinkTarget(run.RPr.HlinkClick, link)))
 		}
 		text := strings.TrimSpace(builder.String())
 		if text == "" {
