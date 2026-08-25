@@ -945,6 +945,44 @@ if len(designs) >= 2:
     if "편집한 제목" not in written:
         failures.append("an edit sent with a design change is not in the deck's source")
     call("DELETE", f"/presentations/{edited.get('id')}", expect=204)
+
+    # Compiling a deck again is a rewrite of every slide, so what is not written
+    # in the source has to be carried across it: an image placed in a slot, an
+    # object the author put on the canvas, and the notes.
+    carried_over = data_of(call("POST", "/presentations", {"title": f"교체 보존 {RUN}", "prompt": "점검",
+                                                           "templateId": designs[0]["id"]}, expect=201)) or {}
+    call("PUT", f"/presentations/{carried_over.get('id')}/source",
+         {"source": f"# 그림 장\n@picture\n::image logo-{RUN}.png | 현장\n!notes 노트는 남는다\n"}, expect=200)
+    holding = data_of(call("GET", f"/presentations/{carried_over.get('id')}", expect=200)) or {}
+    kept = (holding.get("slides") or [{}])[0]
+    kept_content = kept.get("content")
+    if isinstance(kept_content, str):
+        kept_content = json.loads(kept_content)
+    kept_content["elements"] = [{"id": "el-1", "kind": "text", "text": "직접 놓은 글",
+                                 "x": 0.1, "y": 0.1, "width": 0.3, "height": 0.1, "zIndex": 1}]
+    call("PUT", f"/presentations/{carried_over.get('id')}",
+         {"slides": [{"title": kept.get("title"), "content": kept_content, "layout": kept.get("layout"),
+                      "layoutId": kept.get("layoutId"), "speakerNotes": kept.get("speakerNotes") or ""}],
+          "version": holding.get("version")}, expect=200)
+    holding = data_of(call("GET", f"/presentations/{carried_over.get('id')}", expect=200)) or {}
+    call("PUT", f"/presentations/{carried_over.get('id')}",
+         {"templateId": designs[1]["id"], "version": holding.get("version")}, expect=200)
+    moved_state = data_of(call("GET", f"/presentations/{carried_over.get('id')}", expect=200)) or {}
+    surviving = (moved_state.get("slides") or [{}])[0]
+    surviving_content = surviving.get("content")
+    if isinstance(surviving_content, str):
+        surviving_content = json.loads(surviving_content)
+    checks += 1
+    if not (surviving_content.get("images") or {}):
+        failures.append("a deck moved to another template lost the image placed on it")
+    checks += 1
+    if not (surviving_content.get("elements") or []):
+        failures.append("a deck moved to another template lost what the author put on the canvas")
+    checks += 1
+    if "노트는 남는다" not in (surviving.get("speakerNotes") or ""):
+        failures.append("a deck moved to another template lost its speaker notes")
+    print("   image, canvas objects and notes carried across the move")
+    call("DELETE", f"/presentations/{carried_over.get('id')}", expect=204)
     print(f"   {designs[0].get('name')} → {designs[1].get('name')}: drew differently, "
           f"{moved_measured.get('defects')} defect(s), same as compiled into it, edits kept")
     call("DELETE", f"/presentations/{moved.get('id')}", expect=204)
