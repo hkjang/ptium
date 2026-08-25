@@ -273,8 +273,55 @@ func (s *Server) updatePresentation(writer http.ResponseWriter, request *http.Re
 		s.handleStoreError(writer, request, err, "presentation_update_failed")
 		return
 	}
+	// A deck moved to another template is fitted to that template. The slides
+	// hold the sizes and the cuts decided for the design they were compiled in,
+	// so carrying them across unchanged put a component 0.34cm outside its
+	// region and three lines of text in room for one — in a template that draws
+	// the same deck cleanly when the deck is compiled into it.
+	if refitted := s.refitToTemplate(request, user.ID, current, updated); refitted != nil {
+		updated = *refitted
+	}
 	s.store.Audit(request.Context(), &user.ID, "presentation.update", "presentation", updated.ID, map[string]any{"slidesReplaced": slides != nil})
 	writeData(writer, request, http.StatusOK, updated)
+}
+
+// refitToTemplate compiles the deck's own source into the template it now has.
+//
+// It answers nil when there is nothing to do: the template did not change, the
+// deck has no source to compile, or the compile produced nothing — none of
+// which should cost the caller the update it just made.
+func (s *Server) refitToTemplate(request *http.Request, ownerID string,
+	before, after model.Presentation) *model.Presentation {
+	if before.TemplateID == after.TemplateID || strings.TrimSpace(after.Source) == "" {
+		return nil
+	}
+	ctx := request.Context()
+	full, err := s.store.GetPresentation(ctx, after.ID, ownerID, false)
+	if err != nil {
+		return nil
+	}
+	_, manifest, err := s.presentationTemplate(ctx, full)
+	if err != nil {
+		return nil
+	}
+	profile, _ := s.store.GetProfile(ctx, ownerID)
+	compiled := generation.CompileSourceWith(full.Source, full, profile,
+		generation.Template{ID: templateIDOf(full), Manifest: manifest},
+		s.resolveImage(request, ownerID), s.gridResolver(request, ownerID))
+	if len(compiled.Slides) == 0 {
+		return nil
+	}
+	// What the author placed on the canvas is theirs and survives the change.
+	compiled.Slides = carryCanvasLayerAcross(full.Slides, compiled.Slides)
+	if err := s.store.ReplaceSlidesFromSource(ctx, full.ID, ownerID,
+		full.Source, compiled.Outline, compiled.Slides, nil); err != nil {
+		return nil
+	}
+	refitted, err := s.store.GetPresentation(ctx, full.ID, ownerID, false)
+	if err != nil {
+		return nil
+	}
+	return &refitted
 }
 
 func (s *Server) deletePresentation(writer http.ResponseWriter, request *http.Request) {

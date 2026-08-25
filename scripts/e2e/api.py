@@ -858,12 +858,25 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # written into one can be written into another. A deck rebinds each slide to the
 # layout of the same role, and what it draws changes with it.
 print("── a deck moved to another template ──")
-designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=20", expect=200)) or []) if t.get("id")]
+designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=100", expect=200)) or []) if t.get("id")]
+# The destination is a design whose body region is short — the editorial family
+# — because that is where carrying the old design's fitting across shows. Two
+# designs of the same proportions draw the same deck the same way whether it was
+# moved or compiled, and prove nothing.
+tight = next((t for t in designs if "Editorial" in (t.get("name") or "")), None)
+if tight and len(designs) >= 2:
+    designs = [next(t for t in designs if t["id"] != tight["id"]), tight]
 if len(designs) >= 2:
     moved = data_of(call("POST", "/presentations", {"title": f"디자인 교체 {RUN}", "prompt": "점검",
                                                     "templateId": designs[0]["id"]}, expect=201)) or {}
-    call("PUT", f"/presentations/{moved.get('id')}/source",
-         {"source": "# 표지입니다\n@cover\n> 부제목\n\n# 본문\n@content\n- 한 줄\n- 두 줄\n"}, expect=200)
+    # A deck with components in it, because that is what a template has to hold:
+    # a deck of two plain slides moves cleanly into anything.
+    moved_source = ("# 표지입니다\n@cover\n> 부제목\n\n"
+                    "# 이행 순서\n::steps\n- 준비 | 범위 · 조직 · 예산을 확정\n"
+                    "- 이행 | 단계별로 적용하고 완료 조건을 확인\n- 안정화 | 운영 이관과 점검 기준 확정\n::\n\n"
+                    "# 기대 효과\n::kpi\n- 전환 시스템 | 42개\n- 절감 | 18억\n- 복구 시간 | 30분\n::\n\n"
+                    "# 채널별 비중\n::share\n- 직판 | 46%\n- 대리점 | 33%\n- 온라인 | 21%\n::\n")
+    call("PUT", f"/presentations/{moved.get('id')}/source", {"source": moved_source}, expect=200)
     status, drawn_before = call("GET", f"/presentations/{moved.get('id')}/preview.svg?slide=1&width=600", raw=True, expect=200)
     call("PATCH", f"/presentations/{moved.get('id')}", {"templateId": designs[1]["id"]}, expect=200)
     after_state = data_of(call("GET", f"/presentations/{moved.get('id')}", expect=200)) or {}
@@ -878,7 +891,33 @@ if len(designs) >= 2:
     status, moved_pptx = call("GET", f"/presentations/{moved.get('id')}/export?format=pptx", raw=True, expect=200)
     if not moved_pptx.startswith(b"PK"):
         failures.append("a deck in its new design does not export")
-    print(f"   {designs[0].get('name')} → {designs[1].get('name')}: drew differently, {moved_measured.get('defects')} defect(s)")
+    # Moving a deck into a template has to leave it as the template would have
+    # drawn it. The slides carry the sizes and the cuts decided for the design
+    # they were compiled in, so a deck that moved kept the old design's fitting
+    # and drew outside its regions in a template that draws it cleanly.
+    born = data_of(call("POST", "/presentations", {"title": f"디자인 원본 {RUN}", "prompt": "점검",
+                                                   "templateId": designs[1]["id"]}, expect=201)) or {}
+    call("PUT", f"/presentations/{born.get('id')}/source", {"source": moved_source}, expect=200)
+    born_measured = data_of(call("GET", f"/presentations/{born.get('id')}/inspect", expect=200)) or {}
+    checks += 1
+    if moved_measured.get("defects") != born_measured.get("defects"):
+        failures.append(f"a deck moved to {designs[1].get('name')} has {moved_measured.get('defects')} defect(s) "
+                        f"and the same deck compiled into it has {born_measured.get('defects')}")
+    # The same deck and the same design draw the same slide, however it got
+    # there. Comparing the drawings rather than the defect count catches a deck
+    # that kept the old design's sizes in a template where that still fits.
+    for position in (2, 3, 4):
+        status, moved_drawing = call("GET", f"/presentations/{moved.get('id')}/preview.svg?slide={position}&width=600",
+                                     raw=True, expect=200)
+        status, born_drawing = call("GET", f"/presentations/{born.get('id')}/preview.svg?slide={position}&width=600",
+                                    raw=True, expect=200)
+        checks += 1
+        if moved_drawing != born_drawing:
+            failures.append(f"slide {position} drawn one way when the deck moved to {designs[1].get('name')} "
+                            f"and another way when it was compiled into it")
+    call("DELETE", f"/presentations/{born.get('id')}", expect=204)
+    print(f"   {designs[0].get('name')} → {designs[1].get('name')}: drew differently, "
+          f"{moved_measured.get('defects')} defect(s), same as compiled into it")
     call("DELETE", f"/presentations/{moved.get('id')}", expect=204)
 
 print("── the numbers a brief gives, drawn ──")
