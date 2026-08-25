@@ -4,9 +4,34 @@ import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { Badge, ErrorState, LoadingState } from '../components/UI'
 import { Link } from '../router'
-import { displayError } from '../utils'
+import { displayError, relativeDate } from '../utils'
 
 const number = (value: unknown) => Number(value ?? 0).toLocaleString('ko-KR')
+
+/**
+ * What the queue is doing, in the words that tell an operator whether to act.
+ *
+ * A queue of twelve says nothing on its own: twelve decks asked for in the last
+ * minute is a busy morning and one deck waiting since three hours ago is a
+ * worker that died. The age of the oldest thing still waiting is the number
+ * that tells them apart, so it is what this line says.
+ */
+function waitingFor(data: Record<string, unknown>) {
+  const queued = Number(data.queuedGenerations ?? 0)
+  if (queued === 0) return '대기 없음'
+  const seconds = Number(data.oldestQueuedSeconds ?? 0)
+  if (seconds >= 900) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분 — 작업자를 확인하세요`
+  if (seconds >= 60) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분`
+  return `가장 오래 기다린 덱 ${seconds}초`
+}
+
+/** Whether anything has been written lately, and whether it went wrong. */
+function generationHealth(data: Record<string, unknown>) {
+  const failed = Number(data.failedLastDay ?? 0)
+  const last = typeof data.lastCompletedAt === 'string' ? data.lastCompletedAt : ''
+  const wrote = last ? `마지막 완성 ${relativeDate(last)}` : '완성된 덱이 아직 없습니다'
+  return { failed, wrote, tone: (failed > 0 ? 'warning' : 'success') as 'warning' | 'success' }
+}
 
 export function AdminOverviewPage() {
   const [data, setData] = useState<Record<string, unknown>>({})
@@ -20,9 +45,23 @@ export function AdminOverviewPage() {
         <article><span className="metric-icon violet"><Users size={19} /></span><div><span>전체 사용자</span><strong>{number(data.users)}</strong><small>프로비저닝된 계정</small></div></article>
         <article><span className="metric-icon coral"><FileStack size={19} /></span><div><span>프레젠테이션</span><strong>{number(data.presentations)}</strong><small>전체 저장 덱</small></div></article>
         <article><span className="metric-icon mint"><CheckCircle2 size={19} /></span><div><span>생성 완료</span><strong>{number(data.completedDecks)}</strong><small>PPTX 내보내기 가능</small></div></article>
-        <article><span className="metric-icon amber"><Sparkles size={19} /></span><div><span>생성 대기</span><strong>{number(data.queuedGenerations)}</strong><small>대기 또는 처리 중</small></div></article>
+        <article><span className="metric-icon amber"><Sparkles size={19} /></span><div><span>생성 대기</span><strong>{number(data.queuedGenerations)}</strong><small>{waitingFor(data)}</small></div></article>
         <article><span className="metric-icon coral"><Activity size={19} /></span><div><span>열린 오류</span><strong>{number(data.openIncidents)}</strong><small>확인 또는 해결 필요</small></div></article>
         <article><span className="metric-icon violet"><KeyRound size={19} /></span><div><span>키 상태 활성</span><strong>{number(data.activeApiKeys)}</strong><small>유효 기간·회전 기준, 사용자 정지 제외 전</small></div></article>
+      </section>
+      <section className="admin-panel generation-health">
+        <div className="panel-head"><div><h2>생성 상태</h2><p>이 배포의 작성기가 실제로 돌고 있는지</p></div>
+          <Badge tone={generationHealth(data).tone}>{generationHealth(data).failed > 0
+            ? `24시간 내 실패 ${number(data.failedLastDay)}건` : '최근 24시간 실패 없음'}</Badge></div>
+        <div className="service-list">
+          <div><span className="service-icon"><Sparkles size={17} /></span>
+            <div><strong>{waitingFor(data)}</strong><small>대기 {number(data.queuedGenerations)}건</small></div>
+            <Badge tone={Number(data.oldestQueuedSeconds ?? 0) >= 900 ? 'warning' : 'success'}>
+              {Number(data.oldestQueuedSeconds ?? 0) >= 900 ? '멈춤 의심' : '정상'}</Badge></div>
+          <div><span className="service-icon"><CheckCircle2 size={17} /></span>
+            <div><strong>{generationHealth(data).wrote}</strong><small>완성 누적 {number(data.completedDecks)}건</small></div>
+            <Badge tone="success">기록됨</Badge></div>
+        </div>
       </section>
       <div className="admin-overview-grid">
         <section className="admin-panel service-health"><div className="panel-head"><div><h2>서비스 상태</h2><p>이 화면을 제공한 실제 구성 요소 상태</p></div><Badge tone="success"><CheckCircle2 size={12} /> 응답 정상</Badge></div><div className="service-list">

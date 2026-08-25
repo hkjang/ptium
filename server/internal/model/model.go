@@ -227,6 +227,27 @@ type Slide struct {
 	UpdatedAt      time.Time       `json:"updatedAt"`
 }
 
+// AuditEntry is one thing somebody did, as the trail recorded it. The actor is
+// carried as an email as well as an id: an operator reading the trail knows
+// people by their address, not by a uuid.
+type AuditEntry struct {
+	ID         int64           `json:"id"`
+	Action     string          `json:"action"`
+	TargetType string          `json:"targetType,omitempty"`
+	TargetID   string          `json:"targetId,omitempty"`
+	Metadata   json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt  time.Time       `json:"createdAt"`
+	ActorID    string          `json:"actorId,omitempty"`
+	ActorEmail string          `json:"actorEmail,omitempty"`
+	ActorName  string          `json:"actorName,omitempty"`
+}
+
+// AuditAction is one kind of entry and how many of it the trail holds.
+type AuditAction struct {
+	Action string `json:"action"`
+	Count  int    `json:"count"`
+}
+
 type Setting struct {
 	Key        string          `json:"key"`
 	Value      json.RawMessage `json:"value,omitempty"`

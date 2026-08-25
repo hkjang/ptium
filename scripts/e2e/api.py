@@ -857,6 +857,55 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # The product's central promise: the template is the design, and a deck that was
 # written into one can be written into another. A deck rebinds each slide to the
 # layout of the same role, and what it draws changes with it.
+# Everything in this server writes an audit record. Until the trail had a
+# reader, "who turned the provider on" and "who deleted that deck" were
+# questions with a table behind them and no door.
+print("── the trail says who did what ──")
+audited = data_of(call("POST", "/presentations", {"title": f"감사 {RUN}", "prompt": "점검",
+                                                  "language": "ko"}, expect=201)) or {}
+if audited.get("id"):
+    call("PUT", f"/presentations/{audited['id']}/source", {"source": "# 한 장\n- 요점\n"}, expect=200)
+    call("DELETE", f"/presentations/{audited['id']}", expect=204)
+    trail = call("GET", f"/admin/audit?targetId={audited['id']}&days=1", expect=200)[1] or {}
+    rows = trail.get("data") if isinstance(trail, dict) else None
+    rows = rows if rows is not None else (trail.get("items") if isinstance(trail, dict) else []) or []
+    said = [row.get("action") for row in rows]
+    checks += 1
+    if "presentation.create" not in said or not any(str(a).startswith("presentation.") and "trash" in str(a) or
+                                                    str(a) == "presentation.delete" for a in said):
+        failures.append(f"the trail of one deck does not hold what was done to it: {said}")
+    checks += 1
+    if rows and rows[0].get("action") == "presentation.create":
+        failures.append("the trail reads oldest first; an operator opens it to see what just happened")
+    checks += 1
+    if rows and not (rows[0].get("actorEmail") or rows[0].get("actorName")):
+        failures.append("the trail names its actor by id alone, which nobody knows by sight")
+    actions = data_of(call("GET", "/admin/audit/actions?days=1", expect=200)) or []
+    checks += 1
+    if not any(row.get("action") == "presentation.create" for row in actions):
+        failures.append("the actions a filter can offer do not include what this deployment writes")
+    print(f"   one deck: {said} · {len(actions)} kinds of entry today")
+# And the trail is the administrator's to read.
+plain_headers = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"}
+for path in ("/admin/audit", "/admin/audit/actions"):
+    request = urllib.request.Request(BASE + path, headers=plain_headers)
+    checks += 1
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            failures.append(f"{path} answered {response.status} to an account without the administrator role")
+    except urllib.error.HTTPError as error:
+        if error.code not in (401, 403, 404):
+            failures.append(f"{path} answered {error.code} to an account without the administrator role")
+
+# What the queue is doing, which a count on its own does not say.
+overview = data_of(call("GET", "/admin/overview", expect=200)) or {}
+for field in ("oldestQueuedSeconds", "failedLastDay"):
+    checks += 1
+    if field not in overview:
+        failures.append(f"the overview does not say {field}: a queue depth alone cannot tell a busy morning from a dead worker")
+print(f"   queue: {overview.get('queuedGenerations')} waiting, oldest {overview.get('oldestQueuedSeconds')}s, "
+      f"{overview.get('failedLastDay')} failed in a day")
+
 print("── a deck moved to another template ──")
 designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=100", expect=200)) or []) if t.get("id")]
 # The destination is a design whose body region is short — the editorial family

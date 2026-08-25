@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/hkjang/ptium/server/internal/model"
 )
@@ -25,6 +26,14 @@ type Overview struct {
 	QueuedGenerations int `json:"queuedGenerations"`
 	OpenIncidents     int `json:"openIncidents"`
 	ActiveAPIKeys     int `json:"activeApiKeys"`
+
+	// Whether generation is moving. A queue of twelve says nothing on its own:
+	// twelve decks asked for in the last minute is a busy morning, and one deck
+	// waiting since three hours ago is a worker that died. The age of the oldest
+	// thing still waiting is the number that tells them apart.
+	OldestQueuedSeconds int        `json:"oldestQueuedSeconds"`
+	FailedLastDay       int        `json:"failedLastDay"`
+	LastCompletedAt     *time.Time `json:"lastCompletedAt,omitempty"`
 }
 
 func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
@@ -35,9 +44,107 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 		(SELECT count(*) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE status IN ('queued','generating') AND deleted_at IS NULL),
 		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged')),
-		(SELECT count(*) FROM api_keys WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND (rotated_to_id IS NULL OR grace_until>now()))`).Scan(
-		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys)
+		(SELECT count(*) FROM api_keys WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND (rotated_to_id IS NULL OR grace_until>now())),
+		(SELECT COALESCE(EXTRACT(EPOCH FROM now()-min(updated_at))::int,0) FROM presentations
+			WHERE status IN ('queued','generating') AND deleted_at IS NULL),
+		(SELECT count(*) FROM presentations WHERE status='failed' AND deleted_at IS NULL AND updated_at>now()-interval '1 day'),
+		(SELECT max(updated_at) FROM presentations WHERE status='completed' AND deleted_at IS NULL)`).Scan(
+		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys,
+		&result.OldestQueuedSeconds, &result.FailedLastDay, &result.LastCompletedAt)
 	return result, err
+}
+
+// AuditFilter narrows the trail to the question being asked. Every field is
+// optional: an operator usually arrives with one of "who changed the provider",
+// "what happened to this deck" and "what did this person do".
+type AuditFilter struct {
+	// Action matches from the start, so "presentation" finds every
+	// presentation.* entry and "presentation.delete" only the deletions.
+	Action string
+	// Actor is an email or a user id. An id is what the row holds and an email
+	// is what an operator knows.
+	Actor string
+	// Target is the kind of thing acted on, and TargetID the one thing.
+	Target   string
+	TargetID string
+	// Since keeps the trail to what happened recently. Zero means all of it.
+	Since time.Time
+	// Search looks through the action, the target and what was recorded with it.
+	Search string
+}
+
+// ListAuditTrail reads what was written down about who did what.
+//
+// Thirty-five places in this server write an audit record and, until this,
+// nothing read one: the trail existed and could not be opened. An operator
+// asking "who turned the provider on" or "who deleted that deck" had a table
+// they could only reach with psql.
+func (s *Store) ListAuditTrail(ctx context.Context, filter AuditFilter, limit, offset int) ([]model.AuditEntry, int, error) {
+	limit, offset = clampPage(limit, offset)
+	arguments := []any{
+		strings.TrimSpace(filter.Action),
+		strings.TrimSpace(filter.Actor),
+		strings.TrimSpace(filter.Target),
+		strings.TrimSpace(filter.TargetID),
+		filter.Since,
+		"%" + strings.TrimSpace(filter.Search) + "%",
+	}
+	const where = `WHERE ($1='' OR a.action LIKE $1 || '%')
+		AND ($2='' OR u.email ILIKE '%' || $2 || '%' OR a.actor_id::text = NULLIF($2,'')::text)
+		AND ($3='' OR a.target_type = $3)
+		AND ($4='' OR a.target_id = $4)
+		AND ($5::timestamptz IS NULL OR a.created_at >= $5)
+		AND ($6='%%' OR a.action ILIKE $6 OR a.target_type ILIKE $6 OR a.target_id ILIKE $6
+			OR a.metadata::text ILIKE $6 OR COALESCE(u.email,'') ILIKE $6)`
+	var total int
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT count(*) FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id `+where,
+		arguments...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.Pool.Query(ctx,
+		`SELECT a.id, a.action, a.target_type, a.target_id, a.metadata, a.created_at,
+			COALESCE(a.actor_id::text,''), COALESCE(u.email,''), COALESCE(u.name,'')
+		FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id `+where+`
+		ORDER BY a.created_at DESC, a.id DESC LIMIT $7 OFFSET $8`,
+		append(arguments, limit, offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	entries := make([]model.AuditEntry, 0, limit)
+	for rows.Next() {
+		var entry model.AuditEntry
+		if err := rows.Scan(&entry.ID, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.Metadata,
+			&entry.CreatedAt, &entry.ActorID, &entry.ActorEmail, &entry.ActorName); err != nil {
+			return nil, 0, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, total, rows.Err()
+}
+
+// AuditActions are the kinds of entry the trail holds, with how many of each.
+// It is what a filter offers instead of asking an operator to remember the
+// names this server writes.
+func (s *Store) AuditActions(ctx context.Context, since time.Time) ([]model.AuditAction, error) {
+	rows, err := s.Pool.Query(ctx,
+		`SELECT action, count(*)::int FROM audit_logs
+		WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+		GROUP BY action ORDER BY count(*) DESC, action`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	actions := make([]model.AuditAction, 0)
+	for rows.Next() {
+		var action model.AuditAction
+		if err := rows.Scan(&action.Action, &action.Count); err != nil {
+			return nil, err
+		}
+		actions = append(actions, action)
+	}
+	return actions, rows.Err()
 }
 
 func (s *Store) ListSettings(ctx context.Context) ([]model.Setting, error) {

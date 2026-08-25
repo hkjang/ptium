@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -363,6 +365,57 @@ func (s *Server) adminUpdateUser(writer http.ResponseWriter, request *http.Reque
 	}
 	s.store.Audit(request.Context(), &actor.ID, "user.admin_update", "user", current.ID, map[string]any{"isAdmin": isAdmin, "disabled": disabled})
 	writeData(writer, request, http.StatusOK, updated)
+}
+
+// adminListAuditTrail answers what was written down about who did what.
+//
+// The trail is filtered the way an operator arrives at it: with an action
+// ("who changed a setting"), a person ("what did this address do"), or one
+// thing ("what happened to this deck"). Everything is optional, and the
+// default is the last thing that happened.
+func (s *Server) adminListAuditTrail(writer http.ResponseWriter, request *http.Request) {
+	limit, offset := pagination(request)
+	query := request.URL.Query()
+	filter := store.AuditFilter{
+		Action:   strings.TrimSpace(query.Get("action")),
+		Actor:    strings.TrimSpace(query.Get("actor")),
+		Target:   strings.TrimSpace(query.Get("target")),
+		TargetID: strings.TrimSpace(query.Get("targetId")),
+		Search:   strings.TrimSpace(query.Get("search")),
+	}
+	// "since" is said in days, because that is how the question is asked: what
+	// happened today, this week, since the deployment on Tuesday.
+	if days := strings.TrimSpace(query.Get("days")); days != "" {
+		if count, err := strconv.Atoi(days); err == nil && count > 0 {
+			if count > 3650 {
+				count = 3650
+			}
+			filter.Since = time.Now().AddDate(0, 0, -count)
+		}
+	}
+	entries, total, err := s.store.ListAuditTrail(request.Context(), filter, limit, offset)
+	if err != nil {
+		s.internalError(writer, request, "admin_audit_read_failed", err)
+		return
+	}
+	writeList(writer, request, entries, total, limit, offset)
+}
+
+// adminAuditActions is what the trail holds, so a filter can offer the actions
+// this deployment actually writes rather than a list somebody has to remember.
+func (s *Server) adminAuditActions(writer http.ResponseWriter, request *http.Request) {
+	var since time.Time
+	if days := strings.TrimSpace(request.URL.Query().Get("days")); days != "" {
+		if count, err := strconv.Atoi(days); err == nil && count > 0 {
+			since = time.Now().AddDate(0, 0, -count)
+		}
+	}
+	actions, err := s.store.AuditActions(request.Context(), since)
+	if err != nil {
+		s.internalError(writer, request, "admin_audit_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, actions)
 }
 
 func (s *Server) adminListErrors(writer http.ResponseWriter, request *http.Request) {

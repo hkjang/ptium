@@ -251,6 +251,9 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
 	api.Handle("PATCH /api/v1/admin/errors/{id}", requireUUIDPath(s.requireAdmin("admin:errors", http.HandlerFunc(s.adminUpdateError))))
+	// The trail is written by everything and was readable by nothing.
+	api.Handle("GET /api/v1/admin/audit", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListAuditTrail)))
+	api.Handle("GET /api/v1/admin/audit/actions", s.requireAdmin("admin:users", http.HandlerFunc(s.adminAuditActions)))
 	api.Handle("GET /api/v1/admin/overview", s.requireAdmin("admin:users", http.HandlerFunc(s.adminOverview)))
 
 	protected := auth.AuthenticationMiddleware(s.authenticator, auth.MiddlewareOptions{

@@ -3270,6 +3270,42 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/audit:
+    get:
+      operationId: listAuditTrail
+      tags: [Admin]
+      summary: Read what was written down about who did what
+      description: >
+        Every action this server takes is recorded. The trail is filtered the
+        way an operator arrives at it: with an action ("who changed a setting"),
+        a person ("what did this address do"), or one thing ("what happened to
+        this deck"). Newest first. Administrators only.
+      parameters:
+        - { in: query, name: action, schema: { type: string }, description: "Matches from the start: presentation finds every presentation.* entry" }
+        - { in: query, name: actor, schema: { type: string }, description: "An email or a user id" }
+        - { in: query, name: target, schema: { type: string }, description: "The kind of thing acted on" }
+        - { in: query, name: targetId, schema: { type: string }, description: "The one thing acted on" }
+        - { in: query, name: search, schema: { type: string }, description: "Looks through the action, the target, the actor and what was recorded" }
+        - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 3650 }, description: "How far back to read" }
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Offset' }
+      responses:
+        '200':
+          description: A page of the trail, newest first
+        '403': { description: The trail is the administrator's to read }
+  /api/v1/admin/audit/actions:
+    get:
+      operationId: listAuditActions
+      tags: [Admin]
+      summary: The kinds of entry this deployment writes, with how many of each
+      description: >
+        What a filter offers, so nobody has to remember the action names this
+        server writes.
+      parameters:
+        - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 3650 } }
+      responses:
+        '200': { description: Each action and its count, most frequent first }
+        '403': { description: The trail is the administrator's to read }
   /api/v1/admin/overview:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4351,7 +4387,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.12.20
+            service.version: 1.13.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

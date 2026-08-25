@@ -363,6 +363,19 @@ export interface AdminUser extends User {
   presentationsCount?: number
 }
 
+/** One thing somebody did, as the trail recorded it. */
+export interface AuditEntry {
+  id: number
+  action: string
+  targetType: string
+  targetId: string
+  actorId: string
+  actorEmail: string
+  actorName: string
+  metadata: Record<string, unknown> | null
+  createdAt: string
+}
+
 export interface ServerError {
   id: string
   fingerprint?: string

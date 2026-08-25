@@ -8,3 +8,9 @@
 @import './styles-templates.css';
 @import './styles-guide.css';
 @import './styles-responsive.css';
+
+/* The audit trail is read a page at a time: the trail of a live deployment is
+   tens of thousands of rows and nobody reads it whole. */
+.audit-pager { display: flex; align-items: center; gap: 12px; justify-content: flex-end; padding: 14px 4px 2px; }
+.audit-pager span { margin-right: auto; color: var(--ink-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.generation-health { margin-bottom: 18px; }

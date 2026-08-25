@@ -1,4 +1,5 @@
 import type {
+  AuditEntry,
   AdminUser,
   ApiKey,
   Asset,
@@ -195,6 +196,21 @@ function normalizeApiKey(value: ApiKey & Record<string, unknown>): ApiKey {
     createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
     lastUsedAt: String(value.lastUsedAt || value.last_used_at || '') || undefined,
     expiresAt,
+  }
+}
+
+function normalizeAuditEntry(value: Record<string, unknown>): AuditEntry {
+  return {
+    id: Number(value.id ?? 0),
+    action: String(value.action ?? ''),
+    targetType: String(value.targetType ?? ''),
+    targetId: String(value.targetId ?? ''),
+    actorId: String(value.actorId ?? ''),
+    actorEmail: String(value.actorEmail ?? ''),
+    actorName: String(value.actorName ?? ''),
+    metadata: (value.metadata && typeof value.metadata === 'object'
+      ? value.metadata as Record<string, unknown> : null),
+    createdAt: String(value.createdAt ?? ''),
   }
 }
 
@@ -1344,6 +1360,33 @@ export const api = {
   async updateAdminUser(id: string, input: Record<string, unknown>) {
     const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
     return normalizeUser(unwrapOne<AdminUser & Record<string, unknown>>(raw, ['data', 'user'])) as AdminUser
+  },
+  /**
+   * What the server wrote down about who did what.
+   *
+   * Everything writes to this trail and, until it had a reader, an operator
+   * asking "who turned the provider on" had a table they could only reach with
+   * psql. One page at a time: the trail of a live deployment is tens of
+   * thousands of rows and nobody reads it whole.
+   */
+  async auditTrail(query: { action?: string; actor?: string; target?: string; targetId?: string
+    search?: string; days?: number; limit?: number; offset?: number } = {}) {
+    const search = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && String(value) !== '') search.set(key, String(value))
+    }
+    if (!search.has('limit')) search.set('limit', '50')
+    const raw = await request<unknown>(`/admin/audit?${search}`)
+    const entries = unwrapList<AuditEntry & Record<string, unknown>>(raw, ['items', 'data', 'entries'])
+    const total = Number((raw as { meta?: { total?: unknown } })?.meta?.total ?? entries.length)
+    return { entries: entries.map(normalizeAuditEntry), total }
+  },
+  /** The kinds of entry this deployment writes, so a filter offers them. */
+  async auditActions(days?: number) {
+    const raw = await request<unknown>(`/admin/audit/actions${days ? `?days=${days}` : ''}`)
+    return unwrapList<{ action?: unknown; count?: unknown }>(raw, ['items', 'data', 'actions'])
+      .map((row) => ({ action: String(row.action ?? ''), count: Number(row.count ?? 0) }))
+      .filter((row) => row.action !== '')
   },
   async serverErrors() {
     return (await requestAllPages<ServerError & Record<string, unknown>>('/admin/errors', ['errors', 'items', 'data'])).map(normalizeServerError)

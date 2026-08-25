@@ -2,6 +2,7 @@ import { ArrowLeft, Home, LoaderCircle, ShieldAlert } from 'lucide-react'
 import { useAuth } from './auth/AuthContext'
 import { BrandMark, useBrand } from './branding/BrandContext'
 import { Button } from './components/UI'
+import { AdminAuditPage } from './pages/AdminAuditPage'
 import { AdminErrorsPage } from './pages/AdminErrorsPage'
 import { AdminOverviewPage } from './pages/AdminOverviewPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
@@ -57,6 +58,7 @@ export function App() {
   if (pathname === '/admin/settings') return <AdminSettingsPage />
   if (pathname === '/admin/users') return <AdminUsersPage />
   if (pathname === '/admin/errors') return <AdminErrorsPage />
+  if (pathname === '/admin/audit') return <AdminAuditPage />
   return <NotFound />
 }
 
