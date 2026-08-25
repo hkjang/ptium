@@ -36,6 +36,10 @@ type ImportedSlide struct {
 	Bullets []ImportedLine
 	Notes   string
 	Role    string
+	// Sources are the citations drawn on the slide. They are a line of text like
+	// any other on the page, and read as one they became a point: a deck came
+	// back arguing "출처: 내부 자료 2026".
+	Sources []string
 	// Hidden is a slide the author took out of the show without deleting it.
 	// Carrying it in as an ordinary slide puts something back in front of a room
 	// that somebody decided a room should not see.
@@ -162,6 +166,10 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 		case "dt", "ftr", "sldNum", "sldImg", "hdr":
 			continue
 		}
+		if cited := citationsIn(lines); len(cited) > 0 {
+			slide.Sources = append(slide.Sources, cited...)
+			continue
+		}
 		slide.Bullets = append(slide.Bullets, lines...)
 	}
 	// A slide with no title placeholder still has a title: its first line.
@@ -174,7 +182,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 	slide.Charts, slide.OtherCharts = readCharts(pkg, part)
 	slide.Tables = readTables(content)
 	slide.Pictures = readPictures(pkg, part, parsed.CSld.SpTree, slideArea(pkg))
-	slide.Notes = readNotes(pkg, part)
+	slide.Notes = withoutRepeatedCitations(readNotes(pkg, part, order), slide.Sources)
 	return slide, true
 }
 
@@ -250,6 +258,70 @@ func downThePage(shapes []placedShape) []placedShape {
 	})
 	return sorted
 }
+
+// withoutRepeatedCitations drops from the notes what the slide already cites.
+//
+// A citation is written twice on the way out — drawn on the slide and repeated
+// under the notes, where a presenter can read it — so reading both back gives
+// the deck the same source twice, once as a citation and once as a sentence in
+// the notes.
+func withoutRepeatedCitations(notes string, sources []string) string {
+	trimmed := strings.TrimSpace(notes)
+	if trimmed == "" || len(sources) == 0 {
+		return trimmed
+	}
+	tail := citationTail.FindStringIndex(trimmed)
+	if tail == nil {
+		return trimmed
+	}
+	// Only when what follows the heading is the citations themselves: an author
+	// who ends a note with the word "출처" and something else keeps it.
+	rest := strings.TrimSpace(trimmed[tail[1]:])
+	for _, cited := range sources {
+		rest = strings.TrimSpace(strings.Replace(rest, strings.TrimSpace(cited), "", 1))
+		rest = strings.Trim(rest, " .,·-—0123456789).")
+	}
+	if rest != "" {
+		return trimmed
+	}
+	return strings.TrimSpace(trimmed[:tail[0]])
+}
+
+// citationTail is the heading that introduces the citations repeated under the
+// notes, wherever the languages put it.
+var citationTail = regexp.MustCompile(`\s*(?:출처|Sources?|出典|来源)\s*[::]?\s*`)
+
+// citationLine is how a citation is drawn: the word for "source", a colon, and
+// the works cited. Several are numbered and set two spaces apart.
+var citationLine = regexp.MustCompile(`^(?:출처|Sources?|出典|来源)\s*[::]\s*(.+)$`)
+
+// citationsIn reads a shape that is a citation and nothing else. A shape with
+// anything else in it is prose, and prose that mentions a source is still
+// prose.
+func citationsIn(lines []ImportedLine) []string {
+	if len(lines) != 1 {
+		return nil
+	}
+	found := citationLine.FindStringSubmatch(strings.TrimSpace(lines[0].Text))
+	if found == nil {
+		return nil
+	}
+	var cited []string
+	for _, entry := range strings.Split(found[1], "  ") {
+		entry = strings.TrimSpace(entry)
+		// Several citations are numbered where they are drawn; the number is the
+		// drawing's, not the author's.
+		if mark := citationMark.FindStringSubmatch(entry); mark != nil {
+			entry = strings.TrimSpace(mark[1])
+		}
+		if entry != "" {
+			cited = append(cited, entry)
+		}
+	}
+	return cited
+}
+
+var citationMark = regexp.MustCompile(`^[\p{L}\d]{1,3}[.)]\s+(.+)$`)
 
 // linkResolver turns the relationship id a run carries into the address it
 // points at. It is nil when the part has no relationships to read.
@@ -423,7 +495,7 @@ func cellText(body *rawTxBody) string {
 
 // readNotes reads the speaker notes attached to a slide, without the copy of the
 // slide's own text that a notes page carries.
-func readNotes(pkg *Package, slidePart string) string {
+func readNotes(pkg *Package, slidePart string, order []string) string {
 	notesPart, ok := pkg.RelatedPart(slidePart, "notesSlide")
 	if !ok {
 		return ""
@@ -446,7 +518,9 @@ func readNotes(pkg *Package, slidePart string) string {
 		if reference == nil || normalizePlaceholderType(reference.Type) != "body" {
 			continue
 		}
-		for _, line := range shapeParagraphs(shape) {
+		// The notes part keeps its own relationships, and a note is where an
+		// author puts the address of the thing they will be asked about.
+		for _, line := range shapeParagraphsWithLinks(shape, slideLinks(pkg, notesPart, order)) {
 			notes = append(notes, line.Text)
 		}
 	}

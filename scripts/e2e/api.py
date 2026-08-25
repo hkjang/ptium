@@ -515,7 +515,9 @@ linked = data_of(call("POST", "/presentations", {"title": f"링크 왕복 {RUN}"
 if linked:
     call("PUT", f"/presentations/{linked['id']}/source",
          {"source": "# 링크 슬라이드\n- 자료는 [계획서](https://example.com/plan)에, **굵게**도 있습니다\n"
-                    "\n# 숨긴 장\n- 아직 공유하지 않을 내용\n!skip\n"}, expect=200)
+                    "\n# 숨긴 장\n- 아직 공유하지 않을 내용\n!skip\n"
+                    "\n# 근거\n- 요점\n!source 내부 자료 2026\n"
+                    "!notes 자세한 것은 [문서](https://example.com/detail)에\n"}, expect=200)
     _, carried = call("GET", f"/presentations/{linked['id']}/export?format=pptx", raw=True, expect=200)
     stripped = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(carried)) as original:
@@ -536,11 +538,17 @@ if linked:
     brought_id = ((brought.get("presentation") or {}).get("id")) or ""
     if brought_id:
         read_back = (data_of(call("GET", f"/presentations/{brought_id}/source", expect=200)) or {}).get("source", "")
-        for wanted in ["https://example.com/plan", "**굵게**", "!skip"]:
+        for wanted in ["https://example.com/plan", "**굵게**", "!skip",
+                       "!source 내부 자료 2026", "https://example.com/detail"]:
             checks += 1
             if wanted not in read_back:
                 failures.append(f"a deck carried in from PowerPoint lost {wanted!r}")
-        print(f"   link kept: {'https://example.com/plan' in read_back} · emphasis kept: {'**굵게**' in read_back}")
+        # A citation read back as a point would say "출처: …" in the body.
+        checks += 1
+        if "- 출처" in read_back:
+            failures.append("a citation came back as a point rather than a citation")
+        print(f"   link kept: {'https://example.com/plan' in read_back} · emphasis: {'**굵게**' in read_back}"
+              f" · hidden: {'!skip' in read_back} · cited: {'!source' in read_back}")
         call("DELETE", f"/presentations/{brought_id}", expect=204)
     call("DELETE", f"/presentations/{linked['id']}", expect=204)
 

@@ -129,3 +129,16 @@ func TestImportedHiddenSlidesAreSkipped(t *testing.T) {
 		t.Errorf("the hidden slide lost its mark:\n%s", hidden)
 	}
 }
+
+// And it is written where the deck keeps citations.
+func TestImportedCitationsAreWrittenAsSources(t *testing.T) {
+	source, _ := SourceFromImport(pptx.ImportedDeck{Slides: []pptx.ImportedSlide{
+		{Title: "근거", Bullets: []pptx.ImportedLine{{Text: "요점"}}, Sources: []string{"내부 자료 2026"}},
+	}})
+	if !strings.Contains(source, "!source 내부 자료 2026") {
+		t.Errorf("the citation is not written as one:\n%s", source)
+	}
+	if strings.Contains(source, "- 출처") {
+		t.Errorf("the citation is still a point:\n%s", source)
+	}
+}

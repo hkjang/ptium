@@ -81,6 +81,13 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		// A slide the author took out of the show stays out of it. Carrying it in
 		// as an ordinary slide is not losing something: it is putting something
 		// back in front of a room that somebody decided a room should not see.
+		// A citation is written where the deck keeps citations, not as a point
+		// that says "출처: …".
+		for _, cited := range slide.Sources {
+			if cited = strings.TrimSpace(cited); cited != "" {
+				fmt.Fprintf(&builder, "!source %s\n", escapeSourceLine(cited))
+			}
+		}
 		if slide.Hidden {
 			builder.WriteString("!skip\n")
 		}
