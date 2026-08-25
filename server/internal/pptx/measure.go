@@ -29,14 +29,45 @@ func advanceEm(character rune) float64 {
 		character == 'I', character == '.', character == ',', character == ':', character == ';',
 		character == '\'', character == '|', character == '!':
 		return 0.29
+	case character == '%', character == '\u2030':
+		// The percent sign is wide in both families this product meets — 0.89 in
+		// the built-in face, 0.889 in Arial — and it was measured at 0.52 with
+		// the rest of ASCII. It is in every share and every KPI a brief produces.
+		return 0.85
+	case character == '@', character == '#', character == '&', character == 'W':
+		return 0.85
 	case character >= '0' && character <= '9':
 		return 0.55
 	case character >= 'A' && character <= 'Z':
 		return 0.66
 	case character == 'm', character == 'w', character == 'M', character == 'W':
 		return 0.85
+	case character >= 0x1F000, character >= 0x20000 && character <= 0x2FA1F:
+		// Emoji and the CJK characters past the basic plane draw full width.
+		return 1.0
+	case character == '\u2014', character == '\u2026', character == '\u203B':
+		// The em dash, the ellipsis and ※. The first is in nearly every heading
+		// this product writes — "배치 지연 — 기대 효과" — and it draws at 0.89 em in
+		// the built-in face and 1.0 in Arial, against the 0.6 it used to be
+		// measured at. Measuring a character narrower than it draws is how a line
+		// keeps a size that does not fit and nothing reports it.
+		return 0.95
+	case character == '\u2013':
+		return 0.7
+	case character >= 0x2018 && character <= 0x201F:
+		// Curly quotes are narrow: 0.3 to 0.45 drawn.
+		return 0.45
+	case character == '\u00B7', character == '\u00B0', character == '\u00B4', character == '\u2022':
+		return 0.5
+	case character >= 0x2020 && character <= 0x2BFF:
+		// Arrows, geometric shapes, maths and the rest of the symbols a brief
+		// uses: 0.89 in the built-in face.
+		return 0.9
 	case character < 0x80:
-		return 0.52
+		// The rest of ASCII, which is mostly lowercase Latin: 0.556 in Arial and
+		// 0.56 to 0.59 in the built-in face. At 0.52 a line of English measured
+		// about four percent narrow, always in the direction that overflows.
+		return 0.55
 	}
 	return 0.6
 }
