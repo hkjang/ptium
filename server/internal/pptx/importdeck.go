@@ -36,6 +36,10 @@ type ImportedSlide struct {
 	Bullets []ImportedLine
 	Notes   string
 	Role    string
+	// Hidden is a slide the author took out of the show without deleting it.
+	// Carrying it in as an ordinary slide puts something back in front of a room
+	// that somebody decided a room should not see.
+	Hidden bool
 	// Tables come across whole: a table is words in a grid, and Ptium draws one
 	// from exactly that.
 	Tables [][][]string
@@ -117,6 +121,9 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 		return ImportedSlide{}, false
 	}
 	var parsed struct {
+		// show="0" on the slide's own root is how the format says "not part of
+		// the show"; its absence is the default.
+		Show string `xml:"show,attr"`
 		CSld struct {
 			SpTree rawShapeTree `xml:"spTree"`
 		} `xml:"cSld"`
@@ -124,7 +131,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 	if err := xml.Unmarshal([]byte(content), &parsed); err != nil {
 		return ImportedSlide{}, false
 	}
-	slide := ImportedSlide{Role: slideRoleOf(pkg, part)}
+	slide := ImportedSlide{Role: slideRoleOf(pkg, part), Hidden: isOff(parsed.Show)}
 	// A slide is read the way a person reads it: down the page, then across.
 	// The file stores shapes in drawing order — all the text boxes, then the
 	// pictures, then the frames, and within each whatever order they were last
@@ -191,6 +198,15 @@ func markedUpRun(text, bold, italic, target string) string {
 		text = "*" + text + "*"
 	}
 	return text
+}
+
+// isOff reads an attribute that is present and says no.
+func isOff(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "0", "false", "off":
+		return true
+	}
+	return false
 }
 
 // isOn reads the "1"/"true"/"0" a DrawingML attribute is written with.

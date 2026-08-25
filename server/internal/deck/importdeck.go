@@ -78,6 +78,12 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		if notes := strings.TrimSpace(slide.Notes); notes != "" {
 			fmt.Fprintf(&builder, "!notes %s\n", strings.ReplaceAll(notes, "\n", " "))
 		}
+		// A slide the author took out of the show stays out of it. Carrying it in
+		// as an ordinary slide is not losing something: it is putting something
+		// back in front of a room that somebody decided a room should not see.
+		if slide.Hidden {
+			builder.WriteString("!skip\n")
+		}
 		// A chart comes back as its numbers. The plot in the file was drawn from
 		// figures, and those figures are what the slide is arguing; redrawn by the
 		// design it lands in, they argue the same thing in the new deck's hand.

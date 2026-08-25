@@ -84,3 +84,34 @@ func TestAnImportedSlideIsReadDownThePage(t *testing.T) {
 		t.Errorf("read %q, want %q", strings.Join(said, " "), want)
 	}
 }
+
+// A slide the author took out of the show stays out of it. Carrying it in as an
+// ordinary slide is not losing something — it is putting something back in
+// front of a room that somebody decided a room should not see.
+func TestAHiddenSlideIsStillHiddenAfterImport(t *testing.T) {
+	_, pkg, manifest := buildTemplate(t, "plum-rail")
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	rendered, err := Render(pkg, manifest, Deck{Title: "숨김", Language: "ko", Slides: []Slide{
+		{LayoutID: content.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "보이는 장"}}, SlotBody: {{Text: "요점"}}}, Notes: "말할 내용"},
+		{LayoutID: content.ID, Skipped: true, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "숨긴 장"}}, SlotBody: {{Text: "아직 공유하지 않을 내용"}}}, Notes: "말할 내용"},
+	}})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	stored, err := Open(rendered)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	read := ReadDeck(stored)
+	if len(read.Slides) != 2 {
+		t.Fatalf("read %d slides, want 2", len(read.Slides))
+	}
+	if read.Slides[0].Hidden {
+		t.Errorf("the first slide is part of the show and was read as hidden")
+	}
+	if !read.Slides[1].Hidden {
+		t.Errorf("a slide written with show=\"0\" was read as part of the show")
+	}
+}

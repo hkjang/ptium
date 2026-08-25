@@ -514,7 +514,8 @@ linked = data_of(call("POST", "/presentations", {"title": f"링크 왕복 {RUN}"
                                                  "language": "ko"}, expect=201))
 if linked:
     call("PUT", f"/presentations/{linked['id']}/source",
-         {"source": "# 링크 슬라이드\n- 자료는 [계획서](https://example.com/plan)에, **굵게**도 있습니다\n"}, expect=200)
+         {"source": "# 링크 슬라이드\n- 자료는 [계획서](https://example.com/plan)에, **굵게**도 있습니다\n"
+                    "\n# 숨긴 장\n- 아직 공유하지 않을 내용\n!skip\n"}, expect=200)
     _, carried = call("GET", f"/presentations/{linked['id']}/export?format=pptx", raw=True, expect=200)
     stripped = io.BytesIO()
     with zipfile.ZipFile(io.BytesIO(carried)) as original:
@@ -535,7 +536,7 @@ if linked:
     brought_id = ((brought.get("presentation") or {}).get("id")) or ""
     if brought_id:
         read_back = (data_of(call("GET", f"/presentations/{brought_id}/source", expect=200)) or {}).get("source", "")
-        for wanted in ["https://example.com/plan", "**굵게**"]:
+        for wanted in ["https://example.com/plan", "**굵게**", "!skip"]:
             checks += 1
             if wanted not in read_back:
                 failures.append(f"a deck carried in from PowerPoint lost {wanted!r}")

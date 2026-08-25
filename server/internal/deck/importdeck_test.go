@@ -111,3 +111,21 @@ func TestImportedPlotsBecomeWhatTheyMean(t *testing.T) {
 		t.Fatalf("the imported source does not parse cleanly: %v", parsed.Warnings)
 	}
 }
+
+// And the source it becomes says so, because that is where the deck keeps it.
+func TestImportedHiddenSlidesAreSkipped(t *testing.T) {
+	source, _ := SourceFromImport(pptx.ImportedDeck{Slides: []pptx.ImportedSlide{
+		{Title: "보이는 장", Bullets: []pptx.ImportedLine{{Text: "요점"}}},
+		{Title: "숨긴 장", Bullets: []pptx.ImportedLine{{Text: "아직 공유하지 않을 내용"}}, Hidden: true},
+	}})
+	if strings.Count(source, "!skip") != 1 {
+		t.Fatalf("the hidden slide is not marked skipped:\n%s", source)
+	}
+	shown, hidden, _ := strings.Cut(source, "# 숨긴 장")
+	if strings.Contains(shown, "!skip") {
+		t.Errorf("the slide that is part of the show was marked skipped:\n%s", shown)
+	}
+	if !strings.Contains(hidden, "!skip") {
+		t.Errorf("the hidden slide lost its mark:\n%s", hidden)
+	}
+}
