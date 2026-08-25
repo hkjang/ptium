@@ -682,15 +682,27 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 	return tx.Commit(ctx)
 }
 
-// FailGeneration marks a generation as having failed, with the words its
-// author reads.
+// FailGeneration is a worker saying that the deck it was writing did not come
+// out, in the words its author reads.
 //
-// Only a deck that is still waiting or being written can fail: an operator who
-// stops one gives a reason, and the worker finishing a moment later used to
-// overwrite it with its own — so the author was told to try again for a deck
-// somebody had deliberately stopped.
+// It applies to a deck that is still being written and to nothing else. Two
+// things go wrong otherwise. An operator stops a deck and gives a reason, and
+// the worker finishing a moment later overwrites it with "try again" — so the
+// author is told to retry something somebody deliberately stopped. And an
+// operator pushes a stuck deck back into the queue, and a worker still holding
+// the previous attempt fails the fresh one before anybody picks it up.
 func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND status IN ('queued','generating') AND deleted_at IS NULL`, id, message)
+	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, message)
+	return err
+}
+
+// StopGeneration is an operator standing a deck down, with a reason its author
+// reads. Unlike a worker's failure it also takes a deck that is only waiting:
+// stopping the queue is most of the point of being able to see it.
+func (s *Store) StopGeneration(ctx context.Context, id, reason string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),
+		generation_stage='',version=version+1,updated_at=now()
+		WHERE id=$1 AND status IN ('queued','generating') AND deleted_at IS NULL`, id, reason)
 	return err
 }
 

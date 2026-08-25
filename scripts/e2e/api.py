@@ -898,6 +898,13 @@ else:
     checks += 1
     if state.get("status") not in ("queued", "generating", "completed"):
         failures.append(f"a requeued deck reads as {state.get('status')!r}")
+    # A deck pushed back into the queue is not the previous attempt's to fail.
+    # A worker still holding it reports a moment later, and the fresh attempt
+    # died before anybody picked it up.
+    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+    checks += 1
+    if state.get("status") == "failed" and "다시 시도" in str(state.get("errorMessage")):
+        failures.append("a deck pushed back into the queue was failed by the attempt before it")
     print(f"   one deck: seen, stopped with a reason the author reads, and pushed back")
 without_the_role = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"}
 call("GET", "/admin/generations", expect=403, headers=without_the_role,

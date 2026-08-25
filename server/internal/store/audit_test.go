@@ -143,7 +143,7 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 
 	// Stopping one gives a reason, and the reason is what its author reads.
 	const reason = "예산 승인 전까지 중단합니다"
-	if err := store.FailGeneration(ctx, deck.ID, reason); err != nil {
+	if err := store.StopGeneration(ctx, deck.ID, reason); err != nil {
 		t.Fatalf("stop it: %v", err)
 	}
 	stopped, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
@@ -164,6 +164,25 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 	}
 	if again.ErrorMessage != reason {
 		t.Errorf("a worker finishing later overwrote the operator's reason with %q", again.ErrorMessage)
+	}
+
+	// And the other way the two verbs are not the same: an operator pushes a
+	// stuck deck back into the queue, and a worker still holding the previous
+	// attempt reports its failure. The deck waiting in the queue is not that
+	// worker's to fail — it killed the fresh attempt before anybody picked it up.
+	if _, err := store.QueueGeneration(ctx, deck.ID, owner.ID, false, 50); err != nil {
+		t.Fatalf("push it back: %v", err)
+	}
+	if err := store.FailGeneration(ctx, deck.ID, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
+		t.Fatalf("the straggler errored: %v", err)
+	}
+	waiting, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if err != nil {
+		t.Fatalf("read it back: %v", err)
+	}
+	if waiting.Status != "queued" {
+		t.Errorf("a deck waiting in the queue reads as %q after a straggler reported: %q",
+			waiting.Status, waiting.ErrorMessage)
 	}
 
 	if _, err := pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID); err != nil {

@@ -432,7 +432,7 @@ func (s *Server) adminCancelGeneration(writer http.ResponseWriter, request *http
 	if reason == "" {
 		reason = "관리자가 생성을 중단했습니다"
 	}
-	if err := s.store.FailGeneration(request.Context(), deck.ID, reason); err != nil {
+	if err := s.store.StopGeneration(request.Context(), deck.ID, reason); err != nil {
 		s.internalError(writer, request, "presentation_cancel_failed", err)
 		return
 	}
