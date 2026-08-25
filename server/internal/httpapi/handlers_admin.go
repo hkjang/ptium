@@ -368,6 +368,26 @@ func (s *Server) adminUpdateUser(writer http.ResponseWriter, request *http.Reque
 	writeData(writer, request, http.StatusOK, updated)
 }
 
+// adminCheckProvider asks the configured model host whether it is there.
+//
+// Setting a provider and finding out whether it answers were two different
+// days: the only way to learn was to generate a deck and watch it fail. This
+// asks with the settings as stored and saves nothing.
+func (s *Server) adminCheckProvider(writer http.ResponseWriter, request *http.Request) {
+	if s.generator == nil {
+		writeError(writer, request, http.StatusServiceUnavailable, "ai_unavailable",
+			"This deployment has no AI provider configured", nil)
+		return
+	}
+	actor, _ := UserFromContext(request.Context())
+	check := s.generator.CheckProvider(request.Context())
+	// Written down: asking a model host is a thing somebody did, and on a
+	// deployment where the host is shared it is worth being able to see who.
+	s.store.Audit(request.Context(), &actor.ID, "settings.provider_check", "settings", "ai.provider",
+		map[string]any{"reachable": check.Reachable, "ms": check.Milliseconds})
+	writeData(writer, request, http.StatusOK, check)
+}
+
 // adminStorage is what this deployment is keeping and how much room is left.
 //
 // A box off the network has one disk, and when it fills the failures arrive as

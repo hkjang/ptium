@@ -1361,6 +1361,16 @@ export const api = {
     const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
     return normalizeUser(unwrapOne<AdminUser & Record<string, unknown>>(raw, ['data', 'user'])) as AdminUser
   },
+  /**
+   * Asks the configured model host whether it is there.
+   *
+   * Setting a provider and learning whether it answers were two different days:
+   * the only way to find out was to generate a deck and watch it fail.
+   */
+  async checkProvider() {
+    const raw = await request<Record<string, unknown>>('/admin/provider-check', { method: 'POST', body: '{}' })
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
   /** What this deployment is keeping, and how much room is left for it. */
   async storageUsage() {
     const raw = await request<Record<string, unknown>>('/admin/storage')

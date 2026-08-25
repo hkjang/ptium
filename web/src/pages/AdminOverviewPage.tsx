@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Activity, ArrowRight, CheckCircle2, CircleAlert, Database, FileStack, KeyRound, Server, Settings2, Sparkles, Users } from 'lucide-react'
+import { Activity, Bot, ArrowRight, CheckCircle2, CircleAlert, Database, FileStack, KeyRound, Server, Settings2, Sparkles, Users } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { Badge, ErrorState, LoadingState } from '../components/UI'
@@ -23,6 +23,14 @@ function waitingFor(data: Record<string, unknown>) {
   if (seconds >= 900) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분 — 작업자를 확인하세요`
   if (seconds >= 60) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분`
   return `가장 오래 기다린 덱 ${seconds}초`
+}
+
+/** What the model host said, or that this deployment does not use one. */
+function providerLine(provider: Record<string, unknown> | null) {
+  if (provider === null) return '제공자에 물어보는 중…'
+  if (provider.provider === 'fallback') return '오프라인 작성기로 씁니다 — 모델 호스트를 쓰지 않습니다'
+  if (provider.reachable) return `${String(provider.model || '')} · ${Number(provider.milliseconds ?? 0).toLocaleString('ko-KR')}ms`
+  return String(provider.detail || '') || '제공자가 답하지 않습니다'
 }
 
 /** Bytes as a person reads them. */
@@ -73,12 +81,17 @@ function generationHealth(data: Record<string, unknown>) {
 export function AdminOverviewPage() {
   const [data, setData] = useState<Record<string, unknown>>({})
   const [storage, setStorage] = useState<Record<string, unknown> | null>(null)
+  const [provider, setProvider] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   useEffect(() => { api.adminOverview().then(setData).catch((err) => setError(displayError(err))).finally(() => setLoading(false)) }, [])
   // Capacity is read separately: it is the slower query of the two, and a
   // deployment that cannot answer it should still show everything else.
   useEffect(() => { api.storageUsage().then(setStorage).catch(() => setStorage(null)) }, [])
+  // Asked once when the screen opens. The panel used to say "연결됨" whatever
+  // was true, which is worse than saying nothing: an operator reading a green
+  // board while nothing can be generated is being told the wrong thing.
+  useEffect(() => { api.checkProvider().then(setProvider).catch(() => setProvider({ reachable: false, detail: '' })) }, [])
 
   return <AppShell title="관리자 개요" eyebrow="CONTROL CENTER" actions={!loading && !error ? <div className="live-status"><i /> API · DB 연결됨</div> : undefined}>
     {loading ? <LoadingState label="서비스 현황을 불러오는 중…" /> : error ? <ErrorState message={error} /> : <>
@@ -130,6 +143,10 @@ export function AdminOverviewPage() {
         <section className="admin-panel service-health"><div className="panel-head"><div><h2>서비스 상태</h2><p>이 화면을 제공한 실제 구성 요소 상태</p></div><Badge tone="success"><CheckCircle2 size={12} /> 응답 정상</Badge></div><div className="service-list">
           <div><span className="service-icon"><Server size={17} /></span><div><strong>API 서버</strong><small>인증된 관리자 요청 처리 중</small></div><Badge tone="success">연결됨</Badge></div>
           <div><span className="service-icon"><Database size={17} /></span><div><strong>PostgreSQL</strong><small>운영 집계 쿼리 응답 완료</small></div><Badge tone="success">연결됨</Badge></div>
+          <div><span className="service-icon"><Bot size={17} /></span>
+            <div><strong>AI 제공자</strong><small>{providerLine(provider)}</small></div>
+            <Badge tone={provider === null ? 'neutral' : provider.reachable ? 'success' : provider.provider === 'fallback' ? 'neutral' : 'danger'}>
+              {provider === null ? '확인 중' : provider.reachable ? '응답함' : provider.provider === 'fallback' ? '오프라인 작성기' : '응답 없음'}</Badge></div>
           <div><span className="service-icon"><Sparkles size={17} /></span><div><strong>생성 대기열</strong><small>현재 대기 또는 처리 상태인 작업 수</small></div><Badge tone={Number(data.queuedGenerations) > 0 ? 'info' : 'neutral'}>{number(data.queuedGenerations)}개</Badge></div>
           <div><span className="service-icon"><CircleAlert size={17} /></span><div><strong>오류 센터</strong><small>{number(data.openIncidents)}개 열린 오류 그룹</small></div><Badge tone={Number(data.openIncidents) > 0 ? 'warning' : 'success'}>{Number(data.openIncidents) > 0 ? '확인 필요' : '정상'}</Badge></div>
         </div></section>

@@ -862,6 +862,46 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # A box off the network has one disk, and when it fills the failures arrive as
 # whatever the layer underneath happens to raise. The administrator's screens
 # said nothing about it.
+# Setting a provider and learning whether it answers were two different days:
+# the only way to find out was to generate a deck and watch it fail. The
+# administrator's own screen said "연결됨" whichever was true.
+print("── whether the model host answers ──")
+def setting_rows():
+    """The settings, whichever shape this deployment answers with."""
+    answered = data_of(call("GET", "/admin/settings", expect=200))
+    if isinstance(answered, dict):
+        return answered.get("settings") or answered.get("items") or []
+    return answered or []
+
+
+PROVIDER_BASE_URL = next((row.get("value") for row in setting_rows()
+                          if row.get("key") == "ai.base_url"), "https://api.openai.com/v1")
+was_provider = next((row.get("value") for row in setting_rows() if row.get("key") == "ai.provider"), None)
+checked = data_of(call("POST", "/admin/provider-check", {}, expect=200)) or {}
+checks += 1
+if checked.get("provider") is None:
+    failures.append("the provider check does not say which provider it asked")
+checks += 1
+if checked.get("provider") == "fallback" and checked.get("reachable"):
+    failures.append("a deployment with no provider reports one answering")
+# Pointed at a port nothing listens on, it says so rather than claiming health.
+call("PUT", "/admin/settings", {"values": {"ai.provider": "openai-compatible",
+                                           "ai.base_url": "http://127.0.0.1:9/v1"}}, expect=200)
+missing = data_of(call("POST", "/admin/provider-check", {}, expect=200)) or {}
+checks += 1
+if missing.get("reachable"):
+    failures.append("a provider pointed at nothing is reported as reachable")
+checks += 1
+if not str(missing.get("detail") or "").strip():
+    failures.append("a provider that did not answer gives no reason why")
+call("PUT", "/admin/settings", {"values": {"ai.provider": was_provider or "fallback",
+                                           "ai.base_url": PROVIDER_BASE_URL}}, expect=200)
+call("POST", "/admin/provider-check", {}, expect=403,
+     headers={"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"},
+     note="asking somebody's model host is the administrator's")
+print(f"   asked: provider={checked.get('provider')!r} reachable={checked.get('reachable')} "
+      f"{checked.get('milliseconds')}ms · a dead address says {str(missing.get('detail'))[:40]!r}")
+
 print("── what the deployment is keeping ──")
 usage = data_of(call("GET", "/admin/storage", expect=200)) or {}
 checks += 1

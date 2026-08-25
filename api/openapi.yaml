@@ -3270,6 +3270,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/provider-check:
+    post:
+      operationId: checkProvider
+      tags: [Admin]
+      summary: Ask the configured model host whether it answers
+      description: >
+        Setting a provider and learning whether it answers were two different
+        days: the only way to find out was to generate a deck and watch it
+        fail. This asks with the settings as they are stored, saves nothing,
+        and reports whether it was reachable, how long it took and what came
+        back. Administrators only.
+      responses:
+        '200': { description: What the host said, or that this deployment uses the offline writer }
+        '403': { description: Asking somebody's model host is the administrator's }
+        '503': { description: This deployment has no generator at all }
   /api/v1/admin/storage:
     get:
       operationId: adminStorage
@@ -4451,7 +4466,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.4
+            service.version: 1.13.5
         requestId:
           $ref: '#/components/schemas/RequestID'
 

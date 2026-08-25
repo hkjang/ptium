@@ -801,6 +801,72 @@ type completionResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// ProviderCheck is what an operator learns by asking the provider whether it is
+// there.
+type ProviderCheck struct {
+	Provider     string `json:"provider"`
+	BaseURL      string `json:"baseUrl,omitempty"`
+	Model        string `json:"model,omitempty"`
+	Reachable    bool   `json:"reachable"`
+	Answered     bool   `json:"answered"`
+	Milliseconds int64  `json:"milliseconds"`
+	Detail       string `json:"detail,omitempty"`
+}
+
+// CheckProvider asks the configured provider for one very short answer.
+//
+// A deployment of this is a box off the network with a model host somewhere
+// beside it, and the only way to learn whether that host answers was to
+// generate a deck and see it fail. This asks with the settings as they are
+// stored, changes nothing, and says what came back — including how long it
+// took, which on a self-hosted model is the number that decides whether a deck
+// arrives before the meeting.
+func (g *Generator) CheckProvider(ctx context.Context) ProviderCheck {
+	check := ProviderCheck{Provider: "fallback", BaseURL: "", Model: ""}
+	provider, baseURL, modelName, apiKey := "fallback", "", "", ""
+	_ = g.settings.Get(ctx, "ai.provider", &provider)
+	_ = g.settings.Get(ctx, "ai.base_url", &baseURL)
+	_ = g.settings.Get(ctx, "ai.model", &modelName)
+	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
+	check.Provider, check.BaseURL, check.Model = provider, baseURL, modelName
+	if strings.EqualFold(provider, "fallback") {
+		check.Detail = "이 배포는 오프라인 작성기로 덱을 씁니다. 제공자를 설정하지 않았습니다."
+		return check
+	}
+	if strings.TrimSpace(apiKey) == "" {
+		check.Detail = "API 키가 비어 있어 제공자에 요청하지 않습니다."
+		return check
+	}
+	endpoint, err := completionsEndpoint(baseURL)
+	if err != nil {
+		check.Detail = err.Error()
+		return check
+	}
+	// Short enough that a working provider answers in a moment and a wedged one
+	// is not waited on: this is a check, not a generation.
+	asking, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	started := time.Now()
+	answer, err := g.completeWith(asking, endpoint, modelName, apiKey,
+		"Answer with the single word ok.", "ping", 0, nil)
+	check.Milliseconds = time.Since(started).Milliseconds()
+	if err != nil {
+		check.Detail = err.Error()
+		return check
+	}
+	check.Reachable = true
+	check.Answered = strings.TrimSpace(answer) != ""
+	if !check.Answered {
+		check.Detail = "제공자가 응답했지만 내용이 비어 있습니다."
+		return check
+	}
+	check.Detail = strings.TrimSpace(answer)
+	if len([]rune(check.Detail)) > 120 {
+		check.Detail = string([]rune(check.Detail)[:120]) + "…"
+	}
+	return check
+}
+
 func completionsEndpoint(baseURL string) (string, error) {
 	parsed, err := url.Parse(strings.TrimRight(baseURL, "/") + "/chat/completions")
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {

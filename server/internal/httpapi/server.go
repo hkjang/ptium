@@ -258,6 +258,8 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
 	api.Handle("PATCH /api/v1/admin/errors/{id}", requireUUIDPath(s.requireAdmin("admin:errors", http.HandlerFunc(s.adminUpdateError))))
+	// Whether the model host this deployment points at answers.
+	api.Handle("POST /api/v1/admin/provider-check", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminCheckProvider)))
 	// What the deployment is keeping, and how much room is left for it.
 	api.Handle("GET /api/v1/admin/storage", s.requireAdmin("admin:users", http.HandlerFunc(s.adminStorage)))
 	// What is waiting, and the two things an operator can do about it.
