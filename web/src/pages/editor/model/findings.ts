@@ -124,6 +124,12 @@ export function warningText(warning: string) {
   const [place, rest] = splitPlace(warning)
   const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
     [/^the template exposes no usable layout$/, () => '이 템플릿에는 쓸 수 있는 레이아웃이 없습니다'],
+    // What fitting had to remove. These two are the warnings an author meets
+    // most often, and they were the ones still arriving in English.
+    [/^(\d+) point\(s\) did not fit in (\w+) and were left out$/,
+      (m) => `${named(m[2])}에 자리가 모자라 요점 ${m[1]}개가 빠졌습니다`],
+    [/^(\d+) line\(s\) were shortened to fit (\w+)$/,
+      (m) => `${named(m[2])}에 맞추느라 ${m[1]}줄을 줄였습니다 — 줄인 뒤는 어느 슬라이드에도 없습니다`],
     [/^layout "(.+)" cannot hold this slide; used "(.+)" instead$/,
       (m) => `"${m[1]}" 레이아웃에는 이 슬라이드가 들어가지 않아 "${m[2]}"를 썼습니다`],
     [/^layout "(.+)" does not exist in this template; used "(.+)" instead$/,
@@ -262,4 +268,21 @@ export function trimmedCounts(detail: string) {
   const held = Number(match[3])
   if (!Number.isFinite(drawn) || !Number.isFinite(held) || drawn < 1 || held <= drawn) return null
   return { kind: match[1], drawn, held }
+}
+
+/**
+ * What the toast says after source is applied.
+ *
+ * Applying moves the canvas to the preview, and the warning list lives in the
+ * source panel that was just left behind — so "코드를 적용했습니다." was the whole
+ * of the news even when the compiler had dropped a point or cut a heading. The
+ * toast carries the first one and the count of the rest; the list is still in
+ * the source panel for the detail.
+ */
+export function appliedMessage(warnings: string[]): { text: string; tone: 'error' | undefined } {
+  const said = warnings.filter((warning) => warning.trim() !== '')
+  if (said.length === 0) return { text: '코드를 적용했습니다.', tone: undefined }
+  const first = warningText(said[0])
+  const rest = said.length > 1 ? ` 외 ${said.length - 1}건` : ''
+  return { text: `코드를 적용했습니다. 다만 ${first}${rest}`, tone: 'error' }
 }

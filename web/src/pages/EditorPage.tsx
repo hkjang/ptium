@@ -29,7 +29,7 @@ import {
   MAX_SLIDES, blockLabel, moveSlideTo, presentIndexOf, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
-import { findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
+import { appliedMessage, findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
 import { replaceInDeck } from './editor/model/search'
 import { versionToSend } from './editor/model/saving'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
@@ -642,7 +642,8 @@ export function EditorPage({ id }: { id: string }) {
         setRailVersion((value) => value + 1)
 			setSourceLoaded(true)
       }
-      showToast('코드를 적용했습니다.')
+      const applied = appliedMessage(result.warnings)
+      showToast(applied.text, applied.tone)
       setCanvasMode('preview')
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  appliedMessage,
   findingDetail, findingLabel, objectParticle, trimmedCounts, revisionReason, scoreDimensionLabel,
   subjectParticle, toParticle, warningText,
 } from './findings'
@@ -141,5 +142,53 @@ describe('what a trimmed component counted', () => {
       'steps draws 5 of its 5 entries; the rest are on no slide', 'steps draws many of its entries']) {
       expect(trimmedCounts(detail), detail).toBeNull()
     }
+  })
+})
+
+describe('what the toast says after applying source', () => {
+  // Applying leaves the source panel, and the warning list stays there. If the
+  // toast does not carry the news, a dropped point is news nobody receives.
+  it('says nothing extra when nothing was lost', () => {
+    expect(appliedMessage([])).toEqual({ text: '코드를 적용했습니다.', tone: undefined })
+  })
+
+  it('carries what the compiler had to do, in the author’s language', () => {
+    const said = appliedMessage(['line 1 (slide 1): 2 point(s) did not fit in body and were left out'])
+    expect(said.tone).toBe('error')
+    expect(said.text).toContain('코드를 적용했습니다')
+    expect(said.text).not.toContain('did not fit')
+  })
+
+  it('counts the ones it cannot fit in a line', () => {
+    const said = appliedMessage([
+      'line 1 (slide 1): 2 point(s) did not fit in body and were left out',
+      'line 9 (slide 2): 1 line(s) were shortened to fit title',
+    ])
+    expect(said.text).toContain('외 1건')
+  })
+})
+
+describe('the warnings an author meets most often', () => {
+  // Every other compile warning was written again in Korean and these two —
+  // the ones fitting produces — were left in English, in front of the person
+  // whose deck it is.
+  it('says what fitting had to remove', () => {
+    expect(warningText('line 1 (slide 1): 2 point(s) did not fit in body and were left out'))
+      .toContain('요점 2개가 빠졌습니다')
+    expect(warningText('line 9 (slide 2): 1 line(s) were shortened to fit title'))
+      .toContain('제목')
+    // The place — "line 1 (slide 1)" — is kept as written on purpose; what
+    // follows it is the sentence, and none of it stays in English.
+    for (const warning of [
+      'line 1 (slide 1): 2 point(s) did not fit in body and were left out',
+      'line 9 (slide 2): 1 line(s) were shortened to fit title',
+    ]) {
+      const sentence = warningText(warning).replace(/^line \d+ \(slide \d+\): /, '')
+      expect(sentence).not.toMatch(/[a-z]{4,}/)
+    }
+  })
+
+  it('keeps the place, so the author can find the line', () => {
+    expect(warningText('line 9 (slide 2): 1 line(s) were shortened to fit title')).toContain('9')
   })
 })

@@ -58,11 +58,18 @@ def run_container(*arguments):
     for a port nothing is using. A check that fails for that reason is reporting
     on the host, not on the image."""
     name = arguments[arguments.index("--name") + 1] if "--name" in arguments else None
-    if name:
+
+    def reserve():
         # A container a killed run left behind holds the name, and docker then
         # refuses to start this one. That is the check's own mess, not a verdict
-        # on the image.
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
+        # on the image. The retry below needs this as much as the first attempt
+        # does: a run that fails on the port has already created the container,
+        # so retrying without clearing the name fails on the name instead — and
+        # the port error that started it is never printed.
+        if name:
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
+
+    reserve()
     result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout.strip()
@@ -70,7 +77,9 @@ def run_container(*arguments):
         print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}")
         # Exit 2 says the check could not be run; exit 1 says the image failed it.
         sys.exit(2)
+    print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}\n   retrying once")
     time.sleep(2)
+    reserve()
     return docker(*arguments)
 
 

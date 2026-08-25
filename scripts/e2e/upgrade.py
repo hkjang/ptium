@@ -65,11 +65,18 @@ def run_container(*arguments):
     on the host, not on the image, and a release stopped by it is stopped for
     nothing."""
     name = arguments[arguments.index("--name") + 1] if "--name" in arguments else None
-    if name:
+
+    def reserve():
         # A container a killed run left behind holds the name, and docker then
         # refuses to start this one. That is the check's own mess, not a verdict
-        # on the image.
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
+        # on the image. The retry below needs this as much as the first attempt
+        # does: a run that fails on the port has already created the container,
+        # so retrying without clearing the name fails on the name instead — and
+        # the port error that started it is never printed.
+        if name:
+            subprocess.run(["docker", "rm", "-f", name], capture_output=True, text=True)
+
+    reserve()
     result = subprocess.run(["docker", *arguments], capture_output=True, text=True)
     if result.returncode == 0:
         return result.stdout.strip()
@@ -79,7 +86,9 @@ def run_container(*arguments):
         # it, and saying that when docker would not start a container accuses
         # the release of something it did not do.
         sys.exit(2)
+    print(f"docker {' '.join(arguments)}\n{result.stderr.strip()}\n   retrying once")
     time.sleep(2)
+    reserve()
     return docker(*arguments)
 
 
