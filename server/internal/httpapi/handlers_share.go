@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -102,14 +103,15 @@ func (s *Server) sharedPresentation(writer http.ResponseWriter, request *http.Re
 	if err != nil {
 		return
 	}
-	titles := make([]string, 0, len(presentation.Slides))
-	pages := make([]sharedPage, 0, len(presentation.Slides))
-	for _, slide := range presentation.Slides {
+	shown := shownSlides(presentation)
+	titles := make([]string, 0, len(shown))
+	pages := make([]sharedPage, 0, len(shown))
+	for _, slide := range shown {
 		titles = append(titles, slide.Title)
 		pages = append(pages, sharedPage{ID: slide.ID, Title: slide.Title})
 	}
 	writeData(writer, request, http.StatusOK, sharedDeck{
-		Title: presentation.Title, SlideCount: len(presentation.Slides),
+		Title: presentation.Title, SlideCount: len(shown),
 		Slides: pages, Titles: titles, Language: presentation.Language,
 	})
 }
@@ -119,7 +121,8 @@ func (s *Server) sharedPreview(writer http.ResponseWriter, request *http.Request
 	if err != nil {
 		return
 	}
-	if len(presentation.Slides) == 0 {
+	shown := shownSlides(presentation)
+	if len(shown) == 0 {
 		writeError(writer, request, http.StatusConflict, "presentation_has_no_slides", "This deck has no slides yet", nil)
 		return
 	}
@@ -132,9 +135,11 @@ func (s *Server) sharedPreview(writer http.ResponseWriter, request *http.Request
 	if position < 1 {
 		position = 1
 	}
-	if position > len(presentation.Slides) {
-		position = len(presentation.Slides)
+	if position > len(shown) {
+		position = len(shown)
 	}
+	// The link counts the slides that are part of the show, and draws that one.
+	position = shown[position-1].Position
 	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data)}
 	// Drawn exactly as the editor draws it, images and all — a link shows the
 	// deck the owner sees, not a reduced copy of it.
@@ -145,6 +150,34 @@ func (s *Server) sharedPreview(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	writeSVG(writer, svg)
+}
+
+// shownSlides are the slides a link is for.
+//
+// A slide marked skipped is one the author took out of the talk: PowerPoint
+// hides it, the handout leaves it out, and a link handed to somebody else was
+// drawing it — title, points and all — to anyone who had the link.
+func shownSlides(presentation model.Presentation) []model.Slide {
+	shown := make([]model.Slide, 0, len(presentation.Slides))
+	for _, slide := range presentation.Slides {
+		if slideIsSkipped(slide) {
+			continue
+		}
+		shown = append(shown, slide)
+	}
+	return shown
+}
+
+// slideIsSkipped reads the one field of the stored content this needs.
+func slideIsSkipped(slide model.Slide) bool {
+	var marked struct {
+		Skipped bool `json:"skipped"`
+	}
+	if len(slide.Content) == 0 {
+		return false
+	}
+	_ = json.Unmarshal(slide.Content, &marked)
+	return marked.Skipped
 }
 
 func (s *Server) presentationFromShare(writer http.ResponseWriter, request *http.Request) (model.Presentation, error) {

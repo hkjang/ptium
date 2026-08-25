@@ -509,6 +509,35 @@ if document_id:
 # looking at the slide, and it used to be dropped: the words came across and the
 # link did not. The file is stripped of what Ptium leaves in its own exports, so
 # the importer has to read the drawing the way it reads a stranger's deck.
+# A link is the deck as it is shown. A slide the author marked skipped is not
+# part of the show — PowerPoint hides it and the handout leaves it out — and it
+# was being drawn to anyone holding the link.
+print("── a link shows only what is in the show ──")
+shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "점검",
+                                                      "language": "ko"}, expect=201))
+if shared_deck:
+    call("PUT", f"/presentations/{shared_deck['id']}/source",
+         {"source": "# 보이는 장\n- 공개해도 되는 요점\n\n# 숨긴 장\n- 아직 공유하지 않을 내용\n!skip\n"
+                    "\n# 세 번째 장\n- 공개 요점\n"}, expect=200)
+    made = data_of(call("POST", f"/presentations/{shared_deck['id']}/shares", {}, expect=201)) or {}
+    token = (made.get("url") or "").rstrip("/").split("/")[-1]
+    if token:
+        seen = data_of(call("GET", f"/shared/{token}", expect=200)) or {}
+        checks += 1
+        if seen.get("slideCount") != 2:
+            failures.append(f"a link with one skipped slide shows {seen.get('slideCount')} slides, want 2")
+        checks += 1
+        if any("숨긴" in (title or "") for title in (seen.get("titles") or [])):
+            failures.append("a slide taken out of the show is named on the link")
+        for position in (1, 2, 3):
+            status, drawn = call("GET", f"/shared/{token}/preview.svg?slide={position}&width=400",
+                                 raw=True, expect=200)
+            checks += 1
+            if "아직 공유하지 않을 내용" in drawn.decode(errors="replace"):
+                failures.append(f"the link draws the skipped slide at position {position}")
+        print(f"   slides on the link: {seen.get('slideCount')} of 3")
+    call("DELETE", f"/presentations/{shared_deck['id']}", expect=204)
+
 print("── a deck carried in keeps its links ──")
 linked = data_of(call("POST", "/presentations", {"title": f"링크 왕복 {RUN}", "prompt": "점검",
                                                  "language": "ko"}, expect=201))
