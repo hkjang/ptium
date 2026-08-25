@@ -54,6 +54,75 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 	return result, err
 }
 
+// StorageUsage is what this deployment is keeping and how much room is left.
+//
+// A deployment of this product is usually a box somebody owns, off the network,
+// with one disk. When that disk fills, uploads and generations fail with
+// whatever error the layer underneath happens to raise, and nothing in the
+// administrator's screens says why. These are the numbers that say why before
+// it happens.
+type StorageUsage struct {
+	DatabaseBytes int64        `json:"databaseBytes"`
+	Tables        []TableUsage `json:"tables"`
+	// AssetDir is where images are kept when they are not in the database, with
+	// how much room that filesystem has left. Empty when images live in the row.
+	AssetDir       string `json:"assetDir,omitempty"`
+	AssetDirFree   int64  `json:"assetDirFreeBytes,omitempty"`
+	AssetDirTotal  int64  `json:"assetDirTotalBytes,omitempty"`
+	AssetsInVolume int64  `json:"assetsInVolume"`
+	AssetsInRows   int64  `json:"assetsInRows"`
+}
+
+// TableUsage is one thing the deployment keeps: how many of it, and how much
+// room it takes with its indexes.
+type TableUsage struct {
+	Name  string `json:"name"`
+	Rows  int64  `json:"rows"`
+	Bytes int64  `json:"bytes"`
+}
+
+// Storage reads what is kept and how much of it there is.
+func (s *Store) Storage(ctx context.Context, assetDir string) (StorageUsage, error) {
+	var usage StorageUsage
+	if err := s.Pool.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&usage.DatabaseBytes); err != nil {
+		return usage, err
+	}
+	// The things that grow: decks and their slides, the pictures, the templates,
+	// the revisions kept so an edit can be undone, and the trail.
+	rows, err := s.Pool.Query(ctx, `SELECT relname, n_live_tup, pg_total_relation_size(relid)
+		FROM pg_stat_user_tables
+		WHERE relname IN ('presentations','slides','presentation_revisions','assets','templates',
+			'audit_logs','server_errors','snippets','slide_comments')
+		ORDER BY pg_total_relation_size(relid) DESC`)
+	if err != nil {
+		return usage, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var table TableUsage
+		if err := rows.Scan(&table.Name, &table.Rows, &table.Bytes); err != nil {
+			return usage, err
+		}
+		usage.Tables = append(usage.Tables, table)
+	}
+	if err := rows.Err(); err != nil {
+		return usage, err
+	}
+	// Where the pictures are. A deployment that mounted a volume for them has
+	// two places to run out of room, and only one of them is the database.
+	if err := s.Pool.QueryRow(ctx,
+		`SELECT COALESCE(sum(size_bytes) FILTER (WHERE data IS NULL),0),
+			COALESCE(sum(size_bytes) FILTER (WHERE data IS NOT NULL),0) FROM assets`).
+		Scan(&usage.AssetsInVolume, &usage.AssetsInRows); err != nil {
+		return usage, err
+	}
+	if strings.TrimSpace(assetDir) != "" {
+		usage.AssetDir = assetDir
+		usage.AssetDirTotal, usage.AssetDirFree = diskRoom(assetDir)
+	}
+	return usage, nil
+}
+
 // QueuedDeck is one generation an operator can see and act on: what it is,
 // whose it is, how long it has been like that, and what went wrong if anything
 // did.

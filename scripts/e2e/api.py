@@ -859,6 +859,26 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # The product's central promise: the template is the design, and a deck that was
 # written into one can be written into another. A deck rebinds each slide to the
 # layout of the same role, and what it draws changes with it.
+# A box off the network has one disk, and when it fills the failures arrive as
+# whatever the layer underneath happens to raise. The administrator's screens
+# said nothing about it.
+print("── what the deployment is keeping ──")
+usage = data_of(call("GET", "/admin/storage", expect=200)) or {}
+checks += 1
+if not usage.get("databaseBytes"):
+    failures.append("the storage screen cannot say how big the database is")
+tables = {row.get("name"): row for row in usage.get("tables") or []}
+checks += 1
+if "presentations" not in tables or "slides" not in tables:
+    failures.append(f"the storage screen does not account for the things that grow: {sorted(tables)}")
+checks += 1
+if any(int(row.get("bytes") or 0) <= 0 for row in tables.values()):
+    failures.append("a table is reported as taking no room at all")
+call("GET", "/admin/storage", expect=403,
+     headers={"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"},
+     note="what a deployment keeps is the administrator's")
+print(f"   database {int(usage.get('databaseBytes', 0))/1024/1024:,.1f} MB across {len(tables)} tables")
+
 # An operator who can see that a deck has waited twenty minutes should be able
 # to do something about it. A deck belongs to its owner, and an administrator
 # could not see one — let alone push it through or stop it.

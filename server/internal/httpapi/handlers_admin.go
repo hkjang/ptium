@@ -367,6 +367,20 @@ func (s *Server) adminUpdateUser(writer http.ResponseWriter, request *http.Reque
 	writeData(writer, request, http.StatusOK, updated)
 }
 
+// adminStorage is what this deployment is keeping and how much room is left.
+//
+// A box off the network has one disk, and when it fills the failures arrive as
+// whatever the layer underneath happens to raise. These are the numbers that
+// say why before that happens.
+func (s *Server) adminStorage(writer http.ResponseWriter, request *http.Request) {
+	usage, err := s.store.Storage(request.Context(), s.assetDir)
+	if err != nil {
+		s.internalError(writer, request, "admin_storage_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, usage)
+}
+
 // adminGenerationQueue is what is waiting, what is being written, and what
 // failed recently — the list behind the overview's "the oldest has been waiting
 // twenty minutes".

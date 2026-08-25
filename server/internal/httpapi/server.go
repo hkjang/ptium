@@ -49,7 +49,12 @@ type Options struct {
 	AuthPublic    AuthPublicConfig
 	// Version is the build the workspace is running, shown in the account menu so
 	// a bug report and a release can be matched up.
-	Version                string
+	Version string
+	// AssetDir is where images are kept when they are not in the database. The
+	// administrator's storage screen reads how much room that filesystem has:
+	// a deployment with a volume has two places to run out of, and the database
+	// is only one of them.
+	AssetDir               string
 	AdminRoles             []string
 	BootstrapAdminEmails   []string
 	BootstrapAdminSubjects []string
@@ -78,6 +83,7 @@ type Server struct {
 	authenticator          auth.Authenticator
 	authPublic             AuthPublicConfig
 	version                string
+	assetDir               string
 	adminRoles             []string
 	bootstrapAdminEmails   []string
 	bootstrapAdminSubjects []string
@@ -116,6 +122,7 @@ func New(options Options) (*Server, error) {
 		store: options.Store, settings: options.Settings, keys: options.Keys, worker: options.Worker,
 		generator:     options.Generator,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
+		assetDir:             options.AssetDir,
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,
@@ -251,6 +258,8 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
 	api.Handle("PATCH /api/v1/admin/errors/{id}", requireUUIDPath(s.requireAdmin("admin:errors", http.HandlerFunc(s.adminUpdateError))))
+	// What the deployment is keeping, and how much room is left for it.
+	api.Handle("GET /api/v1/admin/storage", s.requireAdmin("admin:users", http.HandlerFunc(s.adminStorage)))
 	// What is waiting, and the two things an operator can do about it.
 	api.Handle("GET /api/v1/admin/generations", s.requireAdmin("admin:users", http.HandlerFunc(s.adminGenerationQueue)))
 	api.Handle("POST /api/v1/admin/generations/{id}/requeue",

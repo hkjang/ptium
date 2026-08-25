@@ -18,3 +18,16 @@
 .queue-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .queue-late { color: var(--danger, #d64545); }
 .muted-note { color: var(--ink-muted); font-size: 13px; }
+
+/* What the deployment keeps. The bars are relative to the largest table, so the
+   thing to prune is the one that reaches the end. */
+.storage-bars { display: grid; gap: 10px; padding: 4px 2px 12px; }
+.storage-row { display: grid; grid-template-columns: 130px 1fr 90px 70px; align-items: center; gap: 12px; font-size: 13px; }
+.storage-row i { display: block; height: 8px; border-radius: 999px; background: var(--surface-sunken, #eee); overflow: hidden; }
+.storage-row i b { display: block; height: 100%; background: var(--accent, #7C3AED); border-radius: 999px; }
+.storage-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+/* The row count is read, not decoration: the sweep holds interface text at
+   11px and above, and this inherited its way below that. */
+.storage-row small { color: var(--ink-muted); text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
+.storage-foot { display: flex; flex-wrap: wrap; gap: 18px; border-top: 1px solid var(--line, #eee); padding-top: 12px; color: var(--ink-muted); font-size: 13px; }
+.storage-panel { margin-bottom: 18px; }

@@ -3270,6 +3270,21 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/storage:
+    get:
+      operationId: adminStorage
+      tags: [Admin]
+      summary: What this deployment is keeping, and how much room is left
+      description: >
+        A deployment of this product is usually a box somebody owns, off the
+        network, with one disk. When it fills, uploads and generations fail
+        with whatever error the layer underneath raises. This is the database's
+        size, the tables that grow, where the images are kept, and — when they
+        are on a mounted volume — how much of that volume is free.
+        Administrators only.
+      responses:
+        '200': { description: Sizes in bytes, largest table first }
+        '403': { description: What a deployment keeps is the administrator's to read }
   /api/v1/admin/generations:
     get:
       operationId: listGenerationQueue
@@ -4435,7 +4450,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.2
+            service.version: 1.13.3
         requestId:
           $ref: '#/components/schemas/RequestID'
 

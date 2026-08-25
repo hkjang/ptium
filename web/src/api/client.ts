@@ -1361,6 +1361,11 @@ export const api = {
     const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
     return normalizeUser(unwrapOne<AdminUser & Record<string, unknown>>(raw, ['data', 'user'])) as AdminUser
   },
+  /** What this deployment is keeping, and how much room is left for it. */
+  async storageUsage() {
+    const raw = await request<Record<string, unknown>>('/admin/storage')
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
   /** What is waiting, what is being written, and what failed recently. */
   async generationQueue(failedHours = 24) {
     const raw = await request<unknown>(`/admin/generations?failedHours=${failedHours}`)

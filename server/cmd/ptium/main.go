@@ -29,6 +29,15 @@ import (
 
 var version = "dev"
 
+// assetDirForStorage is the directory the administrator's storage screen should
+// read, which is the volume only when the pictures are actually kept on one.
+func assetDirForStorage(config config.Config) string {
+	if config.AssetStorage == "filesystem" {
+		return config.AssetDir
+	}
+	return ""
+}
+
 func main() {
 	applicationConfig, err := config.Load()
 	if err != nil {
@@ -216,6 +225,7 @@ func main() {
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
 		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
 		PasswordLoginEnabled: passwordLoginEnabled, Version: version,
+		AssetDir: assetDirForStorage(applicationConfig),
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)

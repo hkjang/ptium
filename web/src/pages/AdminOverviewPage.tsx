@@ -25,6 +25,43 @@ function waitingFor(data: Record<string, unknown>) {
   return `가장 오래 기다린 덱 ${seconds}초`
 }
 
+/** Bytes as a person reads them. */
+const bytes = (value: unknown) => {
+  const size = Number(value ?? 0)
+  if (size >= 1024 ** 3) return `${(size / 1024 ** 3).toFixed(1)} GB`
+  if (size >= 1024 ** 2) return `${(size / 1024 ** 2).toFixed(1)} MB`
+  if (size >= 1024) return `${(size / 1024).toFixed(0)} KB`
+  return `${size} B`
+}
+
+// The tables are named for the database; the screen names them for the thing
+// they hold.
+const tableNames: Record<string, string> = {
+  slides: '슬라이드', presentations: '프레젠테이션', presentation_revisions: '되돌리기 기록',
+  assets: '이미지', templates: '템플릿', audit_logs: '감사 기록', server_errors: '오류 기록',
+  snippets: '조각 슬라이드', slide_comments: '댓글',
+}
+
+/**
+ * How the volume is doing, when there is one. A disk under a tenth free is the
+ * thing to say out loud: uploads and generations start failing there, with
+ * whatever error the layer underneath happens to raise.
+ */
+function diskTone(storage: Record<string, unknown>) {
+  const total = Number(storage.assetDirTotalBytes ?? 0)
+  const free = Number(storage.assetDirFreeBytes ?? 0)
+  if (total <= 0) return 'neutral' as const
+  return free / total < 0.1 ? ('warning' as const) : ('success' as const)
+}
+
+function diskWord(storage: Record<string, unknown>) {
+  const total = Number(storage.assetDirTotalBytes ?? 0)
+  const free = Number(storage.assetDirFreeBytes ?? 0)
+  if (total <= 0) return '이미지는 데이터베이스에 있습니다'
+  const share = Math.round((free / total) * 100)
+  return share < 10 ? `볼륨 여유 ${share}% — 정리가 필요합니다` : `볼륨 여유 ${share}%`
+}
+
 /** Whether anything has been written lately, and whether it went wrong. */
 function generationHealth(data: Record<string, unknown>) {
   const failed = Number(data.failedLastDay ?? 0)
@@ -35,9 +72,13 @@ function generationHealth(data: Record<string, unknown>) {
 
 export function AdminOverviewPage() {
   const [data, setData] = useState<Record<string, unknown>>({})
+  const [storage, setStorage] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   useEffect(() => { api.adminOverview().then(setData).catch((err) => setError(displayError(err))).finally(() => setLoading(false)) }, [])
+  // Capacity is read separately: it is the slower query of the two, and a
+  // deployment that cannot answer it should still show everything else.
+  useEffect(() => { api.storageUsage().then(setStorage).catch(() => setStorage(null)) }, [])
 
   return <AppShell title="관리자 개요" eyebrow="CONTROL CENTER" actions={!loading && !error ? <div className="live-status"><i /> API · DB 연결됨</div> : undefined}>
     {loading ? <LoadingState label="서비스 현황을 불러오는 중…" /> : error ? <ErrorState message={error} /> : <>
@@ -49,6 +90,28 @@ export function AdminOverviewPage() {
         <article><span className="metric-icon coral"><Activity size={19} /></span><div><span>열린 오류</span><strong>{number(data.openIncidents)}</strong><small>확인 또는 해결 필요</small></div></article>
         <article><span className="metric-icon violet"><KeyRound size={19} /></span><div><span>키 상태 활성</span><strong>{number(data.activeApiKeys)}</strong><small>유효 기간·회전 기준, 사용자 정지 제외 전</small></div></article>
       </section>
+      {storage && <section className="admin-panel storage-panel">
+        <div className="panel-head"><div><h2>보관 용량</h2><p>이 배포가 쥐고 있는 것과 남은 자리</p></div>
+          <Badge tone={diskTone(storage)}>{diskWord(storage)}</Badge></div>
+        <div className="storage-bars">
+          {(storage.tables as { name: string; rows: number; bytes: number }[] || []).slice(0, 6).map((table) => {
+            const largest = Math.max(...((storage.tables as { bytes: number }[]) || [{ bytes: 1 }]).map((row) => row.bytes), 1)
+            return <div key={table.name} className="storage-row">
+              <span>{tableNames[table.name] || table.name}</span>
+              <i><b style={{ width: `${Math.max((table.bytes / largest) * 100, 2)}%` }} /></i>
+              <strong>{bytes(table.bytes)}</strong>
+              <small>{Number(table.rows).toLocaleString('ko-KR')}행</small>
+            </div>
+          })}
+        </div>
+        <div className="storage-foot">
+          <span>데이터베이스 합계 <strong>{bytes(storage.databaseBytes)}</strong></span>
+          {Number(storage.assetsInVolume ?? 0) > 0 && <span>볼륨의 이미지 <strong>{bytes(storage.assetsInVolume)}</strong></span>}
+          {Number(storage.assetsInRows ?? 0) > 0 && <span>행 안의 이미지 <strong>{bytes(storage.assetsInRows)}</strong></span>}
+          {typeof storage.assetDir === 'string' && storage.assetDir !== '' &&
+            <span>{storage.assetDir} 여유 <strong>{bytes(storage.assetDirFreeBytes)}</strong> / {bytes(storage.assetDirTotalBytes)}</span>}
+        </div>
+      </section>}
       <section className="admin-panel generation-health">
         <div className="panel-head"><div><h2>생성 상태</h2><p>이 배포의 작성기가 실제로 돌고 있는지</p></div>
           <Badge tone={generationHealth(data).tone}>{generationHealth(data).failed > 0
