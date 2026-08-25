@@ -209,7 +209,11 @@ func (s *Store) ListAuditTrail(ctx context.Context, filter AuditFilter, limit, o
 		filter.Since,
 		"%" + strings.TrimSpace(filter.Search) + "%",
 	}
-	const where = `WHERE ($1='' OR a.action LIKE $1 || '%')
+	// An action matches itself and what it is a family of, and stops at the
+	// boundary between them: "presentation" finds every presentation.* entry,
+	// and "presentation.create" finds the creations without also dragging in
+	// presentation.create_and_generate.
+	const where = `WHERE ($1='' OR a.action = $1 OR a.action LIKE $1 || '.%')
 		AND ($2='' OR u.email ILIKE '%' || $2 || '%' OR a.actor_id::text = NULLIF($2,'')::text)
 		AND ($3='' OR a.target_type = $3)
 		AND ($4='' OR a.target_id = $4)

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -486,6 +487,13 @@ func (s *Server) adminListAuditTrail(writer http.ResponseWriter, request *http.R
 			filter.Since = time.Now().AddDate(0, 0, -count)
 		}
 	}
+	// An auditor asks for the trail as a file, and a page of fifty is not that:
+	// the whole of what was asked for goes out at once, in the order it is read
+	// on screen.
+	if strings.EqualFold(strings.TrimSpace(query.Get("format")), "csv") {
+		s.writeAuditCSV(writer, request, filter)
+		return
+	}
 	entries, total, err := s.store.ListAuditTrail(request.Context(), filter, limit, offset)
 	if err != nil {
 		s.internalError(writer, request, "admin_audit_read_failed", err)
@@ -493,6 +501,53 @@ func (s *Server) adminListAuditTrail(writer http.ResponseWriter, request *http.R
 	}
 	writeList(writer, request, entries, total, limit, offset)
 }
+
+// writeAuditCSV sends the filtered trail as a file.
+//
+// It is written straight to the response a page at a time rather than gathered
+// first: a year of a busy deployment is hundreds of thousands of rows, and
+// holding all of them to hand over a file is how a report takes the server with
+// it.
+func (s *Server) writeAuditCSV(writer http.ResponseWriter, request *http.Request, filter store.AuditFilter) {
+	writer.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	writer.Header().Set("Content-Disposition",
+		`attachment; filename="ptium-audit-`+time.Now().Format("20060102")+`.csv"`)
+	// Excel reads a CSV as the machine's own code page unless the file says
+	// otherwise, and a trail full of Korean opens as mojibake without this.
+	if _, err := writer.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+		return
+	}
+	out := csv.NewWriter(writer)
+	defer out.Flush()
+	_ = out.Write([]string{"시각", "동작", "행위자", "행위자 ID", "대상 종류", "대상 ID", "기록된 값"})
+	const page = 500
+	for offset := 0; offset < auditExportLimit; offset += page {
+		entries, _, err := s.store.ListAuditTrail(request.Context(), filter, page, offset)
+		if err != nil {
+			s.logger.Warn("the audit export stopped early", "error", err,
+				"request_id", RequestID(request.Context()))
+			return
+		}
+		for _, entry := range entries {
+			actor := entry.ActorEmail
+			if actor == "" {
+				actor = entry.ActorName
+			}
+			_ = out.Write([]string{
+				entry.CreatedAt.Format(time.RFC3339), entry.Action, actor, entry.ActorID,
+				entry.TargetType, entry.TargetID, string(entry.Metadata),
+			})
+		}
+		out.Flush()
+		if len(entries) < page {
+			return
+		}
+	}
+}
+
+// auditExportLimit is where a single export stops. A file nobody can open is
+// not a report, and a filter narrows it further than this in every real use.
+const auditExportLimit = 100000
 
 // adminAuditActions is what the trail holds, so a filter can offer the actions
 // this deployment actually writes rather than a list somebody has to remember.

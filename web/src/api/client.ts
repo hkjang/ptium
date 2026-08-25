@@ -1404,6 +1404,28 @@ export const api = {
     const total = Number((raw as { meta?: { total?: unknown } })?.meta?.total ?? entries.length)
     return { entries: entries.map(normalizeAuditEntry), total }
   },
+  /**
+   * The filtered trail as a file.
+   *
+   * Fetched with the session's own headers rather than opened in a tab: a tab
+   * carries cookies and nothing else, and this deployment may be holding a
+   * bearer token or a development secret instead.
+   */
+  async auditTrailCsv(query: { action?: string; search?: string; days?: number } = {}) {
+    const search = new URLSearchParams({ format: 'csv' })
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && String(value) !== '') search.set(key, String(value))
+    }
+    const headers = new Headers({ Accept: 'text/csv' })
+    const token = session.token(); const secret = session.secret()
+    if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+    if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+    const response = await fetch(`${API_BASE}/admin/audit?${search}`, { headers, credentials: 'include' })
+    if (!response.ok) {
+      throw new ApiError(`감사 기록을 내려받지 못했습니다 (${response.status})`, response.status)
+    }
+    return response.blob()
+  },
   /** The kinds of entry this deployment writes, so a filter offers them. */
   async auditActions(days?: number) {
     const raw = await request<unknown>(`/admin/audit/actions${days ? `?days=${days}` : ''}`)

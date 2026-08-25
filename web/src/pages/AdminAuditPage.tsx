@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronRight, History, RefreshCw, Search, ShieldCheck, User } from 'lucide-react'
+import { ChevronRight, Download, History, RefreshCw, Search, ShieldCheck, User } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { Badge, Button, EmptyState, ErrorState, Input, Select } from '../components/UI'
+import { useToast } from '../components/Toast'
 import type { AuditEntry } from '../types'
 import { displayError, formatDate, relativeDate } from '../utils'
 
@@ -46,10 +47,12 @@ export function AdminAuditPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
+  // Opened from a user's row, the address says whose trail this is.
+  const [search, setSearch] = useState(() => new URLSearchParams(window.location.search).get('actor') || '')
   const [action, setAction] = useState('')
   const [days, setDays] = useState(7)
   const [selected, setSelected] = useState<AuditEntry | null>(null)
+  const { showToast } = useToast()
 
   const load = useCallback(async (nextOffset: number) => {
     setLoading(true); setError('')
@@ -62,13 +65,31 @@ export function AdminAuditPage() {
   useEffect(() => { void load(0) }, [load])
   useEffect(() => { api.auditActions(days).then(setActions).catch(() => setActions([])) }, [days])
 
+  // The file is what is on screen, filters and all — an auditor asked for the
+  // trail, not for the first fifty rows of it. The browser is handed the URL
+  // rather than the bytes: the session travels with it, and a hundred thousand
+  // rows do not pass through this page's memory on the way to disk.
+  const exportTrail = async () => {
+    try {
+      const file = await api.auditTrailCsv({ search, action, days })
+      const url = URL.createObjectURL(file)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `ptium-audit-${new Date().toISOString().slice(0, 10)}.csv`
+      anchor.click()
+      URL.revokeObjectURL(url)
+      showToast('감사 기록을 CSV로 내려받았습니다. 화면의 조건이 그대로 적용됩니다.')
+    } catch (err) { showToast(displayError(err), 'error') }
+  }
+
   const shown = useMemo(() => `${Math.min(offset + 1, total)}–${Math.min(offset + PAGE, total)} / ${total.toLocaleString('ko-KR')}`,
     [offset, total])
   const label = (value: string) => actionLabels[value] || value
   const actor = (entry: AuditEntry) => entry.actorEmail || entry.actorName || (entry.actorId ? entry.actorId.slice(0, 8) : '시스템')
 
   return <AppShell title="감사 기록" eyebrow="WHO DID WHAT"
-    actions={<Button variant="secondary" onClick={() => void load(offset)}><RefreshCw size={15} /> 새로고침</Button>}>
+    actions={<><Button variant="secondary" onClick={() => void exportTrail()}><Download size={15} /> CSV로 내려받기</Button>
+      <Button variant="secondary" onClick={() => void load(offset)}><RefreshCw size={15} /> 새로고침</Button></>}>
     <section className="admin-panel">
       <div className="error-toolbar">
         <div className="filter-tabs">

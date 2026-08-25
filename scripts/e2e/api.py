@@ -3,7 +3,7 @@
 Every check states what it expects. A failure prints the request, the status and
 the body, so the next step is reading code rather than reproducing.
 """
-import json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time, re
+import csv, json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time, re
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 RUN = str(int(time.time()))[-6:]  # each run works on its own names
@@ -898,12 +898,17 @@ else:
         failures.append("the queue names its owner by id alone, which nobody knows by sight")
     # Stopping one gives a reason, and the reason is what the author reads —
     # including after the worker that was mid-flight finishes.
-    call("POST", f"/admin/generations/{someone_elses['id']}/cancel", {"reason": f"점검 중단 {RUN}"}, expect=200)
-    for _ in range(10):
-        state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
-        if state.get("status") == "failed":
-            break
-        time.sleep(2)
+    # The answer to the stop is the stopped deck, so the reason is read from it
+    # rather than by polling: a poll races the worker and reports the race.
+    stopped = data_of(call("POST", f"/admin/generations/{someone_elses['id']}/cancel",
+                           {"reason": f"점검 중단 {RUN}"}, expect=200)) or {}
+    checks += 1
+    if stopped.get("errorMessage") != f"점검 중단 {RUN}":
+        failures.append(f"stopping a deck answers with {stopped.get('errorMessage')!r} rather than the reason given")
+    checks += 1
+    if stopped.get("status") != "failed":
+        failures.append(f"a stopped deck reads as {stopped.get('status')!r}")
+    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
     checks += 1
     if state.get("errorMessage") != f"점검 중단 {RUN}":
         failures.append(f"the author is told {state.get('errorMessage')!r} rather than why it was stopped")
@@ -959,7 +964,31 @@ if audited.get("id"):
     checks += 1
     if not any(row.get("action") == "presentation.create" for row in actions):
         failures.append("the actions a filter can offer do not include what this deployment writes")
-    print(f"   one deck: {said} · {len(actions)} kinds of entry today")
+    # An auditor asks for the trail as a file, with the filters on screen.
+    request = urllib.request.Request(f"{BASE}/admin/audit?format=csv&days=1&action=presentation.create",
+                                     headers={"X-Ptium-Dev-Secret": SECRET})
+    with urllib.request.urlopen(request, timeout=180) as response:
+        exported = response.read()
+        disposition = response.headers.get("Content-Disposition") or ""
+    checks += 1
+    if "attachment" not in disposition or not disposition.endswith('.csv"'):
+        failures.append(f"the trail as a file is not offered as one: {disposition!r}")
+    checks += 1
+    if exported[:3] != b"\xef\xbb\xbf":
+        failures.append("the exported trail has no byte order mark; a spreadsheet opens Korean as mojibake")
+    exported_rows = list(csv.reader(io.StringIO(exported.decode("utf-8-sig"))))
+    checks += 1
+    if len(exported_rows) < 2 or exported_rows[0][0] != "시각":
+        failures.append(f"the exported trail does not read as a table: {exported_rows[:1]}")
+    # The filter travels with the file, and a family name stops at the dot.
+    checks += 1
+    if any(row[1] != "presentation.create" for row in exported_rows[1:]):
+        failures.append("the exported trail carries entries the filter excluded: "
+                        f"{sorted({row[1] for row in exported_rows[1:]})}")
+    call("GET", "/admin/audit?format=csv", expect=403,
+         headers={"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"},
+         note="the trail as a file is the administrator's too")
+    print(f"   one deck: {said} · {len(actions)} kinds of entry today · {len(exported_rows) - 1} rows exported")
 # And the trail is the administrator's to read.
 plain_headers = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"}
 for path in ("/admin/audit", "/admin/audit/actions"):

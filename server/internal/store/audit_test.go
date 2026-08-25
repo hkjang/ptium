@@ -55,19 +55,25 @@ func TestTheAuditTrailAnswersWhoDidWhat(t *testing.T) {
 		t.Errorf("the entry names its actor as %q", entries[0].ActorEmail)
 	}
 
-	// What one kind of action did, and what one person did.
-	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Action: "presentation", Search: run}, 50, 0); err != nil || total != 2 {
-		t.Errorf("filtering by an action prefix found %d, want 2 (err %v)", total, err)
+	// A family of actions, and one of them. The name of a family stops at the
+	// dot: asking for presentation.create must not also answer with
+	// presentation.create_and_generate.
+	store.Audit(ctx, &actor.ID, "presentation.create_and_generate", "presentation", deck, map[string]any{"run": run})
+	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Action: "presentation", Search: run}, 50, 0); err != nil || total != 3 {
+		t.Errorf("filtering by a family found %d, want 3 (err %v)", total, err)
 	}
-	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Actor: run + "@ptium.test"}, 50, 0); err != nil || total != 3 {
-		t.Errorf("filtering by an actor found %d, want 3 (err %v)", total, err)
+	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Action: "presentation.create", Search: run}, 50, 0); err != nil || total != 1 {
+		t.Errorf("filtering by one action found %d, want 1 — the family's other members came too (err %v)", total, err)
+	}
+	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Actor: run + "@ptium.test"}, 50, 0); err != nil || total != 4 {
+		t.Errorf("filtering by an actor found %d, want 4 (err %v)", total, err)
 	}
 	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Target: "settings", Search: run}, 50, 0); err != nil || total != 1 {
 		t.Errorf("filtering by a target kind found %d, want 1 (err %v)", total, err)
 	}
 	// And what was recorded alongside it, which is where the detail lives.
-	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Search: run}, 50, 0); err != nil || total != 3 {
-		t.Errorf("searching what was recorded found %d, want 3 (err %v)", total, err)
+	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Search: run}, 50, 0); err != nil || total != 4 {
+		t.Errorf("searching what was recorded found %d, want 4 (err %v)", total, err)
 	}
 	// Nothing from before the window asked for.
 	if _, total, err = store.ListAuditTrail(ctx, AuditFilter{Search: run, Since: time.Now().Add(time.Hour)}, 50, 0); err != nil || total != 0 {

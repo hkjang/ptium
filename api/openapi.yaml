@@ -3350,11 +3350,12 @@ paths:
         - { in: query, name: targetId, schema: { type: string }, description: "The one thing acted on" }
         - { in: query, name: search, schema: { type: string }, description: "Looks through the action, the target, the actor and what was recorded" }
         - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 3650 }, description: "How far back to read" }
+        - { in: query, name: format, schema: { type: string, enum: [csv] }, description: "csv sends the filtered trail as a file rather than a page" }
         - { $ref: '#/components/parameters/Limit' }
         - { $ref: '#/components/parameters/Offset' }
       responses:
         '200':
-          description: A page of the trail, newest first
+          description: A page of the trail, newest first — or, with format=csv, the whole of what was asked for as a file
         '403': { description: The trail is the administrator's to read }
   /api/v1/admin/audit/actions:
     get:
@@ -4450,7 +4451,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.3
+            service.version: 1.13.4
         requestId:
           $ref: '#/components/schemas/RequestID'
 
