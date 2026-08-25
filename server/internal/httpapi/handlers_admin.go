@@ -367,6 +367,85 @@ func (s *Server) adminUpdateUser(writer http.ResponseWriter, request *http.Reque
 	writeData(writer, request, http.StatusOK, updated)
 }
 
+// adminGenerationQueue is what is waiting, what is being written, and what
+// failed recently — the list behind the overview's "the oldest has been waiting
+// twenty minutes".
+func (s *Server) adminGenerationQueue(writer http.ResponseWriter, request *http.Request) {
+	hours := 24
+	if asked := strings.TrimSpace(request.URL.Query().Get("failedHours")); asked != "" {
+		if value, err := strconv.Atoi(asked); err == nil && value >= 0 {
+			hours = min(value, 24*30)
+		}
+	}
+	queue, err := s.store.GenerationQueue(request.Context(), hours, 100)
+	if err != nil {
+		s.internalError(writer, request, "admin_queue_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, queue)
+}
+
+// adminRequeueGeneration puts a deck back in the queue.
+//
+// A deck that failed, or one a dead worker left behind, is a deck its author
+// cannot get back without asking for the whole thing again. An operator who can
+// see the queue should be able to push one through it.
+func (s *Server) adminRequeueGeneration(writer http.ResponseWriter, request *http.Request) {
+	actor, _ := UserFromContext(request.Context())
+	deck, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), "", true)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	queued, err := s.store.QueueGeneration(request.Context(), deck.ID, deck.OwnerID, true, s.maximumSlides(request.Context()))
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_queue_failed")
+		return
+	}
+	// Written down like everything else: the trail says who pushed it.
+	s.store.Audit(request.Context(), &actor.ID, "generation.requeue", "presentation", deck.ID,
+		map[string]any{"was": deck.Status, "owner": deck.OwnerID})
+	writeData(writer, request, http.StatusOK, queued)
+}
+
+// adminCancelGeneration stops a deck that is going nowhere, with a reason its
+// author can read.
+func (s *Server) adminCancelGeneration(writer http.ResponseWriter, request *http.Request) {
+	actor, _ := UserFromContext(request.Context())
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	if request.ContentLength > 0 && !decodeJSON(writer, request, &input) {
+		return
+	}
+	deck, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), "", true)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	if deck.Status != "queued" && deck.Status != "generating" {
+		writeError(writer, request, http.StatusConflict, "not_in_the_queue",
+			"That deck is not waiting or being written", map[string]any{"status": deck.Status})
+		return
+	}
+	reason := strings.TrimSpace(input.Reason)
+	if reason == "" {
+		reason = "관리자가 생성을 중단했습니다"
+	}
+	if err := s.store.FailGeneration(request.Context(), deck.ID, reason); err != nil {
+		s.internalError(writer, request, "presentation_cancel_failed", err)
+		return
+	}
+	s.store.Audit(request.Context(), &actor.ID, "generation.cancel", "presentation", deck.ID,
+		map[string]any{"was": deck.Status, "reason": reason})
+	stopped, err := s.store.GetPresentation(request.Context(), deck.ID, "", true)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	writeData(writer, request, http.StatusOK, stopped)
+}
+
 // adminListAuditTrail answers what was written down about who did what.
 //
 // The trail is filtered the way an operator arrives at it: with an action

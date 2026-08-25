@@ -3,6 +3,7 @@ import { useAuth } from './auth/AuthContext'
 import { BrandMark, useBrand } from './branding/BrandContext'
 import { Button } from './components/UI'
 import { AdminAuditPage } from './pages/AdminAuditPage'
+import { AdminQueuePage } from './pages/AdminQueuePage'
 import { AdminErrorsPage } from './pages/AdminErrorsPage'
 import { AdminOverviewPage } from './pages/AdminOverviewPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
@@ -59,6 +60,7 @@ export function App() {
   if (pathname === '/admin/users') return <AdminUsersPage />
   if (pathname === '/admin/errors') return <AdminErrorsPage />
   if (pathname === '/admin/audit') return <AdminAuditPage />
+  if (pathname === '/admin/queue') return <AdminQueuePage />
   return <NotFound />
 }
 

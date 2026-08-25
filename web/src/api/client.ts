@@ -1361,6 +1361,24 @@ export const api = {
     const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })
     return normalizeUser(unwrapOne<AdminUser & Record<string, unknown>>(raw, ['data', 'user'])) as AdminUser
   },
+  /** What is waiting, what is being written, and what failed recently. */
+  async generationQueue(failedHours = 24) {
+    const raw = await request<unknown>(`/admin/generations?failedHours=${failedHours}`)
+    return unwrapList<Record<string, unknown>>(raw, ['items', 'data', 'generations']).map((row) => ({
+      id: String(row.id ?? ''), title: String(row.title ?? ''),
+      ownerEmail: String(row.ownerEmail ?? ''), status: String(row.status ?? ''),
+      stage: String(row.stage ?? ''), errorMessage: String(row.errorMessage ?? ''),
+      waitingSeconds: Number(row.waitingSeconds ?? 0), updatedAt: String(row.updatedAt ?? ''),
+    }))
+  },
+  /** Push one back into the queue. */
+  requeueGeneration: (id: string) =>
+    request<unknown>(`/admin/generations/${encodeURIComponent(id)}/requeue`, { method: 'POST', body: '{}' }),
+  /** Stop one that is going nowhere, with a reason its author can read. */
+  cancelGeneration: (id: string, reason: string) =>
+    request<unknown>(`/admin/generations/${encodeURIComponent(id)}/cancel`,
+      { method: 'POST', body: JSON.stringify({ reason }) }),
+
   /**
    * What the server wrote down about who did what.
    *

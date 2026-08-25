@@ -54,6 +54,57 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 	return result, err
 }
 
+// QueuedDeck is one generation an operator can see and act on: what it is,
+// whose it is, how long it has been like that, and what went wrong if anything
+// did.
+type QueuedDeck struct {
+	ID           string     `json:"id"`
+	Title        string     `json:"title"`
+	OwnerID      string     `json:"ownerId"`
+	OwnerEmail   string     `json:"ownerEmail,omitempty"`
+	Status       string     `json:"status"`
+	Stage        string     `json:"stage,omitempty"`
+	ErrorMessage string     `json:"errorMessage,omitempty"`
+	WaitingFor   int        `json:"waitingSeconds"`
+	StartedAt    *time.Time `json:"startedAt,omitempty"`
+	UpdatedAt    time.Time  `json:"updatedAt"`
+}
+
+// GenerationQueue is what is waiting, what is being written, and what failed
+// recently.
+//
+// The overview learned to say that the oldest thing has been waiting twenty
+// minutes; an operator reading that could do nothing with it, because a deck
+// belongs to its owner and an administrator could not see one. This is the list
+// behind that number.
+func (s *Store) GenerationQueue(ctx context.Context, includeFailedHours int, limit int) ([]QueuedDeck, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 100
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT p.id::text, p.title, p.owner_id::text, COALESCE(u.email,''),
+			p.status, p.generation_stage, COALESCE(p.error_message,''),
+			EXTRACT(EPOCH FROM now()-p.updated_at)::int, p.generation_started_at, p.updated_at
+		FROM presentations p LEFT JOIN users u ON u.id = p.owner_id
+		WHERE p.deleted_at IS NULL AND (p.status IN ('queued','generating')
+			OR (p.status='failed' AND $1 > 0 AND p.updated_at > now() - ($1 || ' hours')::interval))
+		ORDER BY CASE p.status WHEN 'generating' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END, p.updated_at
+		LIMIT $2`, includeFailedHours, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	queue := make([]QueuedDeck, 0, limit)
+	for rows.Next() {
+		var deck QueuedDeck
+		if err := rows.Scan(&deck.ID, &deck.Title, &deck.OwnerID, &deck.OwnerEmail, &deck.Status, &deck.Stage,
+			&deck.ErrorMessage, &deck.WaitingFor, &deck.StartedAt, &deck.UpdatedAt); err != nil {
+			return nil, err
+		}
+		queue = append(queue, deck)
+	}
+	return queue, rows.Err()
+}
+
 // AuditFilter narrows the trail to the question being asked. Every field is
 // optional: an operator usually arrives with one of "who changed the provider",
 // "what happened to this deck" and "what did this person do".

@@ -682,8 +682,15 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 	return tx.Commit(ctx)
 }
 
+// FailGeneration marks a generation as having failed, with the words its
+// author reads.
+//
+// Only a deck that is still waiting or being written can fail: an operator who
+// stops one gives a reason, and the worker finishing a moment later used to
+// overwrite it with its own — so the author was told to try again for a deck
+// somebody had deliberately stopped.
 func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND deleted_at IS NULL`, id, message)
+	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND status IN ('queued','generating') AND deleted_at IS NULL`, id, message)
 	return err
 }
 

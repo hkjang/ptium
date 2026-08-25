@@ -29,6 +29,7 @@ const adminNav: NavItem[] = [
   { label: '서비스 설정', to: '/admin/settings', icon: <Settings2 size={18} />, admin: true },
   { label: '사용자', to: '/admin/users', icon: <Users size={18} />, admin: true },
   { label: '오류 · 인시던트', to: '/admin/errors', icon: <Activity size={18} />, admin: true },
+  { label: '생성 큐', to: '/admin/queue', icon: <Sparkles size={18} />, admin: true },
   { label: '감사 기록', to: '/admin/audit', icon: <History size={18} />, admin: true },
 ]
 

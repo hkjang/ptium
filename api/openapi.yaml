@@ -3270,6 +3270,54 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/generations:
+    get:
+      operationId: listGenerationQueue
+      tags: [Admin]
+      summary: What is waiting, what is being written, and what failed recently
+      description: >
+        The list behind the overview's "the oldest has been waiting twenty
+        minutes". A deck belongs to its owner; this is the one place an
+        administrator sees every deck in the queue, with whose it is and how
+        long it has been like that. Administrators only.
+      parameters:
+        - { in: query, name: failedHours, schema: { type: integer, minimum: 0, maximum: 720 }, description: "How far back to include failures; 0 for none" }
+      responses:
+        '200': { description: The queue, being-written first, then waiting, then recent failures }
+        '403': { description: The queue is the administrator's to read }
+  /api/v1/admin/generations/{id}/requeue:
+    post:
+      operationId: requeueGeneration
+      tags: [Admin]
+      summary: Put a deck back in the queue
+      description: >
+        A deck that failed, or one a dead worker left behind, is a deck its
+        author cannot get back without asking for the whole thing again.
+      parameters: [{ $ref: '#/components/parameters/PresentationID' }]
+      responses:
+        '200': { description: The deck, queued }
+        '403': { description: Administrators only }
+        '404': { description: No such deck }
+  /api/v1/admin/generations/{id}/cancel:
+    post:
+      operationId: cancelGeneration
+      tags: [Admin]
+      summary: Stop a deck that is going nowhere, with a reason its author reads
+      description: >
+        The reason is written where the author looks, and stands: a worker that
+        finishes a moment later does not overwrite it.
+      parameters: [{ $ref: '#/components/parameters/PresentationID' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { reason: { type: string, maxLength: 300 } }
+      responses:
+        '200': { description: The deck, stopped }
+        '409': { description: That deck is not waiting or being written }
+        '403': { description: Administrators only }
   /api/v1/admin/audit:
     get:
       operationId: listAuditTrail
@@ -4387,7 +4435,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.0
+            service.version: 1.13.1
         requestId:
           $ref: '#/components/schemas/RequestID'
 

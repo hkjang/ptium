@@ -10,10 +10,12 @@ RUN = str(int(time.time()))[-6:]  # each run works on its own names
 SECRET = os.environ.get("PTIUM_DEV_SECRET", "devsecret-devsecret-devsecret-devsecret")
 failures, checks = [], 0
 
-def call(method, path, body=None, raw=False, files=None, expect=None, note=""):
+def call(method, path, body=None, raw=False, files=None, expect=None, note="", headers=None):
+    """headers speaks as somebody else: most checks are the development
+    identity, and a few need another account or none at all."""
     global checks
     url = path if path.startswith("http") else BASE + path
-    headers = {"X-Ptium-Dev-Secret": SECRET}
+    headers = dict(headers) if headers else {"X-Ptium-Dev-Secret": SECRET}
     data = None
     if files:
         boundary = "----ptium-e2e"
@@ -857,6 +859,52 @@ call("DELETE", f"/presentations/{copy['id']}?permanent=true", expect=[204, 200, 
 # The product's central promise: the template is the design, and a deck that was
 # written into one can be written into another. A deck rebinds each slide to the
 # layout of the same role, and what it draws changes with it.
+# An operator who can see that a deck has waited twenty minutes should be able
+# to do something about it. A deck belongs to its owner, and an administrator
+# could not see one — let alone push it through or stop it.
+print("── the queue an operator can act on ──")
+queued_owner = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:queue-owner-{RUN}@ptium.local"}
+someone_elses = data_of(call("POST", "/presentations", {"title": f"큐 {RUN}", "prompt": "점검", "language": "ko"},
+                            expect=201, headers=queued_owner)) or {}
+call("POST", f"/presentations/{someone_elses['id']}/generate", {}, expect=[200, 202], headers=queued_owner)
+waiting = data_of(call("GET", "/admin/generations", expect=200)) or []
+mine = [row for row in waiting if row.get("id") == someone_elses["id"]]
+checks += 1
+if not mine:
+    failures.append("a deck waiting in the queue is not in the queue an administrator reads")
+else:
+    checks += 1
+    if not mine[0].get("ownerEmail"):
+        failures.append("the queue names its owner by id alone, which nobody knows by sight")
+    # Stopping one gives a reason, and the reason is what the author reads —
+    # including after the worker that was mid-flight finishes.
+    call("POST", f"/admin/generations/{someone_elses['id']}/cancel", {"reason": f"점검 중단 {RUN}"}, expect=200)
+    for _ in range(10):
+        state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+        if state.get("status") == "failed":
+            break
+        time.sleep(2)
+    checks += 1
+    if state.get("errorMessage") != f"점검 중단 {RUN}":
+        failures.append(f"the author is told {state.get('errorMessage')!r} rather than why it was stopped")
+    time.sleep(4)
+    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+    checks += 1
+    if state.get("errorMessage") != f"점검 중단 {RUN}":
+        failures.append("a worker finishing later overwrote the reason an operator gave")
+    # And it can be pushed back through.
+    call("POST", f"/admin/generations/{someone_elses['id']}/requeue", {}, expect=200)
+    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+    checks += 1
+    if state.get("status") not in ("queued", "generating", "completed"):
+        failures.append(f"a requeued deck reads as {state.get('status')!r}")
+    print(f"   one deck: seen, stopped with a reason the author reads, and pushed back")
+without_the_role = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"}
+call("GET", "/admin/generations", expect=403, headers=without_the_role,
+     note="the queue is the administrator's")
+call("POST", f"/admin/generations/{someone_elses['id']}/cancel", {}, expect=403, headers=without_the_role,
+     note="stopping someone's deck is the administrator's")
+
 # Everything in this server writes an audit record. Until the trail had a
 # reader, "who turned the provider on" and "who deleted that deck" were
 # questions with a table behind them and no door.

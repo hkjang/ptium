@@ -14,3 +14,7 @@
 .audit-pager { display: flex; align-items: center; gap: 12px; justify-content: flex-end; padding: 14px 4px 2px; }
 .audit-pager span { margin-right: auto; color: var(--ink-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .generation-health { margin-bottom: 18px; }
+.queue-row { cursor: default; }
+.queue-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.queue-late { color: var(--danger, #d64545); }
+.muted-note { color: var(--ink-muted); font-size: 13px; }

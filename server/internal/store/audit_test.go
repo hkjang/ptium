@@ -90,3 +90,83 @@ func TestTheAuditTrailAnswersWhoDidWhat(t *testing.T) {
 		t.Fatalf("clean up: %v", err)
 	}
 }
+
+// An operator who can see that a deck has been waiting twenty minutes should be
+// able to do something about it. Until the queue had a reader, a deck belonged
+// to its owner and an administrator could not see one.
+//
+// Needs a database: set PTIUM_TEST_DSN to run it.
+func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	ctx := context.Background()
+
+	run := fmt.Sprintf("queue-%d", time.Now().UnixNano())
+	owner, err := store.UpsertUser(ctx, "dev:"+run+"@ptium.test", run+"@ptium.test", run, []string{"user"}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	deck, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: run, Prompt: "점검", Language: "ko", SlideCount: 6, Theme: "slate-classic"})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	if _, err := store.QueueGeneration(ctx, deck.ID, owner.ID, false, 50); err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+
+	queue, err := store.GenerationQueue(ctx, 24, 100)
+	if err != nil {
+		t.Fatalf("read the queue: %v", err)
+	}
+	var mine *QueuedDeck
+	for index := range queue {
+		if queue[index].ID == deck.ID {
+			mine = &queue[index]
+		}
+	}
+	if mine == nil {
+		t.Fatalf("a queued deck is not in the queue an operator reads")
+	}
+	// Whose it is, said as an address rather than a uuid.
+	if mine.OwnerEmail != run+"@ptium.test" {
+		t.Errorf("the queue names the owner %q", mine.OwnerEmail)
+	}
+
+	// Stopping one gives a reason, and the reason is what its author reads.
+	const reason = "예산 승인 전까지 중단합니다"
+	if err := store.FailGeneration(ctx, deck.ID, reason); err != nil {
+		t.Fatalf("stop it: %v", err)
+	}
+	stopped, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if err != nil {
+		t.Fatalf("read it back: %v", err)
+	}
+	if stopped.Status != "failed" || stopped.ErrorMessage != reason {
+		t.Fatalf("a stopped deck reads as %q / %q", stopped.Status, stopped.ErrorMessage)
+	}
+	// A worker finishing a moment later must not overwrite that reason: the deck
+	// is no longer being written, and what the operator said stands.
+	if err := store.FailGeneration(ctx, deck.ID, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
+		t.Fatalf("the late failure errored: %v", err)
+	}
+	again, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if err != nil {
+		t.Fatalf("read it back: %v", err)
+	}
+	if again.ErrorMessage != reason {
+		t.Errorf("a worker finishing later overwrote the operator's reason with %q", again.ErrorMessage)
+	}
+
+	if _, err := pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID); err != nil {
+		t.Fatalf("clean up: %v", err)
+	}
+}

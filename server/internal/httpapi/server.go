@@ -251,6 +251,12 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
 	api.Handle("PATCH /api/v1/admin/errors/{id}", requireUUIDPath(s.requireAdmin("admin:errors", http.HandlerFunc(s.adminUpdateError))))
+	// What is waiting, and the two things an operator can do about it.
+	api.Handle("GET /api/v1/admin/generations", s.requireAdmin("admin:users", http.HandlerFunc(s.adminGenerationQueue)))
+	api.Handle("POST /api/v1/admin/generations/{id}/requeue",
+		requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminRequeueGeneration))))
+	api.Handle("POST /api/v1/admin/generations/{id}/cancel",
+		requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminCancelGeneration))))
 	// The trail is written by everything and was readable by nothing.
 	api.Handle("GET /api/v1/admin/audit", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListAuditTrail)))
 	api.Handle("GET /api/v1/admin/audit/actions", s.requireAdmin("admin:users", http.HandlerFunc(s.adminAuditActions)))

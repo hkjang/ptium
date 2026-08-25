@@ -130,6 +130,7 @@ with sync_playwright() as play:
     visit("/admin/users", expect_text="사용자")
     visit("/admin/errors", expect_text="오류")
     visit("/admin/audit", expect_text="감사 기록")
+    visit("/admin/queue", expect_text="생성 큐")
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 
