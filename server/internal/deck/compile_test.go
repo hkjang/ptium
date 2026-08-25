@@ -1,6 +1,7 @@
 package deck
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -979,5 +980,25 @@ func TestASentenceIsRecognisedInEveryLanguageTheDeckWritesIn(t *testing.T) {
 		if readsAsSentence(line) {
 			t.Fatalf("%q is a name and was read as a sentence", line)
 		}
+	}
+}
+
+// The body path reported what it could not hold and the title path did not, so
+// a heading arrived shortened with nothing anywhere saying so.
+func TestAShortenedHeadingIsWarnedAbout(t *testing.T) {
+	manifest := testManifest()
+	long := ""
+	for index := 1; index <= 16; index++ {
+		long += fmt.Sprintf("항목%02d가나 ", index)
+	}
+	result := Compile(ParseSource("# "+strings.TrimSpace(long)+"\n- 짧은 요점\n"), manifest,
+		CompileOptions{Language: "ko"})
+	said := strings.Join(result.Warnings, " | ")
+	if !strings.Contains(said, "shortened to fit") {
+		t.Errorf("a heading was cut and the warnings did not say so: %q", said)
+	}
+	short := Compile(ParseSource("# 물류센터 자동화 도입 승인\n- 짧은 요점\n"), manifest, CompileOptions{Language: "ko"})
+	if strings.Contains(strings.Join(short.Warnings, " | "), "shortened to fit") {
+		t.Errorf("a heading that fits was reported as shortened: %q", short.Warnings)
 	}
 }

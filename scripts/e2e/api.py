@@ -347,6 +347,38 @@ wash_template = next((t.get("id") for t in (data_of(call("GET", "/templates?limi
 # Japanese 新字体 or simplified Chinese reaches past it and those characters
 # print as blank space, so the export has to say which ones it dropped: finding
 # out here is the difference from finding out in print.
+# A heading longer than its box is cut with an ellipsis, and the words past the
+# cut are on no slide. Losing them is sometimes the only thing to do; not saying
+# so is not: sixteen words were written, eight were drawn, and the quality panel
+# called the deck clean.
+print("── a heading that had to be cut says so ──")
+long_heading = " ".join(f"항목{n:02d}가나" for n in range(1, 17))
+cut = data_of(call("POST", "/presentations", {"title": "잘림 점검", "prompt": "점검", "language": "ko"}, expect=201))
+if cut:
+    applied = data_of(call("PUT", f"/presentations/{cut['id']}/source",
+                           {"source": f"# {long_heading}\n- 짧은 요점\n"}, expect=200)) or {}
+    said = " | ".join(applied.get("warnings") or [])
+    checks += 1
+    if "shortened to fit" not in said:
+        failures.append(f"a heading was cut and the apply said nothing: {said!r}")
+    measured = data_of(call("GET", f"/presentations/{cut['id']}/inspect", expect=200)) or {}
+    kinds = {f.get("kind") for f in (measured.get("findings") or [])}
+    checks += 1
+    if "trimmed" not in kinds:
+        failures.append(f"a heading was cut and the inspector did not report it: {sorted(kinds)}")
+    print(f"   warned: {'shortened to fit' in said} · reported: {'trimmed' in kinds}")
+    # And a heading that fits stays quiet on both.
+    whole = data_of(call("PUT", f"/presentations/{cut['id']}/source",
+                         {"source": "# 물류센터 자동화 도입 승인\n- 짧은 요점\n"}, expect=200)) or {}
+    quiet = data_of(call("GET", f"/presentations/{cut['id']}/inspect", expect=200)) or {}
+    checks += 1
+    if "trimmed" in {f.get("kind") for f in (quiet.get("findings") or [])}:
+        failures.append("a heading that fits was reported as cut")
+    checks += 1
+    if "shortened to fit" in " | ".join(whole.get("warnings") or []):
+        failures.append("a heading that fits was warned about")
+    call("DELETE", f"/presentations/{cut['id']}", expect=204)
+
 print("── what the pdf face cannot draw ──")
 japanese = data_of(call("POST", "/presentations", {"title": "四半期実績", "prompt": "四半期実績の報告。",
                                                    "language": "ja", "requestedSlideCount": 3}, expect=201))

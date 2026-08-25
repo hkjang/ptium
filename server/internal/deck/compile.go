@@ -88,7 +88,14 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 			title = firstSentence(slide.Lead)
 		}
 		if placeholder, ok := layout.Slot(pptx.SlotTitle); ok && title != "" {
-			content.SetField(pptx.SlotTitle, fit(placeholder, []pptx.Paragraph{{Text: title}}, options.Language))
+			// A shortened point is reported and a shortened heading was not, so a
+			// title of sixteen words arrived on the slide as eight and an ellipsis
+			// with nothing anywhere saying so.
+			fitted, report := pptx.FitParagraphsReport([]pptx.Paragraph{{Text: title}}, placeholder, options.Language)
+			content.SetField(pptx.SlotTitle, fitted)
+			if report.Lost() {
+				result.Warnings = append(result.Warnings, where+": "+describeFitLoss(report, pptx.SlotTitle))
+			}
 		}
 
 		// A component claims its slot before prose does: a slot holds one or the
@@ -243,7 +250,12 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		if lead != "" && lead != title && !twoColumns {
 			switch placeholder, ok := leadSlot(layout, claimed); {
 			case ok:
-				content.SetField(placeholder.Slot, fit(placeholder, []pptx.Paragraph{{Text: lead}}, options.Language))
+				fittedLead, leadReport := pptx.FitParagraphsReport(
+					[]pptx.Paragraph{{Text: lead}}, placeholder, options.Language)
+				content.SetField(placeholder.Slot, fittedLead)
+				if leadReport.Lost() {
+					result.Warnings = append(result.Warnings, where+": "+describeFitLoss(leadReport, placeholder.Slot))
+				}
 				claimed[placeholder.Slot] = true
 				subtitle = lead
 			case len(content.Blocks) > 0:

@@ -429,6 +429,13 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		// Prose is cut the same way, and the cut says so: the fitter ends what it
+		// shortened with an ellipsis. A heading of sixteen words arrived on the
+		// slide as eight and a "…", and the quality panel called the deck clean.
+		for _, finding := range shortenedText(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		// A link somebody wrote that the deck will not follow draws as what it
 		// says: the words, the brackets and the address, printed on the wall.
 		for _, finding := range refusedLinks(slide) {
@@ -563,6 +570,43 @@ func refusedLinks(slide Slide) []Finding {
 		}
 	}
 	return findings
+}
+
+// shortenedText reports a line the fitter had to cut.
+//
+// The cut is marked where it is made — "…" at a word boundary — so this reads
+// the mark rather than guessing. An author who ends a line in an ellipsis of
+// their own is told about a line that was not cut, which is a smaller wrong
+// than a cut line nobody mentions, and the finding is advisory either way.
+func shortenedText(slide Slide) []Finding {
+	var findings []Finding
+	slots := make([]string, 0, len(slide.Fields))
+	for slot := range slide.Fields {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		for _, paragraph := range slide.Fields[slot] {
+			text := strings.TrimSpace(paragraph.Text)
+			if !strings.HasSuffix(text, "…") {
+				continue
+			}
+			findings = append(findings, Finding{Slot: slot, Kind: FindingTrimmed, Advisory: true,
+				Detail: fmt.Sprintf("%q was shortened to fit %s; what follows the ellipsis is on no slide",
+					shortDetail(text), slot)})
+			break
+		}
+	}
+	return findings
+}
+
+// shortDetail keeps a quoted example short enough to read in a list.
+func shortDetail(text string) string {
+	runes := []rune(text)
+	if len(runes) <= 40 {
+		return text
+	}
+	return string(runes[:40]) + "…"
 }
 
 // trimmedComponents reports a component that holds more than it draws.
