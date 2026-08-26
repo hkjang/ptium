@@ -349,16 +349,16 @@ func (s *Store) PutSettings(ctx context.Context, actorID string, writes []Settin
 
 func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int) ([]model.User, int, error) {
 	limit, offset = clampPage(limit, offset)
-	pattern := "%" + search + "%"
+	pattern := likePattern(search)
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE $1='' OR email ILIKE $2 OR name ILIKE $2`, search, pattern).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE $1='' OR email ILIKE $2`+likeEscape+` OR name ILIKE $2`+likeEscape+``, search, pattern).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT u.id::text,COALESCE(u.subject,''),u.email,u.name,u.roles,u.is_admin,u.disabled,
 		COALESCE(u.last_login,u.created_at),u.created_at,u.updated_at,(u.password_hash IS NOT NULL),u.password_updated_at,
 		COALESCE(p.presentation_count,0)
 		FROM users u LEFT JOIN (SELECT owner_id,count(*)::int AS presentation_count FROM presentations WHERE deleted_at IS NULL GROUP BY owner_id) p ON p.owner_id=u.id
-		WHERE $1='' OR u.email ILIKE $2 OR u.name ILIKE $2 ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, search, pattern, limit, offset)
+		WHERE $1='' OR u.email ILIKE $2`+likeEscape+` OR u.name ILIKE $2`+likeEscape+` ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, search, pattern, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}

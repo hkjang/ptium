@@ -116,8 +116,8 @@ func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, de
 		filterArgs = nil
 	}
 	if wanted := strings.ToLower(strings.TrimSpace(search)); wanted != "" {
-		filterArgs = append(filterArgs, "%"+wanted+"%")
-		where += fmt.Sprintf(" AND (lower(title) LIKE $%d OR lower(prompt) LIKE $%d)", len(filterArgs), len(filterArgs))
+		filterArgs = append(filterArgs, likePattern(wanted))
+		where += fmt.Sprintf(" AND (lower(title) LIKE $%d"+likeEscape+" OR lower(prompt) LIKE $%d"+likeEscape+")", len(filterArgs), len(filterArgs))
 	}
 	var total int
 	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM presentations `+where, filterArgs...).Scan(&total); err != nil {

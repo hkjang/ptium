@@ -157,8 +157,8 @@ func (s *Store) ListAssets(ctx context.Context, ownerID string, query AssetQuery
 	where := ` WHERE a.owner_id=$1`
 	args := []any{ownerID}
 	if search := strings.TrimSpace(query.Search); search != "" {
-		args = append(args, "%"+strings.ToLower(search)+"%")
-		where += fmt.Sprintf(` AND (lower(a.name) LIKE $%d OR EXISTS (SELECT 1 FROM unnest(a.tags) t WHERE lower(t) LIKE $%d))`, len(args), len(args))
+		args = append(args, likePattern(strings.ToLower(search)))
+		where += fmt.Sprintf(` AND (lower(a.name) LIKE $%d`+likeEscape+` OR EXISTS (SELECT 1 FROM unnest(a.tags) t WHERE lower(t) LIKE $%d`+likeEscape+`))`, len(args), len(args))
 	}
 	if tag := strings.TrimSpace(query.Tag); tag != "" {
 		args = append(args, tag)

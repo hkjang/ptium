@@ -867,6 +867,27 @@ else:
     call("DELETE", f"/assets/{real['id']}", expect=[204, 404])
 print("   the picture library takes pictures and nothing else")
 
+# The wildcards in a search belong to the query, not to the reader. "%"+text+"%"
+# handed what somebody typed straight to LIKE, so searching for "50%" matched
+# "500만원" and a name with an underscore could not be searched for exactly.
+wild = {}
+for name in [f"달성률 50% 보고 {RUN}", f"달성률 500만원 보고 {RUN}",
+             f"metadata_demo 정리 {RUN}", f"metadataXdemo 정리 {RUN}"]:
+    made_deck = data_of(call("POST", "/presentations", {"title": name, "prompt": "검색 점검",
+                                                        "language": "ko"}, expect=201)) or {}
+    wild[name] = made_deck.get("id")
+for typed, wanted in ((f"50% 보고 {RUN}", f"달성률 50% 보고 {RUN}"),
+                      (f"metadata_demo 정리 {RUN}", f"metadata_demo 정리 {RUN}")):
+    found = data_of(call("GET", f"/presentations?q={urllib.parse.quote(typed)}&limit=10", expect=200)) or []
+    titles = [row.get("title") for row in found]
+    checks += 1
+    if titles != [wanted]:
+        failures.append(f"searching {typed!r} found {titles}")
+print("   searching for a % or a _ finds the name that has one")
+for one in wild.values():
+    if one:
+        call("DELETE", f"/presentations/{one}?permanent=true", expect=[204, 404])
+
 print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
                                                       "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}

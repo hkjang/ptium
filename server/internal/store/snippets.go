@@ -111,9 +111,9 @@ func (s *Store) ListSnippets(ctx context.Context, ownerID string, query SnippetQ
 	where := ` WHERE s.owner_id=$1`
 	args := []any{ownerID}
 	if search := strings.TrimSpace(query.Search); search != "" {
-		args = append(args, "%"+strings.ToLower(search)+"%")
-		where += fmt.Sprintf(` AND (lower(s.name) LIKE $%d OR lower(s.source) LIKE $%d
-			OR EXISTS (SELECT 1 FROM unnest(s.tags) t WHERE lower(t) LIKE $%d))`, len(args), len(args), len(args))
+		args = append(args, likePattern(strings.ToLower(search)))
+		where += fmt.Sprintf(` AND (lower(s.name) LIKE $%d`+likeEscape+` OR lower(s.source) LIKE $%d`+likeEscape+`
+			OR EXISTS (SELECT 1 FROM unnest(s.tags) t WHERE lower(t) LIKE $%d`+likeEscape+`))`, len(args), len(args), len(args))
 	}
 	if tag := strings.TrimSpace(query.Tag); tag != "" {
 		args = append(args, tag)

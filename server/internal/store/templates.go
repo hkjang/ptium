@@ -132,7 +132,7 @@ func (s *Store) ListTemplatesFiltered(ctx context.Context, ownerID string, filte
 		conditions = append(conditions, condition{"kind=$%d", kind})
 	}
 	if search := strings.TrimSpace(filter.Search); search != "" {
-		conditions = append(conditions, condition{"name ILIKE $%d", "%" + search + "%"})
+		conditions = append(conditions, condition{"name ILIKE $%d" + likeEscape, likePattern(search)})
 	}
 	where := func(from int) string {
 		clause := `(owner_id=$1 OR scope='shared' OR kind='builtin')`
