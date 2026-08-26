@@ -274,6 +274,8 @@ func (s *Server) Handler() http.Handler {
 	// The settings' own trail, and putting one back. Registered before the
 	// {key} route so "changes" is read as itself rather than as a setting named
 	// changes.
+	// One page a site with no internet can hand to somebody who cannot see it.
+	api.Handle("GET /api/v1/admin/report", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminReport)))
 	// What has accumulated and is going nowhere. Reads only.
 	api.Handle("GET /api/v1/admin/tidy", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminTidyPreview)))
 	// The designs this deployment writes decks in.

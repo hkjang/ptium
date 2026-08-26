@@ -109,6 +109,30 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# One page a site with no internet can hand to somebody who cannot see it. It
+# must carry what is wrong and never a secret.
+status, report_body = call("GET", "/admin/report", expect=[200, 403])
+report = data_of((status, report_body)) or {}
+if report:
+    for field in ("version", "schema", "overview", "usage", "tidy", "changedSettings", "designs", "modelHost"):
+        if field not in report:
+            failures.append(f"the deployment report does not carry {field}")
+    schema = report.get("schema") or {}
+    if (schema.get("applied") or 0) < 1:
+        failures.append("the report says no migrations have been applied")
+    _, as_text = call("GET", "/admin/report?format=md", raw=True, expect=200)
+    text = as_text.decode("utf-8", "replace") if isinstance(as_text, (bytes, bytearray)) else str(as_text)
+    if "Ptium 배포 점검" not in text:
+        failures.append("the report as a file does not read as a report")
+    if "비밀 값이 들어 있지 않습니다" not in text:
+        failures.append("the report does not say that it carries no secret")
+    for leaked in (SECRET, "postgres://", "sk-sweep-secret"):
+        if leaked and leaked in text:
+            failures.append("the deployment report carries a secret")
+    for named in ("unusedImages", "trashed", "failedOldDecks"):
+        if named + ":" in text:
+            failures.append(f"the report calls a pile by its field name: {named}")
+
 # What has accumulated and is going nowhere. This answer deletes nothing; it is
 # what a decision about keeping things would be made from.
 tidy = data_of(call("GET", "/admin/tidy", expect=[200, 403])) or {}

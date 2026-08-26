@@ -296,6 +296,14 @@ var migrations = []string{
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_lease uuid`,
 }
 
+// ShippedSetting is the value this product ships a setting with, for anything
+// asking what a deployment has changed. A report listing forty values nobody
+// touched hides the two somebody did.
+func ShippedSetting(key string) (string, bool) {
+	setting, ok := defaultSettings[key]
+	return setting.Value, ok
+}
+
 var defaultSettings = map[string]struct {
 	Value       string
 	Sensitive   bool

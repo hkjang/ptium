@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/hkjang/ptium/server/internal/pptx"
+	"github.com/hkjang/ptium/server/internal/store"
 )
 
 // What an import leaves behind, and what it says about it.
@@ -190,5 +191,52 @@ func TestBothWaysOfAskingForARewriteRefuseAlike(t *testing.T) {
 	}
 	if !strings.Contains(written, "rewrite_needs_model") {
 		t.Error("the polish button no longer names the refusal the other door uses")
+	}
+}
+
+// A report a closed site hands to somebody who cannot see it carries no secret.
+func TestTheDeploymentReportSaysWhatChangedWithoutSayingSecrets(t *testing.T) {
+	t.Parallel()
+	report := deploymentReport{
+		Version: "1.37.0",
+		Changed: []reportSetting{
+			{Key: "ai.api_key", Sensitive: true, Configured: true},
+			{Key: "ai.base_url", Value: []byte(`"http://model.internal/v1"`)},
+		},
+		Tidy: store.TidyPreview{Items: []store.TidyItem{{Kind: "unusedImages", Count: 470, Bytes: 58_600_000, Oldest: "2026-08-21"}}},
+	}
+	written := writeReport(report)
+	if !strings.Contains(written, "ai.api_key: 설정됨 (값은 적지 않습니다)") {
+		t.Errorf("a secret is not reported as set without its value:\n%s", written)
+	}
+	if !strings.Contains(written, "http://model.internal/v1") {
+		t.Errorf("a changed setting is missing from the report:\n%s", written)
+	}
+	// Field names are not a language anybody reads.
+	if strings.Contains(written, "unusedImages:") {
+		t.Errorf("the report calls a pile by its field name:\n%s", written)
+	}
+	if !strings.Contains(written, "어느 덱도 쓰지 않는 이미지: 470개") {
+		t.Errorf("the report does not say what has piled up:\n%s", written)
+	}
+	if !strings.Contains(written, "비밀 값이 들어 있지 않습니다") {
+		t.Errorf("the report does not say that it carries no secret:\n%s", written)
+	}
+}
+
+// A value written differently is not a value somebody changed.
+func TestASettingSpacedDifferentlyIsNotAChange(t *testing.T) {
+	t.Parallel()
+	if !sameSetting([]byte(`["ptium-admin", "admin"]`), `["ptium-admin","admin"]`) {
+		t.Error("the same roles written with a space read as a change somebody made")
+	}
+	if !sameSetting([]byte(`3`), `3`) || !sameSetting([]byte(`"ko"`), `"ko"`) {
+		t.Error("an unchanged value reads as changed")
+	}
+	if sameSetting([]byte(`["admin"]`), `["ptium-admin","admin"]`) {
+		t.Error("a genuinely changed value reads as unchanged")
+	}
+	if sameSetting([]byte(`5`), `3`) {
+		t.Error("a changed number reads as unchanged")
 	}
 }

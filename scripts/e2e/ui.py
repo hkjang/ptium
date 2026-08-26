@@ -232,6 +232,10 @@ with sync_playwright() as play:
             api(f"/api-keys/{key['id']}", "DELETE")
     visit("/docs", expect_text="API")
     visit("/admin", expect_text="관리")
+    # A site with no internet cannot open a dashboard for anybody; this is the
+    # one file it can send.
+    if page.get_by_role("button", name="점검 리포트").count() == 0:
+        failures.append("the overview offers no deployment report to hand over")
     visit("/admin/settings", expect_text="설정")
     visit("/admin/users", expect_text="사용자")
     visit("/admin/errors", expect_text="오류")

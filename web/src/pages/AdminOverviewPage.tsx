@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Activity, Bot, ArrowRight, CheckCircle2, CircleAlert, Database, FileStack, KeyRound, Server, Settings2, Sparkles, Trash2, Users } from 'lucide-react'
+import { Activity, Bot, ArrowRight, CheckCircle2, CircleAlert, Database, FileDown, FileStack, KeyRound, Server, Settings2, Sparkles, Trash2, Users } from 'lucide-react'
 import { api } from '../api/client'
 import { generationTrouble, quietTooLong, waitedTooLong } from './queuehealth'
 import { AppShell } from '../components/AppShell'
-import { Badge, ErrorState, LoadingState } from '../components/UI'
+import { Badge, Button, ErrorState, LoadingState } from '../components/UI'
+import { useToast } from '../components/Toast'
 import { Link } from '../router'
 import { displayError, relativeDate } from '../utils'
 
@@ -90,6 +91,8 @@ export function AdminOverviewPage() {
   const [storage, setStorage] = useState<Record<string, unknown> | null>(null)
   const [provider, setProvider] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
+  const [reporting, setReporting] = useState(false)
+  const { showToast } = useToast()
   const [error, setError] = useState('')
   useEffect(() => { api.adminOverview().then(setData).catch((err) => setError(displayError(err))).finally(() => setLoading(false)) }, [])
   // Capacity is read separately: it is the slower query of the two, and a
@@ -100,7 +103,30 @@ export function AdminOverviewPage() {
   // board while nothing can be generated is being told the wrong thing.
   useEffect(() => { api.providerStatus().then(setProvider).catch(() => setProvider({ reachable: false, detail: '' })) }, [])
 
-  return <AppShell title="관리자 개요" eyebrow="CONTROL CENTER" actions={!loading && !error ? <div className="live-status"><i /> API · DB 연결됨</div> : undefined}>
+  // The report is a file rather than a screen: what an operator does with it is
+  // attach it to a question somebody outside the site can read.
+  const downloadReport = async () => {
+    setReporting(true)
+    try {
+      const text = await api.deploymentReport()
+      const url = URL.createObjectURL(new Blob([text], { type: 'text/markdown;charset=utf-8' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `ptium-점검-${new Date().toISOString().slice(0, 10)}.md`
+      link.click()
+      URL.revokeObjectURL(url)
+      showToast('점검 리포트를 내려받았습니다. 비밀 값은 들어 있지 않습니다.')
+    } catch (err) { showToast(displayError(err), 'error') } finally { setReporting(false) }
+  }
+
+  return <AppShell title="관리자 개요" eyebrow="CONTROL CENTER" actions={<>
+    {/* A site with no internet cannot open a dashboard for anybody. This is the
+        one file it can send: version, migrations, what was changed from what
+        this product ships with, what has failed lately, what has piled up — and
+        no secret in it. */}
+    <Button variant="secondary" onClick={() => void downloadReport()} disabled={reporting}>
+      <FileDown size={15} /> {reporting ? '만드는 중…' : '점검 리포트'}</Button>
+    {!loading && !error ? <div className="live-status"><i /> API · DB 연결됨</div> : null}</>}>
     {loading ? <LoadingState label="서비스 현황을 불러오는 중…" /> : error ? <ErrorState message={error} /> : <>
       <section className="admin-metric-grid">
         <article><span className="metric-icon violet"><Users size={19} /></span><div><span>전체 사용자</span><strong>{number(data.users)}</strong><small>프로비저닝된 계정</small></div></article>

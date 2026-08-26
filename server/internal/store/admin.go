@@ -726,3 +726,19 @@ func (s *Store) ReadTidyPreview(ctx context.Context) (TidyPreview, error) {
 	}
 	return preview, nil
 }
+
+// SchemaState is how far the database has been brought up to date.
+type SchemaState struct {
+	Applied int `json:"applied"`
+	Latest  int `json:"latest"`
+}
+
+// ReadSchemaState reads the migration ledger. A deployment whose image is newer
+// than its database is a deployment about to behave strangely, and at a closed
+// site nobody can look it up.
+func (s *Store) ReadSchemaState(ctx context.Context) (SchemaState, error) {
+	var state SchemaState
+	err := s.Pool.QueryRow(ctx, `SELECT count(*), COALESCE(max(version),0) FROM schema_migrations`).
+		Scan(&state.Applied, &state.Latest)
+	return state, err
+}

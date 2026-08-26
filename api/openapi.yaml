@@ -3980,6 +3980,69 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/report:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - { in: query, name: format, schema: { type: string, enum: [json, md] }, description: "md returns the same answer as a file to attach to a support question" }
+    get:
+      operationId: readDeploymentReport
+      summary: One page a closed site can hand to somebody who cannot see it
+      description: >-
+        The build, how far the database has been migrated, what is queued and
+        what failed lately, the last seven days, what has piled up, which
+        settings this deployment does not run at what it shipped with, and
+        whether a model host is connected. A setting that holds a secret is
+        reported as configured or not and never as its value; the file says so
+        itself.
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The report, as JSON or as a markdown file.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      version: { type: string }
+                      takenAt: { type: string, format: date-time }
+                      schema:
+                        type: object
+                        properties:
+                          applied: { type: integer, minimum: 0 }
+                          latest: { type: integer, minimum: 0 }
+                      modelHost: { type: string }
+                      changedSettings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key: { type: string }
+                            value: { $ref: '#/components/schemas/JSONValue' }
+                            sensitive: { type: boolean }
+                            configured: { type: boolean }
+                      designs:
+                        type: object
+                        properties:
+                          builtin: { type: integer }
+                          uploaded: { type: integer }
+                          standard: { type: string }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+            text/markdown:
+              schema: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/admin/tidy:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5403,7 +5466,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.37.0
+            service.version: 1.38.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

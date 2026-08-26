@@ -1399,6 +1399,23 @@ export const api = {
    * What was changed in the settings, and by whom. The audit trail holds every
    * kind of event; this is the one question a settings screen is asked.
    */
+  /**
+   * One page a site with no internet can hand to somebody who cannot see it:
+   * version, migrations, what was changed from what this product ships with,
+   * what has failed lately, what has piled up. It carries no secret.
+   */
+  async deploymentReport() {
+    const headers = new Headers({ Accept: 'text/markdown' })
+    const token = session.token(); const secret = session.secret()
+    if (token && !session.devMode()) headers.set('Authorization', `Bearer ${token}`)
+    if (session.devMode() && secret) headers.set('X-Ptium-Dev-Secret', secret)
+    const response = await fetch(`${API_BASE}/admin/report?format=md`, { headers, credentials: 'include' })
+    if (!response.ok) {
+      const body = await response.json().catch(() => null)
+      throw new ApiError(errorMessage(body, `점검 리포트를 만들지 못했습니다 (${response.status})`), response.status)
+    }
+    return response.text()
+  },
   /** What has accumulated in this deployment and is going nowhere. Reads only. */
   async adminTidy() {
     return unwrapOne<{ items: Record<string, unknown>[] }>(
