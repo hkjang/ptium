@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -129,4 +131,40 @@ func TestWhatWasDrawnIsSaidBesideWhatWasSaved(t *testing.T) {
 	if len(alone) != 2 || alone[1] != "그 가운데 1개를 넣었습니다" {
 		t.Errorf("the sentence was lost: %q", alone)
 	}
+}
+
+// Whether this deployment has a model to send a deck to.
+func TestWhetherAModelIsConnected(t *testing.T) {
+	t.Parallel()
+	for name, deployment := range map[string]struct {
+		values    map[string]any
+		connected bool
+	}{
+		"as it ships":              {map[string]any{"ai.provider": "fallback"}, false},
+		"a provider with no key":   {map[string]any{"ai.provider": "openai-compatible"}, false},
+		"a provider with a key":    {map[string]any{"ai.provider": "openai-compatible", "ai.api_key": "sk-test"}, true},
+		"fallback with a key left": {map[string]any{"ai.provider": "fallback", "ai.api_key": "sk-test"}, false},
+	} {
+		if got := modelConnectedTo(context.Background(), fakeSettings(deployment.values)); got != deployment.connected {
+			t.Errorf("%s: modelConnectedTo() = %v", name, got)
+		}
+	}
+	// A deployment that cannot be asked is not one to send a deck to.
+	if modelConnectedTo(context.Background(), nil) {
+		t.Error("a deployment with no settings at all reads as connected")
+	}
+}
+
+type fakeSettings map[string]any
+
+func (f fakeSettings) Get(_ context.Context, key string, target any) error {
+	value, ok := f[key]
+	if !ok {
+		return errors.New("not set")
+	}
+	if into, ok := target.(*string); ok {
+		*into, _ = value.(string)
+		return nil
+	}
+	return errors.New("unsupported target")
 }

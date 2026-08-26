@@ -793,7 +793,8 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 func (s *Store) FailRewrite(ctx context.Context, id, lease, message string) (bool, error) {
 	tag, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='completed',error_message='',
 		generation_ended_at=now(),generation_stage='',generation_lease=NULL,
-		generation_notes=COALESCE(generation_notes,'[]'::jsonb) || to_jsonb($2::text),
+		generation_notes=CASE WHEN COALESCE(generation_notes,'[]'::jsonb) @> to_jsonb($2::text)
+			THEN generation_notes ELSE COALESCE(generation_notes,'[]'::jsonb) || to_jsonb($2::text) END,
 		version=version+1,updated_at=now()
 		WHERE id=$1 AND status='generating' AND deleted_at IS NULL AND generation_lease=$3::uuid
 		AND EXISTS (SELECT 1 FROM slides WHERE presentation_id=$1)`, id, message, lease)

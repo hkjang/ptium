@@ -168,16 +168,25 @@ if polished_id:
             break
         time.sleep(2)
     if state.get("status") == "completed" and (state.get("slides") or []):
-        call("POST", f"/presentations/{polished_id}/generate", {}, expect=[200, 202])
-        for _ in range(90):
-            after = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
-            if after.get("status") in ("completed", "failed"):
-                break
-            time.sleep(2)
-        if after.get("status") == "failed" and (after.get("slides") or []):
-            failures.append("a deck with slides was left failed after a rewrite it could not do")
-        if not (after.get("generationNotes") or []):
-            failures.append("nothing was said about why the rewrite did not happen")
+        # A deployment with no model host cannot rewrite an existing deck, and
+        # says so instead of queueing work that will fail. Whichever way it
+        # answers, the deck somebody already has must survive it.
+        status, answered = call("POST", f"/presentations/{polished_id}/generate", {}, expect=[200, 202, 422])
+        if status == 422:
+            said = ((answered or {}).get("error") or {}).get("message") or ""
+            if "모델" not in said:
+                failures.append(f"the refusal does not say what a rewrite needs: {said!r}")
+        else:
+            for _ in range(90):
+                after = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
+                if after.get("status") in ("completed", "failed"):
+                    break
+                time.sleep(2)
+            if after.get("status") == "failed" and (after.get("slides") or []):
+                failures.append("a deck with slides was left failed after a rewrite it could not do")
+        kept = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
+        if not (kept.get("slides") or []):
+            failures.append("a deck lost its slides to a rewrite that did not happen")
     call("DELETE", f"/presentations/{polished_id}?permanent=true", expect=[204, 200])
 
 print("── templates ──")

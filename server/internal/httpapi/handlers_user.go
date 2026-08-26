@@ -481,6 +481,16 @@ func (s *Server) comparePresentationRevision(writer http.ResponseWriter, request
 func (s *Server) generatePresentation(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	maximumSlides := s.maximumSlides(request.Context())
+	// A deck with text in it is being rewritten, and rewriting needs a model:
+	// the built-in writer would replace it with a new deck about the brief.
+	// Queueing that only to fail it leaves somebody watching a spinner for an
+	// answer this deployment already knows.
+	if existing, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false); err == nil &&
+		strings.TrimSpace(existing.Source) != "" && !s.modelConnected(request.Context()) {
+		writeError(writer, request, http.StatusUnprocessableEntity, "rewrite_needs_model",
+			generation.AuthorMessage(errors.New("rewriting a deck needs an AI provider"), existing.Language), nil)
+		return
+	}
 	presentation, err := s.store.QueueGeneration(request.Context(), request.PathValue("id"), user.ID, false, maximumSlides)
 	if err != nil {
 		if errors.Is(err, store.ErrGenerationLimit) {

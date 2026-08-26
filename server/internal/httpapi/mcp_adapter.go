@@ -122,6 +122,14 @@ func (operations MCPOperations) GeneratePresentation(ctx context.Context, user m
 			maximumSlides = 50
 		}
 	}
+	// The same answer the web gets: a deck with text in it is being rewritten,
+	// and a deployment with no model host cannot rewrite one. An agent told to
+	// poll would poll until the deck came back unchanged with a note.
+	if existing, err := operations.Store.GetPresentation(ctx, id, user.ID, false); err == nil &&
+		strings.TrimSpace(existing.Source) != "" && !modelConnectedTo(ctx, operations.Settings) {
+		return model.Presentation{}, mcp.NewServiceError(mcp.ServiceErrorInvalidArgument,
+			"rewriting a deck needs a connected AI model; this deployment writes new decks from a brief with its built-in writer and cannot rewrite an existing one. The deck is unchanged")
+	}
 	queued, err := operations.Store.QueueGeneration(ctx, id, user.ID, false, maximumSlides)
 	if err != nil {
 		if errors.Is(err, store.ErrGenerationLimit) {

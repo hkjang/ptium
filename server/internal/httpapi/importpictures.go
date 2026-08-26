@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -125,4 +126,31 @@ func sayAfterPicturesSaved(said []string, sentence string) []string {
 		}
 	}
 	return append(said, sentence)
+}
+
+// modelConnected reports whether this deployment has a model host to send a
+// deck to. Without one it writes decks with the built-in writer and cannot
+// rewrite an existing one.
+func (s *Server) modelConnected(ctx context.Context) bool {
+	return modelConnectedTo(ctx, s.settings)
+}
+
+// settingsReader is the part of the settings service this question needs, so
+// the same answer is given to the web and to an agent over MCP.
+type settingsReader interface {
+	Get(ctx context.Context, key string, target any) error
+}
+
+func modelConnectedTo(ctx context.Context, settings settingsReader) bool {
+	if settings == nil {
+		return false
+	}
+	provider := "fallback"
+	_ = settings.Get(ctx, "ai.provider", &provider)
+	if strings.EqualFold(strings.TrimSpace(provider), "fallback") {
+		return false
+	}
+	key := ""
+	_ = settings.Get(ctx, "ai.api_key", &key)
+	return strings.TrimSpace(key) != ""
 }
