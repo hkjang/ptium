@@ -98,6 +98,16 @@ func escapeField(value string) string {
 	return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "|", "/"), "\n", " "))
 }
 
+// escapeNote fits a note onto the one line a "!notes" directive occupies.
+//
+// A note is not a field: nothing after "!notes" is a separator, so the bar in
+// "단가 | 수수료 | 거래세" is the document's own punctuation and turning it into a
+// slash rewrites what somebody wrote. Sixteen lines of the files this was
+// measured against are written exactly that way.
+func escapeNote(value string) string {
+	return strings.Join(strings.Fields(value), " ")
+}
+
 // escapeLine protects text from being read as a directive.
 func escapeLine(value string) string {
 	trimmed := strings.TrimSpace(strings.ReplaceAll(value, "\n", " "))

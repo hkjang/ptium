@@ -210,7 +210,7 @@ func (w *deckWriter) writeSlide(heading string, tables [][][]string, points, not
 		fmt.Fprintf(&w.builder, "- %s\n", escapeLine(point))
 	}
 	for _, note := range notes {
-		fmt.Fprintf(&w.builder, "!notes %s\n", escapeField(note))
+		fmt.Fprintf(&w.builder, "!notes %s\n", escapeNote(note))
 	}
 	w.builder.WriteString(citation(w.filename, from))
 	w.builder.WriteString("\n")

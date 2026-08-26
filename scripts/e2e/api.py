@@ -753,7 +753,10 @@ print("── a PDF becomes slides ──")
 report = pdf_of([
     ["국가법령정보센터", "- 1 -", f"2026 상반기 실적 {RUN}", "매출은 1,240억입니다.", "영업이익은 210억입니다."],
     ["국가법령정보센터", "- 2 -", "하반기 계획", "신규 채널 두 곳을 엽니다."],
-    ["국가법령정보센터", "- 3 -", "위험 요인", "환율이 오르면 원가가 오릅니다."],
+    # More lines than a slide holds: the rest belongs in the notes, with the
+    # document's own punctuation intact — a bar in a report is punctuation, not
+    # a separator.
+    ["국가법령정보센터", "- 3 -", "위험 요인"] + [f"단가 | 수수료 | 거래세 {n}" for n in range(1, 9)],
 ])
 brought_pdf = data_of(call("POST", "/presentations/import",
                            files={"file": (f"실적 보고-{RUN}.pdf", report, "application/pdf")},
@@ -773,6 +776,9 @@ if pdf_id:
     checks += 1
     if "- - 2 -" in source or "# - 2 -" in source:
         failures.append(f"a page number became slide text:\n{source[:400]}")
+    checks += 1
+    if "!notes 단가 | 수수료 | 거래세 7" not in source:
+        failures.append(f"what did not fit on the slide is in no note, or its punctuation was rewritten:\n{source[-600:]}")
     print("   PDF read as:", " · ".join(line[2:] for line in source.splitlines() if line.startswith("# "))[:70])
     call("DELETE", f"/presentations/{pdf_id}", expect=204)
 

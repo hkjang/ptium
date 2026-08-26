@@ -186,6 +186,29 @@ func TestWhatDoesNotFitOnASlideBecomesItsNotes(t *testing.T) {
 	}
 }
 
+// A note is not a field. Nothing after "!notes" is a separator, so a bar in the
+// document's own text has to arrive as a bar.
+func TestANotesPunctuationIsNotRewritten(t *testing.T) {
+	lines := []string{"거래 내역"}
+	for index := 1; index <= 8; index++ {
+		lines = append(lines, fmt.Sprintf("단가 | 수수료 | 거래세 %d", index))
+	}
+	document, err := Read("거래내역서.pdf", pdfOf(lines))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !strings.Contains(document.Source, "!notes 단가 | 수수료 | 거래세 7") {
+		t.Errorf("a note's own punctuation was rewritten:\n%s", document.Source)
+	}
+	if strings.Contains(document.Source, "단가 / 수수료") {
+		t.Errorf("a bar in the document became a slash:\n%s", document.Source)
+	}
+	// The points on the slide keep theirs too, which they always did.
+	if !strings.Contains(document.Source, "- 단가 | 수수료 | 거래세 1") {
+		t.Errorf("a point's own punctuation was rewritten:\n%s", document.Source)
+	}
+}
+
 // A continuation came from the same place in the file as what it continues.
 func TestAContinuationCitesThePageItContinues(t *testing.T) {
 	document, err := Read("보고서.pdf", pdfOf(
