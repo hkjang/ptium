@@ -27,6 +27,13 @@ type Overview struct {
 	OpenIncidents     int `json:"openIncidents"`
 	ActiveAPIKeys     int `json:"activeApiKeys"`
 
+	// DeletedDecks is what the trash is holding. Every other number here counts
+	// only what has not been deleted, so a deployment can carry thousands of
+	// decks nobody wanted — every draft, every trial, every import somebody
+	// tried — and nothing anywhere says so. Deleting them is the operator's
+	// decision, and they cannot make it without the number.
+	DeletedDecks int `json:"deletedDecks"`
+
 	// Whether generation is moving. A queue of twelve says nothing on its own:
 	// twelve decks asked for in the last minute is a busy morning, and one deck
 	// waiting since three hours ago is a worker that died. The age of the oldest
@@ -48,9 +55,10 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 		(SELECT COALESCE(EXTRACT(EPOCH FROM now()-min(updated_at))::int,0) FROM presentations
 			WHERE status IN ('queued','generating') AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE status='failed' AND deleted_at IS NULL AND updated_at>now()-interval '1 day'),
-		(SELECT max(updated_at) FROM presentations WHERE status='completed' AND deleted_at IS NULL)`).Scan(
+		(SELECT max(updated_at) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
+		(SELECT count(*) FROM presentations WHERE deleted_at IS NOT NULL)`).Scan(
 		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys,
-		&result.OldestQueuedSeconds, &result.FailedLastDay, &result.LastCompletedAt)
+		&result.OldestQueuedSeconds, &result.FailedLastDay, &result.LastCompletedAt, &result.DeletedDecks)
 	return result, err
 }
 

@@ -4726,7 +4726,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.21.3
+            service.version: 1.22.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6600,6 +6600,13 @@ components:
         activeApiKeys:
           type: integer
           minimum: 0
+        deletedDecks:
+          type: integer
+          minimum: 0
+          description: >
+            Decks in the trash. Every other count here is of decks that have not
+            been deleted, so without this one an operator cannot see what the
+            deployment is still holding — nothing empties the trash on its own.
 
     AdminOverviewEnvelope:
       type: object

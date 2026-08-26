@@ -1917,6 +1917,17 @@ if asked_state["status"] == "completed":
     print("   asked-for section:", " · ".join(titles)[:70])
 call("DELETE", f"/presentations/{asked_deck['id']}", expect=204)
 
+# Every other number on the admin overview counts decks that have not been
+# deleted. Without this one, an operator cannot see that a deployment is holding
+# thousands of decks nobody wanted — nothing empties the trash on its own.
+overview = data_of(call("GET", "/admin/overview", expect=[200, 403]))
+if overview is not None and isinstance(overview, dict) and "presentations" in overview:
+    checks += 1
+    if "deletedDecks" not in overview:
+        failures.append(f"the admin overview does not say what the trash holds: {sorted(overview)}")
+    else:
+        print("   trash:", overview.get("deletedDecks"), "deck(s) · live:", overview.get("presentations"))
+
 print("── api keys and mcp ──")
 made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}
 call("GET", "/api-keys", expect=200)
