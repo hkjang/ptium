@@ -84,6 +84,13 @@ var frameMarkers = []struct {
 // instructionMarkers are the parts of a prompt that address Ptium rather than the
 // audience. They are stripped from the subject so a slide title does not read
 // "…를 3장으로 만들어줘".
+// askedNicely is how a Korean request ends. It is optional everywhere it
+// appears, and it appears after every verb that can be the last word of a
+// brief, because taking the verb and leaving the auxiliary is what put the
+// imperative on the cover: "…타당성 검토 결과를 줘" was the title of a deck,
+// and the same three syllables headed every slide in it.
+const askedNicely = `\s*(줘|주세요|주시고|주시죠|주라|줄래|주실래요|주십시오|다오)?`
+
 var instructionPattern = regexp.MustCompile(
 	// A count can be written in words as easily as in digits — "세 장으로" is how
 	// anyone actually asks — and an instruction left in the subject travels into
@@ -95,8 +102,15 @@ var instructionPattern = regexp.MustCompile(
 		// travels into the deck's title.
 		// "이사회에 보고" addresses the room with 에 rather than 에게, and leaving
 		// it in ended a slide title with "…이사회에" and then wrote "이사회에에".
-		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
-		`([가-힣]{1,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|한|하여|하고|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
+		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?` +
+		askedNicely + `\s*(용|자료)?(으로|로|를|을)?)|` +
+		`([가-힣]{1,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|한|하여|하고|하기\s*위한|하기\s*위해)?` +
+		askedNicely + `\s*(용|자료)?(으로|로|를|을)?)|` +
+		// "경영진 대상으로", "고객 대상": the room can be named without 에게, and
+		// the half left behind became the end of the title — "…3개년 로드맵을
+		// 경영진 대상". Only after a word that names a room, because 대상 on its
+		// own is an ordinary noun: "분석 대상" is part of a subject.
+		`((임원|경영진|고객|투자자|내부|사내|팀|팀장|부서|이사회|실무자|개발팀|영업팀)\s*대상(으로|의|,)?)|` +
 		// "보고서", "제안서", "기획서": a document whose name begins with one of
 		// these verbs is one word. It is matched here so that the verb alternative
 		// below cannot take half of it — a deck came out titled "AI 챗봇 도입 검토
@@ -107,7 +121,12 @@ var instructionPattern = regexp.MustCompile(
 		// "(임원)?\s*보고", the match starts at the space even when no audience is
 		// there — one character to the left of "보고서", so the document noun
 		// above never got its turn.
-		`(((임원|경영진|고객|투자자|내부|사내|팀)\s*)?(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?\s*(용|자료)?(으로|로|를|을|에)?)|` +
+		// "보고해줘" is one word to the person writing it. Taking "보고해" and
+		// leaving "줘" put the imperative on the cover and on every heading:
+		// "사내 PostgreSQL 전환 타당성 검토 결과를 줘". The auxiliary that finishes
+		// the request belongs to the request.
+		`(((임원|경영진|고객|투자자|내부|사내|팀)\s*)?(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?` +
+		askedNicely + `\s*(용|자료)?(으로|로|를|을|에)?)|` +
 		`(자료(로|를)?\s*(만들|작성|정리|준비|구성)(어|아|여)?\s*(줘|주세요|주시고|주라|줄래|주실래요)?)|` +
 		// The verbs a request for a section is written with. What was a request
 		// has already been read by then; what is left is an instruction with no
@@ -118,6 +137,10 @@ var instructionPattern = regexp.MustCompile(
 		// listed: a deck came back with a slide headed "예산을 담아 주세요".
 		`담아\s*줘|담아\s*주세요|담아\s*주시고|담아주|담아서\s*주세요|` +
 		`만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
+		// "써 주세요" asks for a deck exactly as "작성해 주세요" does, and it was
+		// the only one of the two the subject kept: "신규 채용 계획을 써 주세요"
+		// was the title of the deck it produced.
+		`써\s*줘|써\s*주세요|써\s*주시고|써\s*주십시오|써\s*주라|써\s*줄래|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
 		`please|make me|create|generate|write|prepare|summari[sz]e|` +
 		// "A board update on …", "An update for the team on …": in English the
