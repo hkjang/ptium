@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, bodyFromText, carryTrimmedEntries, drawnSlots, keepPlace, moveSlideTo, presentIndexOf, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, slidesToPresent, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, bodyFromText, carryTrimmedEntries, drawnSlots, keepPlace, moveSlideTo, presentIndexOf, proseSlot, regionLabel, reviseOutcome, slideBody, slideFields, slideHoldings, slidesToPresent, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -199,5 +199,34 @@ describe('keeping the author’s place', () => {
   it('answers the first slide when it has nothing to go on', () => {
     expect(keepPlace('gone', deck('a', 3), deck('b', 3))).toBe('b0')
     expect(keepPlace('a1', deck('a', 3), [])).toBe('')
+  })
+})
+
+// The thing that was clicked has to be answered. A model asked to fit ten
+// points into a region that holds six sent ten back, and the panel said
+// "다시 썼습니다" while the complaint was still on screen.
+describe('what to say after the model rewrote a slide', () => {
+  const density = { kind: 'density', advisory: true }
+
+  it('says the complaint stands when it stands', () => {
+    const said = reviseOutcome(density, [density], [])
+    expect(said.tone).toBe('error')
+    expect(said.message).toContain('그대로입니다')
+  })
+
+  it('is plain about a slide that came back clean', () => {
+    expect(reviseOutcome(density, [], []).message).toBe('AI가 이 슬라이드를 다시 썼습니다.')
+    expect(reviseOutcome(density, [], []).tone).toBeUndefined()
+  })
+
+  it('counts what is still wrong when something else is', () => {
+    const said = reviseOutcome(density, [{ kind: 'overflow' }, { kind: 'echo', advisory: true }], [])
+    expect(said.message).toContain('1곳')
+    expect(said.tone).toBeUndefined()
+  })
+
+  it('passes on what the compiler had to say', () => {
+    expect(reviseOutcome(undefined, [], ['이 레이아웃에는 본문 영역이 없습니다']).message)
+      .toContain('본문 영역이 없습니다')
   })
 })

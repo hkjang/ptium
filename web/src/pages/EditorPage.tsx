@@ -24,7 +24,7 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, blockLabel, keepPlace, moveSlideTo, presentIndexOf, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, blockLabel, keepPlace, moveSlideTo, presentIndexOf, reviseOutcome, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { appliedMessage, findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
@@ -469,7 +469,8 @@ export function EditorPage({ id }: { id: string }) {
 
   const revisionSnapshot = useRef<Slide | null>(null)
   const [canUndoRevise, setCanUndoRevise] = useState(false)
-  const reviseSlideAt = async (index: number, input: { action: string; instruction: string; slot: string }) => {
+  const reviseSlideAt = async (index: number, input: { action: string; instruction: string; slot: string },
+                               asked?: DeckFinding) => {
     const slide = slides[index]
     if (!slide || !presentation) return
     // The model is asked to revise what the server has, so anything typed a
@@ -494,10 +495,8 @@ export function EditorPage({ id }: { id: string }) {
         accent: result.slide.accent || current.accent,
         ...bodyFromFields(fields, proseSlot(written, layout)),
       })
-      const trouble = result.findings.filter((finding) => !finding.advisory).length
-      showToast(trouble > 0
-        ? `AI가 다시 썼습니다. 아직 맞지 않는 부분이 ${trouble}곳 있습니다.`
-        : result.warnings.length > 0 ? `AI가 다시 썼습니다. ${result.warnings[0]}` : 'AI가 이 슬라이드를 다시 썼습니다.')
+      const said = reviseOutcome(asked, result.findings, result.warnings)
+      showToast(said.message, said.tone)
     } catch (err) {
       showToast(err instanceof ApiError && err.status === 503
         ? '이 배포에는 AI 공급자가 설정되어 있지 않습니다. 관리자 설정에서 연결하세요.'
@@ -795,7 +794,7 @@ export function EditorPage({ id }: { id: string }) {
 					action: finding.kind === 'notes' ? 'notes' : finding.kind === 'repeat' ? 'shorten' : 'fit',
 					instruction: `측정 결과: ${finding.detail}`,
 					slot: finding.slot || '',
-				})
+				}, finding)
 			}
 			showToast(`${group.length}장을 AI로 다시 썼습니다. 결과를 다시 측정합니다.`)
 		} finally {
@@ -814,7 +813,7 @@ export function EditorPage({ id }: { id: string }) {
 				action: finding.kind === 'notes' ? 'notes' : finding.kind === 'repeat' ? 'shorten' : 'fit',
 				instruction: `측정 결과: ${finding.detail}`,
 				slot: finding.slot || '',
-			})
+			}, finding)
 		} finally {
 			setAiFixing(0)
 		}

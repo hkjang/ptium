@@ -229,6 +229,26 @@ export function carryTrimmedEntries(slide: Slide, slot: string, drawn: number, n
 }
 
 /**
+ * What to say after the model rewrote a slide.
+ *
+ * The thing that was clicked has to be answered. A model asked to fit ten
+ * points into a region that holds six sent ten back, and the panel said
+ * "다시 썼습니다" while the complaint was still on the screen behind the toast:
+ * the person clicks it again, and again, and learns not to trust the button.
+ */
+export function reviseOutcome(asked: { kind: string } | undefined,
+                              findings: { kind: string; advisory?: boolean }[],
+                              warnings: string[]): { message: string; tone?: 'error' } {
+  if (asked && findings.some((finding) => finding.kind === asked.kind)) {
+    return { message: 'AI가 다시 썼지만 이 지적은 그대로입니다. 되돌리거나 직접 고쳐 주세요.', tone: 'error' }
+  }
+  const trouble = findings.filter((finding) => !finding.advisory).length
+  if (trouble > 0) return { message: `AI가 다시 썼습니다. 아직 맞지 않는 부분이 ${trouble}곳 있습니다.` }
+  if (warnings.length > 0) return { message: `AI가 다시 썼습니다. ${warnings[0]}` }
+  return { message: 'AI가 이 슬라이드를 다시 썼습니다.' }
+}
+
+/**
  * Where the editor should stand after the deck was replaced under it.
  *
  * A rewrite hands back a deck of new slides — same shape, every id different —
