@@ -1399,6 +1399,11 @@ export const api = {
    * What was changed in the settings, and by whom. The audit trail holds every
    * kind of event; this is the one question a settings screen is asked.
    */
+  /** What this deployment has been doing, day by day. */
+  async adminUsage(days = 14) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>(`/admin/usage?days=${days}`), ['usage', 'data'])
+  },
   /** Every link this deployment has handed out, whoever made it. */
   async adminShares(filter: { state?: string; search?: string } = {}) {
     const query = new URLSearchParams({ limit: '100' })

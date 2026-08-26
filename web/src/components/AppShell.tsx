@@ -31,6 +31,7 @@ const adminNav: NavItem[] = [
   { label: '오류 · 인시던트', to: '/admin/errors', icon: <Activity size={18} />, admin: true },
   { label: '생성 큐', to: '/admin/queue', icon: <Sparkles size={18} />, admin: true },
   { label: '공유 링크', to: '/admin/shares', icon: <Link2 size={18} />, admin: true },
+  { label: '사용 현황', to: '/admin/usage', icon: <Activity size={18} />, admin: true },
   { label: '감사 기록', to: '/admin/audit', icon: <History size={18} />, admin: true },
 ]
 

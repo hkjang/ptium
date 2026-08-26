@@ -109,6 +109,30 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# What this deployment has been doing. The overview says what is true now; a
+# week of decks — how many, how many failed, how long they took, who asked — was
+# nowhere, and on a self-hosted model that time is what running it costs.
+usage = data_of(call("GET", "/admin/usage?days=7", expect=[200, 403])) or {}
+if usage:
+    days = usage.get("days") or []
+    if len(days) != 7:
+        failures.append(f"seven days of usage came back as {len(days)} rows")
+    if sum(day.get("generated", 0) for day in days) != usage.get("generated"):
+        failures.append("the day rows and the total do not agree")
+    for day in days:
+        if day.get("failed", 0) > day.get("generated", 0):
+            failures.append(f"{day.get('day')} reports more failures than decks")
+        if day.get("slowestSeconds", 0) < day.get("medianSeconds", 0):
+            failures.append(f"{day.get('day')} says its slowest deck was faster than its middle one")
+    if usage.get("timed", 0) > usage.get("generated", 0):
+        failures.append("more generations recorded a duration than exist")
+    for group in ("owners", "designs", "failures"):
+        for row in (usage.get(group) or []):
+            if not str(row.get("name", "")).strip():
+                failures.append(f"a row in {group} has nothing to call it")
+    call("GET", "/admin/usage?days=0", expect=422)
+    call("GET", "/admin/usage?days=999", expect=422)
+
 # Every link this deployment has handed out. Only the deck's owner could see
 # their own, so nobody could answer what is readable outside — or close a link
 # left open by somebody who has gone.

@@ -274,6 +274,8 @@ func (s *Server) Handler() http.Handler {
 	// The settings' own trail, and putting one back. Registered before the
 	// {key} route so "changes" is read as itself rather than as a setting named
 	// changes.
+	// What this deployment has been doing, day by day.
+	api.Handle("GET /api/v1/admin/usage", s.requireAdmin("admin:users", http.HandlerFunc(s.adminUsage)))
 	// Every link this deployment has handed out, and closing one.
 	api.Handle("GET /api/v1/admin/shares", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListShares)))
 	api.Handle("POST /api/v1/admin/shares/{id}/close", s.requireAdmin("admin:users", http.HandlerFunc(s.adminCloseShare)))

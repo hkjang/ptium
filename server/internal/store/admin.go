@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -527,4 +528,146 @@ func redactValue(value any) {
 			redactValue(child)
 		}
 	}
+}
+
+// UsageDay is what a deployment did in one day.
+type UsageDay struct {
+	Day       string `json:"day"`
+	Generated int    `json:"generated"`
+	Failed    int    `json:"failed"`
+	// MedianSeconds is how long the middle generation took that day, and zero
+	// when the day holds none that finished. An average is pulled around by one
+	// slow deck; the middle one is what a day felt like.
+	//
+	// It is fractional on purpose: the built-in writer answers in under a
+	// second, and rounding that to a whole number told an operator their decks
+	// take "0초", which is a number nobody can act on.
+	MedianSeconds float64 `json:"medianSeconds"`
+	// SlowestSeconds is the longest one that day. On a self-hosted model the
+	// middle deck is written by the built-in writer in hundredths of a second
+	// and says nothing about what the model cost: the slow one does.
+	SlowestSeconds float64 `json:"slowestSeconds"`
+}
+
+// UsageCount is one thing and how much of it: a person, a design, a reason.
+type UsageCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+	// Detail carries what the name alone does not say — an owner's address, a
+	// design's palette — so a screen can show who without guessing.
+	Detail string `json:"detail,omitempty"`
+}
+
+// Usage is what this deployment has been doing, over the days it was asked
+// about.
+//
+// The overview says what is true now: how many decks exist, what is queued.
+// Nothing said what a week looked like — how many decks were written, how many
+// failed, how long they took, who asked for them — and on a self-hosted model
+// that time is the cost of running the thing.
+type Usage struct {
+	Days      []UsageDay   `json:"days"`
+	Owners    []UsageCount `json:"owners"`
+	Designs   []UsageCount `json:"designs"`
+	Failures  []UsageCount `json:"failures"`
+	Generated int          `json:"generated"`
+	Failed    int          `json:"failed"`
+	// Timed is how many of those generations recorded how long they took. A
+	// deck written before this deployment kept that has no duration, and a
+	// median drawn from nothing is a number nobody should read.
+	Timed int `json:"timed"`
+}
+
+// ReadUsage counts what happened over the last days, one row per day.
+func (s *Store) ReadUsage(ctx context.Context, days int) (Usage, error) {
+	if days < 1 {
+		days = 7
+	}
+	if days > 180 {
+		days = 180
+	}
+	usage := Usage{Days: []UsageDay{}, Owners: []UsageCount{}, Designs: []UsageCount{}, Failures: []UsageCount{}}
+	rows, err := s.Pool.Query(ctx, `
+		WITH span AS (SELECT generate_series((now() - ($1::int - 1) * interval '1 day')::date, now()::date, interval '1 day')::date AS day),
+		made AS (
+			SELECT created_at::date AS day, status,
+				CASE WHEN generation_started_at IS NOT NULL AND generation_ended_at IS NOT NULL
+					THEN extract(epoch FROM generation_ended_at - generation_started_at) END AS seconds
+			FROM presentations
+			WHERE deleted_at IS NULL AND created_at >= (now() - ($1::int - 1) * interval '1 day')::date
+		)
+		SELECT span.day::text,
+			count(made.day),
+			count(*) FILTER (WHERE made.status='failed'),
+			COALESCE(percentile_cont(0.5) WITHIN GROUP (ORDER BY made.seconds), 0),
+			COALESCE(max(made.seconds), 0)
+		FROM span LEFT JOIN made ON made.day = span.day
+		GROUP BY span.day ORDER BY span.day`, days)
+	if err != nil {
+		return usage, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var day UsageDay
+		var median, slowest float64
+		if err := rows.Scan(&day.Day, &day.Generated, &day.Failed, &median, &slowest); err != nil {
+			return usage, err
+		}
+		// Rounded the same way, or the two disagree with each other: a day whose
+		// slowest deck took 0.04s reported "가장 오래 0초" beside "중앙 0.01초",
+		// which says the middle deck outlasted the slowest one.
+		day.MedianSeconds = math.Round(median*100) / 100
+		day.SlowestSeconds = math.Round(slowest*100) / 100
+		usage.Generated += day.Generated
+		usage.Failed += day.Failed
+		usage.Days = append(usage.Days, day)
+	}
+	if err := rows.Err(); err != nil {
+		return usage, err
+	}
+
+	since := `p.deleted_at IS NULL AND p.created_at >= (now() - ($1::int - 1) * interval '1 day')::date`
+	usage.Owners, err = s.usageCounts(ctx, `SELECT COALESCE(NULLIF(u.name,''), NULLIF(u.email,''), '알 수 없는 사용자'),
+		COALESCE(u.email,''), count(*) FROM presentations p LEFT JOIN users u ON u.id = p.owner_id
+		WHERE `+since+` GROUP BY 1,2 ORDER BY 3 DESC LIMIT 8`, days)
+	if err != nil {
+		return usage, err
+	}
+	usage.Designs, err = s.usageCounts(ctx, `SELECT COALESCE(NULLIF(t.name,''), NULLIF(p.theme,''), '지정 없음'),
+		COALESCE(p.theme,''), count(*) FROM presentations p LEFT JOIN templates t ON t.id = p.template_id
+		WHERE `+since+` GROUP BY 1,2 ORDER BY 3 DESC LIMIT 8`, days)
+	if err != nil {
+		return usage, err
+	}
+	// Why a deck did not come out, in the words its author was given. Two decks
+	// that failed the same way are one thing to fix.
+	usage.Failures, err = s.usageCounts(ctx, `SELECT COALESCE(NULLIF(left(p.error_message, 80),''), '이유가 기록되지 않았습니다'),
+		'', count(*) FROM presentations p WHERE `+since+` AND p.status='failed'
+		GROUP BY 1 ORDER BY 3 DESC LIMIT 6`, days)
+	if err != nil {
+		return usage, err
+	}
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM presentations p
+		WHERE `+since+` AND p.generation_started_at IS NOT NULL AND p.generation_ended_at IS NOT NULL`,
+		days).Scan(&usage.Timed); err != nil {
+		return usage, err
+	}
+	return usage, nil
+}
+
+func (s *Store) usageCounts(ctx context.Context, query string, days int) ([]UsageCount, error) {
+	rows, err := s.Pool.Query(ctx, query, days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := make([]UsageCount, 0, 8)
+	for rows.Next() {
+		var one UsageCount
+		if err := rows.Scan(&one.Name, &one.Detail, &one.Count); err != nil {
+			return nil, err
+		}
+		counts = append(counts, one)
+	}
+	return counts, rows.Err()
 }

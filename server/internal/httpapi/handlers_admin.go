@@ -344,6 +344,29 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 	return nil
 }
 
+// adminUsage is what this deployment has been doing over the last days: how
+// many decks were written, how many failed, how long they took, who asked and
+// into which designs. The overview says what is true now; on a self-hosted
+// model the time a week of decks cost is what an operator is asked about.
+func (s *Server) adminUsage(writer http.ResponseWriter, request *http.Request) {
+	days := 14
+	if asked := strings.TrimSpace(request.URL.Query().Get("days")); asked != "" {
+		parsed, err := strconv.Atoi(asked)
+		if err != nil || parsed < 1 || parsed > 180 {
+			writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
+				"days must be between 1 and 180", nil)
+			return
+		}
+		days = parsed
+	}
+	usage, err := s.store.ReadUsage(request.Context(), days)
+	if err != nil {
+		s.internalError(writer, request, "admin_usage_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, usage)
+}
+
 func (s *Server) adminListUsers(writer http.ResponseWriter, request *http.Request) {
 	limit, offset := pagination(request)
 	items, total, err := s.store.ListUsers(request.Context(), searchTerm(request), limit, offset)

@@ -240,6 +240,9 @@ with sync_playwright() as play:
     # What this deployment has handed out. Only a deck's owner could see their
     # own links, so nobody could answer what is readable outside.
     visit("/admin/shares", expect_text="공유 링크")
+    visit("/admin/usage", expect_text="사용 현황")
+    if page.locator(".usage-bar").count() == 0:
+        failures.append("the usage screen draws no days")
     counted = page.locator(".error-stat-grid article strong").first
     if counted.count() and not counted.inner_text().strip():
         failures.append("the share screen does not say how many links there are")

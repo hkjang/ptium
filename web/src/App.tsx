@@ -5,6 +5,7 @@ import { Button } from './components/UI'
 import { AdminAuditPage } from './pages/AdminAuditPage'
 import { AdminQueuePage } from './pages/AdminQueuePage'
 import { AdminSharesPage } from './pages/AdminSharesPage'
+import { AdminUsagePage } from './pages/AdminUsagePage'
 import { AdminErrorsPage } from './pages/AdminErrorsPage'
 import { AdminOverviewPage } from './pages/AdminOverviewPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
@@ -63,6 +64,7 @@ export function App() {
   if (pathname === '/admin/audit') return <AdminAuditPage />
   if (pathname === '/admin/queue') return <AdminQueuePage />
   if (pathname === '/admin/shares') return <AdminSharesPage />
+  if (pathname === '/admin/usage') return <AdminUsagePage />
   return <NotFound />
 }
 
