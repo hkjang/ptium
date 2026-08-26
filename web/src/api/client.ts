@@ -364,11 +364,19 @@ export function authLoginUrl(config?: AuthConfig, returnTo = '/dashboard') {
   return `${API_BASE}/auth/login?return_to=${encodeURIComponent(returnTo)}`
 }
 
-function normalizeStatus(status: unknown): Presentation['status'] {
+export function normalizeStatus(status: unknown): Presentation['status'] {
   if (status === 'completed') return 'ready'
-  if (status === 'queued' || status === 'processing' || status === 'running') return 'generating'
+  // Waiting in line is not being written. A deck can sit queued for as long as
+  // the decks ahead of it take, and forever if no worker is running.
+  if (status === 'queued') return 'queued'
+  if (status === 'processing' || status === 'running') return 'generating'
   if (status === 'draft' || status === 'generating' || status === 'ready' || status === 'failed') return status
   return 'draft'
+}
+
+/** Whether this deck is on its way — waiting for a worker or being written. */
+export function beingWritten(status: Presentation['status']) {
+  return status === 'queued' || status === 'generating'
 }
 
 /** asRecord keeps a stored object as it is, or undefined when there is none. */

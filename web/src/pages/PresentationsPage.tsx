@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArchiveRestore, FileUp, Plus, Search, Trash2 } from 'lucide-react'
-import { api } from '../api/client'
+import { api, beingWritten } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { PresentationCard } from '../components/PresentationCard'
 import { Button, EmptyState, ErrorState, Input, Modal } from '../components/UI'
@@ -59,7 +59,10 @@ export function PresentationsPage() {
   }, [trash, query, items.length])
 
   const filtered = useMemo(() => items.filter((item) =>
-    trash || filter === 'all' || item.status === filter), [items, filter, trash])
+    // "생성 중" means on its way: waiting for a worker counts, and used to be
+    // the same status as being written.
+    trash || filter === 'all' || item.status === filter ||
+    (filter === 'generating' && beingWritten(item.status))), [items, filter, trash])
 
   const duplicate = async (presentation: Presentation) => {
     setWorking(true)

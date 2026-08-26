@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight
 import { markupFor } from './editor/model/markup'
 import { RewriteDialog } from './editor/RewriteDialog'
 import { stageText } from './editor/model/stage'
+import { beingWritten } from '../api/client'
 import { api, ApiError, bodySlots, primaryBodySlot, textToParagraphs, type DeckFinding, type DeckScore } from '../api/client'
 import { BrandMark } from '../branding/BrandContext'
 import { AssetLibrary, type Asset } from '../components/AssetLibrary'
@@ -157,7 +158,7 @@ export function EditorPage({ id }: { id: string }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
-    if (presentation?.status !== 'generating') return
+    if (!presentation || !beingWritten(presentation.status)) return
     const interval = window.setInterval(async () => {
       try {
         const data = await api.presentation(id)
@@ -1208,13 +1209,20 @@ export function EditorPage({ id }: { id: string }) {
   // A deck with slides that is queued or generating is being rewritten: the words
   // say which is happening, because "생성 중" over a deck someone already has
   // reads like it is being replaced.
-  if (presentation.status === 'generating') {
+  if (beingWritten(presentation.status)) {
     const rewriting = (presentation.slideCount || 0) > 0
+    // Waiting for a worker is not being written. Saying "쓰고 있어요" over a
+    // deck nothing has picked up tells an author work is happening when the
+    // queue is backed up — or when no worker is running at all, in which case
+    // it says so for as long as they keep the page open.
+    const waiting = presentation.status === 'queued'
     return <main className="editor-loading generation-wait"><div className="generation-visual small"><div className={`generating-slide theme-${presentation.theme || 'aurora'}`}><span>PTIUM ENGINE</span><div><i /><i /><i /></div><strong>{presentation.title}</strong><em /></div></div>
-      <h1>{rewriting ? '덱을 다시 쓰고 있어요' : '슬라이드를 생성하고 있어요'}</h1>
-      <p>{rewriting
-        ? '숫자와 사실은 그대로 두고 제목·문장·구성을 다듬는 중입니다. 끝나면 이 화면이 열립니다.'
-        : '완성되는 대로 자동으로 편집기를 열어드릴게요.'}</p>
+      <h1>{waiting ? '차례를 기다리고 있어요' : rewriting ? '덱을 다시 쓰고 있어요' : '슬라이드를 생성하고 있어요'}</h1>
+      <p>{waiting
+        ? '앞선 작업이 끝나면 바로 시작합니다. 시작하면 이 화면이 알려드릴게요.'
+        : rewriting
+          ? '숫자와 사실은 그대로 두고 제목·문장·구성을 다듬는 중입니다. 끝나면 이 화면이 열립니다.'
+          : '완성되는 대로 자동으로 편집기를 열어드릴게요.'}</p>
       {stageText(presentation.generationStage, rewriting) &&
         <p className="generation-stage">{stageText(presentation.generationStage, rewriting)}</p>}
       <LoaderCircle className="spin" size={22} /></main>

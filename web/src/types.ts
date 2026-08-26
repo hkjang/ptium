@@ -32,7 +32,13 @@ export interface AuthConfig {
   scopes?: string[]
 }
 
-export type PresentationStatus = 'draft' | 'generating' | 'ready' | 'failed'
+/**
+ * Where a deck is. `queued` is waiting for a worker to pick it up and
+ * `generating` is one writing it — the web used to fold the first into the
+ * second, so an author whose deck was waiting in line (or whose deployment had
+ * no worker running at all) was told slides were being written for them.
+ */
+export type PresentationStatus = 'draft' | 'queued' | 'generating' | 'ready' | 'failed'
 
 export interface Presentation {
   id: string
