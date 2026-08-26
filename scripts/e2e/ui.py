@@ -189,6 +189,23 @@ with sync_playwright() as play:
     language = page.locator("#defaults select").first
     if language.count() and language.input_value() != "fr":
         failures.append(f"a stored language 'fr' is shown as {language.input_value()!r}")
+    # The create screen starts from these same defaults, and it is the screen the
+    # deck is actually made on: a select showing "전문적" over a tone of
+    # "concise" is the deck being written in a tone nobody read on the screen.
+    page.goto(f"{BASE}/create", wait_until="networkidle")
+    page.wait_for_timeout(1800)
+    page.fill("textarea", "저장된 톤과 언어가 생성 화면에 그대로 보이는지 확인하는 브리프")
+    page.click("text=디자인 고르기")
+    page.wait_for_timeout(2200)
+    for select in page.locator("select").all():
+        options = select.evaluate("el => Array.from(el.options).map((option) => option.value)")
+        if "concise" in options and select.input_value() != "concise":
+            failures.append(f"the create screen shows tone {select.input_value()!r} over a stored 'concise'")
+        if "fr" in options and select.input_value() != "fr":
+            failures.append(f"the create screen shows language {select.input_value()!r} over a stored 'fr'")
+    shown = [s.input_value() for s in page.locator("select").all()]
+    if "concise" not in shown or "fr" not in shown:
+        failures.append(f"the create screen does not carry the stored tone and language: {shown}")
     api("/profile", "PUT", {"displayName": (api("/profile") or {}).get("displayName") or "", "preferences": kept})
     visit("/api-keys", expect_text="API")
     visit("/docs", expect_text="API")
