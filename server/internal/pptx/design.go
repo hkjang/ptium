@@ -84,8 +84,8 @@ func NewDesign(manifest Manifest) Design {
 		Body:         1600,
 		Small:        1200,
 		Micro:        1000,
-		Major:        theme.MajorLatin,
-		Minor:        theme.MinorLatin,
+		Major:        dominantPlaceholderFont(manifest, true, theme.MajorLatin),
+		Minor:        dominantPlaceholderFont(manifest, false, theme.MinorLatin),
 		Unit:         designUnit,
 		Dark:         dark,
 	}
@@ -93,6 +93,45 @@ func NewDesign(manifest Manifest) Design {
 	design.Categorical = categoricalOrder(theme, surface)
 	design.Positive, design.Negative = statusColors(theme, dark)
 	return design
+}
+
+// dominantPlaceholderFont is the typeface a template's own placeholders are set
+// in, which is not always the one its theme names.
+//
+// A real template measured here says Arial in its font scheme and Calibri in
+// the placeholder styles on its master — and PowerPoint draws the placeholders
+// in Calibri, because a placeholder's own style wins over the theme. Blocks
+// drawn beside those placeholders took the theme's answer, so one exported deck
+// carried two typefaces: the headings in Calibri because they inherit, the KPI
+// cards and lead lines in Arial because they do not. Neither was chosen by
+// anybody.
+//
+// The theme stays the fallback: a template whose placeholders name no typeface
+// is a template that means its theme.
+func dominantPlaceholderFont(manifest Manifest, heading bool, fallback string) string {
+	counts := map[string]int{}
+	for _, layout := range manifest.Layouts {
+		for _, placeholder := range layout.Placeholders {
+			isTitle := placeholder.Type == "title" || placeholder.Type == "ctrTitle"
+			if isTitle != heading {
+				continue
+			}
+			if font := strings.TrimSpace(placeholder.Font); font != "" && !strings.HasPrefix(font, "+") {
+				counts[font]++
+			}
+		}
+	}
+	best, bestCount := "", 0
+	for value, count := range counts {
+		// Ties break on the value so the result never depends on map order.
+		if count > bestCount || (count == bestCount && value < best) {
+			best, bestCount = value, count
+		}
+	}
+	if best != "" {
+		return best
+	}
+	return fallback
 }
 
 // dominantBackground is the background most of a template's layouts paint.
