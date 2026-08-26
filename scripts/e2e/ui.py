@@ -259,6 +259,9 @@ with sync_playwright() as play:
             failures.append("an open link cannot be closed from the share screen")
     waits_for("/admin/usage", "사용 현황", ".usage-bar", "the usage screen draws no days")
     waits_for("/admin/designs", "디자인", ".error-row", "the designs screen lists nothing at all")
+    if waits_for("/admin/tidy", "정리할 것", ".tidy-list li", "the tidy screen counts nothing"):
+        if "지우지 않습니다" not in page.locator("main").first.inner_text():
+            failures.append("the tidy screen does not say that it deletes nothing")
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 

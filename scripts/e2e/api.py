@@ -109,6 +109,30 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# What has accumulated and is going nowhere. This answer deletes nothing; it is
+# what a decision about keeping things would be made from.
+tidy = data_of(call("GET", "/admin/tidy", expect=[200, 403])) or {}
+if tidy:
+    kinds = {row.get("kind"): row for row in (tidy.get("items") or [])}
+    for wanted in ("trashed", "failedOldDecks", "untouchedDrafts", "expiredLinks",
+                   "unusedImages", "unusedImagesOverAMonth"):
+        if wanted not in kinds:
+            failures.append(f"the tidy preview does not count {wanted}")
+    for kind, row in kinds.items():
+        if (row.get("count") or 0) < 0 or (row.get("bytes") or 0) < 0:
+            failures.append(f"{kind} counts {row.get('count')!r} / {row.get('bytes')!r}")
+        if (row.get("count") or 0) == 0 and row.get("oldest"):
+            failures.append(f"{kind} has nothing in it and still names an oldest one")
+    older = kinds.get("unusedImagesOverAMonth") or {}
+    all_unused = kinds.get("unusedImages") or {}
+    if (older.get("count") or 0) > (all_unused.get("count") or 0):
+        failures.append("more images are unused for a month than are unused at all")
+    # It reads and never removes: asking twice leaves the same numbers.
+    again = data_of(call("GET", "/admin/tidy", expect=200)) or {}
+    if {row.get("kind"): row.get("count") for row in (again.get("items") or [])} != \
+       {row.get("kind"): row.get("count") for row in (tidy.get("items") or [])}:
+        failures.append("reading the tidy preview changed what it counts")
+
 # The designs this deployment writes decks in. An upload is private to whoever
 # uploaded it and the standard was a text field whose value meant nothing to
 # anyone reading it, so an operator could see neither.

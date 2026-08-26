@@ -344,6 +344,21 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 	return nil
 }
 
+// adminTidyPreview is what has accumulated in this deployment and is going
+// nowhere: decks in the bin, decks that failed and were left, drafts nobody has
+// touched in three months, links whose day has passed, images no deck draws.
+//
+// It deletes nothing and proposes no rule. What to keep and for how long is a
+// decision somebody has to make, and it cannot be made without this.
+func (s *Server) adminTidyPreview(writer http.ResponseWriter, request *http.Request) {
+	preview, err := s.store.ReadTidyPreview(request.Context())
+	if err != nil {
+		s.internalError(writer, request, "admin_tidy_read_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, preview)
+}
+
 // adminUsage is what this deployment has been doing over the last days: how
 // many decks were written, how many failed, how long they took, who asked and
 // into which designs. The overview says what is true now; on a self-hosted

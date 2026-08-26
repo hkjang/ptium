@@ -671,3 +671,58 @@ func (s *Store) usageCounts(ctx context.Context, query string, days int) ([]Usag
 	}
 	return counts, rows.Err()
 }
+
+// TidyItem is one kind of thing that has accumulated, counted and dated.
+type TidyItem struct {
+	Kind string `json:"kind"`
+	// Count is how many there are, Bytes what they take where that is known.
+	Count int   `json:"count"`
+	Bytes int64 `json:"bytes,omitempty"`
+	// Oldest is when the oldest of them was left, and empty when there are none.
+	Oldest string `json:"oldest,omitempty"`
+}
+
+// TidyPreview is what a retention policy would be deciding about.
+//
+// Nothing here is deleted, and nothing here proposes a rule: what to keep and
+// for how long is somebody's decision, and it cannot be made without knowing
+// what has accumulated. A deployment that has been running a year holds decks
+// somebody binned in March and images no deck has ever drawn, and neither shows
+// anywhere.
+type TidyPreview struct {
+	Items []TidyItem `json:"items"`
+}
+
+// ReadTidyPreview counts what is sitting in this deployment and going nowhere.
+func (s *Store) ReadTidyPreview(ctx context.Context) (TidyPreview, error) {
+	preview := TidyPreview{Items: []TidyItem{}}
+	for _, ask := range []struct {
+		kind  string
+		query string
+	}{
+		{"trashed", `SELECT count(*), 0::bigint, COALESCE(min(deleted_at)::date::text,'')
+			FROM presentations WHERE deleted_at IS NOT NULL`},
+		{"failedOldDecks", `SELECT count(*), 0::bigint, COALESCE(min(updated_at)::date::text,'')
+			FROM presentations WHERE deleted_at IS NULL AND status='failed' AND updated_at < now()-interval '30 days'`},
+		{"untouchedDrafts", `SELECT count(*), 0::bigint, COALESCE(min(updated_at)::date::text,'')
+			FROM presentations WHERE deleted_at IS NULL AND status='draft' AND updated_at < now()-interval '90 days'`},
+		{"expiredLinks", `SELECT count(*), 0::bigint, COALESCE(min(expires_at)::date::text,'')
+			FROM presentation_shares WHERE revoked_at IS NULL AND expires_at IS NOT NULL AND expires_at <= now()`},
+		// An image no deck draws is not necessarily an image nobody wants: one
+		// uploaded this morning has not been placed yet. The older ones are
+		// counted apart so a decision can be made about them and not about
+		// somebody's morning.
+		{"unusedImages", `SELECT count(*), COALESCE(sum(a.size_bytes),0)::bigint, COALESCE(min(a.created_at)::date::text,'')
+			FROM assets a WHERE NOT EXISTS (SELECT 1 FROM asset_usage u WHERE u.asset_id = a.id)`},
+		{"unusedImagesOverAMonth", `SELECT count(*), COALESCE(sum(a.size_bytes),0)::bigint, COALESCE(min(a.created_at)::date::text,'')
+			FROM assets a WHERE a.created_at < now()-interval '30 days'
+			AND NOT EXISTS (SELECT 1 FROM asset_usage u WHERE u.asset_id = a.id)`},
+	} {
+		item := TidyItem{Kind: ask.kind}
+		if err := s.Pool.QueryRow(ctx, ask.query).Scan(&item.Count, &item.Bytes, &item.Oldest); err != nil {
+			return preview, err
+		}
+		preview.Items = append(preview.Items, item)
+	}
+	return preview, nil
+}

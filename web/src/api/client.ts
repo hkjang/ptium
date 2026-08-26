@@ -1399,6 +1399,11 @@ export const api = {
    * What was changed in the settings, and by whom. The audit trail holds every
    * kind of event; this is the one question a settings screen is asked.
    */
+  /** What has accumulated in this deployment and is going nowhere. Reads only. */
+  async adminTidy() {
+    return unwrapOne<{ items: Record<string, unknown>[] }>(
+      await request<unknown>('/admin/tidy'), ['tidy', 'data'])
+  },
   /** Every design in the deployment, with how much work goes through it. */
   async adminTemplates(filter: { kind?: string; search?: string } = {}) {
     const query = new URLSearchParams({ limit: '100' })

@@ -3980,6 +3980,56 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/tidy:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: readTidyPreview
+      summary: What has accumulated in this deployment and is going nowhere
+      description: >-
+        Decks in the bin, decks left failed for a month, drafts untouched for
+        three, links whose day has passed, and images no deck draws — counted,
+        sized where the size is known, and dated by the oldest of each. This
+        deletes nothing and proposes no rule: what to keep and for how long is a
+        decision, and it cannot be made without knowing what is there. Images
+        uploaded and not yet placed are unused too, so they are counted again
+        separately once they are over a month old.
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The counts.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                              enum: [trashed, failedOldDecks, untouchedDrafts, expiredLinks, unusedImages, unusedImagesOverAMonth]
+                            count: { type: integer, minimum: 0 }
+                            bytes: { type: integer, minimum: 0 }
+                            oldest: { type: string, format: date }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /api/v1/admin/templates:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5353,7 +5403,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.36.0
+            service.version: 1.37.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
