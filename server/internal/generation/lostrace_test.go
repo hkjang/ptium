@@ -69,8 +69,12 @@ func TestLosingTheRaceForADeckIsNotReportedAsAFault(t *testing.T) {
 
 	before := incidentCount(t, data)
 	worker := NewWorker(data, nil, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Minute)
+	// The message is this run's own. What the worker keys off is the lease, not
+	// the wording — and a test that reuses a real message folds its writes into
+	// whatever group the deployment already has under that name, quietly
+	// rewriting a record an operator reads.
 	if err := worker.fail(ctx, model.Presentation{ID: deck.ID, OwnerID: owner.ID, Language: "ko"}, lease,
-		errors.New("presentation generation state changed")); err != nil {
+		errors.New("generation state changed under "+run)); err != nil {
 		t.Fatalf("losing the race was reported to the loop as an error: %v", err)
 	}
 	if after := incidentCount(t, data); after != before {

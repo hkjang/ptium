@@ -45,6 +45,7 @@ func TestAnIncidentSaysWhichBuildSawIt(t *testing.T) {
 	// The same fault on a later build moves the last-seen version forward and
 	// leaves the first alone: that pair is what says it survived the upgrade.
 	newer := New(pool).WithVersion("1.39.0")
+	unversioned := New(pool)
 	if err := newer.CaptureIncident(ctx, model.Incident{Kind: "internal", Severity: "critical", Message: "panic while reading " + run}); err != nil {
 		t.Fatalf("recapture: %v", err)
 	}
@@ -79,13 +80,24 @@ func TestAnIncidentSaysWhichBuildSawIt(t *testing.T) {
 		t.Errorf("last-seen build is %q, want the build that saw the repeat", aged.LastSeenVersion)
 	}
 
+	// A process that cannot say which build it is must not erase what a stamped
+	// one knew. Writing a blank over 1.39.0 turns an answer into "unknown" and
+	// there is no way back: the sighting it would be describing is the one that
+	// just happened, and it has no build to name.
+	if err := unversioned.CaptureIncident(ctx, model.Incident{Kind: "internal", Severity: "critical", Message: "panic while reading " + run}); err != nil {
+		t.Fatalf("recapture unstamped: %v", err)
+	}
+	kept := findIncident(t, newer, run)
+	if kept.LastSeenVersion != "1.39.0" {
+		t.Errorf("an unstamped process left the last-seen build as %q; it must not erase a known one", kept.LastSeenVersion)
+	}
+
 	// A process built without a stamp records nothing rather than a version
 	// that does not exist.
-	unstamped := New(pool)
-	if err := unstamped.CaptureIncident(ctx, model.Incident{Kind: "internal", Severity: "error", Message: "unstamped " + run}); err != nil {
+	if err := unversioned.CaptureIncident(ctx, model.Incident{Kind: "internal", Severity: "error", Message: "unstamped " + run}); err != nil {
 		t.Fatalf("capture unstamped: %v", err)
 	}
-	blank := findIncident(t, unstamped, "unstamped "+run)
+	blank := findIncident(t, unversioned, "unstamped "+run)
 	if blank.LastSeenVersion != "" {
 		t.Errorf("an unstamped build recorded %q", blank.LastSeenVersion)
 	}

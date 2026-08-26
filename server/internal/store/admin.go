@@ -465,11 +465,15 @@ func (s *Store) CaptureIncident(ctx context.Context, incident model.Incident) er
 	// recorded before the product kept the build keeps a blank first version
 	// when it happens again: blank there means nobody knows which build saw it
 	// first, and today's is not the answer.
+	//
+	// A process that cannot say which build it is writes no build at all, in
+	// either column. Letting it write an empty last-seen version would erase
+	// what an earlier, stamped process knew — turning an answer into a blank.
 	_, err := s.Pool.Exec(ctx, `INSERT INTO server_errors(id,request_id,user_id,kind,severity,message,details,fingerprint,first_occurred_at,last_occurred_at,first_seen_version,last_seen_version)
 		VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),now(),$9,$9) ON CONFLICT(fingerprint) WHERE fingerprint <> '' AND status IN ('open','acknowledged')
 		DO UPDATE SET occurrence_count=server_errors.occurrence_count+1,last_occurred_at=now(),occurred_at=now(),
 		request_id=EXCLUDED.request_id,user_id=EXCLUDED.user_id,message=EXCLUDED.message,details=EXCLUDED.details,severity=EXCLUDED.severity,updated_at=now(),
-		last_seen_version=EXCLUDED.last_seen_version`,
+		last_seen_version=CASE WHEN EXCLUDED.last_seen_version='' THEN server_errors.last_seen_version ELSE EXCLUDED.last_seen_version END`,
 		incident.ID, incident.RequestID, incident.UserID, incident.Kind, incident.Severity, incident.Message, incident.Details, incident.Fingerprint, s.Version)
 	return err
 }
