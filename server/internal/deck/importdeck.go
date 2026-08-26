@@ -127,8 +127,14 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			"%d장에는 읽을 수 있는 글자가 없어 제목을 임시로 붙였습니다", wordless))
 	}
 	if placed > 0 {
+		// What this step knows is how many pictures it carried out of the file
+		// and into the deck's source. Whether the design can draw them is the
+		// next step's to say — and claiming "슬라이드에 넣었습니다" here told the
+		// owner of a file with twenty-two pictures that all twenty-two were on
+		// slides, when the design had one picture region per layout and ten of
+		// them never arrived.
 		warnings = append(warnings, fmt.Sprintf(
-			"그림 %d개를 이미지 라이브러리에 저장하고 슬라이드에 넣었습니다", placed))
+			"그림 %d개를 이미지 라이브러리에 저장했습니다", placed))
 	}
 	if pictures > 0 {
 		warnings = append(warnings, fmt.Sprintf(

@@ -92,20 +92,11 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	// and putting either into a picture region would be worse than leaving it
 	// out. What is left is stored once — an identical file uploaded twice is the
 	// same image — and placed in the new design's own picture region.
-	slides := len(imported.Slides)
-	seen := map[string]int{}
-	for _, slide := range imported.Slides {
-		for _, picture := range slide.Pictures {
-			seen[pictureKey(picture)]++
-		}
-	}
+	filter := newPictureFilter(imported.Slides)
 	saved := map[string]string{}
 	source, warnings := deck.SourceFromImportWithImages(imported, func(picture pptx.ImportedPicture) (string, bool) {
 		key := pictureKey(picture)
-		if slides > 2 && seen[key]*2 > slides {
-			return "", false
-		}
-		if picture.Area > 0 && picture.Area < 30 {
+		if !filter.keeps(picture) {
 			return "", false
 		}
 		if name, ok := saved[key]; ok {
@@ -120,6 +111,10 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 		saved[key] = asset.Name
 		return asset.Name, true
 	})
+
+	// And what it left behind, said in the answer rather than left for somebody
+	// to notice by opening both files.
+	warnings = append(warnings, filter.leftOut()...)
 
 	// The design is chosen, not inherited: someone importing a deck is usually
 	// doing it to put it in a different template. Without a choice, their default
@@ -180,6 +175,22 @@ func (s *Server) storeImportedSource(writer http.ResponseWriter, request *http.R
 	if warnings == nil {
 		warnings = []string{}
 	}
+	// What the design could actually draw of what the import carried. The two
+	// numbers are known in different places — the import writes the picture, the
+	// compiler decides whether a region exists for it — and only together do
+	// they answer what the person asked: are my pictures in there?
+	if carried := picturesCarried(source); carried > 0 {
+		drawn := 0
+		for _, slide := range compiled.Slides {
+			drawn += imagesOnSlide(slide)
+		}
+		if said := picturesLeftUndrawn(carried, drawn); said != "" {
+			// Right after the line it is answering: "그 가운데 …" two sentences
+			// away from what it refers to is a sentence about nothing.
+			warnings = sayAfterPicturesSaved(warnings, said)
+		}
+	}
+
 	technical := compiled.Warnings
 	if technical == nil {
 		technical = []string{}
