@@ -127,6 +127,19 @@ with sync_playwright() as play:
     print("── every route ──")
     visit("/dashboard", expect_text="워크스페이스")
     visit("/presentations", expect_text="프레젠테이션")
+    # The file picker and the button that opens it have to agree about what the
+    # product reads. A picker that accepts a PDF above a tooltip that does not
+    # mention one tells somebody the feature is not there.
+    picker = page.locator("input[type=file]").first
+    accepts = (picker.get_attribute("accept") or "") if picker.count() else ""
+    told = page.locator("button[title*='슬라이드가 됩니다']").first
+    tooltip = (told.get_attribute("title") or "") if told.count() else ""
+    for named, said in {".pdf": "PDF", ".docx": "워드", ".xlsx": "엑셀",
+                        ".csv": "CSV", ".md": "마크다운"}.items():
+        if named not in accepts:
+            failures.append(f"the import picker does not accept {named}: {accepts!r}")
+        if said not in tooltip:
+            failures.append(f"the import button does not say it reads {named} ({said}): {tooltip!r}")
     visit("/templates", expect_text="템플릿")
     visit("/images", expect_text="내 이미지")
     visit("/guide", expect_text="사용 가이드")

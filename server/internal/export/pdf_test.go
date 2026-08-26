@@ -13,6 +13,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pdf"
+	"github.com/hkjang/ptium/server/internal/pdftext"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
@@ -128,9 +129,48 @@ func TestAHandoutCarriesTheNotes(t *testing.T) {
 		!strings.Contains(string(plain), "/MediaBox [0 0 960.000 540.000]") {
 		t.Error("the handout is not the deck's own page size")
 	}
-	if len(handout) <= len(plain) {
-		t.Errorf("the handout (%d) is not longer than the deck (%d), so it carries nothing extra",
-			len(handout), len(plain))
+	// Longer is not "carries the notes". Read both files back and look.
+	if said := printedWords(t, handout); !strings.Contains(said, "숫자를 읽지 말고 흐름만 말합니다") {
+		t.Errorf("the handout does not have the note on it:\n%s", said)
+	}
+	if said := printedWords(t, plain); strings.Contains(said, "숫자를 읽지 말고") {
+		t.Errorf("the deck has the speaker's note printed on the slide:\n%s", said)
+	}
+}
+
+// printedWords is what a printed deck says, read back with the same reader the
+// product hands other people's PDFs to.
+func printedWords(t *testing.T, file []byte) string {
+	t.Helper()
+	read, err := pdftext.Read(file)
+	if err != nil {
+		t.Fatalf("reading back what we printed: %v", err)
+	}
+	var said strings.Builder
+	for _, page := range read.Pages {
+		for _, line := range page.Lines {
+			said.WriteString(line)
+			said.WriteString("\n")
+		}
+	}
+	return said.String()
+}
+
+// A printed deck is not a picture of a deck: the words on it are words.
+//
+// A PDF whose glyphs carry no map from their codes back to characters draws
+// exactly the same page and cannot be searched, copied out, or read aloud by
+// anything — and nothing about the file looks wrong until somebody tries. The
+// check is to read it back: this is the reader that refuses to guess, so what
+// it finds is really in the file.
+func TestAPrintedDeckCanBeReadBack(t *testing.T) {
+	file, _ := printedDeck(t, "# 분기 실적\n@cover\n> 3분기 요약\n\n# 근거\n@content\n"+
+		"- 매출이 12% 늘었습니다\n- 비용은 그대로입니다\n")
+	said := printedWords(t, file)
+	for _, want := range []string{"분기 실적", "3분기 요약", "근거", "매출이 12% 늘었습니다", "비용은 그대로입니다"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("what was printed does not say %q:\n%s", want, said)
+		}
 	}
 }
 

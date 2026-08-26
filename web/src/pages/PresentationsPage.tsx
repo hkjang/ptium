@@ -120,7 +120,7 @@ export function PresentationsPage() {
   return (
     <AppShell title="프레젠테이션" eyebrow="MY WORKSPACE" actions={<>
       <Button variant="secondary" disabled={importing} onClick={() => importInput.current?.click()}
-        title="발표자료(.pptx)뿐 아니라 엑셀·워드·CSV·마크다운도 슬라이드가 됩니다. 각 장에 출처가 붙습니다.">
+        title="발표자료(.pptx)뿐 아니라 엑셀·워드·PDF·CSV·마크다운도 슬라이드가 됩니다. 각 장에 출처가 붙습니다.">
         <FileUp size={16} /> {importing ? '가져오는 중…' : '기존 자료 가져오기'}
       </Button>
       <input ref={importInput} type="file" accept=".pptx,.potx,.xlsx,.csv,.tsv,.docx,.pdf,.md,.markdown,.txt" hidden
