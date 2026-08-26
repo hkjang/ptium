@@ -242,6 +242,50 @@ with sync_playwright() as play:
     # Pressing down in the slide rail chooses the next slide. It used to scroll
     # the list under the hand: focus was on the thumbnail somebody had just
     # clicked, and the arrow moved the scrollbar rather than the selection.
+    # A list handed to a room whole is read ahead of the speaker. A slide marked
+    # !build gives up its points one at a time, and the arrow that would have
+    # moved on brings the next line instead — until there are none left.
+    print("── a slide built up a line at a time ──")
+    status, made = api("/api/v1/presentations", "POST", {
+        "title": f"한 줄씩 {RUN}", "prompt": "점검", "requestedSlideCount": 2, "language": "ko"})
+    built_deck = made["data"]["id"]
+    api(f"/api/v1/presentations/{built_deck}/source", "PUT", {"source":
+        "# 이행 순서\n@content\n!build\n- 준비\n- 이행\n- 안정화\n\n# 다음 장\n- 보통 슬라이드\n"})
+    page.goto(f"{BASE}/presentations/{built_deck}/editor", wait_until="networkidle")
+    page.wait_for_selector(".slide-thumbnail-row", timeout=25000)
+    page.wait_for_timeout(2200)
+    page.get_by_role("button", name="발표", exact=True).first.click()
+    page.wait_for_timeout(2500)
+    def waiting():
+        return page.evaluate("""() => {
+            const stage = document.querySelector('.presentation-mode');
+            const svg = stage && stage.querySelector('svg');
+            if (!svg) return null;
+            const points = [...svg.querySelectorAll('tspan')]
+                .filter(s => ['준비', '이행:', '안정화'].some(w => s.textContent.includes(w)) || s.textContent.trim() === '• 이행');
+            return { shown: points.filter(s => s.getAttribute('opacity') !== '0').length,
+                     hidden: points.filter(s => s.getAttribute('opacity') === '0').length,
+                     where: (stage.innerText.match(/(\\d+) \\/ (\\d+)/) || [''])[0] };
+        }""")
+    first = waiting()
+    if not first or first["hidden"] == 0:
+        failures.append(f"a built slide showed everything at once: {first}")
+    else:
+        page.keyboard.press("ArrowRight"); page.wait_for_timeout(1200)
+        second = waiting()
+        if not second or second["shown"] <= first["shown"] or second["where"] != first["where"]:
+            failures.append(f"the arrow did not bring the next line: {first} → {second}")
+        else:
+            page.keyboard.press("ArrowRight"); page.wait_for_timeout(1200)
+            page.keyboard.press("ArrowRight"); page.wait_for_timeout(1200)
+            moved = waiting()
+            if not moved or moved["where"] == first["where"]:
+                failures.append(f"the built slide never let go: {moved}")
+            else:
+                print(f"   built: {first['shown']} → {second['shown']} → 전부 → {moved['where']}")
+    page.keyboard.press("Escape"); page.wait_for_timeout(800)
+    api(f"/api/v1/presentations/{built_deck}", "DELETE", raw=True)
+
     print("── the slide rail answers the arrow keys ──")
     page.goto(f"{BASE}/presentations/{deck}/editor", wait_until="networkidle")
     page.wait_for_selector(".slide-thumbnail-row", timeout=25000)

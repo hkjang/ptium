@@ -49,6 +49,8 @@ type SourceSlide struct {
 	// Skipped keeps this slide out of the talk without taking it out of the deck:
 	// an appendix slide, a backup number, the chart somebody always asks for.
 	Skipped bool
+	// Built reveals the slide's points one at a time while presenting.
+	Built bool
 	// BareBullets are the points that were written without a "- " in front of
 	// them. Everything else about them is the same; what it says is that the
 	// author was not writing a list when they wrote that line.
@@ -338,6 +340,13 @@ func ParseSource(source string) Source {
 			// lost by every one of them.
 			if lowered == "skip" || lowered == "건너뛰기" {
 				current.Skipped = true
+				continue
+			}
+			// A list handed to a room whole is read ahead of the speaker. Saying
+			// so in the source is what carries it through an export, a duplicate
+			// and a restore, the same as !skip.
+			if lowered == "build" || lowered == "하나씩" {
+				current.Built = true
 				continue
 			}
 			// The directive itself, not a word that begins like it. A prefix

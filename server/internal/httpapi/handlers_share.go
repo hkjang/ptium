@@ -140,7 +140,8 @@ func (s *Server) sharedPreview(writer http.ResponseWriter, request *http.Request
 	}
 	// The link counts the slides that are part of the show, and draws that one.
 	position = shown[position-1].Position
-	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data)}
+	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data),
+		Reveal: revealCount(request)}
 	// Drawn exactly as the editor draws it, images and all — a link shows the
 	// deck the owner sees, not a reduced copy of it.
 	svg, err := export.PreviewSlideSVG(presentation, manifest, position, options,

@@ -644,6 +644,8 @@ function normalizeSlide(slide: Record<string, unknown>, index = 0): Slide {
     styles: normalizeStyles(content.styles),
     speakerNotes: String(slide.speakerNotes || slide.speaker_notes || content.speaker_notes || '') || undefined,
     skipped: Boolean(slide.skipped ?? content.skipped) || undefined,
+    // A slide that gives up its points one at a time while presenting.
+    built: Boolean(slide.built ?? content.built) || undefined,
     imageUrl: String(slide.imageUrl || slide.image_url || content.image_url || '') || undefined,
     accent: String(slide.accent || content.accent || '') || undefined,
   }
@@ -1253,8 +1255,11 @@ export const api = {
    * Presenting draws it itself, because a picture of a slide cannot be clicked
    * and a slide with a link on it has to be.
    */
-  async slidePreviewMarkup(presentationId: string, slide: number, width = 1600) {
+  async slidePreviewMarkup(presentationId: string, slide: number, width = 1600, reveal = 0) {
     const query = new URLSearchParams({ slide: String(slide), width: String(width), freeform: 'true' })
+    // A slide built up a line at a time is drawn with the points not yet spoken
+    // still laid out but invisible, so the ones on the wall do not move.
+    if (reveal > 0) query.set('reveal', String(reveal))
     return fetchText(`/presentations/${encodeURIComponent(presentationId)}/preview.svg?${query.toString()}`)
   },
 

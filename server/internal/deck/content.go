@@ -46,6 +46,10 @@ type Content struct {
 	// file and in the exported pptx — where PowerPoint reads the same flag — and
 	// only presenting and the presenter's own screen leave it out.
 	Skipped bool     `json:"skipped,omitempty"`
+	// Built reveals this slide's points one at a time while presenting, the way
+	// a speaker walks a room through a list rather than handing them all of it
+	// and talking over their reading.
+	Built bool `json:"built,omitempty"`
 	Bullets []string `json:"bullets,omitempty"`
 	Body    string   `json:"body,omitempty"`
 	Accent  string   `json:"accent,omitempty"`

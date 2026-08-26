@@ -551,7 +551,8 @@ func (s *Server) presentationPreview(writer http.ResponseWriter, request *http.R
 	if position < 1 {
 		position = 1
 	}
-	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data)}
+	options := pptx.PreviewOptions{Width: previewWidth(request), Media: templateMedia(data),
+		Reveal: revealCount(request)}
 	if position <= len(presentation.Slides) {
 		query := request.URL.Query()
 		// The canvas asks for the template-bound layer without freeform objects and
@@ -678,6 +679,17 @@ func writeSVG(writer http.ResponseWriter, svg string) {
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(writer, svg)
+}
+
+// revealCount is how many of a slide's points to draw, for a slide being built
+// up a line at a time while somebody presents it. Anything else draws the whole
+// slide, which is every other caller.
+func revealCount(request *http.Request) int {
+	reveal, _ := strconv.Atoi(request.URL.Query().Get("reveal"))
+	if reveal < 1 || reveal > 200 {
+		return 0
+	}
+	return reveal
 }
 
 func previewWidth(request *http.Request) int {

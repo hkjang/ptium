@@ -305,6 +305,7 @@ func Compile(source Source, manifest pptx.Manifest, options CompileOptions) Comp
 		}
 		notes := strings.TrimSpace(slide.Notes)
 		content.Skipped = slide.Skipped
+		content.Built = slide.Built
 		result.Slides = append(result.Slides, model.Slide{
 			Position:     index + 1,
 			Title:        truncate(title, 200),

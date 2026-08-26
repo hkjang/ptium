@@ -99,6 +99,9 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		if content.Skipped {
 			builder.WriteString("!skip\n")
 		}
+		if content.Built {
+			builder.WriteString("!build\n")
+		}
 		// Where the slide's figures came from, written back the way it was
 		// written in: a round trip that dropped the evidence would be a slow
 		// deletion of the one thing a reader asks about.

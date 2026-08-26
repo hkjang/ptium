@@ -27,6 +27,12 @@ type PreviewOptions struct {
 	// slide as a transparent sprite it can drag, so what moves under the pointer
 	// is the real drawing rather than an outline standing in for it.
 	Bare bool
+	// Reveal draws only the first N points of the body, with the rest of the
+	// slide laid out as if they were all there. It is how a slide is built up a
+	// line at a time while presenting: the words that have not been said yet
+	// are not on the wall, and the ones that have do not move when the next
+	// arrives. Zero draws the whole slide, which is every other caller.
+	Reveal int
 }
 
 // PreviewSVG renders an approximate but faithful picture of a slide using the
@@ -127,7 +133,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 			builder.WriteString(previewEmptySlot(placeholder, manifest.Theme, scale))
 			continue
 		}
-		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale))
+		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale, options.Reveal))
 	}
 	for _, element := range slide.Elements {
 		// An empty text box is nothing, in the preview as in the file.
@@ -213,7 +219,17 @@ func defaultPromptFor(placeholder Placeholder) string {
 	return "본문"
 }
 
-func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, scale float64) string {
+// held is how many of a body's points are shown, when a slide is being built up
+// a line at a time. Everything else on the slide — its title, its lead, its
+// components — is not a point and is not held back.
+func held(placeholder Placeholder, reveal int) int {
+	if reveal <= 0 || placeholder.Slot == SlotTitle || placeholder.Slot == SlotSubtitle {
+		return 0
+	}
+	return reveal
+}
+
+func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, scale float64, reveal int) string {
 	size := placeholder.FontSize
 	if size <= 0 {
 		size = 1800
@@ -271,7 +287,17 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 	// A line's worth of position, in lines: a lead keeps a little air under it,
 	// the same air the exported file gives it.
 	position := 0.0
+	// A point not yet spoken is drawn invisible rather than left out, so the
+	// ones already on the wall do not move when it arrives.
+	shown, points := held(placeholder, reveal), 0
 	for _, paragraph := range paragraphs {
+		hidden := ""
+		if !paragraph.Lead {
+			points++
+			if shown > 0 && points > shown {
+				hidden = ` opacity="0"`
+			}
+		}
 		indent := float64(paragraph.Level) * fontSize
 		prefix := ""
 		if paragraph.Level > 0 || (placeholder.Slot != SlotTitle && placeholder.Slot != SlotSubtitle) {
@@ -299,8 +325,8 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 				// would push it off that edge rather than in from it.
 				offset = 0
 			}
-			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x+offset, y+position*lineHeight,
-				markedUpLine(wrapped, runs, linkColor))
+			fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f"%s>%s</tspan>`, x+offset, y+position*lineHeight,
+				hidden, markedUpLine(wrapped, runs, linkColor))
 			position++
 		}
 		if paragraph.Lead {

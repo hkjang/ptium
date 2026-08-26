@@ -23,6 +23,7 @@ produces most reliably.
 ::                            the component ends
 !notes 예산 질문이 나오면…      speaker notes, continuing over following lines
 !skip                          keep this slide out of the talk (!건너뛰기 도 같습니다)
+!build                         give the points out one at a time while presenting (!하나씩)
 [안내 문서](https://…)          a link, in any line of prose
 **굵게**  *기울임*               a marked word inside a line
 // a comment
@@ -240,6 +241,13 @@ underlined, in the template's hyperlink colour, and presenting can follow it:
 a link opens where it points, and a jump goes to the slide it names.
 
 ### Slides that are not in the talk
+
+`!build` on a slide gives its points out one at a time while presenting: the
+arrow that would move on brings the next line instead, until there are none
+left. A list handed to a room whole is read ahead of the speaker. The points
+that have not been said are laid out but not drawn, so the ones on the wall do
+not move when the next arrives — and the exported file, the handout and the
+link all carry the whole slide, because paper has no clicks.
 
 `!skip` on a slide keeps it out of the talk and in the deck: the appendix, the
 backup number, the chart somebody always asks for. Presenting walks past it, the

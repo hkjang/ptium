@@ -201,10 +201,42 @@ export function PresentationView({ presentationId, title, slides, version, start
   const drawings = useSlideDrawings(presentationId, total, version, index)
   const thumbs = useSlideImages(presentationId, overview ? total : 0, version, 0, 320)
 
+  // A list handed to a room whole is read ahead of the speaker. A slide marked
+  // !build gives up its points one at a time, and the arrow that would have
+  // moved on brings the next line instead — until there are none left, when it
+  // moves on as it always did.
+  const [revealed, setRevealed] = useState(0)
+  // Which way the talk was going when it left the last slide: stepping back
+  // into a built slide arrives at its last line, where it was left, rather than
+  // making the speaker click through it again.
+  const heading = useRef(1)
+  const built = (slide?: Slide) => Boolean(slide?.built)
+  // The points a slide gives out: its body's paragraphs, less the lead sentence
+  // that introduces them, which is not a point and is on the wall from the start.
+  const pointsOn = (slide?: Slide) => {
+    const fields = slide?.fields || {}
+    for (const [slot, paragraphs] of Object.entries(fields)) {
+      if (slot === 'title' || slot === 'subtitle') continue
+      const points = paragraphs.filter((paragraph) => !(paragraph as { lead?: boolean }).lead).length
+      if (points > 0) return points
+    }
+    return (slide?.bullets || []).length
+  }
+  useEffect(() => {
+    const here = slides[index]
+    if (!built(here)) { setRevealed(0); return }
+    setRevealed(heading.current < 0 ? Math.max(1, pointsOn(here)) : 1)
+  }, [index]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const step = useCallback((delta: number) => {
-    setIndex((value) => Math.min(total - 1, Math.max(0, value + delta)))
     setBlackout('none')
-  }, [total])
+    const here = slides[index]
+    const points = pointsOn(here)
+    if (built(here) && delta > 0 && revealed < points) { setRevealed(revealed + 1); return }
+    if (built(here) && delta < 0 && revealed > 1) { setRevealed(revealed - 1); return }
+    heading.current = delta < 0 ? -1 : 1
+    setIndex((value) => Math.min(total - 1, Math.max(0, value + delta)))
+  }, [total, index, revealed, slides]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const post = usePresentChannel(presentationId, (message) => {
     switch (message.type) {
@@ -304,7 +336,25 @@ export function PresentationView({ presentationId, title, slides, version, start
     return () => window.removeEventListener('keydown', onKey)
   }, [step, total, overview, jump, onClose, post, toggleFullscreen, openPresenter, shortcuts])
 
-  const drawn = drawings[index]
+  // While a slide is being built, its drawing is asked for again with the lines
+  // said so far; the finished slide is the one the hook already holds.
+  const [building, setBuilding] = useState<{ index: number; reveal: number; markup: string } | null>(null)
+  useEffect(() => {
+    const here = slides[index]
+    if (!built(here)) { setBuilding(null); return }
+    let active = true
+    // Asked for even when every line is showing: the drawing with the last
+    // point revealed is the whole slide, and handing back to the hook's copy
+    // mid-talk is a flicker nobody needs to see.
+    api.slidePreviewMarkup(presentationId, index + 1, 1600, Math.max(1, revealed))
+      .then((markup) => { if (active) setBuilding({ index, reveal: revealed, markup }) })
+      .catch(() => { if (active) setBuilding(null) })
+    return () => { active = false }
+  }, [presentationId, index, revealed, slides]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const drawn = building && building.index === index && building.reveal === revealed
+    ? { markup: building.markup }
+    : drawings[index]
 
   /**
    * A click on a link in the slide. A jump goes to the slide it names; anything

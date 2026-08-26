@@ -220,6 +220,8 @@ export interface Slide {
   speakerNotes?: string
   /** A slide kept in the deck and out of the talk: an appendix, a backup number. */
   skipped?: boolean
+  /** A slide whose points are given to the room one at a time while presenting. */
+  built?: boolean
   imageUrl?: string
   accent?: string
 }
