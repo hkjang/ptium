@@ -53,9 +53,11 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		// appears on the slide.
 		layout, hasLayout := manifest.Layout(content.LayoutID)
 		for _, slot := range bodySlotOrder(layout, hasLayout, content) {
+			// A slot can hold a picture and the words that go with it. Writing the
+			// picture and moving on dropped the words — the same loss as a
+			// picture standing next to prose, one slot further in.
 			if picture, ok := content.Images[slot]; ok {
 				builder.WriteString(formatImage(picture))
-				continue
 			}
 			if block, ok := content.Blocks[slot]; ok {
 				builder.WriteString(formatBlock(block))
@@ -150,13 +152,21 @@ func strandedHeading(content Content) string {
 
 // wroteBody reports whether any body region carried content, as opposed to the
 // text having been kept aside in Content.Body.
+// wroteBody says whether this slide's words have already been written out.
+//
+// A picture is not the slide's words and neither is a table: a slide carrying a
+// photograph in its body region and prose that had nowhere else to go counted
+// as written, and the prose was dropped. That is how a deck imported from a
+// real file lost half its text the first time anybody opened its source — the
+// source shown was written back from the slides, and everything the fitter had
+// moved into Body went missing on the way.
 func wroteBody(content Content) bool {
 	for slot := range content.Fields {
 		if slot != pptx.SlotTitle && slot != pptx.SlotSubtitle {
 			return true
 		}
 	}
-	return len(content.Blocks) > 0 || len(content.Images) > 0
+	return false
 }
 
 // bodySlotOrder lists the slots holding content, preferring the layout's own

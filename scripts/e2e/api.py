@@ -623,6 +623,28 @@ imported = data_of(call("POST", "/presentations/import",
 if (imported.get("slides") or 0) < 2:
     failures.append(f"a spreadsheet imported as {imported.get('slides')!r} slides")
 document_id = ((imported.get("presentation") or {}).get("id")) or ""
+# The source an author is shown is the deck. Applying it back must leave the
+# deck as it was: a picture standing next to prose used to make the writer think
+# the words were written, and one click in the editor deleted them.
+if document_id:
+    def visible(deck):
+        seen = []
+        for slide in (deck.get("slides") or []):
+            content = slide.get("content")
+            if isinstance(content, str):
+                content = json.loads(content or "{}")
+            seen.append(len(re.findall(r"[가-힣A-Za-z0-9]", json.dumps(content or {}, ensure_ascii=False))))
+        return seen
+    was = visible(data_of(call("GET", f"/presentations/{document_id}", expect=200)) or {})
+    shown = (data_of(call("GET", f"/presentations/{document_id}/source", expect=200)) or {}).get("source", "")
+    call("PUT", f"/presentations/{document_id}/source", {"source": shown}, expect=200)
+    now = visible(data_of(call("GET", f"/presentations/{document_id}", expect=200)) or {})
+    if len(was) != len(now):
+        failures.append(f"applying a deck's own source changed it from {len(was)} slides to {len(now)}")
+    else:
+        for index, (before, after) in enumerate(zip(was, now), 1):
+            if after < before * 0.6:
+                failures.append(f"slide {index} lost most of its text to its own source: {before} → {after}")
 # What the import had to say travels with the deck. It used to go into a toast
 # that joined every sentence into one line and disappeared on the way to the
 # editor — which has a panel for exactly this and was showing nothing.
