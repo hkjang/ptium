@@ -305,7 +305,8 @@ func repeatedPoints(slide Slide) []Finding {
 			// what a comparison slide is made of: "ROI: 0%" beside "ROI: 300%
 			// 예상" says the thing the slide exists to say. Reported as a
 			// repetition, it told a model to delete half of its own table.
-			if comparesFigures(first, sentences[other]) || sameMeasure(first, sentences[other]) {
+			if comparesFigures(first, sentences[other]) || sameMeasure(first, sentences[other]) ||
+				sharesAValue(first, sentences[other]) {
 				continue
 			}
 			if wordOverlap(words[index], words[other]) >= 0.65 {
@@ -354,6 +355,24 @@ func sameMeasure(first, second string) bool {
 		return false
 	}
 	return strings.TrimSpace(leftSaid) != strings.TrimSpace(rightSaid)
+}
+
+// sharesAValue says two lines name two different things that happen to have the
+// same number or date — "Date due August 20, 2026" beside "Date of issue August
+// 20, 2026". Most of the words are shared because the value is most of the
+// line, and an invoice read into a deck had its two dates reported as one said
+// twice.
+func sharesAValue(first, second string) bool {
+	left, right := []rune(strings.TrimSpace(first)), []rune(strings.TrimSpace(second))
+	shared := 0
+	for shared < len(left) && shared < len(right) &&
+		left[len(left)-1-shared] == right[len(right)-1-shared] {
+		shared++
+	}
+	if shared < 6 || shared == len(left) || shared == len(right) {
+		return false
+	}
+	return strings.ContainsAny(string(left[len(left)-shared:]), "0123456789")
 }
 
 // contentWords is a line reduced to the words that carry its meaning.

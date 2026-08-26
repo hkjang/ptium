@@ -111,3 +111,23 @@ func TestTheSameLabelWithADifferentNumberIsAComparison(t *testing.T) {
 		t.Error("the same point made twice was not reported")
 	}
 }
+
+// Two facts that happen to share a value are two facts. An invoice read into a
+// deck had "Date due August 20, 2026" and "Date of issue August 20, 2026"
+// reported as one point said twice — and the fix for that is to delete a date.
+func TestTwoFactsSharingAValueAreNotOnePointTwice(t *testing.T) {
+	slide := Slide{Fields: map[string][]Paragraph{
+		SlotBody: {{Text: "Date due August 20, 2026"}, {Text: "Date of issue August 20, 2026"}},
+	}}
+	for _, finding := range repeatedPoints(slide) {
+		t.Errorf("two dates were called one point twice: %s", finding.Detail)
+	}
+	// A line repeated with a label in front of it is still a repetition: what
+	// they share is the words, not a value.
+	same := Slide{Fields: map[string][]Paragraph{
+		SlotBody: {{Text: "Trello: 보드 기반 작업 관리 도구"}, {Text: "보드 기반 작업 관리 도구"}},
+	}}
+	if len(repeatedPoints(same)) == 0 {
+		t.Error("a line repeated under a label was not reported")
+	}
+}
