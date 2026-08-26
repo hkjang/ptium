@@ -110,13 +110,34 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 			// and that needs a second body for each frame rather than a rule.
 			claimed := usedFrames[frame]
 			if !topic.Chosen || part > 0 || claimed {
-				frame, fresh = unusedFrame(topic.Frame, part, previousFrame, usedFrames)
+				// A topic whose words said nothing takes an angle nobody else
+				// asked for: rotating it into the frame a later section named by
+				// its own words leaves that section arguing something else.
+				wanted := framesWanted(outline.Topics, index)
+				frame, fresh = unusedFrame(topic.Frame, part, previousFrame, usedFrames, wanted)
 			}
 			if !fresh {
 				// Every angle is spoken for. Another slide about this topic would
 				// repeat one word for word, and the questions the deck raises next
 				// are worth more than a page printed twice.
 				break
+			}
+			// Where the subject is the deck's own title, this slide will be
+			// titled by the part of the subject it is — which has to be the part
+			// it actually argues. When a section the brief listed already carries
+			// that name, the slide takes a different angle rather than a
+			// different name for the angle it has: a slide titled 현황 that opens
+			// "무엇이 어떻게 달라지는지 지표로 말합니다" is the mismatch this
+			// release set out to remove, arriving by the back door.
+			named := withoutSpaces(topic.Name) == withoutSpaces(plan.Title)
+			if named {
+				// And it steps aside for the sections the brief listed: their
+				// words asked for those angles, and this slide is the deck's
+				// subject taking whichever one is left.
+				if angle, ok := unclaimedFrame(plan.Language, frame, outline.Topics,
+					usedFrames, framesWanted(outline.Topics, index)); ok {
+					frame = angle
+				}
 			}
 			previousFrame = frame
 			usedFrames[frame] = true
@@ -127,9 +148,8 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 			// the same twelve syllables four times and learns nothing from three
 			// of them. Where the subject is the deck's own title, each slide is
 			// titled by the part of it that slide is.
-			if withoutSpaces(topic.Name) == withoutSpaces(plan.Title) ||
-				strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
-				if aspect := unclaimedAspect(plan.Language, frame, outline.Topics); aspect != "" {
+			if named || strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
+				if aspect := frameTitleSuffix[plan.Language][frame]; aspect != "" {
 					section.Title = capitalized(aspect)
 				}
 			}
@@ -345,12 +365,19 @@ func optional(prefix, value string) string {
 // A deck of two topics that both read as a plan rotated identically, and the
 // expected outcome — the same figures, the same lead, the same notes — came out
 // on two slides. Only when every angle has been used does one repeat.
-func unusedFrame(frame string, part int, previous string, used map[string]bool) (string, bool) {
+func unusedFrame(frame string, part int, previous string, used, wanted map[string]bool) (string, bool) {
 	candidates := make([]string, 0, 4+len(defaultFrames))
 	for attempt := 0; attempt <= 3; attempt++ {
 		candidates = append(candidates, framePart(frame, part+attempt))
 	}
 	candidates = append(candidates, frameSituation, frameSequence, frameCase, frameOptions, frameRisk, frameOutcome)
+	// The angles another section's own words asked for are left to it, unless
+	// there is nothing else left to take.
+	for _, candidate := range candidates {
+		if candidate != previous && !used[candidate] && !wanted[candidate] {
+			return candidate, true
+		}
+	}
 	for _, candidate := range candidates {
 		if candidate != previous && !used[candidate] {
 			return candidate, true
@@ -417,6 +444,55 @@ func pictureFor(topic, title string, pictures []library.Entry, placed map[string
 		return entry.Name, true
 	}
 	return "", false
+}
+
+// unclaimedFrame is the angle this slide can take under a name no section of
+// the deck already has.
+//
+// Renaming the slide instead — giving a metrics slide the title 현황 because
+// 기대효과 was taken — puts the heading and the body back out of step, which is
+// the thing this writer was just taught not to do.
+func unclaimedFrame(language, frame string, topics []promptTopic, used, wanted map[string]bool) (string, bool) {
+	if aspectFree(language, frame, topics) && !wanted[frame] {
+		return frame, true
+	}
+	for _, other := range []string{frameSituation, frameSequence, frameCase, frameOptions, frameRisk, frameOutcome} {
+		if other == frame || used[other] || wanted[other] || !aspectFree(language, other, topics) {
+			continue
+		}
+		return other, true
+	}
+	// Every angle is either taken or wanted. Keeping this frame is better than
+	// naming the slide after one it does not argue.
+	if aspectFree(language, frame, topics) {
+		return frame, true
+	}
+	return frame, false
+}
+
+// framesWanted is the angles the sections the brief listed asked for by name.
+func framesWanted(topics []promptTopic, except int) map[string]bool {
+	wanted := map[string]bool{}
+	for index, topic := range topics {
+		if index != except && topic.Chosen {
+			wanted[topic.Frame] = true
+		}
+	}
+	return wanted
+}
+
+// aspectFree says whether this frame's own word is still nobody's section name.
+func aspectFree(language, frame string, topics []promptTopic) bool {
+	aspect := frameTitleSuffix[language][frame]
+	if aspect == "" {
+		return false
+	}
+	for _, topic := range topics {
+		if withoutSpaces(strings.ToLower(topic.Name)) == withoutSpaces(strings.ToLower(aspect)) {
+			return false
+		}
+	}
+	return true
 }
 
 // unclaimedAspect names the part of the subject this slide is, avoiding a name
