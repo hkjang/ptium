@@ -137,6 +137,23 @@ for key, refused, honoured in [
             failures.append(f"refusing {key} does not say which setting: {said!r}")
     call("PUT", "/admin/settings", {"values": {key: honoured}}, expect=[200, 403])
 
+# Two slides headed the same thing. Everything the measurement looked at used to
+# be about the drawing: a deck could be drawn perfectly with slide 5 and slide 8
+# both headed "다음 단계", and nobody was told.
+twice = data_of(call("POST", "/presentations", {"title": f"같은 제목 {RUN}", "prompt": "제목 반복 점검",
+                                                "requestedSlideCount": 3, "language": "ko"}, expect=201))
+call("PUT", f"/presentations/{twice['id']}/source", {"source": "\n".join([
+    "# 다음 단계", "- 이관 일정을 확정합니다", "!notes 일정에 대해 말합니다",
+    "# 비용", "- 올해 예산은 3억 원입니다", "!notes 예산에 대해 말합니다",
+    "# 다음 단계", "- 담당자를 정합니다", "!notes 담당에 대해 말합니다"])}, expect=200)
+measured = data_of(call("GET", f"/presentations/{twice['id']}/inspect", expect=200)) or {}
+repeated = [f for f in (measured.get("findings") or []) if f.get("kind") == "twiceTitled"]
+if not repeated:
+    failures.append(f"two slides headed the same thing were not measured: {measured.get('findings')}")
+elif repeated[0].get("slide") != 3 or "다음 단계" not in str(repeated[0].get("detail")):
+    failures.append(f"the repeated heading was reported as {repeated[0]!r}")
+call("DELETE", f"/presentations/{twice['id']}?permanent=true", expect=[204, 200])
+
 print("── templates ──")
 templates = data_of(call("GET", "/templates?limit=100", expect=200)) or []
 print(f"   {len(templates)} templates")

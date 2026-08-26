@@ -64,6 +64,8 @@ describe('a measurement in the reader’s words', () => {
       echo: "2 of this slide's 4 points were already made on slide 3",
       trimmed: 'steps draws 5 of its 6 entries; the rest are on no slide',
       link: '"www.example.com" is not a link the deck can follow, so the line draws its markup; a link is https://…, mailto:… or #3 for another slide',
+      unfinished: 'the heading "협력사 정산 프로세스를 개선하려고" stops in the middle of what it was saying',
+      twiceTitled: 'slide 3 is headed "다음 단계" as well',
     }
     for (const [kind, detail] of Object.entries(measured)) {
       // A colour, a directive, a scheme and the author's own address are the
@@ -75,7 +77,7 @@ describe('a measurement in the reader’s words', () => {
   })
 
   it('names every kind the measurement can report', () => {
-    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed', 'link']
+    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed', 'link', 'unfinished', 'twiceTitled']
     for (const kind of kinds) {
       expect(findingLabel(kind), kind).not.toBe(kind)
     }

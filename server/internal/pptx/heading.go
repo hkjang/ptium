@@ -73,3 +73,43 @@ func unfinishedHeading(heading string) bool {
 	// "매출을" alone is a slide about revenue, badly named but not cut off.
 	return len(words) > 1 && strandedParticle.MatchString(last)
 }
+
+// headingSaidBefore reports a slide headed what an earlier slide is headed.
+//
+// A deck generated from a brief that asks for "비용과 일정" and "다음 단계" comes
+// back with two slides headed "다음 단계", and everything the measurement looked
+// at was right: both were drawn, both fitted, both had notes. A room reading the
+// same heading twice cannot tell whether the deck went backwards, repeated
+// itself, or has two different things to say under one name — and whoever made
+// it never heard about it.
+//
+// Only the first repeat is reported, on the later slide: the earlier one is
+// where the heading belongs until somebody decides otherwise.
+func headingSaidBefore(slides []Slide, index int) []Finding {
+	heading := headingOf(slides[index])
+	if heading == "" || utf8.RuneCountInString(heading) < 2 {
+		return nil
+	}
+	for earlier := 0; earlier < index; earlier++ {
+		if !strings.EqualFold(headingOf(slides[earlier]), heading) {
+			continue
+		}
+		return []Finding{{Slot: SlotTitle, Kind: FindingTwiceTitled, Advisory: true,
+			Detail: fmt.Sprintf("slide %d is headed %q as well", earlier+1, shortDetail(heading))}}
+	}
+	return nil
+}
+
+// headingOf is a slide's title as a room reads it: the words, without the
+// spacing and punctuation that decide nothing.
+func headingOf(slide Slide) string {
+	var parts []string
+	for _, paragraph := range slide.Fields[SlotTitle] {
+		if text := strings.TrimSpace(paragraph.Text); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	joined := strings.Join(parts, " ")
+	joined = strings.TrimSpace(strings.Trim(strings.TrimSpace(joined), " .·—-:"))
+	return strings.Join(strings.Fields(joined), " ")
+}

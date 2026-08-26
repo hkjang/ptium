@@ -58,6 +58,12 @@ const (
 	// the room reads and the one a deck written from somebody's own words gets
 	// wrong most easily.
 	FindingUnfinished = "unfinished"
+	// FindingTwiceTitled is two slides carrying the same heading. A room reading
+	// "다음 단계" for the second time cannot tell whether it went back a slide,
+	// whether the deck repeated itself, or which of the two was the real one.
+	// Like echo it is measured across the deck: inside one slide there is
+	// nothing to see.
+	FindingTwiceTitled = "twiceTitled"
 )
 
 // A slide is a thing someone stands next to and talks over. Two of its failures
@@ -526,6 +532,11 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 		// here is about the drawing; a deck can be drawn perfectly and headed
 		// with half a sentence.
 		for _, finding := range unfinishedHeadings(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
+		// And whether some earlier slide is already headed this.
+		for _, finding := range headingSaidBefore(deck.Slides, index) {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}

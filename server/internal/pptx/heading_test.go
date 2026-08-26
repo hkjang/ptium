@@ -1,6 +1,9 @@
 package pptx
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // A heading is the one line everybody reads. Six decks measured at 98 to 100
 // while headed "…개선하려고", "회사 소개 어줘" and "AI 챗봇 도입 검토 서": every
@@ -233,6 +236,59 @@ func TestASlidesOwnAccentColoursItsComponents(t *testing.T) {
 	for _, said := range []string{"", "blue", "#12345", "#12345g", "0F62FE"} {
 		if got := (Slide{Accent: said}).withAccent(design); got.Accent != design.Accent {
 			t.Errorf("%q was taken for a colour", said)
+		}
+	}
+}
+
+// Two slides headed the same thing.
+//
+// A deck generated from a brief asking for cost, schedule and next steps came
+// back with slide 5 and slide 8 both headed "다음 단계". Everything the
+// measurement looked at was right — both drawn, both fitted, both with notes —
+// and the deck reported one unrelated advisory. A room reading the same heading
+// twice cannot tell whether the deck went backwards or has two different things
+// to say under one name.
+func TestASlideHeadedWhatAnEarlierSlideIsHeaded(t *testing.T) {
+	t.Parallel()
+	headed := func(titles ...string) []Slide {
+		slides := make([]Slide, 0, len(titles))
+		for _, title := range titles {
+			slides = append(slides, Slide{Fields: map[string][]Paragraph{SlotTitle: {{Text: title}}}})
+		}
+		return slides
+	}
+	deck := headed("도입 성과", "비용", "다음 단계", "일정", "다음 단계")
+	// The later slide is the one told, and the earlier one is named.
+	found := headingSaidBefore(deck, 4)
+	if len(found) != 1 {
+		t.Fatalf("a repeated heading produced %d findings", len(found))
+	}
+	if found[0].Kind != FindingTwiceTitled || !found[0].Advisory {
+		t.Errorf("reported as %q (advisory %v)", found[0].Kind, found[0].Advisory)
+	}
+	if !strings.Contains(found[0].Detail, "slide 3") || !strings.Contains(found[0].Detail, "다음 단계") {
+		t.Errorf("the finding does not say which slide it repeats: %q", found[0].Detail)
+	}
+	// The first time a heading is used is not a repeat of anything.
+	for index := range deck[:4] {
+		if found := headingSaidBefore(deck, index); len(found) != 0 {
+			t.Errorf("slide %d was called a repeat: %q", index+1, found[0].Detail)
+		}
+	}
+
+	// Spacing and trailing punctuation decide nothing; different words do.
+	same := headed("다음 단계", " 다음  단계 ·")
+	if found := headingSaidBefore(same, 1); len(found) != 1 {
+		t.Error("the same heading spaced differently was not noticed")
+	}
+	different := headed("다음 단계", "다음 단계와 비용")
+	if found := headingSaidBefore(different, 1); len(found) != 0 {
+		t.Errorf("two different headings were called the same: %q", found[0].Detail)
+	}
+	// A slide with no heading repeats nothing, and neither does a one-letter one.
+	for _, quiet := range [][]Slide{headed("", ""), headed("A", "A")} {
+		if found := headingSaidBefore(quiet, 1); len(found) != 0 {
+			t.Errorf("a slide with nothing to repeat was reported: %q", found[0].Detail)
 		}
 	}
 }

@@ -71,6 +71,11 @@ func weightOf(finding Finding) int {
 		case FindingUnfinished:
 			// The heading is the line the room reads before anything else.
 			return 12
+		case FindingTwiceTitled:
+			// Also the heading, and also visible from the back of the room —
+			// but the words are a phrase, and which of the two should change is
+			// the author's call rather than a mistake in the drawing.
+			return 8
 		default:
 			return 4
 		}
