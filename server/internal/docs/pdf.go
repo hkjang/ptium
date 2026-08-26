@@ -16,10 +16,11 @@ import (
 
 // readPDF reads a PDF into slides, one page at a time.
 func readPDF(filename string, data []byte) (Document, error) {
-	pages, err := pdftext.Read(data)
+	read, err := pdftext.Read(data)
 	if err != nil {
 		return Document{}, fmt.Errorf("이 파일을 PDF로 읽지 못했습니다")
 	}
+	pages := read.Pages
 	furniture := runningLines(pages)
 	writer := newDeckWriter(filename, titleOf(filename))
 	said, blank := 0, 0
@@ -61,6 +62,9 @@ func readPDF(filename string, data []byte) (Document, error) {
 		}
 	}
 	if said == 0 {
+		if read.Short {
+			return Document{}, fmt.Errorf("이 PDF가 한 번에 읽기에 너무 큽니다. 쪽을 나눠서 올려주세요")
+		}
 		return Document{}, fmt.Errorf("이 PDF에는 글자가 없습니다. 스캔했거나 그림으로 내보낸 파일로 보입니다. " +
 			"원본 문서나 텍스트가 살아 있는 PDF로 올려주세요")
 	}
@@ -71,6 +75,14 @@ func readPDF(filename string, data []byte) (Document, error) {
 	if blank > 0 {
 		document.Warnings = append(document.Warnings,
 			fmt.Sprintf("%d쪽은 그림뿐이라 글자를 가져오지 못했습니다", blank))
+	}
+	// A document too big to unpack in one go is not a document whose later
+	// pages are blank. Saying "그림뿐" about pages nobody looked at would send
+	// somebody off to re-export a file that is perfectly readable.
+	if read.Short {
+		document.Warnings = append(document.Warnings,
+			fmt.Sprintf("파일이 커서 %d쪽 가운데 앞 %d쪽만 읽었습니다. 나눠서 올리면 전부 가져옵니다",
+				read.Total, len(pages)))
 	}
 	return document, nil
 }

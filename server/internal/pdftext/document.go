@@ -29,6 +29,12 @@ type document struct {
 	// the font would otherwise re-read: a long file names the same twelve
 	// thousand entry CMap on all of its pages.
 	charted map[int]map[uint32]string
+	// exhausted says the document asked to unpack more than the budget allows.
+	// From that point on the file is unread rather than empty, and the two must
+	// not be confused: one is a scan, the other is a document too big to read
+	// in one go, and telling somebody the wrong one sends them to fix the wrong
+	// thing.
+	exhausted bool
 }
 
 var objectHeader = regexp.MustCompile(`(?m)(\d+)\s+(\d+)\s+obj\b`)
@@ -168,6 +174,7 @@ func (d *document) decoded(number int) ([]byte, bool) {
 		return nil, false
 	}
 	if d.spent >= maximumDecoded {
+		d.exhausted = true
 		d.unpacked[number] = nil
 		return nil, false
 	}

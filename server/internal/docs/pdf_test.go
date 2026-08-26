@@ -2,6 +2,7 @@ package docs
 
 import (
 	"bytes"
+	"compress/zlib"
 	"fmt"
 	"strings"
 	"testing"
@@ -165,6 +166,52 @@ func TestAContinuationCitesThePageItContinues(t *testing.T) {
 	}
 	if !strings.Contains(document.Source, "!source 보고서.pdf | 2쪽") {
 		t.Errorf("the second page is not cited as a page:\n%s", document.Source)
+	}
+}
+
+// A PDF too big to unpack in one go is not a PDF whose later pages are
+// pictures. Telling somebody their pages are pictures sends them to re-export a
+// file that reads perfectly well.
+func TestABigPDFIsNotDescribedAsPagesOfPictures(t *testing.T) {
+	var page strings.Builder
+	for row := 0; row < 12000; row++ {
+		fmt.Fprintf(&page, "BT /F1 12 Tf 1 0 0 1 72 %d Tm (%d번째 줄입니다) Tj ET\n", 700-row, row)
+	}
+	var packed bytes.Buffer
+	writer := zlib.NewWriter(&packed)
+	if _, err := writer.Write([]byte(page.String())); err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+
+	const pages = 110
+	var out bytes.Buffer
+	out.WriteString("%PDF-1.7\n1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n")
+	kids := make([]string, 0, pages)
+	for index := 0; index < pages; index++ {
+		kids = append(kids, fmt.Sprintf("%d 0 R", 3+index*2))
+	}
+	fmt.Fprintf(&out, "2 0 obj\n<</Type /Pages /Kids [%s] /Count %d>>\nendobj\n", strings.Join(kids, " "), pages)
+	font := 3 + pages*2
+	for index := 0; index < pages; index++ {
+		fmt.Fprintf(&out, "%d 0 obj\n<</Type /Page /Parent 2 0 R /Resources <</Font <</F1 %d 0 R>>>> /Contents %d 0 R>>\nendobj\n",
+			3+index*2, font, 4+index*2)
+		fmt.Fprintf(&out, "%d 0 obj\n<</Filter /FlateDecode /Length %d>>\nstream\n", 4+index*2, packed.Len())
+		out.Write(packed.Bytes())
+		out.WriteString("\nendstream\nendobj\n")
+	}
+	fmt.Fprintf(&out, "%d 0 obj\n<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>\nendobj\ntrailer<</Root 1 0 R>>\n", font)
+
+	document, err := Read("긴 보고서.pdf", out.Bytes())
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	said := strings.Join(document.Warnings, " | ")
+	if strings.Contains(said, "그림뿐") {
+		t.Errorf("pages nobody read were called pictures: %q", said)
+	}
+	if !strings.Contains(said, "파일이 커서") {
+		t.Errorf("the reader did not say the file was too big to read in one go: %q", said)
 	}
 }
 

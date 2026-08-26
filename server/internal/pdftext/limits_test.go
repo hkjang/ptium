@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"fmt"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -63,6 +64,65 @@ func TestAPageCannotAskForMoreThanItCanBeGiven(t *testing.T) {
 	if limit := uint64(256 << 20); allocated > limit {
 		t.Errorf("a %d byte file allocated %d MiB, want under %d MiB",
 			out.Len(), allocated>>20, limit>>20)
+	}
+}
+
+// A document too big to unpack in one go is not a document whose later pages
+// are blank. What was not read has to be countable, or the import will describe
+// pages nobody looked at — and send somebody off to re-export a file that reads
+// perfectly well.
+func TestADocumentTooBigToReadSaysSoRatherThanComingBackEmpty(t *testing.T) {
+	var page strings.Builder
+	for row := 0; row < 4000; row++ {
+		fmt.Fprintf(&page, "BT /F1 12 Tf 1 0 0 1 72 %d Tm (line %d of a long report page) Tj ET\n", 700-row, row)
+	}
+	var packed bytes.Buffer
+	writer := zlib.NewWriter(&packed)
+	if _, err := writer.Write([]byte(page.String())); err != nil {
+		t.Fatal(err)
+	}
+	writer.Close()
+
+	const pages = 300
+	var out bytes.Buffer
+	out.WriteString("%PDF-1.7\n1 0 obj\n<</Type /Catalog /Pages 2 0 R>>\nendobj\n")
+	kids := make([]string, 0, pages)
+	for index := 0; index < pages; index++ {
+		kids = append(kids, fmt.Sprintf("%d 0 R", 3+index*2))
+	}
+	fmt.Fprintf(&out, "2 0 obj\n<</Type /Pages /Kids [%s] /Count %d>>\nendobj\n", strings.Join(kids, " "), pages)
+	font := 3 + pages*2
+	for index := 0; index < pages; index++ {
+		// Each page owns its own copy, the way a real long document does.
+		fmt.Fprintf(&out, "%d 0 obj\n<</Type /Page /Parent 2 0 R /Resources <</Font <</F1 %d 0 R>>>> /Contents %d 0 R>>\nendobj\n",
+			3+index*2, font, 4+index*2)
+		fmt.Fprintf(&out, "%d 0 obj\n<</Filter /FlateDecode /Length %d>>\nstream\n", 4+index*2, packed.Len())
+		out.Write(packed.Bytes())
+		out.WriteString("\nendstream\nendobj\n")
+	}
+	fmt.Fprintf(&out, "%d 0 obj\n<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>\nendobj\ntrailer<</Root 1 0 R>>\n", font)
+
+	read, err := Read(out.Bytes())
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !read.Short {
+		t.Fatalf("a document unpacking past the budget did not say so: %d of %d pages",
+			len(read.Pages), read.Total)
+	}
+	if read.Total != pages {
+		t.Errorf("the file has %d pages and the reading says %d", pages, read.Total)
+	}
+	if len(read.Pages) == 0 || len(read.Pages) >= pages {
+		t.Errorf("%d of %d pages read; want the front of the document", len(read.Pages), read.Total)
+	}
+	// Every page handed back was read whole. A page cut off in the middle is
+	// not what the page says.
+	for _, held := range read.Pages {
+		if len(held.Lines) == 0 {
+			t.Errorf("page %d came back empty from a document that is all text", held.Number)
+			break
+		}
 	}
 }
 

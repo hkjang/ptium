@@ -874,7 +874,9 @@ paths:
         document repeats on every page are left out, and each slide cites its
         page. A PDF with no text in it — a scan, or a deck exported as pictures
         — is refused with that as the reason, rather than imported as empty
-        slides.
+        slides. A PDF too large to unpack in one pass imports the front of the
+        document and says how many of its pages were read, which is a different
+        answer from calling the rest blank.
 
         For a presentation: turns a deck someone already has into a Ptium deck. Titles, points (at the
         depth they were written), speaker notes and tables come across, along with
@@ -4724,7 +4726,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.18.1
+            service.version: 1.18.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 

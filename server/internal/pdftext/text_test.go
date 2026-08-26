@@ -37,14 +37,14 @@ func onePage(fontDict, content string) []byte {
 
 func linesOf(t *testing.T, data []byte) []string {
 	t.Helper()
-	pages, err := Read(data)
+	read, err := Read(data)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pages) != 1 {
-		t.Fatalf("expected one page, got %d", len(pages))
+	if len(read.Pages) != 1 {
+		t.Fatalf("expected one page, got %d", len(read.Pages))
 	}
-	return pages[0].Lines
+	return read.Pages[0].Lines
 }
 
 // A page is glyphs at coordinates. What shares a baseline is a line, whoever
@@ -212,12 +212,12 @@ func TestAPageOfPicturesHasNoLines(t *testing.T) {
 		streamed("", "q 612 0 0 792 0 0 cm /Im1 Do Q"),
 		streamed("/Type /XObject /Subtype /Image", "binary"),
 	)
-	pages, err := Read(data)
+	read, err := Read(data)
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
-	if len(pages) != 1 || len(pages[0].Lines) != 0 {
-		t.Errorf("pages = %#v, want one page with no lines", pages)
+	if len(read.Pages) != 1 || len(read.Pages[0].Lines) != 0 {
+		t.Errorf("pages = %#v, want one page with no lines", read.Pages)
 	}
 }
 

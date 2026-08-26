@@ -11,6 +11,19 @@ type Page struct {
 	Lines  []string
 }
 
+// Reading is what a PDF turned out to hold.
+type Reading struct {
+	Pages []Page
+	// Short says the file asked to unpack more than this reads in one go, so
+	// Pages is the front of the document rather than all of it. The pages past
+	// it were not read, which is a different thing from being empty — and
+	// calling a document too big to read "a scan" sends somebody to fix the
+	// wrong thing.
+	Short bool
+	// Total is how many pages the file has, read or not.
+	Total int
+}
+
 // Read takes the words out of a PDF.
 //
 // A page whose text this cannot prove — a scan, a deck exported as pictures, a
@@ -18,19 +31,25 @@ type Page struct {
 // rather than with guesses. Confident nonsense is worse than an empty answer:
 // the import can say "this file has no text in it", and a person can act on
 // that.
-func Read(data []byte) ([]Page, error) {
+func Read(data []byte) (Reading, error) {
 	doc, err := open(data)
 	if err != nil {
-		return nil, err
+		return Reading{}, err
 	}
-	pages := make([]Page, 0, 16)
-	for index, page := range doc.pages() {
+	all := doc.pages()
+	read := Reading{Pages: make([]Page, 0, 16), Total: len(all)}
+	for index, page := range all {
 		fonts := doc.fontsOf(page)
 		content := doc.contentOf(page)
-		lines := extractLines(content, fonts)
-		pages = append(pages, Page{Number: index + 1, Lines: lines})
+		if doc.exhausted {
+			// The page the budget ran out on was read in part or not at all.
+			// Half a page is not what it says, so it is left out with the rest.
+			read.Short = true
+			break
+		}
+		read.Pages = append(read.Pages, Page{Number: index + 1, Lines: extractLines(content, fonts)})
 	}
-	return pages, nil
+	return read, nil
 }
 
 // pages walks the page tree, in reading order.
