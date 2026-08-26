@@ -1008,6 +1008,10 @@ export const api = {
 		}), ['presentation', 'data']))
 	},
 	permanentlyDeletePresentation: (id: string) => request<void>(`/presentations/${encodeURIComponent(id)}/permanent`, { method: 'DELETE' }),
+	// Clearing the recycle bin one deck at a time is no way to clear a
+	// thousand. Nothing goes without being asked for: the count is on the
+	// button and again in the confirmation.
+	emptyTrash: () => request<{ deleted: number }>('/presentations/trash', { method: 'DELETE' }),
 	async presentationRevisions(id: string) {
 		const items = await requestAllPages<PresentationRevision & Record<string, unknown>>(
 			`/presentations/${encodeURIComponent(id)}/revisions`, ['revisions', 'items', 'data'],

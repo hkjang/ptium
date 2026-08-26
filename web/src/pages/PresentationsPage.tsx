@@ -20,6 +20,7 @@ export function PresentationsPage() {
   const [filter, setFilter] = useState<LibraryFilter>('all')
   const [target, setTarget] = useState<Presentation | null>(null)
   const [deleteForever, setDeleteForever] = useState(false)
+  const [emptying, setEmptying] = useState(false)
   const [working, setWorking] = useState(false)
   const [importing, setImporting] = useState(false)
   const importInput = useRef<HTMLInputElement>(null)
@@ -75,6 +76,19 @@ export function PresentationsPage() {
       await api.restoreDeletedPresentation(presentation.id)
       setItems((current) => current.filter((item) => item.id !== presentation.id))
       showToast('프레젠테이션을 복원했습니다.')
+    } catch (err) { showToast(displayError(err), 'error') } finally { setWorking(false) }
+  }
+
+  // The recycle bin could only be cleared a deck at a time, which is no way to
+  // clear a thousand of them — so it filled up and stayed full. Nothing goes
+  // without being asked for: the count is on the button and again here.
+  const emptyTrash = async () => {
+    setWorking(true)
+    try {
+      const said = await api.emptyTrash()
+      setItems([]); setTotal(0); setEmptying(false)
+      showToast(`휴지통에서 ${said.deleted}개를 영구 삭제했습니다.`)
+      await load(query)
     } catch (err) { showToast(displayError(err), 'error') } finally { setWorking(false) }
   }
 
@@ -136,6 +150,9 @@ export function PresentationsPage() {
           <button className={filter === 'generating' ? 'active' : ''} onClick={() => setFilter('generating')}>생성 중</button>
           <button className={filter === 'trash' ? 'active' : ''} onClick={() => setFilter('trash')}><Trash2 size={13} /> 휴지통</button>
         </div>
+        {trash && items.length > 0 && <Button variant="secondary" disabled={working} onClick={() => setEmptying(true)}>
+          <Trash2 size={15} /> 휴지통 비우기 ({total || items.length})
+        </Button>}
       </div>
       {loading ? <div className="presentation-grid">{[1,2,3,4,5,6].map((item) => <div key={item} className="presentation-card skeleton-card"><span /><i /><i /></div>)}</div> : error ? <ErrorState message={error} onRetry={() => void load(query)} /> : filtered.length === 0 ? <EmptyState icon={trash ? <ArchiveRestore size={25} /> : undefined} title={trash ? '휴지통이 비어 있습니다' : query ? '검색 결과가 없습니다' : '아직 프레젠테이션이 없습니다'} description={trash ? '삭제한 프레젠테이션을 이곳에서 복원할 수 있습니다.' : query ? '다른 검색어나 필터를 사용해 보세요.' : '첫 번째 아이디어를 Ptium과 함께 완성해 보세요.'} action={!trash && !query ? <Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button> : undefined} /> : <div className="presentation-grid library-grid">{filtered.map((item) => <PresentationCard key={item.id} presentation={item} onDuplicate={trash || working ? undefined : duplicate} onDelete={trash || working ? undefined : (entry) => askDelete(entry)} onRestore={!trash || working ? undefined : restore} onDeleteForever={!trash || working ? undefined : (entry) => askDelete(entry, true)} />)}</div>}
       {!loading && !error && items.length < total && <div className="load-more">
@@ -143,6 +160,12 @@ export function PresentationsPage() {
           {more ? '불러오는 중…' : `더 보기 (${items.length} / ${total})`}
         </Button>
       </div>}
+      <Modal open={emptying} onClose={() => { if (!working) setEmptying(false) }} title="휴지통을 비울까요?"
+        description="휴지통에 있는 프레젠테이션이 버전 이력까지 모두 삭제되며 복구할 수 없습니다. 휴지통 밖의 프레젠테이션은 그대로 있습니다."
+        footer={<><Button variant="secondary" disabled={working} onClick={() => setEmptying(false)}>취소</Button>
+          <Button variant="danger" disabled={working} onClick={() => void emptyTrash()}><Trash2 size={15} /> {working ? '삭제 중…' : `${total || items.length}개 영구 삭제`}</Button></>}>
+        <div className="delete-preview"><strong>휴지통 {total || items.length}개</strong><span>이 계정이 지운 프레젠테이션</span></div>
+      </Modal>
       <Modal open={Boolean(target)} onClose={() => { if (!working) setTarget(null) }} title={deleteForever ? '영구 삭제할까요?' : '휴지통으로 이동할까요?'} description={deleteForever ? '프레젠테이션과 모든 버전 이력이 삭제되며 복구할 수 없습니다.' : '휴지통에서 언제든 다시 복원할 수 있습니다.'} footer={<><Button variant="secondary" disabled={working} onClick={() => setTarget(null)}>취소</Button><Button variant="danger" disabled={working} onClick={() => void remove()}><Trash2 size={15} /> {working ? '처리 중…' : deleteForever ? '영구 삭제' : '휴지통으로 이동'}</Button></>}><div className="delete-preview"><strong>{target?.title}</strong><span>{target?.slideCount || 0}개 슬라이드</span></div></Modal>
     </AppShell>
   )

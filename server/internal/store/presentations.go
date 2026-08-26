@@ -283,6 +283,29 @@ func (s *Store) RestoreDeletedPresentation(ctx context.Context, id, ownerID stri
 	return s.GetPresentation(ctx, restored.ID, restored.OwnerID, true)
 }
 
+// EmptyTrash permanently deletes every deck already in the recycle bin, and
+// answers with how many that was.
+//
+// One at a time is the only way there was, and a deployment that has been
+// running for a while holds thousands: the trash was a room nobody could clear.
+// Nothing here decides on anybody's behalf — this runs when a person asks for
+// it, with the count in front of them — and the condition is the same one
+// permanent deletion has always had, so a deck that was never deleted cannot be
+// reached from here.
+func (s *Store) EmptyTrash(ctx context.Context, ownerID string, admin bool) (int, error) {
+	query := `DELETE FROM presentations WHERE deleted_at IS NOT NULL`
+	var args []any
+	if !admin {
+		query += ` AND owner_id=$1`
+		args = append(args, ownerID)
+	}
+	result, err := s.Pool.Exec(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	return int(result.RowsAffected()), nil
+}
+
 // PermanentlyDeletePresentation is deliberately restricted to a deck that is
 // already in the recycle bin, keeping the ordinary delete operation recoverable.
 func (s *Store) PermanentlyDeletePresentation(ctx context.Context, id, ownerID string, admin bool) error {

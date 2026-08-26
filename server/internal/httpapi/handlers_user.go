@@ -390,6 +390,26 @@ func (s *Server) permanentlyDeletePresentation(writer http.ResponseWriter, reque
 	writer.WriteHeader(http.StatusNoContent)
 }
 
+// emptyTrash permanently deletes everything the caller already put in the
+// recycle bin.
+//
+// The trash could only be cleared one deck at a time, which is no way to clear
+// thousands — so it filled up and stayed full, and nothing in the product even
+// said how much was in it. This is the same power the per-deck button has, said
+// once: it runs when somebody asks, and it can only reach what was already
+// deleted.
+func (s *Server) emptyTrash(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	deleted, err := s.store.EmptyTrash(request.Context(), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "trash_empty_failed")
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "presentation.trash_emptied", "presentation", "",
+		map[string]any{"deleted": deleted})
+	writeData(writer, request, http.StatusOK, map[string]any{"deleted": deleted})
+}
+
 func (s *Server) listPresentationRevisions(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	limit, offset := pagination(request)

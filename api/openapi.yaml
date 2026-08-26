@@ -2222,6 +2222,44 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/presentations/trash:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    delete:
+      operationId: emptyTrash
+      summary: Permanently delete everything in the recycle bin
+      description: |
+        Clearing the bin one deck at a time is no way to clear a thousand of
+        them, and a deployment that has run for a while holds thousands: the bin
+        filled up and stayed full.
+
+        This takes only what is already in the bin, and only the caller's own —
+        a deck that was never deleted cannot be reached from here. Nothing runs
+        on a schedule; this happens when somebody asks for it, with the count in
+        front of them.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      responses:
+        '200':
+          description: How many were deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted: { type: integer, description: How many decks were permanently deleted }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/permanent:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4866,7 +4904,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.22.4
+            service.version: 1.23.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

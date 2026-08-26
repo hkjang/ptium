@@ -901,6 +901,30 @@ for one in wild.values():
     if one:
         call("DELETE", f"/presentations/{one}?permanent=true", expect=[204, 404])
 
+# The recycle bin could only be cleared one deck at a time, which is no way to
+# clear a thousand. What it takes is what is already in it — and nothing else.
+kept = data_of(call("POST", "/presentations", {"title": f"살아 있어야 하는 덱 {RUN}", "prompt": "점검",
+                                               "language": "ko"}, expect=201)) or {}
+doomed = data_of(call("POST", "/presentations", {"title": f"지워질 덱 {RUN}", "prompt": "점검",
+                                                 "language": "ko"}, expect=201)) or {}
+call("DELETE", f"/presentations/{doomed['id']}", expect=204)
+emptied = data_of(call("DELETE", "/presentations/trash", expect=200)) or {}
+checks += 1
+if not isinstance(emptied.get("deleted"), int) or emptied.get("deleted") < 1:
+    failures.append(f"emptying the trash reported {emptied!r}")
+checks += 1
+if call("GET", f"/presentations/{kept['id']}")[0] != 200:
+    failures.append("emptying the trash took a deck that was not in it")
+checks += 1
+if call("GET", f"/presentations/{doomed['id']}")[0] != 404:
+    failures.append("a deck in the trash survived emptying it")
+checks += 1
+still = data_of(call("GET", "/presentations?deleted=true&limit=5", expect=200))
+if still:
+    failures.append(f"the trash still holds {len(still)} deck(s) after being emptied")
+print("   trash emptied:", emptied.get("deleted"), "· the live deck is untouched")
+call("DELETE", f"/presentations/{kept['id']}?permanent=true", expect=[204, 404])
+
 print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
                                                       "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}
