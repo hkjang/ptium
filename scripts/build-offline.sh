@@ -45,6 +45,16 @@ cp "$repository_root/scripts/load-offline.sh" "$dist/load-ptium-$version.sh"
 
 docker image inspect "$image" "$alias_image" > /dev/null
 
+# The manifest an operator applies at a site with no internet is the one thing
+# they cannot debug against a running service — it either applies or their
+# deployment does not exist. kubectl validates it here when this host has one.
+if command -v kubectl > /dev/null; then
+    kubectl apply --dry-run=client -f "$dist/ptium-$version.kubernetes.yaml" > /dev/null || {
+        echo "The Kubernetes manifest in this bundle is not valid." >&2
+        exit 1
+    }
+fi
+
 # What the archive holds is what a target site will run, so it is worth running
 # once here: an empty database, the bootstrap administrator, and a deck.
 # Every check below has to be able to stop the release. Piping this script's
