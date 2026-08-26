@@ -696,6 +696,27 @@ func (s *Store) CompleteGeneration(ctx context.Context, id, lease string, outlin
 	return tx.Commit(ctx)
 }
 
+// SetGenerationNotes keeps what happened while a deck was being made, for the
+// person who made it.
+//
+// A deck written by the model keeps these already. A deck carried in from a
+// file did not: everything the import had to say about the file — the pictures
+// it saved, the ones the design could not draw, the logo it left out — was put
+// in a toast that joined four sentences into one line and disappeared, on the
+// way to an editor that has a panel for exactly this and was showing nothing.
+func (s *Store) SetGenerationNotes(ctx context.Context, id, ownerID string, notes []string) error {
+	if notes == nil {
+		notes = []string{}
+	}
+	recorded, err := json.Marshal(notes)
+	if err != nil {
+		return err
+	}
+	_, err = s.Pool.Exec(ctx, `UPDATE presentations SET generation_notes=$3 WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL`,
+		id, ownerID, recorded)
+	return err
+}
+
 // ReplaceSlidesFromSource stores hand-edited deck source and the slides it
 // compiles to. The two always move together: source that is stored without its
 // slides would describe a deck nobody can see.

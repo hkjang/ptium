@@ -218,6 +218,15 @@ func (s *Server) storeImportedSource(writer http.ResponseWriter, request *http.R
 		s.internalError(writer, request, "presentation_import_failed", err)
 		return
 	}
+	// What the import has to say travels with the deck. The editor has a panel
+	// for it — the same one a generated deck's notes appear in — and the person
+	// lands there straight from the upload.
+	if len(warnings) > 0 {
+		if err := s.store.SetGenerationNotes(request.Context(), created.ID, user.ID, warnings); err != nil {
+			s.logger.Warn("an imported deck could not keep what the import said",
+				"presentation_id", created.ID, "error", err)
+		}
+	}
 	stored, err := s.store.GetPresentation(request.Context(), created.ID, user.ID, false)
 	if err != nil {
 		s.handleStoreError(writer, request, err, "presentation_read_failed")

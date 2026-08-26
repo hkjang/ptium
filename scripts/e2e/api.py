@@ -578,6 +578,16 @@ imported = data_of(call("POST", "/presentations/import",
 if (imported.get("slides") or 0) < 2:
     failures.append(f"a spreadsheet imported as {imported.get('slides')!r} slides")
 document_id = ((imported.get("presentation") or {}).get("id")) or ""
+# What the import had to say travels with the deck. It used to go into a toast
+# that joined every sentence into one line and disappeared on the way to the
+# editor — which has a panel for exactly this and was showing nothing.
+if document_id and (imported.get("warnings") or []):
+    carried = data_of(call("GET", f"/presentations/{document_id}", expect=200)) or {}
+    kept = carried.get("generationNotes") or []
+    if not kept:
+        failures.append("an imported deck does not keep what the import said about the file")
+    elif kept[0] != (imported.get("warnings") or [])[0]:
+        failures.append(f"the deck kept {kept[0]!r} rather than what the import answered")
 if document_id:
     written = (data_of(call("GET", f"/presentations/{document_id}/source", expect=200)) or {}).get("source", "")
     for wanted in ["::columns", "- 1분기 | 1180", f"!source 매출-{RUN}.csv"]:

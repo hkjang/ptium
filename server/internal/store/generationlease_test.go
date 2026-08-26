@@ -113,3 +113,56 @@ func TestASlowGenerationIsNotTakenFromTheWorkerWritingIt(t *testing.T) {
 		t.Errorf("the deck its holder finished reads as %q", done.Status)
 	}
 }
+
+// An imported deck keeps what the import said about the file.
+//
+// Needs a database: set PTIUM_TEST_DSN to run it.
+func TestAnImportedDeckKeepsWhatTheImportSaid(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	owner, err := store.UpsertUser(ctx, "import-notes", "import-notes@ptium.test", "notes", []string{}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	deck, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: "가져온 덱", Prompt: "브리프", Theme: "slate-classic",
+		Language: "ko", Audience: "general", Tone: "professional", SlideCount: 5})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID) }()
+
+	said := []string{"그림 22개를 이미지 라이브러리에 저장했습니다", "그 가운데 12개를 슬라이드에 넣었습니다"}
+	if err := store.SetGenerationNotes(ctx, deck.ID, owner.ID, said); err != nil {
+		t.Fatalf("SetGenerationNotes: %v", err)
+	}
+	read, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if err != nil {
+		t.Fatalf("read it back: %v", err)
+	}
+	kept := read.GenerationNotes
+	if len(kept) != 2 || kept[0] != said[0] {
+		t.Errorf("the deck kept %q", kept)
+	}
+	// Somebody else's deck is not theirs to write on.
+	other, err := store.UpsertUser(ctx, "import-notes-other", "import-notes-other@ptium.test", "other", []string{}, false)
+	if err != nil {
+		t.Fatalf("other owner: %v", err)
+	}
+	if err := store.SetGenerationNotes(ctx, deck.ID, other.ID, []string{"남의 덱"}); err != nil {
+		t.Fatalf("SetGenerationNotes: %v", err)
+	}
+	again, _ := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if still := again.GenerationNotes; len(still) != 2 {
+		t.Errorf("somebody else wrote on this deck: %q", again.GenerationNotes)
+	}
+}
