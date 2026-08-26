@@ -136,3 +136,98 @@ func scanShare(row shareRow) (model.Share, error) {
 	share.ExpiresAt, share.RevokedAt, share.LastSeenAt = expires, revoked, seen
 	return share, nil
 }
+
+// OpenShare is one link an operator can see across the whole deployment, with
+// the deck and the person it belongs to.
+//
+// A link is the one thing in this product that reaches somebody with no account
+// here: at a closed site that is the question an operator is asked. Until now
+// only the deck's owner could see their own links, so nobody could answer what
+// is open, made by whom, and still being read.
+type OpenShare struct {
+	model.Share
+	DeckTitle  string `json:"deckTitle"`
+	OwnerEmail string `json:"ownerEmail,omitempty"`
+	// OwnerName is what the account is called. An account can have no address —
+	// one signed in through a proxy, or the deployment's own developer identity
+	// — and a list of links whose owner column is blank names nobody.
+	OwnerName string `json:"ownerName,omitempty"`
+	OwnerID   string `json:"ownerId"`
+	// State is what the link does now: open, expired or revoked.
+	State string `json:"state"`
+}
+
+// SharesFilter narrows the list to the question being asked.
+type SharesFilter struct {
+	// State is open, expired or revoked. Empty means all of them.
+	State string
+	// Search matches the label, the deck's title or the owner's address.
+	Search string
+}
+
+// ListAllShares reads every link in the deployment, newest first.
+func (s *Store) ListAllShares(ctx context.Context, filter SharesFilter, limit, offset int) ([]OpenShare, int, error) {
+	limit, offset = clampPage(limit, offset)
+	state := strings.ToLower(strings.TrimSpace(filter.State))
+	search := strings.TrimSpace(filter.Search)
+	where := `WHERE p.deleted_at IS NULL
+		AND ($1='' OR CASE WHEN s.revoked_at IS NOT NULL THEN 'revoked'
+			WHEN s.expires_at IS NOT NULL AND s.expires_at <= now() THEN 'expired' ELSE 'open' END = $1)
+		AND ($2='' OR s.label ILIKE $3 OR p.title ILIKE $3 OR COALESCE(u.email,'') ILIKE $3
+			OR COALESCE(u.name,'') ILIKE $3)`
+	pattern := likePattern(search)
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM presentation_shares s
+		JOIN presentations p ON p.id = s.presentation_id
+		LEFT JOIN users u ON u.id = s.owner_id `+where, state, search, pattern).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT s.id::text, s.presentation_id::text, COALESCE(s.label,''),
+			s.expires_at, s.revoked_at, s.last_seen_at, s.views, s.created_at,
+			p.title, s.owner_id::text, COALESCE(u.email,''), COALESCE(u.name,''),
+			CASE WHEN s.revoked_at IS NOT NULL THEN 'revoked'
+				WHEN s.expires_at IS NOT NULL AND s.expires_at <= now() THEN 'expired' ELSE 'open' END
+		FROM presentation_shares s
+		JOIN presentations p ON p.id = s.presentation_id
+		LEFT JOIN users u ON u.id = s.owner_id `+where+`
+		ORDER BY s.created_at DESC LIMIT $4 OFFSET $5`, state, search, pattern, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	open := make([]OpenShare, 0, limit)
+	for rows.Next() {
+		var one OpenShare
+		if err := rows.Scan(&one.ID, &one.PresentationID, &one.Label, &one.ExpiresAt, &one.RevokedAt,
+			&one.LastSeenAt, &one.Views, &one.CreatedAt, &one.DeckTitle, &one.OwnerID, &one.OwnerEmail,
+			&one.OwnerName, &one.State); err != nil {
+			return nil, 0, err
+		}
+		open = append(open, one)
+	}
+	return open, total, rows.Err()
+}
+
+// CloseShare closes a link whoever made it, which is what an operator asked to
+// shut something down needs. It answers whether it closed anything: a link
+// somebody revoked a moment earlier is not closed again, and saying nothing
+// there would tell an operator they did something they did not.
+func (s *Store) CloseShare(ctx context.Context, shareID string) (OpenShare, bool, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE presentation_shares SET revoked_at=now()
+		WHERE id=$1 AND revoked_at IS NULL`, shareID)
+	if err != nil {
+		return OpenShare{}, false, err
+	}
+	var one OpenShare
+	err = s.Pool.QueryRow(ctx, `SELECT s.id::text, s.presentation_id::text, COALESCE(s.label,''),
+			s.expires_at, s.revoked_at, s.last_seen_at, s.views, s.created_at,
+			p.title, s.owner_id::text, COALESCE(u.email,''), COALESCE(u.name,''), 'revoked'
+		FROM presentation_shares s JOIN presentations p ON p.id = s.presentation_id
+		LEFT JOIN users u ON u.id = s.owner_id WHERE s.id=$1`, shareID).Scan(
+		&one.ID, &one.PresentationID, &one.Label, &one.ExpiresAt, &one.RevokedAt, &one.LastSeenAt,
+		&one.Views, &one.CreatedAt, &one.DeckTitle, &one.OwnerID, &one.OwnerEmail, &one.OwnerName, &one.State)
+	if err != nil {
+		return OpenShare{}, false, mapNotFound(err)
+	}
+	return one, tag.RowsAffected() == 1, nil
+}

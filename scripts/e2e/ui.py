@@ -237,6 +237,15 @@ with sync_playwright() as play:
     visit("/admin/errors", expect_text="오류")
     visit("/admin/audit", expect_text="감사 기록")
     visit("/admin/queue", expect_text="생성 큐")
+    # What this deployment has handed out. Only a deck's owner could see their
+    # own links, so nobody could answer what is readable outside.
+    visit("/admin/shares", expect_text="공유 링크")
+    counted = page.locator(".error-stat-grid article strong").first
+    if counted.count() and not counted.inner_text().strip():
+        failures.append("the share screen does not say how many links there are")
+    rows = page.locator(".error-row")
+    if rows.count() > 0 and "회수" not in rows.first.inner_text():
+        failures.append("an open link cannot be closed from the share screen")
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 

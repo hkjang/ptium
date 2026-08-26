@@ -109,6 +109,38 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# Every link this deployment has handed out. Only the deck's owner could see
+# their own, so nobody could answer what is readable outside — or close a link
+# left open by somebody who has gone.
+watched = data_of(call("GET", "/presentations?limit=5", expect=200)) or []
+with_slides = [row for row in watched if (row.get("slideCount") or 0) > 0]
+if with_slides:
+    deck_for_link = with_slides[0]
+    made = data_of(call("POST", f"/presentations/{deck_for_link['id']}/shares",
+                        {"label": f"감독 점검 {RUN}"}, expect=201)) or {}
+    listed = data_of(call("GET", "/admin/shares?state=open&limit=100", expect=200)) or []
+    mine = [one for one in listed if one.get("id") == made.get("id")]
+    if not mine:
+        failures.append("a link somebody just made is not in the deployment's list")
+    else:
+        one = mine[0]
+        if one.get("state") != "open":
+            failures.append(f"a link with no day on it reads as {one.get('state')!r}")
+        if not (one.get("ownerEmail") or one.get("ownerName")):
+            failures.append("a link does not say who made it")
+        if one.get("deckTitle") != deck_for_link.get("title"):
+            failures.append("a link does not say which deck it opens")
+    # Closing it is the operator's, whoever made it, and it says whether it did.
+    answered = data_of(call("POST", f"/admin/shares/{made.get('id')}/close", {}, expect=200)) or {}
+    if not answered.get("closed"):
+        failures.append("closing an open link reported that it closed nothing")
+    again = data_of(call("POST", f"/admin/shares/{made.get('id')}/close", {}, expect=200)) or {}
+    if again.get("closed"):
+        failures.append("closing an already closed link reported that it closed it")
+    closed_list = data_of(call("GET", "/admin/shares?state=revoked&limit=100", expect=200)) or []
+    if not any(one.get("id") == made.get("id") for one in closed_list):
+        failures.append("a closed link is not among the closed ones")
+    call("GET", "/admin/shares?state=nonsense", expect=422)
 # What a settings change was. The trail used to record "settings.update_batch
 # count=1": which setting, what it had been and what it became were nowhere, and
 # these settings decide how every deck in the deployment is written.

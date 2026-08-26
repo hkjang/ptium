@@ -4,6 +4,7 @@ import { BrandMark, useBrand } from './branding/BrandContext'
 import { Button } from './components/UI'
 import { AdminAuditPage } from './pages/AdminAuditPage'
 import { AdminQueuePage } from './pages/AdminQueuePage'
+import { AdminSharesPage } from './pages/AdminSharesPage'
 import { AdminErrorsPage } from './pages/AdminErrorsPage'
 import { AdminOverviewPage } from './pages/AdminOverviewPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
@@ -61,6 +62,7 @@ export function App() {
   if (pathname === '/admin/errors') return <AdminErrorsPage />
   if (pathname === '/admin/audit') return <AdminAuditPage />
   if (pathname === '/admin/queue') return <AdminQueuePage />
+  if (pathname === '/admin/shares') return <AdminSharesPage />
   return <NotFound />
 }
 

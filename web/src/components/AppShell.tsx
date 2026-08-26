@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Activity, BookOpen, ChevronDown, History, CircleUserRound, Gauge, Info, KeyRound, LayoutDashboard,
-  Images, LayoutTemplate, LifeBuoy, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
+  Images, LayoutTemplate, LifeBuoy, Link2, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Plus, Search, Settings2, Sparkles, Users, X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { api } from '../api/client'
@@ -30,6 +30,7 @@ const adminNav: NavItem[] = [
   { label: '사용자', to: '/admin/users', icon: <Users size={18} />, admin: true },
   { label: '오류 · 인시던트', to: '/admin/errors', icon: <Activity size={18} />, admin: true },
   { label: '생성 큐', to: '/admin/queue', icon: <Sparkles size={18} />, admin: true },
+  { label: '공유 링크', to: '/admin/shares', icon: <Link2 size={18} />, admin: true },
   { label: '감사 기록', to: '/admin/audit', icon: <History size={18} />, admin: true },
 ]
 

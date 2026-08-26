@@ -1399,6 +1399,24 @@ export const api = {
    * What was changed in the settings, and by whom. The audit trail holds every
    * kind of event; this is the one question a settings screen is asked.
    */
+  /** Every link this deployment has handed out, whoever made it. */
+  async adminShares(filter: { state?: string; search?: string } = {}) {
+    const query = new URLSearchParams({ limit: '100' })
+    if (filter.state) query.set('state', filter.state)
+    if (filter.search?.trim()) query.set('search', filter.search.trim())
+    const raw = await request<unknown>(`/admin/shares?${query.toString()}`)
+    const items = unwrapList<Record<string, unknown>>(raw, ['shares', 'items', 'data'])
+    // How many there are, not how many fit on a page: a screen that counts its
+    // own rows tells an operator with three hundred open links that they have a
+    // hundred.
+    const meta = (raw as { meta?: { total?: number } } | null)?.meta
+    return { items, total: Number(meta?.total ?? items.length) }
+  },
+  /** Close one link, whoever made it. */
+  async closeShare(id: string) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>(`/admin/shares/${encodeURIComponent(id)}/close`, { method: 'POST' }), ['data'])
+  },
   async settingChanges(limit = 8) {
     return unwrapList<Record<string, unknown>>(
       await request<unknown>(`/admin/settings/changes?limit=${limit}`), ['changes', 'items', 'data'])

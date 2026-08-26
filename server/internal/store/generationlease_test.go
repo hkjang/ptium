@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -242,5 +243,93 @@ func TestAFailedRewriteLeavesTheDeckItHad(t *testing.T) {
 	}
 	if kept, err := store.FailRewrite(ctx, empty.ID, emptyLease, "무엇이든"); err != nil || kept {
 		t.Errorf("an empty deck was kept as though it had something: %v, %v", kept, err)
+	}
+}
+
+// Every link this deployment has handed out, and closing one.
+//
+// A link reaches somebody with no account here, and only the deck's owner could
+// see their own: an operator asked what of theirs is readable outside had no
+// way to answer, and no way to close a link left open by somebody who has gone.
+//
+// Needs a database: set PTIUM_TEST_DSN to run it.
+func TestAnOperatorSeesEveryLinkAndCanCloseOne(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	owner, err := store.UpsertUser(ctx, "share-oversight", "share-oversight@ptium.test", "링크 주인", []string{}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	deck, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: "감독 점검 덱", Prompt: "브리프", Theme: "slate-classic",
+		Language: "ko", Audience: "general", Tone: "professional", SlideCount: 3})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID) }()
+	openLink, _, err := store.CreateShare(ctx, deck.ID, owner.ID, "감독 열린 링크", nil)
+	if err != nil {
+		t.Fatalf("open link: %v", err)
+	}
+	past := time.Now().Add(-2 * time.Hour)
+	goneLink, _, err := store.CreateShare(ctx, deck.ID, owner.ID, "감독 기한 링크", &past)
+	if err != nil {
+		t.Fatalf("dated link: %v", err)
+	}
+
+	mine := func(state string) map[string]OpenShare {
+		shares, total, err := store.ListAllShares(ctx, SharesFilter{State: state, Search: "감독"}, 100, 0)
+		if err != nil {
+			t.Fatalf("list %q: %v", state, err)
+		}
+		if total < len(shares) {
+			t.Errorf("the list says %d of %d", len(shares), total)
+		}
+		found := map[string]OpenShare{}
+		for _, one := range shares {
+			found[one.ID] = one
+		}
+		return found
+	}
+	all := mine("")
+	if one, ok := all[openLink.ID]; !ok {
+		t.Error("a link with no day on it is not in the deployment's list")
+	} else {
+		if one.State != "open" {
+			t.Errorf("a link with no day reads as %q", one.State)
+		}
+		if one.DeckTitle != "감독 점검 덱" || one.OwnerEmail != "share-oversight@ptium.test" {
+			t.Errorf("the list does not say whose deck it is: %q / %q", one.DeckTitle, one.OwnerEmail)
+		}
+	}
+	if one, ok := all[goneLink.ID]; !ok || one.State != "expired" {
+		t.Errorf("a link whose day has passed reads as %v", ok && one.State == "expired")
+	}
+	if _, ok := mine("open")[goneLink.ID]; ok {
+		t.Error("a link whose day has passed is listed among the open ones")
+	}
+
+	// Closing is the operator's, whoever made it, and it says what it did.
+	closed, didClose, err := store.CloseShare(ctx, openLink.ID)
+	if err != nil || !didClose {
+		t.Fatalf("CloseShare() = %v, %v", didClose, err)
+	}
+	if closed.State != "revoked" {
+		t.Errorf("a link just closed reads as %q", closed.State)
+	}
+	if _, again, err := store.CloseShare(ctx, openLink.ID); err != nil || again {
+		t.Errorf("closing an already closed link answered %v (err %v)", again, err)
+	}
+	if _, ok := mine("revoked")[openLink.ID]; !ok {
+		t.Error("a closed link is not among the closed ones")
 	}
 }
