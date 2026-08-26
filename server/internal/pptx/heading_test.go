@@ -157,3 +157,36 @@ func TestACitationIsNotReadBackTwice(t *testing.T) {
 		t.Errorf("a note was cut with no citation to match: %q", got)
 	}
 }
+
+// Two kinds of slide have no layout type of their own in PowerPoint: a closing
+// page is built on a section layout and a quotation on an ordinary content one.
+// Reading the type first turned a deck's own closing page into a section
+// divider and its quotation into a bullet — on the way back in from a file
+// Ptium itself had written.
+func TestAClosingPageAndAQuotationKeepTheirKind(t *testing.T) {
+	cases := []struct {
+		layoutType string
+		name       string
+		want       string
+	}{
+		{"secHead", "마무리", RoleClosing},
+		{"secHead", "Closing", RoleClosing},
+		{"obj", "핵심 인용", RoleQuote},
+		{"obj", "Quote", RoleQuote},
+		// What the type does say is still read first.
+		{"secHead", "구역 머리글", RoleSection},
+		{"title", "제목 슬라이드", RoleTitle},
+		{"obj", "제목 및 내용", RoleContent},
+		{"twoObj", "콘텐츠 2개", RoleTwoContent},
+		{"picTx", "캡션 있는 그림", RolePicture},
+		{"blank", "빈 화면", RoleBlank},
+		// A title-only layout is what somebody reaches for before drawing their
+		// own thing, and what it is depends on what it holds.
+		{"titleOnly", "제목만", ""},
+	}
+	for _, one := range cases {
+		if got := roleForLayoutType(one.layoutType, one.name); got != one.want {
+			t.Errorf("roleForLayoutType(%q, %q) = %q, want %q", one.layoutType, one.name, got, one.want)
+		}
+	}
+}

@@ -771,6 +771,14 @@ func slideRoleOf(pkg *Package, slidePart string) string {
 
 // roleForLayoutType maps a PowerPoint layout type to the kind of slide it is.
 func roleForLayoutType(layoutType, name string) string {
+	// Two kinds of slide have no type of their own in PowerPoint: a closing page
+	// is built on a section layout and a quotation on an ordinary content one.
+	// The type is read first everywhere else, and reading it first here turned a
+	// deck's own closing page into a section divider and its quotation into a
+	// bullet — on the way back in from a file Ptium had written.
+	if named := roleForLayoutName(name); named == RoleClosing || named == RoleQuote {
+		return named
+	}
 	switch layoutType {
 	case "title":
 		return RoleTitle
@@ -794,8 +802,19 @@ func roleForLayoutType(layoutType, name string) string {
 		// on the empty layout it was built from.
 		return ""
 	}
+	return roleForLayoutName(name)
+}
+
+// roleForLayoutName reads what a designer called a layout.
+func roleForLayoutName(name string) string {
 	lowered := strings.ToLower(strings.TrimSpace(name))
 	switch {
+	case strings.Contains(lowered, "마무리"), strings.Contains(lowered, "맺음"),
+		strings.Contains(lowered, "closing"), strings.Contains(lowered, "thank you"),
+		strings.Contains(lowered, "wrap-up"):
+		return RoleClosing
+	case strings.Contains(lowered, "인용"), strings.Contains(lowered, "quote"):
+		return RoleQuote
 	case strings.Contains(lowered, "title and content") || strings.Contains(lowered, "제목 및 내용"):
 		return RoleContent
 	case strings.Contains(lowered, "title slide") || strings.Contains(lowered, "표지"):
