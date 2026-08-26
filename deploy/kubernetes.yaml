@@ -75,7 +75,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ptium
-          image: ptium:1.26.0
+          image: ptium:1.26.1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -175,6 +175,21 @@ with sync_playwright() as play:
         written = ((api("/profile") or {}).get("preferences") or {}).get("brandColor")
         if written:
             failures.append(f"saving the profile wrote {written}, a colour nobody chose")
+    # Tone and language are free text: any string up to eighty characters, and
+    # an administrator's default flows into every profile. The screen offered a
+    # fixed handful, so a value outside it left the chips showing nothing and
+    # the language select displaying its first option over a different value.
+    kept = (api("/profile") or {}).get("preferences") or {}
+    api("/profile", "PUT", {"displayName": (api("/profile") or {}).get("displayName") or "",
+                            "preferences": {**kept, "defaultTone": "concise", "language": "fr"}})
+    visit("/profile", expect_text="개인")
+    chip = page.locator("#defaults .choice-chips button.active")
+    if not chip.count() or chip.first.inner_text().strip() != "concise":
+        failures.append(f"a stored tone 'concise' is shown as {chip.first.inner_text().strip() if chip.count() else '(nothing)'!r}")
+    language = page.locator("#defaults select").first
+    if language.count() and language.input_value() != "fr":
+        failures.append(f"a stored language 'fr' is shown as {language.input_value()!r}")
+    api("/profile", "PUT", {"displayName": (api("/profile") or {}).get("displayName") or "", "preferences": kept})
     visit("/api-keys", expect_text="API")
     visit("/docs", expect_text="API")
     visit("/admin", expect_text="관리")
