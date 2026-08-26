@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,7 +87,11 @@ func (s *Server) createTemplate(writer http.ResponseWriter, request *http.Reques
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrTemplateInvalid) {
-			writeError(writer, request, http.StatusUnprocessableEntity, "template_invalid", err.Error(), nil)
+			message := err.Error()
+			if hint := templateUploadHint(data); hint != "" {
+				message = hint
+			}
+			writeError(writer, request, http.StatusUnprocessableEntity, "template_invalid", message, nil)
 			return
 		}
 		s.internalError(writer, request, "template_create_failed", err)
@@ -95,6 +100,25 @@ func (s *Server) createTemplate(writer http.ResponseWriter, request *http.Reques
 	s.store.Audit(request.Context(), &user.ID, "template.create", "template", created.ID,
 		map[string]any{"filename": meta.Filename, "sizeBytes": len(data), "layouts": created.LayoutCount})
 	writeData(writer, request, http.StatusCreated, created)
+}
+
+// templateUploadHint names what a rejected upload actually is, when the first
+// bytes say so plainly. "not a usable PowerPoint file" is true and useless: the
+// two files this was written for are a deck saved in the 97-2003 format and one
+// wrapped by document security, and in both cases the person holding the file
+// can fix it in a minute if somebody tells them which it is.
+func templateUploadHint(data []byte) string {
+	switch {
+	case bytes.HasPrefix(data, []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}):
+		return "예전 PowerPoint 형식(.ppt)이거나 암호가 걸린 파일입니다. " +
+			"PowerPoint에서 [다른 이름으로 저장] → PowerPoint 프레젠테이션(.pptx)으로 저장한 뒤 올려 주세요."
+	case bytes.HasPrefix(data, []byte("SCDS")):
+		return "문서보안(DRM)으로 잠긴 파일입니다. 보안을 해제한 .pptx 파일을 올려 주세요."
+	case len(data) >= 4 && !bytes.HasPrefix(data, []byte("PK")):
+		return "PowerPoint 파일이 아닙니다. 문서보안(DRM)으로 감싸였거나 다른 형식일 수 있습니다. " +
+			"PowerPoint에서 열리는 .pptx 파일을 올려 주세요."
+	}
+	return ""
 }
 
 type templateMetadata struct {
@@ -332,10 +356,10 @@ func (s *Server) templateHealth(writer http.ResponseWriter, request *http.Reques
 		AspectRatio: manifest.AspectRatio, Layouts: len(manifest.Layouts),
 		Warnings: compiled.Warnings, Slides: len(compiled.Slides),
 		Roles: map[string]bool{
-			"cover":   manifest.TitleLayout != "",
-			"section": manifest.SectionLayout != "",
-			"content": manifest.DefaultLayout != "",
-			"closing": manifest.ClosingLayout != "",
+			"cover":   hasLayoutForRole(manifest, pptx.RoleTitle),
+			"section": hasLayoutForRole(manifest, pptx.RoleSection),
+			"content": hasLayoutForRole(manifest, pptx.RoleContent),
+			"closing": hasLayoutForRole(manifest, pptx.RoleClosing),
 		},
 	}
 	if report.Warnings == nil {
@@ -401,6 +425,23 @@ func componentsDrawn(slides []model.Slide) map[string]bool {
 		}
 	}
 	return drawn
+}
+
+// hasLayoutForRole answers whether this design has a layout for a part of a
+// deck, rather than whether the manifest names one.
+//
+// Every manifest names one for all four: a template with a single content
+// layout gets that layout for its cover and its closing too, which is what
+// makes it usable. But it means the design has no cover, and the report used to
+// say "cover ✓" directly above the compiler saying "this template has no
+// closing layout" about the very same deck.
+func hasLayoutForRole(manifest pptx.Manifest, role string) bool {
+	for _, layout := range manifest.Layouts {
+		if layout.Role == role {
+			return true
+		}
+	}
+	return false
 }
 
 // probePicture stands in for one of the customer's own images.

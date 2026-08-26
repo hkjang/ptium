@@ -534,6 +534,13 @@ func resolveTypeface(typeface, phType string, theme Theme) string {
 // preview has to draw it there too or the screen and the file disagree about
 // where every line begins.
 func textInset(shape rawShape) int {
+	// A placeholder is allowed to carry no text body at all — a picture or
+	// content placeholder a designer left empty is written that way by more
+	// than one producer — and asking such a shape for its padding used to end
+	// the request in a panic rather than an upload.
+	if shape.TxBody == nil {
+		return DefaultTextInset
+	}
 	value := strings.TrimSpace(shape.TxBody.BodyPr.LIns)
 	if value == "" {
 		return DefaultTextInset

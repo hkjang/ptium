@@ -1111,6 +1111,24 @@ print(f"   queue: {overview.get('queuedGenerations')} waiting, oldest {overview.
 # body region turns every component into a paragraph, and nothing said so until
 # the decks came out.
 print("── what a template will do to a deck ──")
+# "not a usable PowerPoint file" is true of everything rejected. A person
+# holding a 97-2003 deck or a file their company's document security wrapped can
+# fix it in a minute — if somebody says which of the two it is.
+refused = call("POST", "/templates", files={
+    "file": ("old.pptx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1rest of an OLE file",
+             "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    "name": (None, f"옛 형식 {RUN}", None)}, expect=422)
+checks += 1
+if ".pptx" not in json.dumps(refused[1], ensure_ascii=False):
+    failures.append(f"a 97-2003 deck is refused without saying what to do: {refused[1]}")
+locked = call("POST", "/templates", files={
+    "file": ("locked.pptx", b"SCDSA002\x00\x01locked bytes",
+             "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+    "name": (None, f"보안 문서 {RUN}", None)}, expect=422)
+checks += 1
+if "문서보안" not in json.dumps(locked[1], ensure_ascii=False):
+    failures.append(f"a file locked by document security is refused without naming it: {locked[1]}")
+
 # A shipped design, not whatever happens to sort first: an account's own upload
 # is allowed to be poor, and this check is about what we ship.
 shipped = next((t for t in templates if t.get("scope") == "shared"), first)

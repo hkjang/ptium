@@ -232,6 +232,10 @@ function TemplateCard({ template, onOpen, onFavorite, onToggleScope, onDelete }:
 // hold them turns each one into a paragraph, and until this said so, the way to
 // find out was to generate forty decks.
 const componentOrder = ['steps', 'kpi', 'shareBar', 'table', 'image']
+const roleOrder = ['cover', 'section', 'content', 'closing']
+const roleNames: Record<string, string> = {
+  cover: '표지', section: '구역', content: '본문', closing: '마무리',
+}
 const componentNames: Record<string, string> = {
   steps: '단계', kpi: '지표', shareBar: '비중', table: '표', image: '그림',
 }
@@ -264,6 +268,7 @@ function TemplateHealthPanel({ template }: { template: Template }) {
   if (failed) return <div className="template-health"><p className="muted-note">{failed}</p></div>
   const verdict = healthWord(report)
   const components = (report?.components || {}) as Record<string, boolean>
+  const roles = (report?.roles || {}) as Record<string, boolean>
   const warnings = (report?.warnings || []) as string[]
   return <div className="template-health">
     <div className="template-health-head">
@@ -271,6 +276,10 @@ function TemplateHealthPanel({ template }: { template: Template }) {
       <Badge tone={verdict.tone}>{verdict.text}</Badge>
     </div>
     {report && <>
+      <div className="template-health-components" aria-label="덱의 각 부분을 위한 레이아웃">
+        {roleOrder.filter((role) => role in roles).map((role) => <span key={role} className={roles[role] ? 'drawn' : 'as-text'}>
+          {roleNames[role]}{roles[role] ? '' : ' 없음'}</span>)}
+      </div>
       <div className="template-health-components">
         {componentOrder.filter((kind) => kind in components).map((kind) => [kind, components[kind]] as const)
           .map(([kind, drawn]) => <span key={kind} className={drawn ? 'drawn' : 'as-text'}>

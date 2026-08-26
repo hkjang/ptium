@@ -77,10 +77,25 @@ func userScan(user *model.User) []any {
 // The loser only has to look again: by then the winner's row is there, and the
 // same statement takes its update path.
 func (s *Store) UpsertUser(ctx context.Context, subject, email, name string, roles []string, admin bool) (model.User, error) {
-	user, err := s.upsertUserOnce(ctx, subject, email, name, roles, admin)
-	if isUniqueViolation(err) {
+	var user model.User
+	var err error
+	// Two ways this statement loses a race, and both are the same answer: look
+	// again. The unique index on the email is the one it does not arbitrate on;
+	// the deadlock is Postgres arbitrating between two sessions inserting the
+	// same row through two unique indexes at once, and it kills one of them.
+	// Neither is a fact about this account, and a person signing in for the
+	// first time should not read a five hundred because two of their own tabs
+	// arrived together.
+	collisions := 0
+	for attempt := 0; attempt < 3; attempt++ {
 		user, err = s.upsertUserOnce(ctx, subject, email, name, roles, admin)
+		if !isUniqueViolation(err) && !isDeadlock(err) {
+			break
+		}
 		if isUniqueViolation(err) {
+			collisions++
+		}
+		if collisions > 1 {
 			// Not a race then: this address already belongs to another identity.
 			// One account per address is this product's rule, and a person who
 			// hits it needs to be told, not handed a five hundred.
@@ -105,6 +120,13 @@ func (s *Store) upsertUserOnce(ctx context.Context, subject, email, name string,
 		RETURNING `+userColumns,
 		subject, email, name, roles, admin).Scan(userScan(&user)...)
 	return user, err
+}
+
+// isDeadlock reports the transient one: Postgres chose this session to kill so
+// another could proceed, and the work it undid can simply be done again.
+func isDeadlock(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "40P01"
 }
 
 // isUniqueViolation reports the one Postgres error this has to tell apart.

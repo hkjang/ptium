@@ -256,11 +256,14 @@ with sync_playwright() as play:
     if page.locator(".template-health").count() == 0:
         failures.append("a template's detail says nothing about what it will do to a deck")
     else:
+        # Two rows: the parts of a deck this design has a layout for, and the
+        # components it draws rather than writes out.
         chips = page.locator(".template-health-components span")
-        if chips.count() != 5:
-            failures.append(f"the template report shows {chips.count()} component(s), expected 5")
-        elif page.locator(".template-health-components .drawn").count() == 0:
-            failures.append("a shipped design is reported as drawing nothing")
+        if chips.count() != 9:
+            failures.append(f"the template report shows {chips.count()} chip(s), expected 4 roles and 5 components")
+        elif page.locator(".template-health-components .drawn").count() != 9:
+            failures.append(f"a shipped design is reported as missing "
+                            f"{9 - page.locator('.template-health-components .drawn').count()} of them")
         verdict = page.locator(".template-health-head").inner_text()
         print("   ", " ".join(verdict.split()), "|", " ".join(chips.all_inner_texts()))
         if "점검하는 중" in verdict:
