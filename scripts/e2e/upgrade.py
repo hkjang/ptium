@@ -220,6 +220,18 @@ try:
         if made < 1:
             failures.append(f"{old_image} could not make a deck to upgrade")
 
+        # Settings an older release stored and this one will not honour. Until
+        # the API began refusing them, any value was accepted and kept — and a
+        # section holding one cannot be saved at all once it is refused, so the
+        # upgrade has to put them back. What an administrator actually chose,
+        # inside what this deployment honours, must survive untouched.
+        docker("exec", database, "psql", "-U", "postgres", "-d", "ptium", "-c",
+               "update app_settings set value='99999'::jsonb where key='ai.timeout_seconds';"
+               "update app_settings set value='500'::jsonb where key='generation.repair_passes';"
+               "update app_settings set value='\"thinking-hard\"'::jsonb where key='ai.reasoning';"
+               "update app_settings set value='\"yes\"'::jsonb where key='generation.outline_pass';"
+               "update app_settings set value='16000'::jsonb where key='ai.max_output_tokens';")
+
         docker("rm", "-f", before)
         new_port = run_container("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
                "-e", f"DATABASE_URL={dsn}", "-e", "BOOTSTRAP_ADMIN=admin@example.com",
@@ -231,6 +243,20 @@ try:
             migrated = docker("logs", after, check=False)
             if "database migrations ready" not in migrated:
                 failures.append("the migrations did not report themselves ready")
+            settled = docker("exec", database, "psql", "-U", "postgres", "-d", "ptium", "-tAc",
+                             "select key||'='||value from app_settings where key in "
+                             "('ai.timeout_seconds','generation.repair_passes','ai.reasoning',"
+                             "'generation.outline_pass','ai.max_output_tokens') order by key")
+            settings_now = dict(line.split("=", 1) for line in settled.splitlines() if "=" in line)
+            for key, honoured in [("ai.timeout_seconds", "300"), ("generation.repair_passes", "3"),
+                                  ("ai.reasoning", '"auto"'), ("generation.outline_pass", "true")]:
+                if settings_now.get(key) != honoured:
+                    failures.append(f"{key} came through the upgrade as {settings_now.get(key)}, "
+                                    f"a value this deployment does not honour")
+            if settings_now.get("ai.max_output_tokens") != "16000":
+                failures.append("the upgrade changed a setting the administrator chose: "
+                                f"ai.max_output_tokens is {settings_now.get('ai.max_output_tokens')}")
+            print(f"   settings after the upgrade: {settings_now}")
             # The deck belongs to the identity the old release signed in as, and
             # this one signs in as the administrator. Moving it is the test's
             # doing, not the product's: what is being checked is whether a deck
