@@ -362,6 +362,8 @@ export interface ApiKey {
   createdAt: string
   lastUsedAt?: string
   expiresAt?: string
+  /** When a key rotated away stops working. It has no expiry of its own. */
+  graceUntil?: string
 }
 
 export interface AdminUser extends User {

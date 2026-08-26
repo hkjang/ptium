@@ -57,6 +57,29 @@ export function ScopeChooser({ catalogue, chosen, onToggle }: {
  */
 export function revoked(key: Pick<ApiKey, 'status'>) { return key.status === 'revoked' }
 
+/**
+ * When a key stops working, which is the question the list's last column is
+ * asking.
+ *
+ * A key rotated away has no expiry of its own — it has a grace, and when the
+ * grace ends it stops. The column read that field and, finding nothing, said
+ * "만료 없음" over the one key on the list that was about to die: the job still
+ * using it would have failed at an hour nobody could have read off this screen.
+ * Whichever comes first is the answer.
+ */
+export function stopsWorking(key: Pick<ApiKey, 'status' | 'expiresAt' | 'graceUntil'>):
+{ at?: string; reason: 'grace' | 'expiry' | 'none' } {
+  const grace = key.status === 'rotating' && key.graceUntil ? key.graceUntil : ''
+  const expiry = key.expiresAt || ''
+  if (grace && expiry) {
+    return Date.parse(grace) <= Date.parse(expiry)
+      ? { at: grace, reason: 'grace' } : { at: expiry, reason: 'expiry' }
+  }
+  if (grace) return { at: grace, reason: 'grace' }
+  if (expiry) return { at: expiry, reason: 'expiry' }
+  return { reason: 'none' }
+}
+
 export function ApiKeysPage() {
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
@@ -117,7 +140,7 @@ export function ApiKeysPage() {
   return <AppShell title="API 키" eyebrow="DEVELOPER" actions={<Button onClick={() => setCreateOpen(true)}><Plus size={16} /> 새 API 키</Button>}>
     <div className="api-intro"><span><Code2 size={22} /></span><div><h2>Ptium API와 MCP를 연결하세요</h2><p>프레젠테이션 생성과 관리를 자동화하고, AI 도구에서 MCP 서버를 사용하세요.</p><div><code>POST /api/v1/presentations</code><code>{window.location.origin}/mcp</code></div></div><Link to="/docs">API 문서 보기</Link></div>
     <section className="section-block api-keys-section"><div className="section-heading"><div><h2>발급된 키</h2><p>키는 생성 직후 한 번만 전체 값을 확인할 수 있습니다.</p></div><Badge tone="info"><ShieldCheck size={13} /> 수동 회전 · 유예 지원</Badge></div>
-      {loading ? <LoadingState label="API 키를 불러오는 중…" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : running.length === 0 ? <EmptyState icon={<KeyRound size={25} />} title="아직 발급한 API 키가 없습니다" description="자동화나 외부 도구 연결을 위해 첫 API 키를 만들어 보세요." action={<Button onClick={() => setCreateOpen(true)}><Plus size={15} /> 키 만들기</Button>} /> : <div className="table-wrap"><table className="data-table api-key-table"><thead><tr><th>이름</th><th>키</th><th>권한</th><th>마지막 사용</th><th>만료</th><th><span className="sr-only">작업</span></th></tr></thead><tbody>{running.map((key) => <tr key={key.id}><td><div className="key-name"><span><KeyRound size={16} /></span><div><strong>{key.name}</strong><small>{formatDate(key.createdAt)} 생성 · {key.status === 'active' ? '활성' : key.status === 'rotating' ? '회전 유예 중' : key.status === 'expired' ? '만료됨' : '폐기됨'}</small></div></div></td><td><code>{key.prefix}••••••••••••</code></td><td><div className="scope-badges">{key.scopes.slice(0,2).map((scope) => <Badge key={scope}>{scope.replace('presentations:', '')}</Badge>)}{key.scopes.length > 2 && <Badge>+{key.scopes.length - 2}</Badge>}</div></td><td>{key.lastUsedAt ? relativeDate(key.lastUsedAt) : '사용 전'}</td><td>{key.expiresAt ? formatDate(key.expiresAt, { year: 'numeric', month: 'short', day: 'numeric' }) : '만료 없음'}</td><td><div className="row-actions"><button title="권한 수정" onClick={() => { setScopeTarget(key); setEditScopes(key.scopes) }} disabled={working || key.status === 'revoked' || key.status === 'expired'}><SlidersHorizontal size={15} /></button><button title="키 회전" onClick={() => void rotate(key)} disabled={working || key.status !== 'active'}><RefreshCw size={15} /></button><button title="키 폐기" className="danger" onClick={() => setRevokeTarget(key)} disabled={key.status === 'revoked' || key.status === 'expired'}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table></div>}
+      {loading ? <LoadingState label="API 키를 불러오는 중…" /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : running.length === 0 ? <EmptyState icon={<KeyRound size={25} />} title="아직 발급한 API 키가 없습니다" description="자동화나 외부 도구 연결을 위해 첫 API 키를 만들어 보세요." action={<Button onClick={() => setCreateOpen(true)}><Plus size={15} /> 키 만들기</Button>} /> : <div className="table-wrap"><table className="data-table api-key-table"><thead><tr><th>이름</th><th>키</th><th>권한</th><th>마지막 사용</th><th>만료</th><th><span className="sr-only">작업</span></th></tr></thead><tbody>{running.map((key) => <tr key={key.id}><td><div className="key-name"><span><KeyRound size={16} /></span><div><strong>{key.name}</strong><small>{formatDate(key.createdAt)} 생성 · {key.status === 'active' ? '활성' : key.status === 'rotating' ? '회전 유예 중' : key.status === 'expired' ? '만료됨' : '폐기됨'}</small></div></div></td><td><code>{key.prefix}••••••••••••</code></td><td><div className="scope-badges">{key.scopes.slice(0,2).map((scope) => <Badge key={scope}>{scope.replace('presentations:', '')}</Badge>)}{key.scopes.length > 2 && <Badge>+{key.scopes.length - 2}</Badge>}</div></td><td>{key.lastUsedAt ? relativeDate(key.lastUsedAt) : '사용 전'}</td><td>{((ends) => ends.reason === 'none' ? '만료 없음' : <span className={ends.reason === 'grace' ? 'key-grace-ends' : undefined}>{formatDate(ends.at!, { year: 'numeric', month: 'short', day: 'numeric' })}{ends.reason === 'grace' ? ' 유예 종료' : ''}</span>)(stopsWorking(key))}</td><td><div className="row-actions"><button title="권한 수정" onClick={() => { setScopeTarget(key); setEditScopes(key.scopes) }} disabled={working || key.status === 'revoked' || key.status === 'expired'}><SlidersHorizontal size={15} /></button><button title="키 회전" onClick={() => void rotate(key)} disabled={working || key.status !== 'active'}><RefreshCw size={15} /></button><button title="키 폐기" className="danger" onClick={() => setRevokeTarget(key)} disabled={key.status === 'revoked' || key.status === 'expired'}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table></div>}
       {retired.length > 0 && <p className="muted-note retired-keys">
         폐기된 키 {retired.length}개는 목록에서 감춰져 있습니다.{' '}
         <button type="button" className="link-button" onClick={() => setShowRevoked((value) => !value)}>

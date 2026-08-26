@@ -196,6 +196,7 @@ function normalizeApiKey(value: ApiKey & Record<string, unknown>): ApiKey {
     createdAt: String(value.createdAt || value.created_at || new Date().toISOString()),
     lastUsedAt: String(value.lastUsedAt || value.last_used_at || '') || undefined,
     expiresAt,
+    graceUntil,
   }
 }
 

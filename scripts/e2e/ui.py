@@ -208,6 +208,28 @@ with sync_playwright() as play:
         failures.append(f"the create screen does not carry the stored tone and language: {shown}")
     api("/profile", "PUT", {"displayName": (api("/profile") or {}).get("displayName") or "", "preferences": kept})
     visit("/api-keys", expect_text="API")
+    # A key rotated away has no expiry of its own — it has a grace, and when the
+    # grace ends it stops working. The column that answers "when does this key
+    # stop" read only the expiry and said "만료 없음" over the one key on the
+    # list that was about to die.
+    rotating = api("/api-keys", "POST", {"name": f"유예 표시 {RUN}", "scopes": ["presentations:read"]})
+    rotating_id = (rotating or {}).get("apiKey", {}).get("id")
+    api(f"/api-keys/{rotating_id}/rotate", "POST", {"gracePeriod": "24h"})
+    visit("/api-keys", expect_text="API")
+    said = ""
+    for index in range(page.locator(".api-key-table tbody tr").count()):
+        cells = page.locator(".api-key-table tbody tr").nth(index).locator("td").all_inner_texts()
+        if f"유예 표시 {RUN}" in cells[0] and "유예" in cells[0]:
+            said = cells[4].strip()
+    if not said:
+        failures.append("a key in its rotation grace is not on the key screen")
+    elif "만료 없음" in said:
+        failures.append("a key that stops working when its grace ends is shown as never expiring")
+    elif "유예 종료" not in said:
+        failures.append(f"the key screen does not say when the grace ends: {said!r}")
+    for key in (api("/api-keys") or []):
+        if f"유예 표시 {RUN}" in str(key.get("name")):
+            api(f"/api-keys/{key['id']}", "DELETE")
     visit("/docs", expect_text="API")
     visit("/admin", expect_text="관리")
     visit("/admin/settings", expect_text="설정")

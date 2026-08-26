@@ -34,3 +34,5 @@
 
 .profile-design-picker{display:flex;flex-direction:column;gap:11px}
 .profile-design-picker .profile-design-preview{width:100%;max-width:420px;aspect-ratio:16/9;border:1px solid var(--line);border-radius:10px;object-fit:cover;background:#f1f0ec}
+
+.key-grace-ends{color:var(--amber,#b45309);font-weight:600}
