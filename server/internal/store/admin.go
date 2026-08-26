@@ -135,16 +135,27 @@ func (s *Store) Storage(ctx context.Context, assetDir string) (StorageUsage, err
 // whose it is, how long it has been like that, and what went wrong if anything
 // did.
 type QueuedDeck struct {
-	ID           string     `json:"id"`
-	Title        string     `json:"title"`
-	OwnerID      string     `json:"ownerId"`
-	OwnerEmail   string     `json:"ownerEmail,omitempty"`
-	Status       string     `json:"status"`
-	Stage        string     `json:"stage,omitempty"`
-	ErrorMessage string     `json:"errorMessage,omitempty"`
-	WaitingFor   int        `json:"waitingSeconds"`
-	StartedAt    *time.Time `json:"startedAt,omitempty"`
-	UpdatedAt    time.Time  `json:"updatedAt"`
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	OwnerID      string `json:"ownerId"`
+	OwnerEmail   string `json:"ownerEmail,omitempty"`
+	Status       string `json:"status"`
+	Stage        string `json:"stage,omitempty"`
+	ErrorMessage string `json:"errorMessage,omitempty"`
+	WaitingFor   int    `json:"waitingSeconds"`
+	// QuietFor is how long a deck being written has said nothing, in seconds,
+	// and is absent for a deck that is only waiting.
+	//
+	// How long a generation has been going says nothing about whether it is in
+	// trouble: a self-hosted model takes minutes per call and a deployment may
+	// ask for ten repair passes, so half an hour of writing can be a deck going
+	// perfectly well. What separates that from a dead worker is whether anybody
+	// is still saying so. The queue screen used to call anything older than
+	// fifteen minutes stuck, which after this product started leaving slow
+	// generations alone would have been crying wolf over healthy work.
+	QuietFor  *int       `json:"quietSeconds,omitempty"`
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
 // GenerationQueue is what is waiting, what is being written, and what failed
@@ -160,7 +171,11 @@ func (s *Store) GenerationQueue(ctx context.Context, includeFailedHours int, lim
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT p.id::text, p.title, p.owner_id::text, COALESCE(u.email,''),
 			p.status, p.generation_stage, COALESCE(p.error_message,''),
-			EXTRACT(EPOCH FROM now()-p.updated_at)::int, p.generation_started_at, p.updated_at
+			EXTRACT(EPOCH FROM now()-p.updated_at)::int,
+			CASE WHEN p.status='generating'
+				THEN EXTRACT(EPOCH FROM now()-COALESCE(p.generation_heartbeat_at, p.generation_started_at))::int
+				END,
+			p.generation_started_at, p.updated_at
 		FROM presentations p LEFT JOIN users u ON u.id = p.owner_id
 		WHERE p.deleted_at IS NULL AND (p.status IN ('queued','generating')
 			OR (p.status='failed' AND $1 > 0 AND p.updated_at > now() - ($1 || ' hours')::interval))
@@ -174,7 +189,7 @@ func (s *Store) GenerationQueue(ctx context.Context, includeFailedHours int, lim
 	for rows.Next() {
 		var deck QueuedDeck
 		if err := rows.Scan(&deck.ID, &deck.Title, &deck.OwnerID, &deck.OwnerEmail, &deck.Status, &deck.Stage,
-			&deck.ErrorMessage, &deck.WaitingFor, &deck.StartedAt, &deck.UpdatedAt); err != nil {
+			&deck.ErrorMessage, &deck.WaitingFor, &deck.QuietFor, &deck.StartedAt, &deck.UpdatedAt); err != nil {
 			return nil, err
 		}
 		queue = append(queue, deck)

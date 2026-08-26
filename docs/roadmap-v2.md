@@ -9,7 +9,7 @@
 
 | 이미 있음 | 어디에 |
 | --- | --- |
-| 생성 잡 큐 (Postgres, `FOR UPDATE SKIP LOCKED`, 크래시 잡 10분 후 재확보) | `store.ClaimGeneration` · `generation/worker.go` |
+| 생성 잡 큐 (Postgres, `FOR UPDATE SKIP LOCKED`, 워커가 30초마다 살아 있다고 말하고, 3분 동안 조용하면 재확보) | `store.ClaimGeneration` · `generation/worker.go` |
 | 브라우저 E2E (생성→편집→저장→내보내기 · 발표자 보기 · 키보드 · 좁은 화면) | `scripts/e2e/{ui,flows,deep}.py` |
 | 내보낸 파일의 외부 검증 (python-pptx로 표·차트·워크북·번호·노트·대체 텍스트) | `scripts/e2e/package.py` |
 | 슬라이드 라이브러리 (등록·검색·사용 횟수) | `store/snippets.go` · `SlideLibrary.tsx` |

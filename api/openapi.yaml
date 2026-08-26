@@ -3700,6 +3700,17 @@ paths:
                         status: { type: string }
                         errorMessage: { type: string }
                         waitingSeconds: { type: integer, description: How long this one has been waiting }
+                        quietSeconds:
+                          type: integer
+                          minimum: 0
+                          description: >-
+                            How long a deck being written has said nothing. A worker
+                            says it is alive every thirty seconds, and three minutes of
+                            silence is a worker that has gone — its deck is reclaimed.
+                            Absent for a deck that is only waiting. How long a
+                            generation has been running says nothing on its own about
+                            whether it is in trouble: a self-hosted model takes minutes
+                            per call and a deployment may ask for ten repair passes.
                         startedAt: { type: string, format: date-time }
                         updatedAt: { type: string, format: date-time }
                   requestId:
@@ -4909,7 +4920,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.28.0
+            service.version: 1.28.1
         requestId:
           $ref: '#/components/schemas/RequestID'
 
