@@ -20,11 +20,33 @@ type document struct {
 	data    []byte
 	objects map[int]value
 	streams map[int]stream
+	// unpacked holds what has already been decoded, and spent is how much of
+	// the document's budget that took. A PDF is an upload from whoever sends
+	// one, and a few hundred kilobytes of it can ask for gigabytes back.
+	unpacked map[int][]byte
+	spent    int
+	// charted holds the parsed form of a ToUnicode map, which every page using
+	// the font would otherwise re-read: a long file names the same twelve
+	// thousand entry CMap on all of its pages.
+	charted map[int]map[uint32]string
 }
 
 var objectHeader = regexp.MustCompile(`(?m)(\d+)\s+(\d+)\s+obj\b`)
 
-const maximumBytes = 64 << 20
+const (
+	maximumBytes = 64 << 20
+	// maximumDecoded is what one document may unpack in total, and
+	// maximumStreamBytes what any one stream may come to. The corpus this was
+	// measured against unpacks at most 6 MiB for a whole 127-page statement and
+	// 1.9 MiB for its heaviest single page, so both bounds are far above any
+	// file meant to be read and far below what a crafted one asks for.
+	maximumDecoded     = 64 << 20
+	maximumStreamBytes = 16 << 20
+	// maximumPageBytes is what one page's content may come to. A page of text
+	// is kilobytes; a page that asks for more than this is asking for something
+	// other than to be read.
+	maximumPageBytes = 8 << 20
+)
 
 func open(data []byte) (*document, error) {
 	if len(data) == 0 {
@@ -36,7 +58,8 @@ func open(data []byte) (*document, error) {
 	if !bytes.HasPrefix(data, []byte("%PDF-")) && !bytes.Contains(data[:min(len(data), 1024)], []byte("%PDF-")) {
 		return nil, errors.New("this file is not a PDF")
 	}
-	doc := &document{data: data, objects: map[int]value{}, streams: map[int]stream{}}
+	doc := &document{data: data, objects: map[int]value{}, streams: map[int]stream{},
+		unpacked: map[int][]byte{}, charted: map[int]map[uint32]string{}}
 	doc.scan()
 	doc.expandObjectStreams()
 	return doc, nil
@@ -128,12 +151,34 @@ func (d *document) number(item value) (float64, bool) {
 
 // decoded is a stream's bytes with its filters undone. Only Flate is supported,
 // which is what every producer of the files this was measured against uses.
+// decoded is a stream's bytes, unpacked once and remembered.
+//
+// The same map from codes to characters is asked for by every page that uses
+// the font, and unpacking a 170 KiB CMap a hundred and twenty-seven times is
+// most of the time a long file takes. Remembering it also bounds what a
+// document can be made to unpack: a hundred kilobytes of well-chosen zlib
+// expands to gigabytes, and one page is free to name the same stream sixty
+// times.
 func (d *document) decoded(number int) ([]byte, bool) {
+	if said, ok := d.unpacked[number]; ok {
+		return said, said != nil
+	}
 	held, ok := d.streams[number]
 	if !ok {
 		return nil, false
 	}
-	return d.decodeStream(held)
+	if d.spent >= maximumDecoded {
+		d.unpacked[number] = nil
+		return nil, false
+	}
+	said, ok := d.decodeStream(held)
+	if !ok {
+		d.unpacked[number] = nil
+		return nil, false
+	}
+	d.spent += len(said)
+	d.unpacked[number] = said
+	return said, true
 }
 
 func (d *document) decodeStream(held stream) ([]byte, bool) {
@@ -156,7 +201,7 @@ func (d *document) decodeStream(held stream) ([]byte, bool) {
 			if err != nil {
 				return nil, false
 			}
-			expanded, err := io.ReadAll(io.LimitReader(reader, maximumBytes))
+			expanded, err := io.ReadAll(io.LimitReader(reader, maximumStreamBytes))
 			reader.Close()
 			if err != nil && len(expanded) == 0 {
 				return nil, false

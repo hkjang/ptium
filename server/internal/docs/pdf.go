@@ -42,7 +42,7 @@ func readPDF(filename string, data []byte) (Document, error) {
 			heading = lines[0]
 			lines = lines[1:]
 		} else if heading != "" {
-			heading += " (계속)"
+			heading = continued(heading)
 		} else {
 			heading = titleOf(filename)
 		}

@@ -86,6 +86,9 @@ func (d *document) contentOf(page dict) []byte {
 		if !ok {
 			return
 		}
+		if len(said) >= maximumPageBytes {
+			return
+		}
 		if data, ok := d.decoded(pointer.number); ok {
 			said = append(said, data...)
 			said = append(said, '\n')
@@ -144,8 +147,11 @@ func (d *document) readFont(entries dict) *font {
 	held.twoByte = subtype == "Type0"
 	held.simple = !held.twoByte
 	if pointer, ok := entries["ToUnicode"].(ref); ok {
-		if data, ok := d.decoded(pointer.number); ok {
+		if mapped, ok := d.charted[pointer.number]; ok {
+			held.toUnicode = mapped
+		} else if data, ok := d.decoded(pointer.number); ok {
 			held.toUnicode = parseToUnicode(data)
+			d.charted[pointer.number] = held.toUnicode
 		}
 	}
 	// A composite font with no map is a font whose codes mean nothing here.

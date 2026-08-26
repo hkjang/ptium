@@ -81,12 +81,16 @@ func TestAPDFsPagesBecomeSlidesThatCiteTheirPage(t *testing.T) {
 func TestAPageWithNoHeadingContinuesTheOneBefore(t *testing.T) {
 	document, err := Read("보고서.pdf", pdfOf(
 		[]string{"도입 배경"},
-		[]string{"앞 쪽에서 이어지는 긴 문장이 이 쪽 전체를 채우고 있으며 제목이라고 부를 만한 짧은 줄이 없습니다."}))
+		[]string{"앞 쪽에서 이어지는 긴 문장이 이 쪽 전체를 채우고 있으며 제목이라고 부를 만한 짧은 줄이 없습니다."},
+		[]string{"그 다음 쪽도 마찬가지로 제목 없이 문장만 이어지고 있어서 앞 장을 계속 잇게 됩니다."}))
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
 	if !strings.Contains(document.Source, "# 도입 배경 (계속)") {
 		t.Errorf("the second page did not continue the first:\n%s", document.Source)
+	}
+	if strings.Contains(document.Source, "(계속) (계속)") {
+		t.Errorf("a run of pages with no headings piled up its own title:\n%s", document.Source)
 	}
 }
 
