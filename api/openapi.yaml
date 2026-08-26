@@ -3115,8 +3115,9 @@ paths:
                         additionalProperties: { type: boolean }
                         description: >
                           Whether each component was drawn. False means this design has no
-                          room for it and the content comes out as paragraphs.
-                        example: { steps: true, kpi: true, shareBar: true, table: false }
+                          room for it: steps, figures, shares and tables come out as
+                          paragraphs, and a picture is dropped.
+                        example: { steps: true, kpi: true, shareBar: true, table: false, image: true }
                       warnings:
                         type: array
                         items: { type: string }
@@ -4541,7 +4542,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.8
+            service.version: 1.13.9
         requestId:
           $ref: '#/components/schemas/RequestID'
 

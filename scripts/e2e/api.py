@@ -954,7 +954,11 @@ print(f"   database {int(usage.get('databaseBytes', 0))/1024/1024:,.1f} MB acros
 # could not see one — let alone push it through or stop it.
 print("── the queue an operator can act on ──")
 queued_owner = {"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:queue-owner-{RUN}@ptium.local"}
-someone_elses = data_of(call("POST", "/presentations", {"title": f"큐 {RUN}", "prompt": "점검", "language": "ko"},
+# A big deck on purpose: what this section is about is a stop that lands while a
+# worker is holding the deck, and against a four-slide deck the offline writer
+# finishes first often enough that the interesting branch is decided by luck.
+someone_elses = data_of(call("POST", "/presentations", {"title": f"큐 {RUN}", "prompt": "점검",
+                                                        "language": "ko", "slideCount": 30},
                             expect=201, headers=queued_owner)) or {}
 call("POST", f"/presentations/{someone_elses['id']}/generate", {}, expect=[200, 202], headers=queued_owner)
 waiting = data_of(call("GET", "/admin/generations", expect=200)) or []
@@ -989,6 +993,17 @@ else:
         checks += 1
         if state.get("errorMessage") != f"점검 중단 {RUN}":
             failures.append(f"the author is told {state.get('errorMessage')!r} rather than why it was stopped")
+        # The worker was mid-flight when the stop landed; what it writes when it
+        # finishes must not replace what the operator said. This belongs to the
+        # branch that actually stopped something: after a stop refused as too
+        # late there is no reason to overwrite, and asking for one here reported
+        # the refusal as a lost reason.
+        time.sleep(4)
+        state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
+        checks += 1
+        if state.get("errorMessage") != f"점검 중단 {RUN}":
+            failures.append(f"a worker finishing later overwrote the reason an operator gave: "
+                            f"{state.get('status')!r} {state.get('errorMessage')!r}")
     else:
         # It finished first. The deck is whole, and the operator was told.
         state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
@@ -998,11 +1013,6 @@ else:
         checks += 1
         if state.get("errorMessage") == f"점검 중단 {RUN}":
             failures.append("a stop was refused and stopped the deck anyway")
-    time.sleep(4)
-    state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
-    checks += 1
-    if state.get("errorMessage") != f"점검 중단 {RUN}":
-        failures.append("a worker finishing later overwrote the reason an operator gave")
     # And it can be pushed back through.
     call("POST", f"/admin/generations/{someone_elses['id']}/requeue", {}, expect=200)
     state = data_of(call("GET", f"/presentations/{someone_elses['id']}", expect=200, headers=queued_owner)) or {}
@@ -1109,7 +1119,7 @@ checks += 1
 if report.get("slides", 0) < 5:
     failures.append(f"the template report compiled {report.get('slides')} slides of the probe deck")
 checks += 1
-if not all(report.get("components", {}).get(kind) for kind in ("steps", "kpi", "shareBar", "table")):
+if not all(report.get("components", {}).get(kind) for kind in ("steps", "kpi", "shareBar", "table", "image")):
     failures.append(f"a shipped template cannot draw the components a brief produces: {report.get('components')}")
 checks += 1
 if report.get("defects"):
@@ -1120,7 +1130,7 @@ for role in ("cover", "content", "closing"):
     if not report.get("roles", {}).get(role):
         failures.append(f"a shipped template has no {role} layout")
 print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
-      f"{sum(1 for drawn in (report.get('components') or {}).values() if drawn)}/4 components drawn, "
+      f"{sum(1 for drawn in (report.get('components') or {}).values() if drawn)}/5 components drawn, "
       f"{len(report.get('warnings') or [])} thing(s) it had to say")
 
 print("── a deck moved to another template ──")

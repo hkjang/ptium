@@ -231,9 +231,9 @@ function TemplateCard({ template, onOpen, onFavorite, onToggleScope, onDelete }:
 // The four things a brief most often asks to be drawn. A template that cannot
 // hold them turns each one into a paragraph, and until this said so, the way to
 // find out was to generate forty decks.
-const componentOrder = ['steps', 'kpi', 'shareBar', 'table']
+const componentOrder = ['steps', 'kpi', 'shareBar', 'table', 'image']
 const componentNames: Record<string, string> = {
-  steps: '단계', kpi: '지표', shareBar: '비중', table: '표',
+  steps: '단계', kpi: '지표', shareBar: '비중', table: '표', image: '그림',
 }
 
 // The reader of this panel never wrote the probe deck, so "line 37 (slide 7):"
@@ -250,7 +250,7 @@ function healthWord(report: Record<string, unknown> | null) {
   const defects = Number(report.defects ?? 0)
   if (defects > 0) return { tone: 'danger' as const, text: `이 템플릿에서 ${defects}곳이 잘못 그려집니다` }
   if (missing === drawn.length) return { tone: 'danger' as const, text: '컴포넌트가 하나도 그려지지 않습니다' }
-  if (missing > 0) return { tone: 'warning' as const, text: `${missing}종류가 그림 대신 글로 나갑니다` }
+  if (missing > 0) return { tone: 'warning' as const, text: `${missing}종류가 이 디자인에는 들어가지 못합니다` }
   return { tone: 'success' as const, text: '덱이 이 템플릿에 그대로 들어갑니다' }
 }
 

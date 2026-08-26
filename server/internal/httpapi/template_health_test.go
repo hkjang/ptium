@@ -25,7 +25,7 @@ func compileProbe(t *testing.T, manifest pptx.Manifest) generation.Deck {
 	t.Helper()
 	probe := model.Presentation{Title: "점검", Language: "ko", RequestedSlideCount: 7}
 	return generation.CompileSourceWith(templateProbeSource, probe, model.Profile{},
-		generation.Template{ID: "tpl", Manifest: manifest}, nil, nil)
+		generation.Template{ID: "tpl", Manifest: manifest}, probePicture, nil)
 }
 
 // The report exists to answer one question before a customer puts forty decks

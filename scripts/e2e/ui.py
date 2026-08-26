@@ -257,8 +257,8 @@ with sync_playwright() as play:
         failures.append("a template's detail says nothing about what it will do to a deck")
     else:
         chips = page.locator(".template-health-components span")
-        if chips.count() != 4:
-            failures.append(f"the template report shows {chips.count()} component(s), expected 4")
+        if chips.count() != 5:
+            failures.append(f"the template report shows {chips.count()} component(s), expected 5")
         elif page.locator(".template-health-components .drawn").count() == 0:
             failures.append("a shipped design is reported as drawing nothing")
         verdict = page.locator(".template-health-head").inner_text()

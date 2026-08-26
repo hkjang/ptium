@@ -322,8 +322,11 @@ func (s *Server) templateHealth(writer http.ResponseWriter, request *http.Reques
 	}
 	profile, _ := s.store.GetProfile(request.Context(), user.ID)
 	probe := model.Presentation{Title: template.Name, Language: "ko", RequestedSlideCount: 7}
+	// The probe resolves its own picture: a customer's question is whether this
+	// design has a place for one, and nothing here is saved, so no asset of
+	// theirs needs to exist for the answer.
 	compiled := generation.CompileSourceWith(templateProbeSource, probe, profile,
-		generation.Template{ID: template.ID, Manifest: manifest}, nil, nil)
+		generation.Template{ID: template.ID, Manifest: manifest}, probePicture, nil)
 	report := templateReport{
 		TemplateID: template.ID, Name: template.Name,
 		AspectRatio: manifest.AspectRatio, Layouts: len(manifest.Layouts),
@@ -379,10 +382,17 @@ func componentsDrawn(slides []model.Slide) map[string]bool {
 	for _, kind := range []string{pptx.BlockSteps, pptx.BlockKPI, pptx.BlockShare, pptx.BlockTable} {
 		drawn[kind] = false
 	}
+	// A picture is not a block: it is carried on the slide, and a layout with
+	// nowhere to put one drops it. That drop is worth the same warning as a
+	// table that came out as prose.
+	drawn["image"] = false
 	for _, slide := range slides {
 		var content deck.Content
 		if json.Unmarshal(slide.Content, &content) != nil {
 			continue
+		}
+		if len(content.Images) > 0 {
+			drawn["image"] = true
 		}
 		for _, block := range content.Blocks {
 			if _, wanted := drawn[block.Kind]; wanted {
@@ -392,6 +402,15 @@ func componentsDrawn(slides []model.Slide) map[string]bool {
 	}
 	return drawn
 }
+
+// probePicture stands in for one of the customer's own images.
+func probePicture(name string) (deck.ContentImage, bool) {
+	return deck.ContentImage{AssetID: templateProbeAsset, Name: name}, true
+}
+
+// templateProbeAsset is not an asset anybody has: the report is about layout,
+// and the measurement treats an unreadable picture as a placed one.
+const templateProbeAsset = "00000000-0000-0000-0000-000000000000"
 
 const templateProbeSource = `# 표지
 @cover
@@ -428,6 +447,10 @@ const templateProbeSource = `# 표지
 - 항목 | 2026 | 2027
 - 인건비 | 4.2 | 3.4
 ::
+
+# 현장 사진
+@picture
+::image 사진
 
 # 다음 단계
 @closing
