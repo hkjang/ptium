@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -91,7 +92,7 @@ func headingSaidBefore(slides []Slide, index int) []Finding {
 		return nil
 	}
 	for earlier := 0; earlier < index; earlier++ {
-		if !strings.EqualFold(headingOf(slides[earlier]), heading) {
+		if !sameHeading(headingOf(slides[earlier]), heading) {
 			continue
 		}
 		return []Finding{{Slot: SlotTitle, Kind: FindingTwiceTitled, Advisory: true,
@@ -112,4 +113,23 @@ func headingOf(slide Slide) string {
 	joined := strings.Join(parts, " ")
 	joined = strings.TrimSpace(strings.Trim(strings.TrimSpace(joined), " .·—-:"))
 	return strings.Join(strings.Fields(joined), " ")
+}
+
+// sameHeading is whether a room would read two headings as the same words.
+//
+// Korean spacing is not what a heading means: a deck came back with "기대 효과"
+// on one slide and "기대효과" on another, which is the same section twice by any
+// reading, and the measurement compared them character for character and said
+// nothing.
+func sameHeading(one, other string) bool {
+	return strings.EqualFold(withoutSpaces(one), withoutSpaces(other))
+}
+
+func withoutSpaces(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
 }

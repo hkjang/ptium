@@ -3,6 +3,7 @@ package generation
 import (
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/library"
@@ -123,7 +124,7 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 			// A deck whose title is its only subject would open with that title
 			// twice. The second one says which part of the subject the slide is.
 			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
-				if aspect := frameTitleSuffix[plan.Language][frame]; aspect != "" {
+				if aspect := unclaimedAspect(plan.Language, frame, outline.Topics); aspect != "" {
 					section.Title = capitalized(aspect)
 				}
 			}
@@ -411,4 +412,44 @@ func pictureFor(topic, title string, pictures []library.Entry, placed map[string
 		return entry.Name, true
 	}
 	return "", false
+}
+
+// unclaimedAspect names the part of the subject this slide is, avoiding a name
+// the deck already gives a section of its own.
+//
+// A brief that lists 기대효과 as a section produced a deck with the listed
+// section and, ahead of it, the subject's own outcome slide titled "기대 효과":
+// one section twice, told apart by a space. The frame's own word is used when
+// nothing else claims it, and otherwise the deck says which part this is in a
+// word no section has taken.
+func unclaimedAspect(language, frame string, topics []promptTopic) string {
+	taken := map[string]bool{}
+	for _, topic := range topics {
+		taken[withoutSpaces(strings.ToLower(topic.Name))] = true
+	}
+	first := frameTitleSuffix[language][frame]
+	if first != "" && !taken[withoutSpaces(strings.ToLower(first))] {
+		return first
+	}
+	// The deck already has a section by that name. Any other aspect of the
+	// subject is a better title than the same words twice.
+	for _, other := range []string{frameSituation, frameSequence, frameCase, frameOptions, frameRisk, frameOutcome} {
+		if other == frame {
+			continue
+		}
+		aspect := frameTitleSuffix[language][other]
+		if aspect != "" && !taken[withoutSpaces(strings.ToLower(aspect))] {
+			return aspect
+		}
+	}
+	return first
+}
+
+func withoutSpaces(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, value)
 }

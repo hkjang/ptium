@@ -277,9 +277,11 @@ func TestASlideHeadedWhatAnEarlierSlideIsHeaded(t *testing.T) {
 	}
 
 	// Spacing and trailing punctuation decide nothing; different words do.
-	same := headed("다음 단계", " 다음  단계 ·")
-	if found := headingSaidBefore(same, 1); len(found) != 1 {
-		t.Error("the same heading spaced differently was not noticed")
+	// Korean spaces least of all: "기대 효과" and "기대효과" are one section.
+	for _, pair := range [][]string{{"다음 단계", " 다음  단계 ·"}, {"기대 효과", "기대효과"}, {"기대효과", "기대 효과"}} {
+		if found := headingSaidBefore(headed(pair[0], pair[1]), 1); len(found) != 1 {
+			t.Errorf("%q and %q were not read as the same heading", pair[0], pair[1])
+		}
 	}
 	different := headed("다음 단계", "다음 단계와 비용")
 	if found := headingSaidBefore(different, 1); len(found) != 0 {
