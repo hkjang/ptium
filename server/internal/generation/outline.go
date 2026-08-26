@@ -1135,7 +1135,14 @@ func rawFigureLabel(prompt, match string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	take := min(len(fields), 2)
+	// Two words are a name. A word that only says how the amount is measured —
+	// "…라이선스가 연 4억" — is not one of the two, or the name is left outside
+	// the label and the headline reads "연".
+	measures := 0
+	for measures < len(fields) && measureWord(fields[len(fields)-1-measures]) {
+		measures++
+	}
+	take := min(len(fields), 2+measures)
 	label := strings.Join(fields[len(fields)-take:], " ")
 	// Only punctuation is trimmed here. Stripping particles the way a topic does
 	// would turn "개발 속도" into "개발 속".

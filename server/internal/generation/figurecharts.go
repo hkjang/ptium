@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // A deck written from a brief full of numbers should draw them.
@@ -181,6 +182,14 @@ func chartLabel(item reading) string {
 		label = strings.TrimSpace(label[cut+1:])
 	}
 	words := strings.Fields(label)
+	// How much of a period the amount covers — 연, 월, 총 — is not what is
+	// counted. Left on the end it becomes the entire label as soon as the
+	// subject in front of it is dropped: a brief saying the Oracle licence
+	// costs 4억 a year produced a headline reading "연 · 4억", which names
+	// nothing at all.
+	for len(words) > 1 && measureWord(words[len(words)-1]) {
+		words = words[:len(words)-1]
+	}
 	// The subject of the sentence is what the chart's caption is for; the bar is
 	// named by the thing counted. "비중은 직판" is one bar called 직판.
 	for len(words) > 1 && endsWithParticle(words[0]) {
@@ -194,7 +203,39 @@ func chartLabel(item reading) string {
 	if len(words) == 0 {
 		return item.label
 	}
+	// When the subject is the label — because nothing else was counted — it is
+	// still carrying the marker that made it a subject: "오라클 라이선스가".
+	words[len(words)-1] = withoutSubjectMarker(words[len(words)-1])
 	return strings.Join(words, " ")
+}
+
+// measureWord reports whether a word says how the amount is measured rather
+// than what is measured.
+func measureWord(word string) bool {
+	switch strings.Trim(word, " .,·") {
+	case "연", "월", "일", "주", "분기", "반기", "연간", "월간", "주간", "매년", "매월",
+		"총", "약", "평균", "누적", "최대", "최소", "합계":
+		return true
+	}
+	return false
+}
+
+// withoutSubjectMarker takes the marker off a word that turned out to be the
+// label. Only long enough words, and only the markers that are rarely a final
+// syllable of the noun itself: 차이 must not become 차.
+func withoutSubjectMarker(word string) string {
+	if utf8.RuneCountInString(word) < 3 {
+		return word
+	}
+	for _, marker := range []string{"은", "는", "이", "가"} {
+		if strings.HasSuffix(word, marker) {
+			stem := strings.TrimSuffix(word, marker)
+			if utf8.RuneCountInString(stem) >= 2 {
+				return stem
+			}
+		}
+	}
+	return word
 }
 
 // endsWithParticle reports whether a word is carrying a Korean subject or topic
