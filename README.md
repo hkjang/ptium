@@ -505,6 +505,16 @@ PostgreSQL을 지정합니다. 인터넷 연결이 있는 빌드 호스트에서
 .\scripts\build-offline.ps1
 ```
 
+릴리스는 `scripts/release.sh`가 처음부터 끝까지 수행합니다 — 버전이 다섯 군데에
+같은 값으로 적혀 있는지 확인하고, 번들을 만들고(첫 기동·업그레이드 검사가 여기서
+돌며 실패하면 릴리스가 멈춥니다), 푸시·태그·게시까지 합니다. 어느 단계든 실패하면
+그 뒤는 실행되지 않습니다.
+
+```bash
+./scripts/release.sh --dry-run   # 첫 푸시 직전까지
+./scripts/release.sh             # 푸시 · 태그 · 게시
+```
+
 쿠버네티스 배포 예시는 [`deploy/kubernetes.yaml`](deploy/kubernetes.yaml)에
 있습니다. 시크릿에 `DATABASE_URL`과 `KEY_ENCRYPTION_SECRET`만 넣으면 됩니다.
 
