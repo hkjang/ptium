@@ -2,6 +2,7 @@ package generation
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -459,4 +460,42 @@ func headingsOf(source string) string {
 		}
 	}
 	return strings.Join(headings, "\n")
+}
+
+// A colour repaints a customer's template only when somebody chose it.
+//
+// The accent reaches the drawing as of this week, and the colour this product
+// ships with — a purple seeded into every deployment that never opened the
+// branding screen — would have repainted the components of every deck built on
+// a customer's own template.
+func TestOnlyAColourSomebodyChoseRepaintsATemplate(t *testing.T) {
+	template := testTemplate(t)
+	accentOf := func(settings testSettings, profile model.Profile) string {
+		made, err := New(settings).Generate(context.Background(),
+			model.Presentation{OwnerID: "owner-1", Title: "계획", Prompt: "성장", Language: "ko",
+				RequestedSlideCount: 1}, profile, template)
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		return deck.Decode(made.Slides[0].Content).Accent
+	}
+	// What this product seeds is nobody's choice: the template keeps its own.
+	if got := accentOf(testSettings{"branding.brand_color": seededBrandColor, "ai.provider": "fallback"},
+		model.Profile{Preferences: json.RawMessage(`{}`)}); got != "" {
+		t.Errorf("the seeded colour reached a slide as %q", got)
+	}
+	// A deployment that chose one says so, and it is used.
+	if got := accentOf(testSettings{"branding.brand_color": "#3456AB", "ai.provider": "fallback"},
+		model.Profile{Preferences: json.RawMessage(`{}`)}); got != "#3456AB" {
+		t.Errorf("a deployment's own colour reached a slide as %q", got)
+	}
+	// And a person's own colour wins over both.
+	if got := accentOf(testSettings{"branding.brand_color": "#3456AB", "ai.provider": "fallback"},
+		model.Profile{Preferences: json.RawMessage(`{"brandColor":"#0F62FE"}`)}); got != "#0F62FE" {
+		t.Errorf("an author's own colour reached a slide as %q", got)
+	}
+	// With nothing set anywhere, nothing is painted over.
+	if got := accentOf(testSettings{"ai.provider": "fallback"}, model.Profile{}); got != "" {
+		t.Errorf("a slide was given the colour %q with none chosen", got)
+	}
 }

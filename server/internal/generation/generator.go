@@ -1018,6 +1018,16 @@ func (e rejectedRequest) Error() string {
 	return fmt.Sprintf("AI provider status %d: %s", e.status, e.message)
 }
 
+// seededBrandColor is the colour this product ships with. A deployment that
+// never opened the branding screen still has it, so it is not a choice anybody
+// made — and repainting the components of every deck built on a customer's own
+// template, in a purple nobody picked, is not what that screen promises.
+const seededBrandColor = "#7C3AED"
+
+// withDefaultBrand fills in the deployment's own brand colour for an author who
+// has not chosen one, so a house colour reaches the components of every deck.
+// The colour this product seeds is left alone: a template's colours are the
+// customer's until somebody says otherwise.
 func (g *Generator) withDefaultBrand(ctx context.Context, profile model.Profile) model.Profile {
 	preferences := map[string]any{}
 	_ = json.Unmarshal(profile.Preferences, &preferences)
@@ -1030,16 +1040,24 @@ func (g *Generator) withDefaultBrand(ctx context.Context, profile model.Profile)
 	if g.settings == nil || g.settings.Get(ctx, "branding.brand_color", &color) != nil || !validHexColor(color) {
 		return profile
 	}
+	if strings.EqualFold(strings.TrimSpace(color), seededBrandColor) {
+		return profile
+	}
 	preferences["brandColor"] = strings.ToUpper(color)
 	profile.Preferences, _ = json.Marshal(preferences)
 	return profile
 }
 
-func fallbackAccent(position int) string {
-	colors := []string{"#7C3AED", "#0EA5E9", "#10B981", "#F59E0B"}
-	return colors[position%len(colors)]
-}
-
+// profileAccent is the colour an author chose for the components of their
+// decks — and nothing else.
+//
+// It used to answer with a colour whatever the author had said: the
+// deployment's own default when they had set nothing, and a rotating palette
+// when there was no deployment default either. That was harmless while nothing
+// read the value, and the moment the drawing started reading it, every deck on
+// every uploaded template would have had its components repainted in a purple
+// nobody picked. A template's colours are the customer's; a colour overrides
+// them only when a person actually chose one.
 func profileAccent(profile model.Profile, position int) string {
 	var preferences map[string]any
 	if json.Unmarshal(profile.Preferences, &preferences) == nil {
@@ -1049,7 +1067,7 @@ func profileAccent(profile model.Profile, position int) string {
 			}
 		}
 	}
-	return fallbackAccent(position)
+	return ""
 }
 
 func validHexColor(value string) bool {
