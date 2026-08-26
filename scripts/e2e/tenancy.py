@@ -131,6 +131,10 @@ if asset:
     for method, path in [("GET", f"/assets/{asset['id']}"), ("GET", f"/assets/{asset['id']}/content"),
                          ("DELETE", f"/assets/{asset['id']}")]:
         refused(bob, method, path)
+    # Its owner may, and a sweep that leaves its uploads behind fills an account
+    # with them: the library is what the writer offers a deck looking for a
+    # picture, so the leftovers of one run turn up on the slides of the next.
+    call(alice, "DELETE", f"/assets/{asset['id']}")
 
 status, snippet = call(alice, "POST", "/snippets", {"name": f"비밀 슬라이드 {RUN}",
                                                     "source": "# 비공개\n- 인수 후보\n"})

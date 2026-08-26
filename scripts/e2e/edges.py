@@ -122,9 +122,14 @@ call("POST", "/assets", files={"file": ("empty.png", b"", "image/png")}, expect=
 huge = b"\x89PNG\r\n\x1a\n" + b"0" * (17 << 20)
 call("POST", "/assets", files={"file": ("huge.png", huge, "image/png")}, expect=[413, 422])
 # An SVG is a document: it is accepted and served inert, never executed.
-call("POST", "/assets", files={"file": (f"evil-{RUN}.svg",
+sneaky = data_of(call("POST", "/assets", files={"file": (f"evil-{RUN}.svg",
      f'<svg xmlns="http://www.w3.org/2000/svg"><title>{RUN}</title><script>alert(1)</script></svg>'.encode(),
-     "image/svg+xml")}, expect=201)
+     "image/svg+xml")}, expect=201))
+if isinstance(sneaky, dict) and sneaky.get("id"):
+    # What a sweep uploads, a sweep takes away: the account's library is what
+    # the writer offers a deck when it looks for a picture, and one run's
+    # leftovers ended up on a slide of somebody's deck.
+    call("DELETE", f"/assets/{sneaky['id']}", expect=204)
 
 print("── templates at the edges ──")
 call("POST", "/templates", files={"file": ("notes.txt", b"not a package", "text/plain"),

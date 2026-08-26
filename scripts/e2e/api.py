@@ -1641,6 +1641,18 @@ if key and key.get("token"):
             failures.append(f"a read-only key writing gave {error.code}, expected 403")
     call("DELETE", f"/api-keys/{key['id']}", expect=[204, 200])
 
+# What a sweep uploads, a sweep takes away. The account's library is what the
+# writer offers a deck when it looks for a picture, so a run's leftovers end up
+# on somebody's slide — one did, on a deck written by the live model.
+print("── clearing what this run uploaded ──")
+call("DELETE", f"/assets/{asset_id}", expect=[204, 404])
+leftover = [a for a in (data_of(call("GET", "/assets?limit=200", expect=200)) or [])
+            if RUN in (a.get("name") or "")]
+checks += 1
+if leftover:
+    failures.append(f"this run left {len(leftover)} image(s) in the library: "
+                    f"{[a.get('name') for a in leftover][:3]}")
+
 print("── authentication and errors ──")
 request = urllib.request.Request(BASE + "/presentations")
 try:
