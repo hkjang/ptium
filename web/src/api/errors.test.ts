@@ -64,4 +64,12 @@ describe('what the server refused, in the reader’s words', () => {
     // And anything with no rule is still shown as the server wrote it.
     expect(errorText('', 'something nobody has written a rule for')).toBe('something nobody has written a rule for')
   })
+
+  it('says how many slides are allowed, not just that there are too many', () => {
+    // The author has one of the two numbers and needs the other.
+    const said = errorText('too_many_slides', 'The deck source produced 62 slides; this deployment allows 50')
+    expect(said).toContain('62장')
+    expect(said).toContain('50장')
+    expect(said).toContain('12장')
+  })
 })

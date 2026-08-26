@@ -925,6 +925,21 @@ if still:
 print("   trash emptied:", emptied.get("deleted"), "· the live deck is untouched")
 call("DELETE", f"/presentations/{kept['id']}?permanent=true", expect=[204, 404])
 
+# Somebody who wrote 62 slides has one of the two numbers and needs the other:
+# "more than this deployment allows" leaves them counting their own slides.
+too_many = data_of(call("POST", "/presentations", {"title": f"경계 {RUN}", "prompt": "점검",
+                                                   "language": "ko"}, expect=201)) or {}
+if too_many.get("id"):
+    long_source = "".join(f"# {n}번째 장\n@content\n- 요점 {n}\n\n" for n in range(1, 62))
+    status, refused = call("PUT", f"/presentations/{too_many['id']}/source", {"source": long_source},
+                           expect=422, note="a deck past the limit must say what the limit is")
+    said = ((refused or {}).get("error") or {}).get("message", "") if isinstance(refused, dict) else ""
+    checks += 1
+    if "61" not in said or not any(str(limit) in said for limit in (50, 60, 100, 200)):
+        failures.append(f"a deck past the limit was refused with {said!r}")
+    print("   past the limit:", said[:70])
+    call("DELETE", f"/presentations/{too_many['id']}?permanent=true", expect=[204, 404])
+
 print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
                                                       "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}

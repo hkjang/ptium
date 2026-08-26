@@ -131,6 +131,8 @@ const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
     (m) => `템플릿 이름은 비워 둘 수 없고 ${m[1]}자를 넘을 수 없습니다.`],
   [/^slide (\d+) does not exist$/, (m) => `${m[1]}번 슬라이드가 없습니다. 화면을 새로 고쳐 주세요.`],
   [/^invalid input: (.+)$/, (m) => byMessage[m[1]] || `입력한 값이 올바르지 않습니다: ${m[1]}`],
+  [/^The deck source produced (\d+) slides; this deployment allows (\d+)$/,
+    (m) => `이 코드는 ${m[1]}장을 만드는데, 이 배포는 ${m[2]}장까지만 허용합니다. ${Number(m[1]) - Number(m[2])}장을 줄이거나 덱을 나눠 주세요.`],
   [/^AI provider must be (.+)$/,
     (m) => `AI 공급자는 ${m[1].replace(/,? or /g, ' · ').replace(/, /g, ' · ')} 중 하나여야 합니다.`],
 ]

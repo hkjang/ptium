@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"unicode/utf8"
@@ -97,10 +98,14 @@ func (s *Server) putPresentationSource(writer http.ResponseWriter, request *http
 			"The deck source produced no slides", map[string]any{"warnings": compiled.Warnings})
 		return
 	}
-	if len(compiled.Slides) > s.maximumSlides(request.Context()) {
+	if allowed := s.maximumSlides(request.Context()); len(compiled.Slides) > allowed {
+		// Both numbers, because the author has one of them and needs the other:
+		// "more than this deployment allows" leaves somebody counting their own
+		// slides to work out how many to cut.
 		writeError(writer, request, http.StatusUnprocessableEntity, "too_many_slides",
-			"The deck source produced more slides than this deployment allows",
-			map[string]any{"slides": len(compiled.Slides)})
+			fmt.Sprintf("The deck source produced %d slides; this deployment allows %d",
+				len(compiled.Slides), allowed),
+			map[string]any{"slides": len(compiled.Slides), "allowed": allowed})
 		return
 	}
 	// The canvas layer belongs to the author, not to the text: objects they placed
