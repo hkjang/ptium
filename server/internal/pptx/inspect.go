@@ -301,6 +301,13 @@ func repeatedPoints(slide Slide) []Finding {
 			if longerThan(words[index], words[other], 2) {
 				continue
 			}
+			// The same label with a different number is a comparison, which is
+			// what a comparison slide is made of: "ROI: 0%" beside "ROI: 300%
+			// 예상" says the thing the slide exists to say. Reported as a
+			// repetition, it told a model to delete half of its own table.
+			if comparesFigures(first, sentences[other]) || sameMeasure(first, sentences[other]) {
+				continue
+			}
 			if wordOverlap(words[index], words[other]) >= 0.65 {
 				findings = append(findings, Finding{Kind: FindingRepeat, Advisory: true,
 					Detail: fmt.Sprintf("the same point twice: %q and %q",
@@ -309,6 +316,44 @@ func repeatedPoints(slide Slide) []Finding {
 		}
 	}
 	return findings
+}
+
+// figureToken is a number as a slide writes one: 12, 1,240, 99.95, 300%.
+var figureToken = regexp.MustCompile(`\d[\d,.]*%?`)
+
+// comparesFigures says two lines measure the same thing at two different
+// values, which is a comparison rather than a restatement.
+func comparesFigures(first, second string) bool {
+	left, right := figureToken.FindAllString(first, -1), figureToken.FindAllString(second, -1)
+	if len(left) == 0 || len(right) == 0 {
+		return false
+	}
+	if len(left) != len(right) {
+		return true
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return true
+		}
+	}
+	return false
+}
+
+// sameMeasure says two lines name the same thing and then say two different
+// things about it — "재고 부패/폐기 비용: +30% 증가" beside "재고 부패/폐기 비용:
+// 기준선". One side of a comparison is often the baseline, which carries no
+// number at all, so the figures alone cannot tell this apart.
+func sameMeasure(first, second string) bool {
+	left, leftSaid, leftOK := strings.Cut(first, ":")
+	right, rightSaid, rightOK := strings.Cut(second, ":")
+	if !leftOK || !rightOK {
+		return false
+	}
+	label := strings.TrimSpace(left)
+	if label == "" || label != strings.TrimSpace(right) {
+		return false
+	}
+	return strings.TrimSpace(leftSaid) != strings.TrimSpace(rightSaid)
 }
 
 // contentWords is a line reduced to the words that carry its meaning.

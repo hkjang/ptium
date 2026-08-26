@@ -81,3 +81,33 @@ func TestAnUnfinishedHeadingReachesTheScore(t *testing.T) {
 		t.Errorf("the line the room reads first is worth %d", weight)
 	}
 }
+
+// The same measure at two values is a comparison, which is what a comparison
+// slide is made of. A live model wrote a table of before-and-after figures and
+// the measurement called three of its rows repetitions — telling whoever acted
+// on it to delete half the table.
+func TestTheSameLabelWithADifferentNumberIsAComparison(t *testing.T) {
+	comparisons := [][2]string{
+		{"과잉 재고 품목 비율: 12%", "과잉 재고 품목 비율: 24% 증가"},
+		{"투자 대비 수익률 (ROI): 0%", "투자 대비 수익률 (ROI): 300% 예상"},
+		{"재고 부패/폐기 비용: +30% 증가", "재고 부패/폐기 비용: 기준선"},
+	}
+	for _, pair := range comparisons {
+		slide := Slide{Fields: map[string][]Paragraph{
+			SlotBody: {{Text: pair[0]}, {Text: pair[1]}},
+		}}
+		for _, finding := range repeatedPoints(slide) {
+			t.Errorf("%q beside %q was called a repetition: %s", pair[0], pair[1], finding.Detail)
+		}
+	}
+	// Saying the same thing twice in different words is still saying it twice.
+	slide := Slide{Fields: map[string][]Paragraph{
+		SlotBody: {
+			{Text: "협업 도구를 도입하면 팀의 커뮤니케이션 비용이 크게 줄어듭니다"},
+			{Text: "협업 도구 도입으로 팀 커뮤니케이션 비용이 크게 줄어듭니다"},
+		},
+	}}
+	if len(repeatedPoints(slide)) == 0 {
+		t.Error("the same point made twice was not reported")
+	}
+}
