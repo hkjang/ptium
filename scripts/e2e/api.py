@@ -1833,6 +1833,32 @@ if state["status"] == "completed":
     print("   generated deck defects:", (generated or {}).get("defects"), "advisories:", (generated or {}).get("advisories"))
     if (generated or {}).get("defects"):
         failures.append(f"the generated deck has defects: {generated.get('findings')}")
+    call("DELETE", f"/presentations/{draft['id']}", expect=204)
+
+# A brief that asks for a section is not a brief about the asking. "마지막에
+# 리스크 장을 꼭 넣어주세요" used to arrive as a slide titled with the sentence
+# itself, twice over.
+asked_deck = data_of(call("POST", "/presentations", {
+    "title": "", "prompt": "물류센터 자동화 도입을 임원에게 보고합니다. 마지막에 리스크 장을 꼭 넣어주세요.",
+    "requestedSlideCount": 8, "language": "ko", "templateId": first["id"]}, expect=201))
+call("POST", f"/presentations/{asked_deck['id']}/generate", {}, expect=[200, 202])
+for _ in range(240):
+    asked_state = data_of(call("GET", f"/presentations/{asked_deck['id']}", expect=200))
+    if asked_state["status"] in ("completed", "failed"):
+        break
+    time.sleep(1)
+if asked_state["status"] == "completed":
+    asked_source = (data_of(call("GET", f"/presentations/{asked_deck['id']}/source", expect=200)) or {}).get("source", "")
+    titles = [line[2:] for line in asked_source.splitlines() if line.startswith("# ")]
+    checks += 1
+    if not any("리스크" in title for title in titles):
+        failures.append(f"the section the brief asked for is not in the deck: {titles}")
+    checks += 1
+    said = [title for title in titles if "넣어" in title or "슬라이드" in title or "마지막에" in title]
+    if said:
+        failures.append(f"a slide is titled with the request itself: {said}")
+    print("   asked-for section:", " · ".join(titles)[:70])
+call("DELETE", f"/presentations/{asked_deck['id']}", expect=204)
 
 print("── api keys and mcp ──")
 made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}

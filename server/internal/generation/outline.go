@@ -33,6 +33,10 @@ type promptTopic struct {
 	Name string
 	// Frame is how the topic wants to be argued: what kind of slide it becomes.
 	Frame string
+	// Asked says the brief named this section outright — "리스크 장을 넣어주세요"
+	// — rather than the deck being about it. It gets a section like any other
+	// topic and stays out of the deck's title.
+	Asked bool
 }
 
 type promptFigure struct {
@@ -104,6 +108,85 @@ var instructionPattern = regexp.MustCompile(
 		`(?:board|teams?|execs?|executives?|leadership|management|committee|stakeholders?|` +
 		`customers?|clients?|investors?|partners?|staff|department|audience))`)
 
+// askedSection finds a slide the brief asks for by name.
+//
+// "마지막에 리스크 장을 꼭 넣어주세요" is somebody naming a section, and the deck
+// came out with a slide actually titled "리스크 장을 꼭 넣어주세요" — twice, plus a
+// "— 현황" of it. The English side was the same: "Include a slide on rollback"
+// became a heading three times over. What the sentence names is the subject;
+// the rest of it is the asking.
+//
+// A slide word on its own — 슬라이드, 섹션, 페이지 — is enough, because nobody
+// writes those about anything else. 장 is not: it ends a hundred ordinary words,
+// so it counts only in front of an actual request.
+var askedSection = regexp.MustCompile(
+	`([가-힣A-Za-z0-9][^,.。\n]{0,18}?)\s*(?:슬라이드|섹션|페이지)\s*(?:도|은|는|을|를|와|과|에|의)?\s*` +
+		`(?:꼭\s*|반드시\s*|하나\s*)?(?:넣어\s*주세요|넣어\s*줘|넣어라|넣어|넣고|포함해\s*주세요|포함해\s*줘|` +
+		`포함하고|포함해|포함|추가해\s*주세요|추가해\s*줘|추가하고|추가해|만들어\s*주세요|구성해\s*주세요)?|` +
+		`([가-힣A-Za-z0-9][^,.。\n]{0,18}?)\s*장\s*(?:도|은|는|을|를|와|과)?\s*` +
+		`(?:꼭\s*|반드시\s*)?(?:넣어\s*주세요|넣어\s*줘|넣어라|넣어|넣고|포함해\s*주세요|포함해\s*줘|` +
+		`포함하고|포함해|추가해\s*주세요|추가해\s*줘|추가하고|추가해)`)
+
+// askedSectionLatin is the same request written the other way round: English
+// puts the asking first and the subject after it.
+var askedSectionLatin = regexp.MustCompile(
+	`(?i)\b(?:include|add)\s+(?:an?|the)?\s*(?:slides?|sections?|pages?)\s+(?:on|about|for|covering)\s+` +
+		`([a-z][a-z0-9'\- ]{1,28}?)(?:\s+(?:and|plus)\b|[,.]|$)|` +
+		`\b(?:an?|the)\s+([a-z][a-z0-9'\-]{1,20})\s+(?:slides?|sections?|pages?)\b`)
+
+// wherePlaced is the "put it at the end" half of such a request: an instruction
+// about order, not a thing to have a slide about.
+var wherePlaced = regexp.MustCompile(`(?:맨\s*)?(?:마지막|처음|끝|앞|뒤|중간)\s*(?:에|에다|으로|로)?\s*`)
+
+// sectionsAskedFor is the names of the slides a brief asks for outright.
+func sectionsAskedFor(subject string) []string {
+	var asked []string
+	take := func(matches [][]string) {
+		for _, match := range matches {
+			for _, group := range match[1:] {
+				// "마지막에 리스크 장" says where to put it as well as what it is
+				// about, and a slide titled "마지막에 리스크" is neither.
+				group = wherePlaced.ReplaceAllString(group, " ")
+				if name := cleanTopic(strings.TrimSpace(group)); utf8.RuneCountInString(name) >= 2 {
+					asked = append(asked, name)
+					break
+				}
+			}
+		}
+	}
+	take(askedSection.FindAllStringSubmatch(subject, 4))
+	take(askedSectionLatin.FindAllStringSubmatch(subject, 4))
+	return asked
+}
+
+// withoutTheAsking takes the whole request out of the brief: both the asking
+// and the name it asks for, because neither is what the deck is about.
+//
+// The name comes back as a section of its own further down. Leaving it in the
+// subject instead made it part of the deck's title — a report on warehouse
+// automation ending up called "물류센터 자동화 도입을 합니다. 리스크".
+//
+// The comma matters. Two sections asked for in one breath — "일정 슬라이드와 예산
+// 슬라이드를 포함해 주세요" — are joined by the 와 the asking is written with, and
+// taking that out without leaving a separator ran the sentences either side of
+// it together.
+func withoutTheAsking(subject string) string {
+	subject = askedSection.ReplaceAllString(subject, ", ")
+	subject = askedSectionLatin.ReplaceAllString(subject, ", ")
+	subject = wherePlaced.ReplaceAllString(subject, " ")
+	subject = strandedVerb.ReplaceAllString(subject, "${1}")
+	return strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
+}
+
+// strandedVerb is the verb a sentence ends on once what it was doing has been
+// taken out of it.
+//
+// "물류센터 자동화 도입을 임원에게 보고합니다" loses "임원에게 보고" — that is the
+// audience, not the subject — and what is left ends "…도입을 합니다", which then
+// became the deck's title. The subject is the noun in front of the verb.
+var strandedVerb = regexp.MustCompile(
+	`\s*(?:을|를|이|가)?\s*(?:하고자\s*)?(?:합니다|입니다|했습니다|하였습니다|하겠습니다|됩니다|드립니다|한다|이다)\s*([.。,]|$)`)
+
 // periodPattern finds a stated timeframe, which belongs on the cover.
 var periodPattern = regexp.MustCompile(
 	`(?i)(20\d{2}\s*[년年]?\s*(상반기|하반기|上半期|下半期|[1-4]\s*분기|[1-9]|1[0-2])?\s*(월|月|분기|四半期)?)|((FY|fy)\s?20\d{2})|(20\d{2}\s*[-~]\s*20\d{2})`)
@@ -168,6 +251,11 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	}
 
 	subject := instructionPattern.ReplaceAllString(prompt, " ")
+	// After the counts and the audience are out of the way, what is left of a
+	// request for a section is the section's name. It is taken out here and put
+	// back as a section below.
+	asked := sectionsAskedFor(subject)
+	subject = withoutTheAsking(subject)
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
 	subject = cleanTopic(subject)
 	if subject == "" {
@@ -212,7 +300,34 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	if len(outline.Topics) == 0 {
 		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frameFor(subject)}}
 	}
+	// A section somebody asked for by name is a section the deck has, whatever
+	// else the brief is about.
+	for _, name := range asked {
+		if alreadyATopic(name, outline.Topics) {
+			continue
+		}
+		frame := frameFor(name)
+		if frame == frameSituation {
+			frame = defaultFrames[len(outline.Topics)%len(defaultFrames)]
+		}
+		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame, Asked: true})
+	}
 	return outline
+}
+
+// alreadyATopic says whether the deck is going to argue this subject anyway.
+func alreadyATopic(name string, topics []promptTopic) bool {
+	wanted := strings.ToLower(strings.Join(strings.Fields(name), ""))
+	if wanted == "" {
+		return true
+	}
+	for _, topic := range topics {
+		held := strings.ToLower(strings.Join(strings.Fields(topic.Name), ""))
+		if strings.Contains(held, wanted) || strings.Contains(wanted, held) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitTopics divides a brief into the things it is about.
