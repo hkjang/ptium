@@ -61,7 +61,9 @@ func unfinishedHeading(heading string) bool {
 	}
 	words := strings.Fields(trimmed)
 	last := words[len(words)-1]
-	if latinTail[strings.ToLower(last)] && len(words) > 1 {
+	// Written in lower case, because that is how a word doing that job is
+	// written. "Q & A" ends on a capital A and is a slide everybody has seen.
+	if latinTail[last] && last == strings.ToLower(last) && len(words) > 1 {
 		return true
 	}
 	if unfinishedEnding.MatchString(trimmed) {

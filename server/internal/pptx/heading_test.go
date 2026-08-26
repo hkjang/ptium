@@ -34,6 +34,11 @@ func TestAHeadingThatStopsMidSentenceIsMeasured(t *testing.T) {
 		"Payment platform migration",
 		"Decisions required",
 		"Q3 results and Q4 outlook",
+		// Twenty-six decks imported from real files produced two complaints, and
+		// both were this slide.
+		"Q & A",
+		"Q&A",
+		"Plan A",
 		"매출을", // one word, badly named but not cut off
 	}
 	for _, heading := range finished {
