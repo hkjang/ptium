@@ -291,3 +291,52 @@ func TestAScannedPDFSaysWhyItCannotBeRead(t *testing.T) {
 		}
 	}
 }
+
+// How many pages were pictures, said as a count.
+//
+// A 35-page deck exported as images imported as two slides, and the reader said
+// "33쪽은 그림뿐이라 글자를 가져오지 못했습니다". In Korean that is how a page
+// number reads: its owner was told the thirty-third page had been lost, when 33
+// of the 35 had. The proportion is the whole news, and when it is most of the
+// file the deck is not what they asked for however faithfully it was built.
+func TestTheReaderSaysHowManyPagesWerePictures(t *testing.T) {
+	t.Parallel()
+	// Four pages, one of which has text.
+	document, err := Read("그림 보고서.pdf", pdfOf(
+		nil, []string{"데모시연", "여는 문장입니다."}, nil, nil,
+		[]string{"맺음말", "닫는 문장입니다."}, nil))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	said := strings.Join(document.Warnings, " | ")
+	if !strings.Contains(said, "6쪽 가운데 4쪽") {
+		t.Errorf("the reader does not say how many of how many were pictures: %q", said)
+	}
+	for _, warning := range document.Warnings {
+		if strings.HasPrefix(warning, "4쪽은") {
+			t.Errorf("a count is still being said as a page number: %q", warning)
+		}
+	}
+	if !strings.Contains(said, "대부분 그림입니다") {
+		t.Errorf("a file that is mostly pictures does not say so: %q", said)
+	}
+	if !strings.Contains(said, "원본 문서") {
+		t.Errorf("nothing tells the reader what to upload instead: %q", said)
+	}
+
+	// One picture page among many is worth saying and is not "mostly pictures".
+	mostly, err := Read("좋은 보고서.pdf", pdfOf(
+		[]string{"도입", "여는 문장입니다."}, []string{"배경", "둘째 쪽입니다."},
+		[]string{"현황", "셋째 쪽입니다."}, []string{"계획", "넷째 쪽입니다."},
+		[]string{"예산", "다섯째 쪽입니다."}, nil))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	saidLittle := strings.Join(mostly.Warnings, " | ")
+	if !strings.Contains(saidLittle, "6쪽 가운데 1쪽") {
+		t.Errorf("one picture page is not reported: %q", saidLittle)
+	}
+	if strings.Contains(saidLittle, "대부분 그림입니다") {
+		t.Errorf("a readable file was called mostly pictures: %q", saidLittle)
+	}
+}

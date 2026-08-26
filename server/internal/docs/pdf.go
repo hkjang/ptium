@@ -73,8 +73,19 @@ func readPDF(filename string, data []byte) (Document, error) {
 		return document, err
 	}
 	if blank > 0 {
+		// The count said as a count. "33쪽은 그림뿐이라…" is how a page number
+		// reads in Korean, so a deck built from a 35-page file where 33 pages
+		// are pictures told its owner that one page — the thirty-third — had
+		// been lost. What arrived was two slides.
 		document.Warnings = append(document.Warnings,
-			fmt.Sprintf("%d쪽은 그림뿐이라 글자를 가져오지 못했습니다", blank))
+			fmt.Sprintf("%d쪽 가운데 %d쪽은 그림뿐이라 글자를 가져오지 못했습니다", len(pages), blank))
+		// And when that is most of the document, the deck is not what its owner
+		// asked for however faithfully it was built. Say what to do about it, in
+		// the same words the file with no text at all is answered with.
+		if blank*2 >= len(pages) {
+			document.Warnings = append(document.Warnings,
+				"이 파일은 대부분 그림입니다. 원본 문서나 텍스트가 살아 있는 PDF로 올리면 전부 가져옵니다")
+		}
 	}
 	// A document too big to unpack in one go is not a document whose later
 	// pages are blank. Saying "그림뿐" about pages nobody looked at would send
