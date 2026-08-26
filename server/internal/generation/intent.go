@@ -169,7 +169,26 @@ var audienceRequests = []struct {
 	{"신입", regexp.MustCompile(`신입|온보딩|onboarding|new hires?`)},
 }
 
+// addressedTo is somebody saying outright who the deck is for: "팀에 공유할",
+// "임원에게 보고합니다".
+var addressedTo = regexp.MustCompile(
+	`([가-힣A-Za-z]{1,10}?)\s*(?:에게|께|한테|에)\s*(?:보고|공유|발표|설명|제출|안내|소개|배포)`)
+
 func promptAudience(prompt string) string {
+	// What the brief says the deck is for beats what the brief is about. A
+	// note on onboarding new developers "팀에 공유할 자료" is written for the
+	// team; reading 신입 out of the subject addressed it to the new joiners.
+	if said := addressedTo.FindStringSubmatch(prompt); said != nil {
+		named := strings.TrimSpace(said[1])
+		for _, request := range audienceRequests {
+			if request.pattern.MatchString(named) {
+				return request.audience
+			}
+		}
+		if named != "" {
+			return named
+		}
+	}
 	for _, request := range audienceRequests {
 		if request.pattern.MatchString(prompt) {
 			return request.audience

@@ -89,8 +89,8 @@ var instructionPattern = regexp.MustCompile(
 		// "이사회에 보고" addresses the room with 에 rather than 에게, and leaving
 		// it in ended a slide title with "…이사회에" and then wrote "이사회에에".
 		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
-		`([가-힣]{2,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
-		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)\s*(용|자료)?(으로|로|를|을|에)?)|` +
+		`([가-힣]{1,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|한|하여|하고|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
+		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?\s*(용|자료)?(으로|로|를|을|에)?)|` +
 		`(자료(로|를)?\s*(만들|작성|정리))|` +
 		// The verbs a request for a section is written with. What was a request
 		// has already been read by then; what is left is an instruction with no
@@ -202,7 +202,7 @@ func justAPeriod(clause string) bool {
 // it — in digits or in words.
 var slideCount = regexp.MustCompile(
 	`(?i)(\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|slides?|pages?)` +
-		`(짜리|정도|이내|분량)?(로|으로|의|을|를)?`)
+		`(\s*(짜리|정도|안팎|이내|이상|분량|내외))?(\s*(로|으로|의|을|를))?`)
 
 // justACount says the name is how many slides rather than what one is about.
 // "세 장을 넣어줘" asks for three slides, not for a section called 세.
@@ -248,6 +248,15 @@ func askedFor(subject string) (string, []string) {
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
 	return strings.TrimSpace(strings.Join(strings.Fields(subject), " ")), names
 }
+
+// audienceAddress is who a sentence is addressed to, at the front of it.
+var audienceAddress = regexp.MustCompile(
+	`(?:임원|경영진|이사회|고객|클라이언트|투자자|개발팀|엔지니어링팀|기획팀|영업팀|운영팀|` +
+		`전사|사내|본부|직원|신입|팀원|팀)\s*(?:에게|께|한테|에)\s`)
+
+// tellingSomebody says the sentence is addressed to a room at all, whatever
+// distance its verb sits at from the address.
+var tellingSomebody = regexp.MustCompile(`(?:보고|발표|공유|설명|제출|안내|소개|배포)(?:할|하는|한|해|하여|하고|합니다|해서|용|서)`)
 
 // periodPattern finds a stated timeframe, which belongs on the cover.
 var periodPattern = regexp.MustCompile(
@@ -337,6 +346,12 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	// longer a request, just a subject reading "Q&A 슬라이드 추가".
 	subject, asked := askedFor(prompt)
 	subject = instructionPattern.ReplaceAllString(subject, " ")
+	// The room can be named at the front of a sentence whose verb comes at the
+	// end: "개발팀에 배포 절차를 설명하는 자료" is addressed to the development
+	// team, and the deck was titled "개발팀에 배포 절차".
+	if tellingSomebody.MatchString(prompt) {
+		subject = audienceAddress.ReplaceAllString(subject, " ")
+	}
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
 	subject = tidySeparators(subject)
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))

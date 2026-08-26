@@ -350,6 +350,43 @@ func TestATopicIsNotNamedFromTheMiddleOfAClause(t *testing.T) {
 	}
 }
 
+// An ordinary brief, driven through the writer end to end: what the deck is
+// called, who it is for, how long it is.
+//
+// "신입 개발자 온보딩 절차 개선안을 팀에 공유할 자료로 5장 정도로 만들어줘" produced
+// a deck titled "절차 개선안을 팀에 할 자료로 정도로", addressed to 신입, with every
+// slide headed "할 자료로 정도로". Three separate holes: 공유할 lost its ending
+// to the instruction rule, 팀에 was one syllable short of being an audience,
+// "5장 정도로" left its 정도로 behind, and the subject's own words named the room.
+func TestABriefIsReadTheWayItIsWritten(t *testing.T) {
+	for _, probe := range []struct {
+		brief    string
+		title    string
+		audience string
+		count    int
+	}{
+		{"신입 개발자 온보딩 절차 개선안을 팀에 공유할 자료로 5장 정도로 만들어줘",
+			"신입 개발자 온보딩 절차 개선안", "팀", 5},
+		{"고객 이탈률 개선을 위한 리텐션 전략을 임원에게 보고합니다",
+			"고객 이탈률 개선을 위한 리텐션 전략", "임원", 0},
+		{"2026년 상반기 실적을 이사회에 보고하는 자료로 만들어 주세요",
+			"2026년 상반기 실적", "임원", 0},
+		{"보안 정책 변경을 전사에 안내할 자료 10장", "보안 정책 변경", "전사", 10},
+		{"개발팀에 배포 절차를 설명하는 자료", "배포 절차", "개발팀", 0},
+	} {
+		if got := TitleFor(probe.brief, "", "ko"); got != probe.title {
+			t.Errorf("TitleFor(%q) = %q, want %q", probe.brief, got, probe.title)
+		}
+		intent := ParseIntent(probe.brief)
+		if intent.Audience != probe.audience {
+			t.Errorf("%q is addressed to %q, want %q", probe.brief, intent.Audience, probe.audience)
+		}
+		if intent.SlideCount != probe.count {
+			t.Errorf("%q asks for %d slides, want %d", probe.brief, intent.SlideCount, probe.count)
+		}
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {
