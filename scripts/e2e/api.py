@@ -616,6 +616,52 @@ if linked:
         print(f"   bold title read as: {name!r}")
         call("DELETE", f"/presentations/{emphatic_id}", expect=204)
 
+    # A designer puts the section a slide belongs to in the corner of every
+    # slide of that section, and the slide's own heading goes underneath. Read as
+    # drawn, a twenty-two slide deck came in with fifteen slides all called
+    # "3. 아이디어 구현" — an outline nobody can use. The slide keeps the name it
+    # has when there is nothing else on it to be called.
+    header_deck = data_of(call("POST", "/presentations", {"title": f"머리글 {RUN}", "prompt": "점검",
+                                                          "language": "ko"}, expect=201))
+    call("PUT", f"/presentations/{header_deck['id']}/source",
+         {"source": "# 3. 아이디어 구현\n- 키워드 추출\n- 형태소 기준으로 뽑습니다\n"
+                    "\n# 3. 아이디어 구현\n- 화자 분리\n- 두 사람을 나눕니다\n"
+                    "\n# 3. 아이디어 구현\n- 감정 분석\n- 말투로 가늠합니다\n"
+                    "\n# 4. 기대효과\n- 비용 절감\n"}, expect=200)
+    _, headed = call("GET", f"/presentations/{header_deck['id']}/export?format=pptx", raw=True, expect=200)
+    bare = io.BytesIO()
+    with zipfile.ZipFile(io.BytesIO(headed)) as original:
+        with zipfile.ZipFile(bare, "w", zipfile.ZIP_DEFLATED) as out:
+            for item in original.infolist():
+                body = original.read(item.filename)
+                if b"deckSource" in body:
+                    if item.filename.endswith(".rels") or item.filename.endswith("[Content_Types].xml"):
+                        body = re.sub(rb"<Relationship[^>]*deckSource[^>]*/>", b"", body)
+                        body = re.sub(rb"<Override[^>]*ptiumSource[^>]*/>", b"", body)
+                    else:
+                        continue
+                out.writestr(item, body)
+    marked = data_of(call("POST", "/presentations/import",
+                          files={"file": (f"머리글-{RUN}.pptx", bare.getvalue(),
+                                          "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                          expect=201)) or {}
+    marked_id = ((marked.get("presentation") or {}).get("id")) or ""
+    if marked_id:
+        written = (data_of(call("GET", f"/presentations/{marked_id}/source", expect=200)) or {}).get("source", "")
+        names = [line[2:].strip() for line in written.splitlines() if line.startswith("# ")]
+        checks += 1
+        if names.count("3. 아이디어 구현") > 1:
+            failures.append(f"a section marker became the name of {names.count('3. 아이디어 구현')} slides: {names}")
+        checks += 1
+        if not {"키워드 추출", "화자 분리", "감정 분석"} <= set(names):
+            failures.append(f"the slides' own headings are not their names: {names}")
+        checks += 1
+        if "머리글" not in " ".join(marked.get("warnings") or []):
+            failures.append(f"a repeated header was dropped without saying so: {marked.get('warnings')}")
+        print(f"   headers read as: {names}")
+        call("DELETE", f"/presentations/{marked_id}", expect=204)
+    call("DELETE", f"/presentations/{header_deck['id']}", expect=204)
+
     # A slide built in columns is read column by column. Every second real deck
     # has a roadmap drawn as stages side by side, and reading it down the page
     # interleaves the stages into one another — worse when the designer drew the

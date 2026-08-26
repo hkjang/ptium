@@ -155,7 +155,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 		switch phType {
 		case "title", "ctrTitle":
 			if slide.Title == "" {
-				slide.Title = plainly(joinLines(lines))
+				slide.Title = WithoutInlineMarkup(joinLines(lines))
 			}
 			continue
 		case "subTitle":
@@ -178,7 +178,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 	}
 	// A slide with no title placeholder still has a title: its first line.
 	if slide.Title == "" && len(slide.Bullets) > 0 {
-		slide.Title = plainly(slide.Bullets[0].Text)
+		slide.Title = WithoutInlineMarkup(slide.Bullets[0].Text)
 		slide.Bullets = slide.Bullets[1:]
 	}
 	// A picture and a table are read from the part itself: the shape parser does
@@ -547,12 +547,12 @@ func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine 
 	return lines
 }
 
-// plainly takes the inline markup back out of a line.
+// WithoutInlineMarkup takes the inline markup back out of a line.
 //
 // A heading and a subtitle are slots, not prose: the deck source has no way to
 // bold part of a heading, so "**목 차**" is drawn with its asterisks and shown
 // with them in the deck list. Most real decks bold their title.
-func plainly(text string) string {
+func WithoutInlineMarkup(text string) string {
 	text = importedLinkPattern.ReplaceAllString(text, "$1")
 	text = importedBoldPattern.ReplaceAllString(text, "$1")
 	text = importedItalicPattern.ReplaceAllString(text, "$1")

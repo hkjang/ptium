@@ -28,6 +28,8 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
 	pictures, placed, tables, charts, plots, wordless := 0, 0, 0, 0, 0, 0
+	slides, headers := withoutRunningHeaders(imported.Slides)
+	imported.Slides = slides
 	for index, slide := range imported.Slides {
 		if wordlessSlide(slide) {
 			wordless++
@@ -106,6 +108,10 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		charts += slide.OtherCharts
 	}
 	var warnings []string
+	for _, header := range headers {
+		warnings = append(warnings, fmt.Sprintf(
+			"슬라이드마다 반복되던 머리글 %q은 가져오지 않고, 각 장의 제목을 그 아래에서 찾았습니다", header))
+	}
 	// A deck exported as pictures — one image filling each slide, which is what
 	// several of the tools people generate decks with produce — reads as a run
 	// of slides called "3번 슬라이드" with nothing on them. That is what the file
@@ -139,6 +145,59 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			"차트 %d개는 가져오지 않았습니다. 숫자를 ::bars 나 ::line 으로 적으면 다시 그려집니다", charts))
 	}
 	return builder.String(), warnings
+}
+
+// withoutRunningHeaders takes the section marker off the slides that carry one.
+//
+// A deck of twenty-two slides had fifteen of them titled "3. 아이디어 구현": the
+// designer put the section it belongs to in the corner of every slide, and the
+// slide's own heading — "키워드 추출", "화자 분리" — sat in the body underneath.
+// Read as it was drawn, the deck's outline is five slides with the same name.
+//
+// A repeated line is only a header when the slide has a name of its own under
+// it. A weekly report whose every slide is headed "주간업무 추진실적 및 계획" over
+// the same subheading has nothing else to be called, and keeps what it says.
+func withoutRunningHeaders(slides []pptx.ImportedSlide) ([]pptx.ImportedSlide, []string) {
+	if len(slides) < 4 {
+		return slides, nil
+	}
+	most := len(slides) / 2
+	titles := map[string]int{}
+	lines := map[string]int{}
+	for _, slide := range slides {
+		if title := strings.TrimSpace(slide.Title); title != "" {
+			titles[title]++
+		}
+		for _, bullet := range slide.Bullets {
+			lines[strings.TrimSpace(bullet.Text)]++
+		}
+	}
+	var headers []string
+	seen := map[string]bool{}
+	result := make([]pptx.ImportedSlide, len(slides))
+	copy(result, slides)
+	for index, slide := range result {
+		title := strings.TrimSpace(slide.Title)
+		if title == "" || titles[title] <= most {
+			continue
+		}
+		for at, bullet := range slide.Bullets {
+			name := strings.TrimSpace(bullet.Text)
+			if name == "" || lines[name] > most {
+				continue
+			}
+			// A heading is a slot: the emphasis a designer put on the line
+			// cannot be drawn in one, and would be printed as characters.
+			result[index].Title = pptx.WithoutInlineMarkup(name)
+			result[index].Bullets = append(append([]pptx.ImportedLine{}, slide.Bullets[:at]...), slide.Bullets[at+1:]...)
+			if !seen[title] {
+				seen[title] = true
+				headers = append(headers, title)
+			}
+			break
+		}
+	}
+	return result, headers
 }
 
 // wordlessSlide is a slide that carried nothing to read: no title, no subtitle,
