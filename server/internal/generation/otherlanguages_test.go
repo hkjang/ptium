@@ -45,6 +45,37 @@ func TestNamingTheRoomDoesNotSwallowTheSubject(t *testing.T) {
 	}
 }
 
+// The other half of reading a request: a sentence that merely opens with one of
+// those words is a subject. Every line here came back mangled from the first
+// attempt at this — "Make or buy decision for our data platform" became a deck
+// about "or buy decision", "Generate reports faster" became "s faster", 请示
+// lost its 请, and a Chinese rule reached into Japanese and made 整理整頓 into
+// 整頓. Stripping too much is the same defect as stripping too little; it is
+// just harder to notice, because the title still reads like a title.
+func TestASubjectThatOpensLikeARequestIsStillASubject(t *testing.T) {
+	for _, want := range []struct{ language, brief string }{
+		{"en", "Make or buy decision for our data platform"},
+		{"en", "Write-ahead logging in PostgreSQL explained"},
+		{"en", "Create better onboarding for new hires"},
+		{"en", "Generate reports faster with the new pipeline"},
+		{"en", "Build vs buy analysis for the CRM"},
+		{"zh", "请示流程改进方案"},
+		{"zh", "整理需求的标准流程"},
+		{"ja", "資料作成プロセスの改善"},
+		{"ja", "整理整頓の社内ルール"},
+		{"ja", "配送の方向性と改善案"},
+		{"ko", "보고 체계 개선 방안"},
+		{"ko", "분석 대상 데이터셋 선정 기준"},
+		{"ko", "월간 보고 자동화 방안"},
+	} {
+		outline := outlinePrompt(want.brief, "", copyFor(want.language))
+		if outline.Subject != want.brief {
+			t.Errorf("[%s] a subject was read as an instruction\n  brief   %q\n  subject %q",
+				want.language, want.brief, outline.Subject)
+		}
+	}
+}
+
 func copyFor(language string) languageCopy {
 	switch language {
 	case "ja":

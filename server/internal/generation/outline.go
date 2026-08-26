@@ -125,8 +125,14 @@ var instructionPattern = regexp.MustCompile(
 		// leaving "줘" put the imperative on the cover and on every heading:
 		// "사내 PostgreSQL 전환 타당성 검토 결과를 줘". The auxiliary that finishes
 		// the request belongs to the request.
-		`(((임원|경영진|고객|투자자|내부|사내|팀)\s*)?(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?` +
+		// "보고 체계 개선 방안" is about a reporting process, and with every part
+		// after 보고 optional the rule took the word out of it: the deck came
+		// back called "체계 개선 방안". An instruction says who it is for, or how
+		// it is being done, or that it is 용 — a bare noun says none of those.
+		`((임원|경영진|고객|투자자|내부|사내|팀)\s*(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?` +
 		askedNicely + `\s*(용|자료)?(으로|로|를|을|에)?)|` +
+		`((보고|발표|공유|제출|설명)((할|하는|한|해|하여|하고|합니다|해서)` + askedNicely +
+		`\s*(용|자료)?(으로|로|를|을|에)?|용(으로|로)?|\s*자료(로|를)?))|` +
 		`(자료(로|를)?\s*(만들|작성|정리|준비|구성)(어|아|여)?\s*(줘|주세요|주시고|주라|줄래|주실래요)?)|` +
 		// The verbs a request for a section is written with. What was a request
 		// has already been read by then; what is left is an instruction with no
@@ -150,10 +156,21 @@ var instructionPattern = regexp.MustCompile(
 		// anchored so it can only take the opening of a brief, and it must come
 		// before the bare verbs below, which would otherwise match first and
 		// take only their own word.
+		// What follows the verb is not optional. With every part of it allowed
+		// to be empty the rule matched any sentence that opened with one of
+		// these words, and "Make or buy decision for our data platform" became
+		// a deck about "or buy decision". A request says who it is for ("me")
+		// or what it wants ("a 10 slide deck about"); a subject does neither.
 		`^\s*(?:please\s+)?(?:write|make|create|generate|prepare|draft|build|put\s+together|give|send)\s+` +
-		`(?:me\s+)?(?:an?|the)?\s*(?:short|quick|brief|detailed|simple|rough)?\s*` +
+		`(?:` +
+		`me\s+(?:an?|the)?\s*(?:short|quick|brief|detailed|simple|rough)?\s*` +
 		`(?:\d{1,3}[-\s]?(?:slide|page)s?\s+)?(?:deck|presentation|slides?|report|summary|briefing|overview)?\s*` +
-		`(?:about|on|covering|regarding|explaining)?\s*|` +
+		`(?:about|on|covering|regarding|explaining)?` +
+		`|(?:an?|the)\s+(?:short|quick|brief|detailed|simple|rough)?\s*` +
+		`(?:\d{1,3}[-\s]?(?:slide|page)s?\s+)?(?:deck|presentation|slides?|report|summary|briefing|overview)` +
+		`\s*(?:about|on|covering|regarding|explaining)?` +
+		`|(?:\d{1,3}[-\s]?(?:slide|page)s?\s+)(?:deck|presentation|slides?)\s*(?:about|on|covering)?` +
+		`)\s*|` +
 		// Japanese and Chinese are offered on the same screen as Korean and
 		// English, and neither had any instruction reading at all: "新しい採用計画
 		// を8枚でまとめてください" became, in full, the title of the deck it asked
@@ -168,11 +185,23 @@ var instructionPattern = regexp.MustCompile(
 		`((経営層|役員|取締役|上司|お客様|顧客|社内|チーム|部門|部署|投資家|一般|新入社員|開発チーム|営業)` +
 		`\s*(向けに|向けて|向け|宛て))|` +
 		`(について|に関して|に関する)|` +
-		`(请用|请帮我|请|帮我|麻烦|劳烦)|` +
+		// 请 opens a request only when a request verb follows it: "请示流程" is a
+		// subject that begins with the same character, and stripping it left
+		// "示流程". The same for 整理 and 准备, ordinary verbs in a subject unless
+		// the sentence is asking for something — and Japanese words too, so a
+		// loose rule here reached into Japanese briefs and made 整理整頓 into 整頓.
+		`(^\s*(请|麻烦|劳烦)\s*(用|帮我|帮忙)?\s*(\d{1,3}\s*(页|张|頁)\s*)?` +
+		`(做成|做一个|做一份|写一份|制作|整理|准备|总结|归纳)(一下)?)|` +
+		`(^\s*帮我\s*(做成|做一个|做一份|写一份|制作|整理|准备|总结|归纳)(一下)?)|` +
 		`(^\s*把)|` +
-		`((做成|做一个|做一份|写一份|制作|整理|准备)(一下)?)|` +
+		`((做成|做一个|做一份|写一份)|(整理|准备|制作|总结|归纳)\s*一下)|` +
 		`((的)?\s*(汇报|报告|報告|演示|PPT|ppt)\s*$)|` +
-		`please|make me|create|generate|write|prepare|summari[sz]e|` +
+		// The bare verbs that remain are the ones that cannot be anything but a
+		// request. "write", "create", "generate" and "prepare" open ordinary
+		// sentences — "Generate reports faster with the new pipeline" is a
+		// subject, and taking the first word left "s faster with the new
+		// pipeline".
+		`please\s+|make me\s+|summari[sz]e\s+|` +
 		// "A board update on …", "An update for the team on …": in English the
 		// purpose comes first and the subject follows it. Left in, the purpose
 		// became the subject, and every slide in the deck was titled with the
