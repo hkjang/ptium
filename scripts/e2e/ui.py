@@ -244,6 +244,32 @@ with sync_playwright() as play:
     for kind, message in problems:
         failures.append(f"create: {kind} {message}")
 
+    # A template decides what a deck can be, and the screen that shows a design
+    # now says so before forty decks go through it.
+    print("── what a template will do to a deck ──")
+    problems.clear()
+    page.goto(f"{BASE}/templates", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    page.get_by_role("button", name="레이아웃 보기").first.click()
+    page.wait_for_timeout(2500)
+    page.screenshot(path=f"{OUT}/ui-template-health.png")
+    if page.locator(".template-health").count() == 0:
+        failures.append("a template's detail says nothing about what it will do to a deck")
+    else:
+        chips = page.locator(".template-health-components span")
+        if chips.count() != 4:
+            failures.append(f"the template report shows {chips.count()} component(s), expected 4")
+        elif page.locator(".template-health-components .drawn").count() == 0:
+            failures.append("a shipped design is reported as drawing nothing")
+        verdict = page.locator(".template-health-head").inner_text()
+        print("   ", " ".join(verdict.split()), "|", " ".join(chips.all_inner_texts()))
+        if "점검하는 중" in verdict:
+            failures.append("the template report never arrived")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    for kind, message in problems:
+        failures.append(f"templates: {kind} {message}")
+
     print("── search and the command palette ──")
     problems.clear()
     page.goto(f"{BASE}/dashboard", wait_until="networkidle")

@@ -133,6 +133,12 @@ try:
             failures.append(f"a deck generated into an uploaded template has defects: {inspected['data']['findings']}")
 except urllib.error.HTTPError as error:
     failures.append(f"uploading an exported deck as a template failed: {error.code} {error.read()[:300]!r}")
+else:
+    # A sweep that leaves its uploads behind changes what the next sweep
+    # measures: the account's own template sorts ahead of the shipped ones and
+    # becomes the default for the next run's decks.
+    api(f"/api/v1/presentations/{draft_id}", "DELETE", raw=True)
+    api(f"/api/v1/templates/{template['id']}", "DELETE", raw=True)
 
 print("── a deck someone already has, read back in ──")
 # The deck exported above is a real PowerPoint file; importing it is the round

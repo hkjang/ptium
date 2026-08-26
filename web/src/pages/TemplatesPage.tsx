@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { TemplateFilterChips, filterTemplates, orderTemplates, templateTagGroups } from '../components/TemplateChooser'
 import { SlidePreview } from '../components/SlidePreview'
+import { warningText } from './editor/model/findings'
 import { Badge, Button, EmptyState, ErrorState, Field, Input, LoadingState, Modal, Textarea } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
@@ -227,6 +228,62 @@ function TemplateCard({ template, onOpen, onFavorite, onToggleScope, onDelete }:
   )
 }
 
+// The four things a brief most often asks to be drawn. A template that cannot
+// hold them turns each one into a paragraph, and until this said so, the way to
+// find out was to generate forty decks.
+const componentOrder = ['steps', 'kpi', 'shareBar', 'table']
+const componentNames: Record<string, string> = {
+  steps: '단계', kpi: '지표', shareBar: '비중', table: '표',
+}
+
+// The reader of this panel never wrote the probe deck, so "line 37 (slide 7):"
+// points at nothing they can look at. What is left is the sentence about their
+// own design, which is the whole reason the panel is here.
+function aboutTheTemplate(warning: string) {
+  return warningText(warning).replace(/^\s*line\s+\d+\s*(\(slide\s*\d+\))?\s*:\s*/i, '')
+}
+
+function healthWord(report: Record<string, unknown> | null) {
+  if (!report) return { tone: 'neutral' as const, text: '점검하는 중…' }
+  const drawn = Object.values((report.components || {}) as Record<string, boolean>)
+  const missing = drawn.filter((can) => !can).length
+  const defects = Number(report.defects ?? 0)
+  if (defects > 0) return { tone: 'danger' as const, text: `이 템플릿에서 ${defects}곳이 잘못 그려집니다` }
+  if (missing === drawn.length) return { tone: 'danger' as const, text: '컴포넌트가 하나도 그려지지 않습니다' }
+  if (missing > 0) return { tone: 'warning' as const, text: `${missing}종류가 그림 대신 글로 나갑니다` }
+  return { tone: 'success' as const, text: '덱이 이 템플릿에 그대로 들어갑니다' }
+}
+
+function TemplateHealthPanel({ template }: { template: Template }) {
+  const [report, setReport] = useState<Record<string, unknown> | null>(null)
+  const [failed, setFailed] = useState('')
+  useEffect(() => {
+    setReport(null); setFailed('')
+    api.templateHealth(template.id).then(setReport).catch((err) => setFailed(displayError(err)))
+  }, [template.id])
+  if (failed) return <div className="template-health"><p className="muted-note">{failed}</p></div>
+  const verdict = healthWord(report)
+  const components = (report?.components || {}) as Record<string, boolean>
+  const warnings = (report?.warnings || []) as string[]
+  return <div className="template-health">
+    <div className="template-health-head">
+      <strong>이 템플릿에 덱을 넣으면</strong>
+      <Badge tone={verdict.tone}>{verdict.text}</Badge>
+    </div>
+    {report && <>
+      <div className="template-health-components">
+        {componentOrder.filter((kind) => kind in components).map((kind) => [kind, components[kind]] as const)
+          .map(([kind, drawn]) => <span key={kind} className={drawn ? 'drawn' : 'as-text'}>
+          {componentNames[kind] || kind}{drawn ? '' : ' · 글로'}</span>)}
+      </div>
+      {warnings.length > 0 && <ul className="template-health-notes">
+        {warnings.slice(0, 4).map((warning) => <li key={warning}>{aboutTheTemplate(warning)}</li>)}
+        {warnings.length > 4 && <li className="muted-note">외 {warnings.length - 4}건</li>}
+      </ul>}
+    </>}
+  </div>
+}
+
 function TemplateDetailModal({ template, onClose }: { template: Template | null; onClose: () => void }) {
   const [selected, setSelected] = useState<TemplateLayout | null>(null)
   useEffect(() => { setSelected(template?.layouts?.[0] || null) }, [template])
@@ -243,6 +300,7 @@ function TemplateDetailModal({ template, onClose }: { template: Template | null;
         <Button onClick={() => navigate(`/create?template=${encodeURIComponent(template.id)}`)}>이 템플릿으로 만들기</Button>
       </>}
     >
+      <TemplateHealthPanel template={template} />
       <div className="template-detail">
         <div className="template-detail-preview">
           {selected

@@ -331,3 +331,12 @@
 .revision-change-kind.added { background:#dcfce7; color:#166534; }
 .revision-change-kind.removed { background:#fee2e2; color:#991b1b; }
 .revision-change-kind.moved { background:#e0f2fe; color:#075985; }
+
+/* What a template does to a deck, said before forty decks go through it. */
+.template-health { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; background: var(--surface-raised, #fff); }
+.template-health-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.template-health-components { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.template-health-components span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.template-health-components .drawn { color: var(--ink); }
+.template-health-components .as-text { color: var(--ink-muted); border-style: dashed; }
+.template-health-notes { margin: 12px 0 0; padding-left: 18px; color: var(--ink-muted); font-size: 13px; display: grid; gap: 4px; }

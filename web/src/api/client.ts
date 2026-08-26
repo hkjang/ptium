@@ -1381,6 +1381,17 @@ export const api = {
     const raw = await request<Record<string, unknown>>('/admin/provider-check')
     return unwrapOne<Record<string, unknown>>(raw, ['data'])
   },
+  /**
+   * What a template will do to a deck.
+   *
+   * One representative deck — a cover, prose, the four components a brief most
+   * often produces, notes and a closing — is compiled into the template, and
+   * what the compiler and the measurement said comes back. Nothing is saved.
+   */
+  async templateHealth(id: string) {
+    const raw = await request<Record<string, unknown>>(`/templates/${encodeURIComponent(id)}/health`)
+    return unwrapOne<Record<string, unknown>>(raw, ['data'])
+  },
   /** What this deployment is keeping, and how much room is left for it. */
   async storageUsage() {
     const raw = await request<Record<string, unknown>>('/admin/storage')

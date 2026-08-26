@@ -248,6 +248,9 @@ func (s *Server) Handler() http.Handler {
 	// template someone else owns, so it needs no write access to the template.
 	api.Handle("PUT /api/v1/templates/{id}/favorite", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.favoriteTemplate))))
 	api.Handle("GET /api/v1/templates/{id}/download", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.downloadTemplate))))
+	// What this template will do to a deck, before somebody puts forty through it.
+	api.Handle("GET /api/v1/templates/{id}/health",
+		requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateHealth))))
 	api.Handle("GET /api/v1/templates/{id}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))
 	api.Handle("GET /api/v1/templates/{id}/layouts/{layoutId}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))
 	api.Handle("GET /api/v1/api-keys", requireScope("api_keys:manage", http.HandlerFunc(s.listAPIKeys)))

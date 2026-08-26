@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/generation"
 	"io"
 	"net/http"
 	"strconv"
@@ -297,6 +298,141 @@ func (s *Server) downloadTemplate(writer http.ResponseWriter, request *http.Requ
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write(data)
 }
+
+// templateHealth says what this template will do to a deck, before somebody
+// puts forty decks through it.
+//
+// The promise of this product is that the template is the design. The other
+// side of that promise is that a template decides what a deck can be: a design
+// whose only content layout has no body region turns every component into a
+// paragraph, and nothing said so until the decks came out. Rather than judging
+// a template against a list of rules, this compiles one representative deck
+// into it and reports what the compiler and the measurement actually said.
+func (s *Server) templateHealth(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	data, template, err := s.store.TemplateData(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "template_read_failed")
+		return
+	}
+	manifest, _, err := s.templateArtwork(request.Context(), template, data)
+	if err != nil {
+		s.internalError(writer, request, "template_manifest_unreadable", err)
+		return
+	}
+	profile, _ := s.store.GetProfile(request.Context(), user.ID)
+	probe := model.Presentation{Title: template.Name, Language: "ko", RequestedSlideCount: 7}
+	compiled := generation.CompileSourceWith(templateProbeSource, probe, profile,
+		generation.Template{ID: template.ID, Manifest: manifest}, nil, nil)
+	report := templateReport{
+		TemplateID: template.ID, Name: template.Name,
+		AspectRatio: manifest.AspectRatio, Layouts: len(manifest.Layouts),
+		Warnings: compiled.Warnings, Slides: len(compiled.Slides),
+		Roles: map[string]bool{
+			"cover":   manifest.TitleLayout != "",
+			"section": manifest.SectionLayout != "",
+			"content": manifest.DefaultLayout != "",
+			"closing": manifest.ClosingLayout != "",
+		},
+	}
+	if report.Warnings == nil {
+		report.Warnings = []string{}
+	}
+	report.Components = componentsDrawn(compiled.Slides)
+	findings := s.inspectCompiled(request, user.ID, probe, manifest, compiled.Slides)
+	for _, finding := range findings {
+		if finding.Advisory {
+			report.Advisories++
+			continue
+		}
+		report.Defects++
+		report.DefectDetails = append(report.DefectDetails,
+			fmt.Sprintf("%d번 슬라이드 %s: %s", finding.Slide, finding.Slot, finding.Detail))
+	}
+	writeData(writer, request, http.StatusOK, report)
+}
+
+// templateReport is what a template does to a deck.
+type templateReport struct {
+	TemplateID    string          `json:"templateId"`
+	Name          string          `json:"name"`
+	AspectRatio   string          `json:"aspectRatio,omitempty"`
+	Layouts       int             `json:"layouts"`
+	Slides        int             `json:"slides"`
+	Roles         map[string]bool `json:"roles"`
+	Components    map[string]bool `json:"components"`
+	Warnings      []string        `json:"warnings"`
+	Defects       int             `json:"defects"`
+	Advisories    int             `json:"advisories"`
+	DefectDetails []string        `json:"defectDetails,omitempty"`
+}
+
+// templateProbeSource is one deck with every kind of thing a deck holds: a
+// cover, prose, the four components a brief most often produces, notes and a
+// closing. What a template does to this is what it will do to real work.
+// componentsDrawn says which of the drawn things this template drew, and which
+// came out as paragraphs. It is the answer the question is really about: a
+// design whose content layout has no free region turns every component into
+// prose, and until this said so the way to find out was to make forty decks.
+func componentsDrawn(slides []model.Slide) map[string]bool {
+	drawn := map[string]bool{}
+	for _, kind := range []string{pptx.BlockSteps, pptx.BlockKPI, pptx.BlockShare, pptx.BlockTable} {
+		drawn[kind] = false
+	}
+	for _, slide := range slides {
+		var content deck.Content
+		if json.Unmarshal(slide.Content, &content) != nil {
+			continue
+		}
+		for _, block := range content.Blocks {
+			if _, wanted := drawn[block.Kind]; wanted {
+				drawn[block.Kind] = true
+			}
+		}
+	}
+	return drawn
+}
+
+const templateProbeSource = `# 표지
+@cover
+> 오늘 결정할 것은 예산과 시점입니다
+
+# 현황과 문제
+- 전환 대상 42개 시스템, 이관 기간 18개월
+- 운영 비용은 매년 12% 늘고 있습니다
+!notes 숫자는 재무팀 확정본
+
+# 이행 순서
+::steps
+- 준비 | 범위 · 조직 · 예산을 확정
+- 이행 | 단계별로 적용하고 완료 조건을 확인
+- 안정화 | 운영 이관과 점검 기준 확정
+::
+
+# 기대 효과
+::kpi
+- 전환 시스템 | 42개
+- 절감 | 18억
+- 복구 시간 | 30분
+::
+
+# 채널별 비중
+::share
+- 직판 | 46%
+- 대리점 | 33%
+- 온라인 | 21%
+::
+
+# 연간 비용
+::table
+- 항목 | 2026 | 2027
+- 인건비 | 4.2 | 3.4
+::
+
+# 다음 단계
+@closing
+- 오늘 요청하는 결정 한 가지
+`
 
 // templateLayoutPreview renders one layout of a template as SVG so the picker
 // can show the customer their own design rather than a generic thumbnail.

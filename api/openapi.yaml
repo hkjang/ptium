@@ -3071,6 +3071,69 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/templates/{id}/health:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/TemplateID'
+    get:
+      operationId: templateHealth
+      summary: What this template will do to a deck
+      description: >
+        Compiles one representative deck — a cover, prose, the four components a
+        brief most often produces, notes and a closing — into this template and
+        reports what came out: which roles the design covers, which components
+        were drawn rather than written as paragraphs, what the compiler had to
+        say, and what the measurement found. Nothing is saved.
+      tags: [Templates]
+      x-ptium-api-key-scopes: [templates:read]
+      responses:
+        '200':
+          description: The report.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      templateId: { type: string, format: uuid }
+                      name: { type: string }
+                      aspectRatio: { type: string, example: '16:9' }
+                      layouts: { type: integer, example: 10 }
+                      slides: { type: integer, description: Slides the probe deck compiled to. }
+                      roles:
+                        type: object
+                        additionalProperties: { type: boolean }
+                        description: Whether the design has a layout for cover, section, content and closing.
+                        example: { cover: true, section: true, content: true, closing: true }
+                      components:
+                        type: object
+                        additionalProperties: { type: boolean }
+                        description: >
+                          Whether each component was drawn. False means this design has no
+                          room for it and the content comes out as paragraphs.
+                        example: { steps: true, kpi: true, shareBar: true, table: false }
+                      warnings:
+                        type: array
+                        items: { type: string }
+                      advisories: { type: integer }
+                      defects: { type: integer }
+                      defectDetails:
+                        type: array
+                        items: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/templates/{id}/preview.svg:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4478,7 +4541,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.7
+            service.version: 1.13.8
         requestId:
           $ref: '#/components/schemas/RequestID'
 

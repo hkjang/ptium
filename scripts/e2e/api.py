@@ -1096,6 +1096,33 @@ for field in ("oldestQueuedSeconds", "failedLastDay"):
 print(f"   queue: {overview.get('queuedGenerations')} waiting, oldest {overview.get('oldestQueuedSeconds')}s, "
       f"{overview.get('failedLastDay')} failed in a day")
 
+# The promise is that the template is the design; the other side of it is that a
+# template decides what a deck can be. A design whose only content layout has no
+# body region turns every component into a paragraph, and nothing said so until
+# the decks came out.
+print("── what a template will do to a deck ──")
+# A shipped design, not whatever happens to sort first: an account's own upload
+# is allowed to be poor, and this check is about what we ship.
+shipped = next((t for t in templates if t.get("scope") == "shared"), first)
+report = data_of(call("GET", f"/templates/{shipped['id']}/health", expect=200)) or {}
+checks += 1
+if report.get("slides", 0) < 5:
+    failures.append(f"the template report compiled {report.get('slides')} slides of the probe deck")
+checks += 1
+if not all(report.get("components", {}).get(kind) for kind in ("steps", "kpi", "shareBar", "table")):
+    failures.append(f"a shipped template cannot draw the components a brief produces: {report.get('components')}")
+checks += 1
+if report.get("defects"):
+    failures.append(f"a shipped template draws the probe deck with {report.get('defects')} defect(s): "
+                    f"{report.get('defectDetails')}")
+for role in ("cover", "content", "closing"):
+    checks += 1
+    if not report.get("roles", {}).get(role):
+        failures.append(f"a shipped template has no {role} layout")
+print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
+      f"{sum(1 for drawn in (report.get('components') or {}).values() if drawn)}/4 components drawn, "
+      f"{len(report.get('warnings') or [])} thing(s) it had to say")
+
 print("── a deck moved to another template ──")
 designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=100", expect=200)) or []) if t.get("id")]
 # The destination is a design whose body region is short — the editorial family
