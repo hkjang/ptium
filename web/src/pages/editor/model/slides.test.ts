@@ -225,6 +225,17 @@ describe('what to say after the model rewrote a slide', () => {
     expect(said.tone).toBeUndefined()
   })
 
+  it('says what the proposal leaves behind, in the reader\'s words', () => {
+    // The editor applies a proposal the moment it arrives, so a rewrite that
+    // comes back with one note line where the slide had thirty has to say so —
+    // and say it in Korean, not in the sentence the API writes.
+    const said = reviseOutcome(undefined, [],
+      ["the proposal keeps 6% of this slide's speaker notes; applying it drops the rest"])
+    expect(said.message).toContain('6%')
+    expect(said.message).toContain('되돌리기')
+    expect(said.message).not.toContain('the proposal')
+  })
+
   it('passes on what the compiler had to say', () => {
     expect(reviseOutcome(undefined, [], ['이 레이아웃에는 본문 영역이 없습니다']).message)
       .toContain('본문 영역이 없습니다')

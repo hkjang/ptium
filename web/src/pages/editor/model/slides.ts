@@ -9,6 +9,7 @@
 
 import { bodySlots, primaryBodySlot, textToParagraphs } from '../../../api/client'
 import type { Slide, SlideParagraph, TemplateLayout } from '../../../types'
+import { warningText } from './findings'
 
 export const MAX_SLIDES = 50
 export const defaultSlide = (order: number, layoutId?: string): Slide => ({
@@ -244,7 +245,7 @@ export function reviseOutcome(asked: { kind: string } | undefined,
   }
   const trouble = findings.filter((finding) => !finding.advisory).length
   if (trouble > 0) return { message: `AI가 다시 썼습니다. 아직 맞지 않는 부분이 ${trouble}곳 있습니다.` }
-  if (warnings.length > 0) return { message: `AI가 다시 썼습니다. ${warnings[0]}` }
+  if (warnings.length > 0) return { message: `AI가 다시 썼습니다. ${warningText(warnings[0])}` }
   return { message: 'AI가 이 슬라이드를 다시 썼습니다.' }
 }
 

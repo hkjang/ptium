@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -209,11 +210,29 @@ func (s *Server) reviseSlide(writer http.ResponseWriter, request *http.Request) 
 			slideFindings = append(slideFindings, finding)
 		}
 	}
+	warnings := compiled.Warnings
+	// The notes on an imported slide are not a draft the model may replace
+	// quietly: a page of a PDF that did not fit on the slide is kept there, and
+	// a rewrite that comes back with one line of its own would take thirty with
+	// it. The editor applies a proposal as soon as it arrives, so what it drops
+	// has to be said before anybody looks away.
+	if revision.Action != generation.ReviseNotes {
+		// The notes are held as one string, so what is measured is how much of
+		// it comes back: a page of a PDF kept in the notes is two thousand
+		// characters, and a rewrite's own note is a sentence.
+		before := utf8.RuneCountInString(strings.TrimSpace(target.SpeakerNotes))
+		after := utf8.RuneCountInString(strings.TrimSpace(proposal.SpeakerNotes))
+		if before >= 200 && after*2 < before {
+			warnings = append(warnings, fmt.Sprintf(
+				"the proposal keeps %d%% of this slide's speaker notes; applying it drops the rest",
+				after*100/before))
+		}
+	}
 	s.store.Audit(request.Context(), &user.ID, "presentation.slide_revise", "presentation", presentation.ID,
 		map[string]any{"slide": position, "action": revision.Action})
 	writeData(writer, request, http.StatusOK, map[string]any{
 		"slide": position, "source": revised, "proposal": proposal,
-		"warnings": compiled.Warnings, "findings": slideFindings, "applied": false,
+		"warnings": warnings, "findings": slideFindings, "applied": false,
 	})
 }
 

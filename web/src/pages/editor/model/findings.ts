@@ -137,6 +137,8 @@ export function warningText(warning: string) {
     // most often, and they were the ones still arriving in English.
     [/^(\d+) point\(s\) did not fit in (\w+) and were left out$/,
       (m) => `${named(m[2])}에 자리가 모자라 요점 ${m[1]}개가 빠졌습니다`],
+    [/^the proposal keeps (\d+)% of this slide's speaker notes; applying it drops the rest$/,
+      (m) => `제안의 발표자 노트는 원래의 ${m[1]}%만 담고 있습니다 — 나머지는 사라집니다. 되돌리기로 복구할 수 있습니다`],
     [/^(\d+) line\(s\) were shortened to fit (\w+)$/,
       (m) => `${named(m[2])}에 맞추느라 ${m[1]}줄을 줄였습니다 — 줄인 뒤는 어느 슬라이드에도 없습니다`],
     [/^layout "(.+)" cannot hold this slide; used "(.+)" instead$/,

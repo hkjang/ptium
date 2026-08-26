@@ -178,6 +178,24 @@ try:
         if after_slide != before_slide:
             failures.append("the slide changed on the server although no revision was applied")
         print("   drafts came back, and the deck is as it was")
+        # A slide imported from a PDF keeps the rest of the page in its notes,
+        # and the editor applies a proposal the moment it arrives. A rewrite
+        # that comes back with a sentence of its own would take two thousand
+        # characters with it, so it has to say what it is dropping.
+        long_notes = " ".join(f"{n}번째 줄은 이 쪽에서 슬라이드에 담기지 않은 내용을 그대로 옮겨 둔 것입니다." for n in range(1, 21))
+        call("PUT", f"/presentations/{drafting['id']}/source",
+             {"source": "# 규정 요약\n- 첫 줄\n- 둘째 줄\n!notes " + long_notes + "\n"})
+        status, kept = call("POST", f"/presentations/{drafting['id']}/slides/1/revise", {"action": "rewrite"})
+        checks += 1
+        if status != 200:
+            failures.append(f"a rewrite of a slide with long notes answered {status}")
+        else:
+            said = " | ".join((kept or {}).get("warnings") or [])
+            drafted_notes = ((kept or {}).get("proposal") or {}).get("speakerNotes") or ""
+            checks += 1
+            if len(drafted_notes) * 2 < len(long_notes) and "speaker notes" not in said:
+                failures.append(f"a rewrite dropped {len(long_notes)} characters of notes and said {said!r}")
+            print(f"   long notes: {len(long_notes)} chars → {len(drafted_notes)} · said: {said[:70]!r}")
         call("DELETE", f"/presentations/{drafting['id']}")
 finally:
     restored = provider(was if isinstance(was, str) else "fallback")
