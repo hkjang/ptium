@@ -515,7 +515,8 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		// "목표 가용성 99.95%" is a figure the deck should show, not a subject it
 		// should argue. Treating one as a topic gave it its own slides — and a
 		// twelve-slide deck came out with the same step diagram three times.
-		if figureClause(candidate, outline.Figures) || measurementOnly(candidate) || justAPeriod(candidate) {
+		if figureClause(candidate, outline.Figures) || measurementOnly(candidate) || justAPeriod(candidate) ||
+			statedFact(candidate, outline.Figures) {
 			continue
 		}
 		name := topicPhrase(cleanTopic(candidate))
@@ -625,6 +626,78 @@ func shieldBrackets(subject, shield string) string {
 // insideNumber is a separator between two digits: part of the number, not a
 // break between clauses.
 var insideNumber = regexp.MustCompile(`(\d)[,，](\d)`)
+
+// statedFact reports whether a clause is the brief telling the writer something
+// rather than naming a section.
+//
+// A good brief states its facts — "현재 오라클 라이선스가 연 4억이고, 전환 대상은
+// 리포팅 DB 12개, 목표는 2026년 3분기 완료야" is exactly what somebody who wants a
+// useful deck writes. Every one of those clauses became a slide heading, cut
+// where the reader stopped: "현재 오라클 라이선스가 연", "전환 대상은 리포팅 DB",
+// "목표는 2026년 3분기 완료야". The figures had already been read out of the same
+// clauses, so the brief was being used twice — once as data, once as a heading
+// that says nothing.
+//
+// What separates the two is grammar, not content. A section name is a noun
+// phrase; a statement has a subject and a predicate. Both are required here:
+// a marked subject on its own would take "위험은 무엇인가" with it, and a figure
+// on its own would take "클라우드 비용 최적화 3개년 로드맵".
+func statedFact(clause string, figures []promptFigure) bool {
+	trimmed := strings.TrimSpace(clause)
+	if trimmed == "" || !hasMarkedSubject(trimmed) {
+		return false
+	}
+	if endsInPredicate(trimmed) {
+		return true
+	}
+	// The clause is where one of the brief's numbers came from, so the number is
+	// already kept — as a figure, which is what the deck will draw.
+	for _, figure := range figures {
+		value := strings.TrimSpace(figure.Value)
+		label := strings.TrimSpace(figure.Label)
+		if value != "" && strings.Contains(trimmed, value) &&
+			(label == "" || strings.Contains(trimmed, label)) {
+			return true
+		}
+	}
+	return false
+}
+
+// hasMarkedSubject reports whether some word other than the last carries a
+// subject or topic marker. The last word is skipped because a phrase can end in
+// one of those syllables as part of itself — 방안, 결과가 아닌 것들.
+func hasMarkedSubject(clause string) bool {
+	words := strings.Fields(clause)
+	if len(words) < 2 {
+		return false
+	}
+	for _, word := range words[:len(words)-1] {
+		for _, marker := range []string{"은", "는", "이", "가"} {
+			if strings.HasSuffix(word, marker) && utf8.RuneCountInString(word) >= 3 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// endsInPredicate reports whether the clause finishes the way a sentence does.
+func endsInPredicate(clause string) bool {
+	words := strings.Fields(clause)
+	if len(words) == 0 {
+		return false
+	}
+	last := strings.Trim(words[len(words)-1], " .,·!?")
+	if verbLike(last) {
+		return true
+	}
+	for _, ending := range []string{"이고", "이며", "이다", "이야", "야", "인데", "라서", "이었고", "였고", "이랑"} {
+		if strings.HasSuffix(last, ending) && utf8.RuneCountInString(last) > utf8.RuneCountInString(ending) {
+			return true
+		}
+	}
+	return false
+}
 
 // figureClause reports whether a clause is one of the numbers the prompt gave
 // rather than something the deck is about.
