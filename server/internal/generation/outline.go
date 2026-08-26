@@ -95,7 +95,7 @@ var instructionPattern = regexp.MustCompile(
 	// A count can be written in words as easily as in digits — "세 장으로" is how
 	// anyone actually asks — and an instruction left in the subject travels into
 	// a slide title: "재발 방지책을 세 장".
-	`(?i)((\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|slides?|pages?)(짜리|정도|이내|분량)?(로|으로|의)?)|` +
+	`(?i)((\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|ページ|枚|页|張|张|slides?|pages?)(짜리|정도|이내|분량|くらい|ほど|程度|以内|前後)?(로|으로|의|で|の|的)?)|` +
 		// "임원 보고용으로", "고객 발표용", "for the board": who it is for is a
 		// setting, not part of the subject. The address itself goes with it —
 		// stripping "에게 보고" out of "임원에게 보고" leaves a stray "임원" that then
@@ -142,6 +142,36 @@ var instructionPattern = regexp.MustCompile(
 		// was the title of the deck it produced.
 		`써\s*줘|써\s*주세요|써\s*주시고|써\s*주십시오|써\s*주라|써\s*줄래|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
+		// The whole of an English request, taken in one piece so that no part of
+		// it is left to become the subject. Stripping the verb alone left the
+		// rest standing: "Write me a 8 slide deck about reducing cloud spend"
+		// produced a deck titled "Me a deck about reducing cloud spend", and
+		// "Make a short deck about hiring plans" kept its own verb. It is
+		// anchored so it can only take the opening of a brief, and it must come
+		// before the bare verbs below, which would otherwise match first and
+		// take only their own word.
+		`^\s*(?:please\s+)?(?:write|make|create|generate|prepare|draft|build|put\s+together|give|send)\s+` +
+		`(?:me\s+)?(?:an?|the)?\s*(?:short|quick|brief|detailed|simple|rough)?\s*` +
+		`(?:\d{1,3}[-\s]?(?:slide|page)s?\s+)?(?:deck|presentation|slides?|report|summary|briefing|overview)?\s*` +
+		`(?:about|on|covering|regarding|explaining)?\s*|` +
+		// Japanese and Chinese are offered on the same screen as Korean and
+		// English, and neither had any instruction reading at all: "新しい採用計画
+		// を8枚でまとめてください" became, in full, the title of the deck it asked
+		// for. Only the asking is stripped — the polite ending is required,
+		// because 作成 and 整理 are ordinary words inside a subject.
+		`((まとめ|作成し|作っ|書い|用意し|整理し|準備し|説明し)(て|で)\s*(ください|下さい|くれ|ほしい|欲しい|もらえますか|いただけますか)?)|` +
+		`(お願いします|お願いいたします|お願い致します|してください|して下さい)|` +
+		// 向け is "for": the room, as Japanese names it. Only a room that is
+		// actually named, because "any word before 向け" reaches backwards
+		// through the subject — it turned "データ基盤移行のリスクを経営層向けに…"
+		// into a deck about "データ".
+		`((経営層|役員|取締役|上司|お客様|顧客|社内|チーム|部門|部署|投資家|一般|新入社員|開発チーム|営業)` +
+		`\s*(向けに|向けて|向け|宛て))|` +
+		`(について|に関して|に関する)|` +
+		`(请用|请帮我|请|帮我|麻烦|劳烦)|` +
+		`(^\s*把)|` +
+		`((做成|做一个|做一份|写一份|制作|整理|准备)(一下)?)|` +
+		`((的)?\s*(汇报|报告|報告|演示|PPT|ppt)\s*$)|` +
 		`please|make me|create|generate|write|prepare|summari[sz]e|` +
 		// "A board update on …", "An update for the team on …": in English the
 		// purpose comes first and the subject follows it. Left in, the purpose
@@ -270,8 +300,8 @@ func justAPeriod(clause string) bool {
 // slideCount is how long the deck should be, written the way anyone asks for
 // it — in digits or in words.
 var slideCount = regexp.MustCompile(
-	`(?i)(\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|slides?|pages?)` +
-		`(\s*(짜리|정도|안팎|이내|이상|분량|내외))?(\s*(로|으로|의|을|를))?`)
+	`(?i)(\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|ページ|枚|页|張|张|slides?|pages?)` +
+		`(\s*(짜리|정도|안팎|이내|이상|분량|내외|くらい|ほど|程度|以内|前後))?(\s*(로|으로|의|을|를|で|の|的))?`)
 
 // justACount says the name is how many slides rather than what one is about.
 // "세 장을 넣어줘" asks for three slides, not for a section called 세.
@@ -793,7 +823,11 @@ func cleanTopic(value string) string {
 	// among them are handled by splitting instead.
 	for _, suffix := range []string{"에 대해서", "에 대해", "에 관해서", "에 관해", "에 대한", "에 관한",
 		"으로", "에서", "에게", "부터", "까지", "이라는", "라는", "에 있어",
-		"을", "를", "은", "는"} {
+		"을", "를", "은", "는",
+		// The same tail in Japanese. Only the markers that are unmistakable at
+		// the end of a phrase: の, に and で are as often part of a word as they
+		// are a particle.
+		"について", "に関して", "を", "は", "が", "へ"} {
 		if !strings.HasSuffix(value, suffix) {
 			continue
 		}
