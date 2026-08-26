@@ -861,7 +861,7 @@ paths:
         edited elsewhere since, in which case the edit wins and the file is read
         from its shapes like any other.
 
-        A `.xlsx`, `.csv`, `.tsv`, `.docx`, `.md` or `.txt` is read as material.
+        A `.xlsx`, `.csv`, `.tsv`, `.docx`, `.pdf`, `.md` or `.txt` is read as material.
         A sheet becomes one slide — a chart when it is one column of labels and
         one of figures, a table otherwise — and a report's headings become
         slides with their sentences as points. Every slide a document produces
@@ -869,8 +869,12 @@ paths:
         first question asked of a figure is where it came from and retyping is
         where that answer is usually lost.
 
-        A `.pdf` is refused: extracting its text needs a parser this deployment
-        does not carry.
+        A `.pdf` becomes one slide per page: the page's own lines, with the
+        first as the heading when it reads like one. The header and footer a
+        document repeats on every page are left out, and each slide cites its
+        page. A PDF with no text in it — a scan, or a deck exported as pictures
+        — is refused with that as the reason, rather than imported as empty
+        slides.
 
         For a presentation: turns a deck someone already has into a Ptium deck. Titles, points (at the
         depth they were written), speaker notes and tables come across, along with
@@ -4720,7 +4724,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.17.6
+            service.version: 1.18.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

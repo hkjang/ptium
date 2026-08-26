@@ -16,8 +16,16 @@ type deckWriter struct {
 	title    string
 	builder  strings.Builder
 	// heading is the slide being written, and points what it has so far.
-	heading  string
-	points   []string
+	heading string
+	// where is the place in the file this slide came from, when the file has
+	// places: a page in a PDF. Without one, the heading is what a person would
+	// search for.
+	where  string
+	points []string
+	// notes is what belongs to the slide but not on it. A page of a report has
+	// more lines on it than a slide holds, and the ones past that are said
+	// rather than shown — which is what speaker notes are.
+	notes    []string
 	tables   [][][]string
 	slides   int
 	warnings []string
@@ -64,6 +72,12 @@ func (w *deckWriter) slide(heading string) {
 	w.heading = strings.TrimSpace(heading)
 }
 
+// slideFrom starts a slide that knows where in the file it came from.
+func (w *deckWriter) slideFrom(heading, where string) {
+	w.slide(heading)
+	w.where = strings.TrimSpace(where)
+}
+
 // point adds a sentence to the slide being written. A slide that has taken all
 // it can starts a continuation rather than dropping the rest.
 func (w *deckWriter) point(text string) {
@@ -76,11 +90,31 @@ func (w *deckWriter) point(text string) {
 	// into a deck is a draft, so the sentence is kept and the length measured
 	// later rather than cut here.
 	if len(w.points) >= maximumPoints {
-		heading := w.heading
+		heading, where := w.heading, w.where
 		w.flush()
-		w.heading = heading + " (계속)"
+		w.heading = continued(heading)
+		// A continuation came from the same place in the file as what it
+		// continues. Losing that here is how the second half of a page ended up
+		// citing its own title instead of the page.
+		w.where = where
 	}
 	w.points = append(w.points, trimmed)
+}
+
+// note adds a line that belongs to the slide but not on it.
+func (w *deckWriter) note(text string) {
+	if trimmed := strings.TrimSpace(text); trimmed != "" {
+		w.notes = append(w.notes, trimmed)
+	}
+}
+
+// continued names the slide that carries on from another, once.
+// "제1장 (계속) (계속) (계속)" is a title nobody wrote.
+func continued(heading string) string {
+	if strings.HasSuffix(heading, " (계속)") {
+		return heading
+	}
+	return heading + " (계속)"
 }
 
 // table adds a grid to the slide being written.
@@ -94,7 +128,7 @@ func (w *deckWriter) table(rows [][]string) {
 
 // flush writes the slide being written, if it has anything on it.
 func (w *deckWriter) flush() {
-	if w.heading == "" && len(w.points) == 0 && len(w.tables) == 0 {
+	if w.heading == "" && len(w.points) == 0 && len(w.tables) == 0 && len(w.notes) == 0 {
 		return
 	}
 	if !w.coverWritten {
@@ -107,32 +141,35 @@ func (w *deckWriter) flush() {
 	}
 	if w.slides >= maximumSlides {
 		w.dropped++
-		w.heading, w.points, w.tables = "", nil, nil
+		w.heading, w.points, w.tables, w.notes, w.where = "", nil, nil, nil, ""
 		return
 	}
 	heading := w.heading
 	if heading == "" {
 		heading = w.title
 	}
-	tables, points, from := w.tables, w.points, w.heading
-	w.heading, w.points, w.tables = "", nil, nil
+	tables, points, notes, from := w.tables, w.points, w.notes, w.heading
+	if w.where != "" {
+		from = w.where
+	}
+	w.heading, w.points, w.tables, w.notes, w.where = "", nil, nil, nil, ""
 	// A table longer than a slide holds continues on the next one, header and
 	// all. Cutting it at the eighth row is how a report's twelve-row table
 	// arrived as eight rows with the rest on no slide and nobody told.
 	first, rest := splitTables(tables, w.report)
-	w.writeSlide(heading, first, points, from)
+	w.writeSlide(heading, first, points, notes, from)
 	for _, carried := range rest {
 		if w.slides >= maximumSlides {
 			w.dropped++
 			continue
 		}
-		w.writeSlide(heading+" (계속)", [][][]string{carried}, nil, from)
+		w.writeSlide(continued(heading), [][][]string{carried}, nil, nil, from)
 	}
 }
 
 // writeSlide writes one slide: its heading, its tables, its points and where it
 // came from.
-func (w *deckWriter) writeSlide(heading string, tables [][][]string, points []string, from string) {
+func (w *deckWriter) writeSlide(heading string, tables [][][]string, points, notes []string, from string) {
 	fmt.Fprintf(&w.builder, "# %s\n", escapeLine(heading))
 	for _, table := range tables {
 		columns := min(len(table[0]), maximumColumns)
@@ -152,6 +189,9 @@ func (w *deckWriter) writeSlide(heading string, tables [][][]string, points []st
 	}
 	for _, point := range points {
 		fmt.Fprintf(&w.builder, "- %s\n", escapeLine(point))
+	}
+	for _, note := range notes {
+		fmt.Fprintf(&w.builder, "!notes %s\n", escapeField(note))
 	}
 	w.builder.WriteString(citation(w.filename, from))
 	w.builder.WriteString("\n")

@@ -216,7 +216,7 @@ func (s *Server) importDocument(writer http.ResponseWriter, request *http.Reques
 	filename := strings.TrimSpace(meta.Filename)
 	if !docs.Reads(filename) {
 		writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_document",
-			"Ptium reads .pptx presentations and .xlsx, .csv, .docx and .md documents", map[string]any{
+			"Ptium reads .pptx presentations and .xlsx, .csv, .docx, .pdf and .md documents", map[string]any{
 				"filename": filename, "reads": docs.Extensions,
 			})
 		return

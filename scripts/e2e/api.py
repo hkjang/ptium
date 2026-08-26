@@ -68,6 +68,33 @@ def png(rgb=(200, 120, 60), size=8):
             + chunk(b"tEXt", b"ptium-run\x00" + RUN.encode())
             + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
+def pdf_of(pages, image_only=False):
+    """A PDF whose pages say the given lines, written the way the generators
+    people actually use write Korean: one byte for a character that fits in one,
+    two for a character that does not."""
+    def shown(line):
+        return "".join(f"{ord(c):02x}" if ord(c) < 0x80 else f"{ord(c):04x}" for c in line)
+    objects = ["<</Type /Catalog /Pages 2 0 R>>"]
+    kids = " ".join(f"{3 + index * 2} 0 R" for index in range(len(pages)))
+    objects.append(f"<</Type /Pages /Kids [{kids}] /Count {len(pages)}>>")
+    font = 3 + len(pages) * 2
+    for index, lines in enumerate(pages):
+        if image_only:
+            content = "q 612 0 0 792 0 0 cm /Im1 Do Q"
+        else:
+            content = "".join(
+                f"BT /F1 12 Tf 1 0 0 1 72 {700 - row * 20} Tm <{shown(line)}> Tj ET\n"
+                for row, line in enumerate(lines))
+        objects.append(f"<</Type /Page /Parent 2 0 R /Resources <</Font <</F1 {font} 0 R>>>> "
+                       f"/Contents {4 + index * 2} 0 R>>")
+        objects.append(f"<</Length {len(content)}>>\nstream\n{content}\nendstream")
+    objects.append("<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>")
+    out = "%PDF-1.7\n"
+    for index, body in enumerate(objects):
+        out += f"{index + 1} 0 obj\n{body}\nendobj\n"
+    return (out + "trailer<</Root 1 0 R>>\n%%EOF\n").encode()
+
+
 print("── identity and settings ──")
 me = data_of(call("GET", "/me", expect=200))
 print("   signed in as", (me or {}).get("email"), "admin:", (me or {}).get("isAdmin"))
@@ -717,7 +744,52 @@ if linked:
     call("DELETE", f"/presentations/{linked['id']}", expect=204)
 
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
-     note="a file nothing here can read must say so")
+     note="a PDF this cannot open must say so rather than import an empty deck")
+
+print("── a PDF becomes slides ──")
+# A PDF is what a company sends things in, and it is also the format that keeps
+# the least: glyphs at coordinates, no headings and no points. What can be
+# recovered is each page's own lines; what cannot be recovered is said out loud.
+report = pdf_of([
+    ["국가법령정보센터", "- 1 -", f"2026 상반기 실적 {RUN}", "매출은 1,240억입니다.", "영업이익은 210억입니다."],
+    ["국가법령정보센터", "- 2 -", "하반기 계획", "신규 채널 두 곳을 엽니다."],
+    ["국가법령정보센터", "- 3 -", "위험 요인", "환율이 오르면 원가가 오릅니다."],
+])
+brought_pdf = data_of(call("POST", "/presentations/import",
+                           files={"file": (f"실적 보고-{RUN}.pdf", report, "application/pdf")},
+                           expect=201)) or {}
+pdf_id = ((brought_pdf.get("presentation") or {}).get("id")) or ""
+if pdf_id:
+    source = (data_of(call("GET", f"/presentations/{pdf_id}/source", expect=200)) or {}).get("source", "")
+    checks += 1
+    if "# 하반기 계획" not in source or "# 위험 요인" not in source:
+        failures.append(f"a PDF's pages did not become slides:\n{source[:400]}")
+    checks += 1
+    if "!source 실적 보고-" not in source or "쪽" not in source:
+        failures.append(f"a slide from a PDF does not cite the page it came from:\n{source[:400]}")
+    checks += 1
+    if "국가법령정보센터" in source:
+        failures.append(f"the header repeated on every page became slide text:\n{source[:400]}")
+    checks += 1
+    if "- - 2 -" in source or "# - 2 -" in source:
+        failures.append(f"a page number became slide text:\n{source[:400]}")
+    print("   PDF read as:", " · ".join(line[2:] for line in source.splitlines() if line.startswith("# "))[:70])
+    call("DELETE", f"/presentations/{pdf_id}", expect=204)
+
+# A scan has no text in it. An import that answers with an empty deck teaches
+# people the product does not work; one that says what is wrong tells them what
+# to upload instead.
+status, refused = call("POST", "/presentations/import",
+                       files={"file": (f"스캔본-{RUN}.pdf", pdf_of([["x"]], image_only=True), "application/pdf")},
+                       expect=422, note="a scanned PDF must say why it cannot be read")
+# The reason has to be in the message, not merely somewhere in the reply: the
+# name of the file the caller uploaded is echoed back in it, and a check that
+# searched the whole body would pass on the word in the filename.
+said = ((refused or {}).get("error") or {}).get("message", "") if isinstance(refused, dict) else str(refused)
+checks += 1
+if "스캔" not in said or "PDF" not in said:
+    failures.append(f"a scanned PDF was refused without saying why: {said[:200]!r}")
+print("   scan refused with:", said[:70])
 
 print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",

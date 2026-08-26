@@ -123,7 +123,7 @@ export function PresentationsPage() {
         title="발표자료(.pptx)뿐 아니라 엑셀·워드·CSV·마크다운도 슬라이드가 됩니다. 각 장에 출처가 붙습니다.">
         <FileUp size={16} /> {importing ? '가져오는 중…' : '기존 자료 가져오기'}
       </Button>
-      <input ref={importInput} type="file" accept=".pptx,.potx,.xlsx,.csv,.tsv,.docx,.md,.markdown,.txt" hidden
+      <input ref={importInput} type="file" accept=".pptx,.potx,.xlsx,.csv,.tsv,.docx,.pdf,.md,.markdown,.txt" hidden
         onChange={(event) => { void importDeck(event.target.files?.[0]); event.target.value = '' }} />
       <Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button>
     </>}>

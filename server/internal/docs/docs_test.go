@@ -88,11 +88,15 @@ func TestAWorkbookIsReadWithoutALibrary(t *testing.T) {
 
 // A file this package cannot read says so rather than producing an empty deck.
 func TestAnUnreadableFileSaysSo(t *testing.T) {
-	if _, err := Read("보고서.pdf", []byte("%PDF-1.7")); err == nil {
-		t.Error("a PDF was accepted, and nothing here can read one")
+	if _, err := Read("보고서.hwp", []byte("anything")); err == nil {
+		t.Error("a .hwp was accepted, and nothing here can read one")
 	}
-	if Reads("보고서.pdf") || !Reads("매출.xlsx") {
+	if Reads("보고서.hwp") || !Reads("매출.xlsx") || !Reads("보고서.pdf") {
 		t.Error("Reads disagrees with Read")
+	}
+	// A PDF this cannot open is refused rather than turned into an empty deck.
+	if _, err := Read("보고서.pdf", []byte("%PDF-1.7")); err == nil {
+		t.Error("a truncated PDF was accepted")
 	}
 }
 

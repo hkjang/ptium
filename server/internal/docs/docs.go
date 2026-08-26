@@ -38,7 +38,7 @@ func (e ErrUnsupported) Error() string {
 }
 
 // Extensions are what Read accepts, for the upload dialog to name.
-var Extensions = []string{".csv", ".tsv", ".xlsx", ".docx", ".md", ".markdown", ".txt"}
+var Extensions = []string{".csv", ".tsv", ".xlsx", ".docx", ".pdf", ".md", ".markdown", ".txt"}
 
 // Reads reports whether a file name is one this package can read.
 func Reads(filename string) bool {
@@ -63,6 +63,8 @@ func Read(filename string, data []byte) (Document, error) {
 		return readWorkbook(name, data)
 	case ".docx":
 		return readWordDocument(name, data)
+	case ".pdf":
+		return readPDF(name, data)
 	case ".md", ".markdown", ".txt":
 		return readMarkdown(name, data)
 	}
@@ -118,5 +120,5 @@ const (
 	// A sheet that runs longer than this is a spreadsheet, not a deck: what is
 	// past it is said rather than drawn.
 	maximumTableSlides = 4
-	maximumPoints  = 5
+	maximumPoints      = 5
 )

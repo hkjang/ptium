@@ -142,7 +142,7 @@ func (s *Server) readTemplateUpload(writer http.ResponseWriter, request *http.Re
 // presentation, or the material one would be written from.
 func (s *Server) readImportUpload(writer http.ResponseWriter, request *http.Request, limit int64) ([]byte, templateMetadata, bool) {
 	return s.readUpload(writer, request, limit,
-		"Ptium reads .pptx presentations and .xlsx, .csv, .docx and .md documents",
+		"Ptium reads .pptx presentations and .xlsx, .csv, .docx, .pdf and .md documents",
 		func(name string) bool {
 			return strings.HasSuffix(name, ".pptx") || strings.HasSuffix(name, ".potx") || docs.Reads(name)
 		})
