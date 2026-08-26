@@ -243,6 +243,31 @@ with sync_playwright() as play:
         page.keyboard.press("Escape"); page.wait_for_timeout(400)
         page.keyboard.press("Escape"); page.wait_for_timeout(800)
     page.screenshot(path=f"{OUT}/ui-present.png")
+
+    # A slide marked !build hands out its points one at a time, and nothing was
+    # watching that: it needs the server to draw the held-back points and the
+    # screen to ask for one more each time somebody presses on.
+    built = api("/presentations", "POST", {"title": f"하나씩 {RUN}", "prompt": "점검", "language": "ko"})
+    api(f"/presentations/{built['id']}/source", "PUT", {"source":
+        "# 표지\n@cover\n> 점검\n\n# 하나씩 나오는 장\n@content\n- 첫 번째 요점\n"
+        "- 두 번째 요점\n- 세 번째 요점\n!build\n\n# 마지막\n@closing\n> 끝\n"})
+    page.goto(f"{BASE}/presentations/{built['id']}/editor", wait_until="networkidle")
+    page.wait_for_timeout(2500)
+    page.keyboard.press("F5"); page.wait_for_timeout(2000)
+    page.keyboard.press("ArrowRight"); page.wait_for_timeout(2000)
+    held = []
+    for _ in range(3):
+        held.append(page.evaluate("""() => {
+            const stage = document.querySelector('.presentation-mode')
+            const svg = stage && stage.querySelector('svg')
+            return svg ? svg.querySelectorAll('[opacity="0"]').length : -1
+        }"""))
+        page.keyboard.press("ArrowRight"); page.wait_for_timeout(1500)
+    if held != [2, 1, 0]:
+        failures.append(f"a slide marked !build revealed its points as {held}, want [2, 1, 0]")
+    print("   points held back as the slide is walked:", held)
+    page.keyboard.press("Escape"); page.wait_for_timeout(600)
+    api(f"/presentations/{built['id']}?permanent=true", "DELETE")
     for kind, message in problems:
         failures.append(f"presenting: {kind} {message}")
 
