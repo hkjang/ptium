@@ -246,7 +246,15 @@ const maximumBriefFigures = 8
 // and list punctuation both appear constantly.
 // A topic never spans a full stop: two sentences are two thoughts, and joining
 // them produces a "topic" that reads like a paragraph of the brief.
-var topicSplitter = regexp.MustCompile(`\s*(?:[。！？]+|[.!?]+\s|[.!?]+$|,|·|/|、|，|;|；|:|：|및|그리고|와\s|과\s|\band\b|\bplus\b|\+)\s*`)
+var topicSplitter = regexp.MustCompile(`\s*(?:[。！？]+|[.!?]+\s|[.!?]+$|,|·|/|、|，|;|；|:|：|및|그리고|\band\b|\bplus\b|\+)\s*`)
+
+// joiningParticle is 와/과 used as "and". It is written attached to the word in
+// front of it, which is also how a hundred ordinary words end — 효과, 결과,
+// 성과, 경과 — and splitting on it wherever it appeared cut those in half: a
+// deck about "협업 툴 도입 효과 측정 결과" had a section called "협업 툴 도입 효".
+// The nouns that end this way have one syllable in front of the 과; a noun
+// being joined to another has two or more.
+var joiningParticle = regexp.MustCompile(`([가-힣]{2,}|[A-Za-z0-9]{2,})(?:와|과)\s`)
 
 // outlinePrompt reads a prompt into the structure of a deck.
 func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
@@ -271,6 +279,13 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 			continue
 		}
 		if match[2] == "년" && len(match[1]) == 4 && strings.HasPrefix(match[1], "20") {
+			continue
+		}
+		// A quarter is a timeframe too. Read as a figure, "4분기 전망" became a
+		// number the deck should draw rather than a section it should argue,
+		// and a brief asking for "3분기 마감 결과와 4분기 전망" produced a deck
+		// with no fourth quarter anywhere in it.
+		if match[2] == "분기" && len(match[1]) == 1 && match[1][0] >= '1' && match[1][0] <= '4' {
 			continue
 		}
 		label := figureLabel(prompt, match[0])
@@ -372,6 +387,7 @@ func splitTopics(subject string) []string {
 	const shield = "\uE000"
 	guarded := insideNumber.ReplaceAllString(subject, "${1}"+shield+"${2}")
 	guarded = shieldBrackets(guarded, shield)
+	guarded = joiningParticle.ReplaceAllString(guarded, "${1},")
 	clauses := topicSplitter.Split(guarded, -1)
 	for index, clause := range clauses {
 		clauses[index] = strings.ReplaceAll(clause, shield, ",")
@@ -456,6 +472,16 @@ func measurementOnly(clause string) bool {
 	}
 	words := strings.TrimSpace(figurePattern.ReplaceAllString(strings.TrimSpace(clause), " "))
 	words = strings.TrimSpace(strings.Join(strings.Fields(words), ""))
+	// Which side the number is on says what it is doing. "영업 6명" and "매출
+	// 1,040억" name a thing and then measure it — that is a datum, and it
+	// belongs on a slide rather than being one. "4분기 전망" and "2026년 채용
+	// 계획" are the other way round: the number says when, and the noun after it
+	// is the subject. Treating both alike threw the second kind away, and a deck
+	// briefed as "3분기 마감 결과와 4분기 전망" came out with no fourth quarter
+	// anywhere in it.
+	if leads := figurePattern.FindStringIndex(strings.TrimSpace(clause)); leads != nil && leads[0] == 0 {
+		return utf8.RuneCountInString(words) < 2
+	}
 	return utf8.RuneCountInString(words) < 3
 }
 

@@ -193,6 +193,71 @@ func TestAWordEndingInTheSyllableForIsNotAPurpose(t *testing.T) {
 	}
 }
 
+// 와/과 joins two subjects and is written attached to the first, which is also
+// how a hundred ordinary words end — 효과, 결과, 성과, 경과. Splitting wherever
+// it appeared cut those in half: a deck briefed as "협업 툴 도입 효과 측정 결과"
+// had a section called "협업 툴 도입 효".
+func TestAJoiningParticleDoesNotCutAWordInHalf(t *testing.T) {
+	for subject, want := range map[string][]string{
+		"협업 툴 도입 효과 측정 결과": {"협업 툴 도입 효과 측정 결과"},
+		"분기 성과 분석":         {"분기 성과 분석"},
+		"추진 경과 보고":         {"추진 경과 보고"},
+		// What the particle is for still works, on both sides of it.
+		"매출과 비용 구조 개선":      {"매출", "비용 구조 개선"},
+		"제품과 서비스 로드맵":       {"제품", "서비스 로드맵"},
+		"성과와 과제":            {"성과", "과제"},
+		"연구개발 투자 계획과 성과 지표": {"연구개발 투자 계획", "성과 지표"},
+	} {
+		got := splitTopics(subject)
+		if len(got) != len(want) {
+			t.Errorf("splitTopics(%q) = %q, want %q", subject, got, want)
+			continue
+		}
+		for index := range want {
+			if strings.TrimSpace(got[index]) != want[index] {
+				t.Errorf("splitTopics(%q) = %q, want %q", subject, got, want)
+				break
+			}
+		}
+	}
+}
+
+// Which side the number is on says what it is doing. "영업 6명" measures a thing
+// and belongs on a slide; "4분기 전망" is a subject the deck argues, and reading
+// the two alike threw the second kind away — a brief asking for "3분기 마감
+// 결과와 4분기 전망" produced a deck with no fourth quarter in it.
+func TestANumberInFrontOfANounIsWhenNotWhat(t *testing.T) {
+	for clause, want := range map[string]bool{
+		"영업 6명":       true,
+		"매출 1,040억":   true,
+		"2026년":       true,
+		"12개월":        true,
+		"4분기 전망":      false,
+		"2026년 채용 계획": false,
+		"3분기 실적":      false,
+	} {
+		if got := measurementOnly(clause); got != want {
+			t.Errorf("measurementOnly(%q) = %v, want %v", clause, got, want)
+		}
+	}
+	outline := outlinePrompt("3분기 마감 결과와 4분기 전망", "", koreanCopy)
+	found := false
+	for _, topic := range outline.Topics {
+		if strings.Contains(topic.Name, "4분기") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the fourth quarter is in no section: %v", outline.Topics)
+	}
+	// And a quarter is not one of the figures the deck draws.
+	for _, figure := range outline.Figures {
+		if strings.Contains(figure.Value, "분기") {
+			t.Errorf("a quarter was read as a figure: %#v", outline.Figures)
+		}
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {
