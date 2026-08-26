@@ -609,12 +609,21 @@ func topicPhrase(name string) string {
 	for len(words) > 1 && endsWithMarker(words[0]) {
 		words = words[1:]
 	}
-	// Whatever is left, keep its tail: Korean puts the head noun last.
+	// Whatever is left, keep its tail: Korean puts the head noun last. The cut
+	// has to fall between clauses, though. "고객 이탈률 개선을 위한 리텐션 전략"
+	// is one rune over the limit, and taking a word off the front left four
+	// slides in a row titled "개선을 위한 리텐션 전략" — improving what? A word
+	// carrying an object particle, or a modifier waiting for its noun, is the
+	// middle of a clause and not a place to start one.
 	for start := 0; start < len(words); start++ {
 		candidate := strings.Join(words[start:], " ")
-		if utf8.RuneCountInString(candidate) <= limit {
-			return cleanTopic(candidate)
+		if utf8.RuneCountInString(candidate) > limit {
+			continue
 		}
+		if start > 0 && midClause(words[start]) {
+			continue
+		}
+		return cleanTopic(candidate)
 	}
 	if len(words) == 0 {
 		return ""
@@ -627,6 +636,22 @@ func topicPhrase(name string) string {
 }
 
 // verbLike reports whether a word is a conjugated verb rather than a noun.
+// midClause says a word carries on from the one before it rather than starting
+// something: an object or subject particle waiting for its verb, or a modifier
+// waiting for its noun.
+func midClause(word string) bool {
+	trimmed := strings.Trim(word, " .,·")
+	if utf8.RuneCountInString(trimmed) < 2 {
+		return false
+	}
+	for _, ending := range []string{"을", "를", "이", "가", "은", "는", "와", "과", "의", "에"} {
+		if strings.HasSuffix(trimmed, ending) {
+			return true
+		}
+	}
+	return modifierForm(trimmed) || trimmed == "위한" || trimmed == "위해" || trimmed == "및" || trimmed == "그리고"
+}
+
 func verbLike(word string) bool {
 	trimmed := strings.Trim(word, " .,·!?")
 	for _, ending := range []string{"습니다", "합니다", "됩니다", "입니다", "봅니다", "니다", "한다", "했다", "된다", "됐다",
@@ -1356,10 +1381,18 @@ func phraseWithin(name string, limit int) string {
 		return cjkTailPhrase(name, limit)
 	}
 	words := strings.Fields(strings.TrimSpace(name))
-	for start := 0; start < len(words); start++ {
-		candidate := cleanTopic(strings.Join(words[start:], " "))
-		if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
-			return candidate
+	// The cut falls between clauses. Shortening "고객 이탈률 개선을 위한 리텐션
+	// 전략" a word at a time gave four slides in a row the heading "개선을 위한
+	// 리텐션 전략" — improving what?
+	for _, betweenClauses := range []bool{true, false} {
+		for start := 0; start < len(words); start++ {
+			if betweenClauses && start > 0 && midClause(words[start]) {
+				continue
+			}
+			candidate := cleanTopic(strings.Join(words[start:], " "))
+			if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
+				return candidate
+			}
 		}
 	}
 	return ""

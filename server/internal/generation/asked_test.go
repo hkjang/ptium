@@ -304,6 +304,52 @@ func TestAnInstructionLeavesNoPunctuationBehind(t *testing.T) {
 	}
 }
 
+// A heading too long for its slide gives way a word at a time, and the cut has
+// to fall between clauses. "고객 이탈률 개선을 위한 리텐션 전략" gave four slides in
+// a row the heading "개선을 위한 리텐션 전략" — improving what?
+func TestAShortenedHeadingIsStillAPhrase(t *testing.T) {
+	for name, want := range map[string]string{
+		"고객 이탈률 개선을 위한 리텐션 전략":    "리텐션 전략",
+		"제조 라인 자동화를 통한 생산성 향상 방안": "생산성 향상 방안",
+		"신규 고객 확보를 위한 채널 전략":      "채널 전략",
+	} {
+		if got := phraseWithin(name, 14); got != want {
+			t.Errorf("phraseWithin(%q) = %q, want %q", name, got, want)
+		}
+	}
+	// A phrase of plain nouns still gives way from the front, as it always did.
+	if got := phraseWithin("차세대 물류 시스템 구축 사업 추진 계획", 14); got != "구축 사업 추진 계획" {
+		t.Errorf("phraseWithin = %q", got)
+	}
+}
+
+// The same rule where a topic is first named, so the two agree.
+func TestATopicIsNotNamedFromTheMiddleOfAClause(t *testing.T) {
+	made, err := New(testSettings{"ai.provider": "fallback"}).Generate(context.Background(),
+		model.Presentation{OwnerID: "owner-1", Language: "ko", RequestedSlideCount: 8,
+			Prompt: "고객 이탈률 개선을 위한 리텐션 전략을 임원에게 보고합니다. 이탈률 12%, 목표 8%."},
+		model.Profile{}, testTemplate(t))
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	sections := 0
+	for _, line := range strings.Split(made.Source, "\n") {
+		if !strings.HasPrefix(line, "# ") {
+			continue
+		}
+		heading := line[2:]
+		if strings.HasPrefix(heading, "개선을") {
+			t.Errorf("a slide is titled from the middle of the subject: %q", heading)
+		}
+		if strings.HasPrefix(heading, "리텐션 전략") {
+			sections++
+		}
+	}
+	if sections == 0 {
+		t.Errorf("no slide is about the retention strategy:\n%s", headingsOf(made.Source))
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {
