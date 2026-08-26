@@ -228,7 +228,15 @@ func orphanedLine(text string, lineEm float64) (float64, bool) {
 	if len(lines) < 2 {
 		return 0, false
 	}
-	last := measureEm(lines[len(lines)-1])
+	tail := lines[len(lines)-1]
+	// One word left behind is what looks generated. Two words are a phrase, and
+	// a heading that wraps to "검토 결과" or "cloud spend" is how a heading of
+	// that length is supposed to break — flagging those told the author to
+	// reword a title that reads perfectly well, on almost every deck.
+	if len(strings.Fields(tail)) > 1 {
+		return 0, false
+	}
+	last := measureEm(tail)
 	if last >= lineEm*orphanShare {
 		return 0, false
 	}
