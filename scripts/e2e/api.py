@@ -1284,6 +1284,42 @@ print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
       f"{sum(1 for drawn in (report.get('components') or {}).values() if drawn)}/5 components drawn, "
       f"{len(report.get('warnings') or [])} thing(s) it had to say")
 
+# What a slide holds decides what it is. A cover and a closing page hold a name
+# and a line or two; a table put on one is written out as text into the room
+# kept for that line, and a real weekly report drawn on the title layout every
+# week came in as nine lines of text in room for two, on every slide.
+print("── an end page holds what an end page holds ──")
+shapely = data_of(call("POST", "/presentations", {"title": f"끝장 {RUN}", "prompt": "점검",
+                                                  "language": "ko"}, expect=201))
+call("PUT", f"/presentations/{shapely['id']}/source",
+     {"source": "# 표지\n> 오늘 결정할 것\n\n# 현황\n- 요점\n\n# 기대효과\n"
+                "- 확장성\n- 서비스 범위 확장\n- 다양한 산업군 적용\n- 멀티채널 지원\n- 기능 확장\n- 다국어 지원\n"}, expect=200)
+outline = data_of(call("GET", f"/presentations/{shapely['id']}", expect=200)) or {}
+last = (outline.get("slides") or [{}])[-1]
+checks += 1
+if last.get("layout") == "closing":
+    failures.append("a last slide of six points was drawn as a closing page")
+inspected = data_of(call("GET", f"/presentations/{shapely['id']}/inspect", expect=200)) or {}
+checks += 1
+if inspected.get("defects"):
+    failures.append(f"a deck ending in points has defects: {inspected.get('findings')}")
+
+# A table's rows are a fixed height, and a cell that wraps past its row used to
+# be drawn over the row underneath.
+call("PUT", f"/presentations/{shapely['id']}/source",
+     {"source": "# 표지\n> 오늘\n\n# 플랫폼 활용 방안\n@picture\n::table\n"
+                "- 플랫폼 | 활용 방안 | 비고\n"
+                "- E-GENE | LCNC 이용한 AI 서비스 개발 | 엔티티 / 폼 / 리스트 / 릴레이션 등 개발\n"
+                "- CHEETAH | AI 모델 Proxy | GPU A100\n"
+                "- Ollama | Local LLM AI 모델 관리 | AI Model Serving\n::\n"}, expect=200)
+inspected = data_of(call("GET", f"/presentations/{shapely['id']}/inspect", expect=200)) or {}
+checks += 1
+if inspected.get("defects"):
+    failures.append(f"a table in a narrow region is drawn with {inspected.get('defects')} defect(s): "
+                    f"{[f.get('detail') for f in (inspected.get('findings') or []) if not f.get('advisory')][:2]}")
+print(f"   end page: {last.get('layout')!r} · table in a picture layout: {inspected.get('defects')} defect(s)")
+call("DELETE", f"/presentations/{shapely['id']}", expect=204)
+
 print("── a deck moved to another template ──")
 designs = [t for t in (data_of(call("GET", "/templates?kind=builtin&limit=100", expect=200)) or []) if t.get("id")]
 # The destination is a design whose body region is short — the editorial family

@@ -1063,7 +1063,7 @@ func slideRole(slide SourceSlide, index, total int) string {
 	// still running, and closing layouts have nowhere to put one — the component
 	// would be flattened into lines of "1월, 2월, 3월" under the title. When the
 	// author says @closing we obey, but position alone does not decide this.
-	if role == pptx.RoleClosing && len(slide.Blocks) > 0 {
+	if role == pptx.RoleClosing && (len(slide.Blocks) > 0 || len(slide.Bullets) > roomOnAnEndPage) {
 		return pptx.RoleContent
 	}
 	return role

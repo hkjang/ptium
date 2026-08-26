@@ -966,13 +966,86 @@ func (d Design) tablePart(frame Frame, block Block) *TablePart {
 		trimmed = append(trimmed, row)
 	}
 	headerHeight, rowHeight := d.tableRhythm(frame, len(trimmed))
+	bodySize, drawn := d.tableCells(frame, columns, trimmed, rowHeight)
 	return &TablePart{
-		Frame: frame, Columns: columns, Rows: trimmed, Aligns: aligns,
+		Frame: frame, Columns: columns, Rows: drawn, Aligns: aligns,
 		HeaderHeight: headerHeight, RowHeight: rowHeight,
-		HeaderSize: d.Small, BodySize: d.Body, Font: d.Minor,
+		HeaderSize: d.Small, BodySize: bodySize, Font: d.Minor,
 		HeaderInk: d.InkMuted, LabelInk: d.InkPrimary, ValueInk: d.InkSecondary,
 		Rule: d.Line, Hairline: mixColor(d.Surface, d.Line, 0.6),
 	}
+}
+
+// tableBodySize is the size the whole table's cells are written at: the largest
+// at which every cell wraps into the row it was given.
+//
+// A row is a fixed height — that rhythm is what makes a table read as a table —
+// and a cell whose words wrap to one line more than the row holds was drawn
+// past it, over the row underneath. A real deck's table of platforms and what
+// each is used for did exactly that, and the measurement called it what it was:
+// two lines of the table overlap.
+//
+// One size for the table rather than one per row: rows of different sizes are
+// not a table any more.
+func (d Design) tableBodySize(frame Frame, columns []string, rows [][]string, rowHeight int) int {
+	size, _ := d.tableCells(frame, columns, rows, rowHeight)
+	return size
+}
+
+// cutToRows shortens a line until it wraps into the room it has, measuring
+// rather than estimating: a rule of thumb about how many characters fit in a
+// width is out by a third on Korean, where every glyph is as wide as it is
+// tall, and a cell cut by that rule still drew a line past its row.
+func cutToRows(said string, size, width, room int) string {
+	if width <= 0 || room <= 0 || cellLines(said, size, width)*lineHeightFor(size) <= room {
+		return said
+	}
+	runes := []rune(said)
+	low, high := 0, len(runes)
+	for low < high {
+		middle := (low + high + 1) / 2
+		if candidate := truncate(said, middle); cellLines(candidate, size, width)*lineHeightFor(size) <= room {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	return truncate(said, max(low, 1))
+}
+
+// tableCells is the size the table is written at and the cells as they will be
+// drawn: set smaller until they fit their row, and cut where they cannot.
+//
+// A real deck's table had a whole paragraph in one cell — a week's work listed
+// in a single box — and no size small enough to hold it exists. The rest of the
+// product answers that by cutting the line and marking it, which the reader can
+// see; drawing it over the row underneath is the one answer that hides it.
+func (d Design) tableCells(frame Frame, columns []string, rows [][]string, rowHeight int) (int, [][]string) {
+	size := d.Body
+	room := rowHeight - d.Unit/2
+	cells := frame.Columns(len(columns), d.Unit)
+	for _, row := range rows {
+		for index, value := range row {
+			if index >= len(cells) || strings.TrimSpace(value) == "" {
+				continue
+			}
+			if fitted := fitToHeight(size, cells[index].Width, room, d.Micro, PlainText(value)); fitted < size {
+				size = fitted
+			}
+		}
+	}
+	drawn := make([][]string, 0, len(rows))
+	for _, row := range rows {
+		cut := append([]string{}, row...)
+		for index, value := range cut {
+			if index >= len(cells) || strings.TrimSpace(value) == "" {
+				continue
+			}
+			cut[index] = cutToRows(PlainText(value), size, cells[index].Width, room)
+		}
+		drawn = append(drawn, cut)
+	}
+	return size, drawn
 }
 
 func (d Design) layoutTable(frame Frame, block Block) []Primitive {
@@ -990,6 +1063,8 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 	var primitives []Primitive
 	cells := frame.Columns(len(columns), d.Unit)
 	headerHeight, rowHeight := d.tableRhythm(frame, len(rows))
+	bodySize, drawnRows := d.tableCells(frame, columns, rows, rowHeight)
+	rows = drawnRows
 	const hairlineHeight = 9525
 	for index, cell := range cells {
 		align := "l"
@@ -1019,7 +1094,7 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 			}
 			primitives = append(primitives, text(
 				Frame{X: cell.X, Y: cursor + d.Unit/2, Width: cell.Width, Height: rowHeight - d.Unit/2},
-				line(row[index]), textOptions{Size: d.Body, Color: color, Align: align, Anchor: "ctr", Font: d.Minor, Wrap: true}))
+				line(row[index]), textOptions{Size: bodySize, Color: color, Align: align, Anchor: "ctr", Font: d.Minor, Wrap: true}))
 		}
 		cursor += rowHeight
 		primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: hairlineHeight}, mixColor(d.Surface, d.Line, 0.6)))

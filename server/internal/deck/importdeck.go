@@ -29,7 +29,7 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 	var builder strings.Builder
 	pictures, placed, tables, charts, plots, wordless := 0, 0, 0, 0, 0, 0
 	slides, headers := withoutRunningHeaders(imported.Slides)
-	imported.Slides = slides
+	imported.Slides = withRolesThatFitWhatTheyHold(slides)
 	for index, slide := range imported.Slides {
 		if wordlessSlide(slide) {
 			wordless++
@@ -145,6 +145,70 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			"차트 %d개는 가져오지 않았습니다. 숫자를 ::bars 나 ::line 으로 적으면 다시 그려집니다", charts))
 	}
 	return builder.String(), warnings
+}
+
+// withRolesThatFitWhatTheyHold keeps a slide's kind honest.
+//
+// A cover and a closing hold a name and a line or two under it. Both are read
+// from the layout a slide was drawn on, which says nothing about what somebody
+// then put on it: the last slide of one real deck is twelve points of what the
+// product could go on to do, and it was called a closing — twelve lines of text
+// into room for three.
+//
+// A deck's kind of slide is read from the layout it was built on, and a weekly
+// report drawn on the title layout every week says every one of its slides is a
+// cover. A cover has room for a name and a line under it — so the whole of a
+// slide's argument, a table of what was done and what is planned, went into the
+// subtitle: nine lines of text in room for two, on every slide of the deck.
+//
+// What those slides hold decides what they are, so the rest become content.
+func withRolesThatFitWhatTheyHold(slides []pptx.ImportedSlide) []pptx.ImportedSlide {
+	slides = withOneCover(slides)
+	result := make([]pptx.ImportedSlide, len(slides))
+	copy(result, slides)
+	for index, slide := range result {
+		switch slide.Role {
+		case pptx.RoleTitle, pptx.RoleClosing:
+			if len(slide.Tables) > 0 || len(slide.Charts) > 0 || len(slide.Bullets) > roomOnAnEndPage {
+				result[index].Role = pptx.RoleContent
+			}
+		}
+	}
+	return result
+}
+
+// roomOnAnEndPage is how many lines a cover or a closing is drawn to hold.
+const roomOnAnEndPage = 3
+
+// withOneCover leaves the cover to the first slide.
+func withOneCover(slides []pptx.ImportedSlide) []pptx.ImportedSlide {
+	covers := 0
+	for _, slide := range slides {
+		if slide.Role == pptx.RoleTitle {
+			covers++
+		}
+	}
+	if covers < 2 {
+		return slides
+	}
+	result := make([]pptx.ImportedSlide, len(slides))
+	copy(result, slides)
+	seen := false
+	for index, slide := range result {
+		if slide.Role != pptx.RoleTitle {
+			continue
+		}
+		// A cover holds a name and a line under it. A slide carrying a table or
+		// a chart is the report itself, whatever layout it was drawn on: put it
+		// on a cover and the table is written out as text into the room kept for
+		// one line — nine lines of it, in room for two.
+		if !seen && len(slide.Tables) == 0 && len(slide.Charts) == 0 {
+			seen = true
+			continue
+		}
+		result[index].Role = pptx.RoleContent
+	}
+	return result
 }
 
 // withoutRunningHeaders takes the section marker off the slides that carry one.

@@ -64,3 +64,45 @@ func TestASlideWithNoOtherNameKeepsTheOneItHas(t *testing.T) {
 		}
 	}
 }
+
+// A deck's kind of slide is read from the layout it was drawn on, which says
+// nothing about what somebody then put on it. A weekly report drawn on the
+// title layout every week says every slide is a cover — and a cover has room
+// for a name and a line under it, so a table of the week's work went into the
+// subtitle: nine lines of text in room for two, on every slide.
+func TestACoverIsTheSlideThatOpensADeck(t *testing.T) {
+	table := [][][]string{{{"추진실적", "추진계획"}, {"ITSM 운영", "SBOM 체계 구축"}}}
+	slides := []pptx.ImportedSlide{
+		{Title: "주간업무", Role: pptx.RoleTitle, Bullets: linesOf("AI엔지니어링 파트")},
+		{Title: "1주차", Role: pptx.RoleTitle, Tables: table},
+		{Title: "2주차", Role: pptx.RoleTitle, Tables: table},
+	}
+	source, _ := SourceFromImport(pptx.ImportedDeck{Slides: slides})
+	if strings.Count(source, "@cover") != 1 {
+		t.Errorf("a deck of three slides has %d covers:\n%s", strings.Count(source, "@cover"), source)
+	}
+	// And the one that opens it is the first — unless it is the report itself.
+	if !strings.HasPrefix(source, "# 주간업무\n@cover") {
+		t.Errorf("the deck does not open on its first slide:\n%s", source)
+	}
+}
+
+// A slide carrying the argument is not an end page whatever it was drawn on: a
+// cover or a closing holds a title and a line or two, and a table put on one is
+// written out as text into the room kept for that line.
+func TestAnEndPageThatCarriesTheArgumentIsContent(t *testing.T) {
+	table := [][][]string{{{"항목", "값"}, {"매출", "1,240억"}}}
+	slides := []pptx.ImportedSlide{
+		{Title: "실적 보고", Role: pptx.RoleTitle, Tables: table},
+		{Title: "본문", Role: pptx.RoleContent, Bullets: linesOf("요점")},
+		{Title: "기대효과", Role: pptx.RoleClosing,
+			Bullets: linesOf("확장성", "서비스 범위 확장", "다국어 지원", "클라우드 확장성", "실시간 대시보드")},
+	}
+	source, _ := SourceFromImport(pptx.ImportedDeck{Slides: slides})
+	if strings.Contains(source, "@cover") {
+		t.Errorf("a slide holding a table opens the deck as a cover:\n%s", source)
+	}
+	if strings.Contains(source, "@closing") {
+		t.Errorf("five points were put on a closing page:\n%s", source)
+	}
+}
