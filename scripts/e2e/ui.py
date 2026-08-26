@@ -332,6 +332,50 @@ with sync_playwright() as play:
     for kind, message in problems:
         failures.append(f"api-keys: {kind} {message}")
 
+    # The link is the one screen people who have no account ever see, and no
+    # browser check had ever opened it. Half of a review is the reviewer being
+    # told what happened to what they said, which is read here.
+    print("── the link somebody was sent ──")
+    problems.clear()
+    reviewed = api("/presentations", "POST", {"title": f"검토 링크 {RUN}", "prompt": "점검", "language": "ko"})
+    api(f"/presentations/{reviewed['id']}/source", "PUT", {"source": "# 실적\n- 매출 1,240억\n"})
+    opened = api(f"/presentations/{reviewed['id']}/shares", "POST", {})
+    token = (opened.get("url") or "").rstrip("/").split("/")[-1]
+    page.goto(f"{BASE}/view/{token}", wait_until="networkidle")
+    page.wait_for_timeout(1800)
+    if page.locator(".shared-deck-comments").count() == 0:
+        failures.append("a shared link opens without anywhere to say what is wrong")
+    else:
+        page.locator(".shared-deck-say input").first.fill("검토자")
+        page.locator(".shared-deck-say textarea").fill("이 숫자는 지난 분기 것입니다")
+        page.get_by_role("button", name="남기기").first.click()
+        page.wait_for_timeout(1500)
+        left = api(f"/presentations/{reviewed['id']}/comments")
+        if not left:
+            failures.append("a remark left on the link did not reach the deck")
+        else:
+            api(f"/presentations/{reviewed['id']}/comments", "POST",
+                {"parentId": left[0]["id"], "body": "확인했습니다. 방금 고쳤습니다"})
+            page.reload(wait_until="networkidle")
+            page.wait_for_timeout(1600)
+            if page.locator(".shared-deck-reply").count() == 0:
+                failures.append("the author answered and the link does not show it")
+            else:
+                page.get_by_role("button", name="답글").first.click()
+                page.wait_for_timeout(500)
+                page.locator(".shared-deck-answer textarea").fill("고맙습니다")
+                page.locator(".shared-deck-answer button").click()
+                page.wait_for_timeout(1500)
+                thread = api(f"/presentations/{reviewed['id']}/comments")
+                if len(thread) != 3 or sum(1 for row in thread if row.get("parentId")) != 2:
+                    failures.append(f"the thread came out as {[(r.get('author'), bool(r.get('parentId'))) for r in thread]}")
+                else:
+                    print("   thread on the link: 의견 → 답글 → 재답글")
+        page.screenshot(path=f"{OUT}/ui-shared-thread.png")
+    api(f"/presentations/{reviewed['id']}", "DELETE")
+    for kind, message in problems:
+        failures.append(f"view: {kind} {message}")
+
     print("── search and the command palette ──")
     problems.clear()
     page.goto(f"{BASE}/dashboard", wait_until="networkidle")
