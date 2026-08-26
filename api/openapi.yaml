@@ -3316,6 +3316,13 @@ paths:
         holds it keeps working — a key is written into a machine's configuration
         and forgotten, and issuing another one to add a permission means going
         back there. A revoked key cannot be changed.
+
+
+        A request authenticated by an API key may not grant a scope that key
+        does not itself hold, and is answered 403 naming the scope: scoping a
+        key is a promise that whatever holds it cannot do more than it was
+        given. A person signed in with their own account grants whatever the
+        account allows.
       tags: [API keys]
       x-ptium-api-key-scopes: [api_keys:manage]
       requestBody:
@@ -4632,7 +4639,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.14.0
+            service.version: 1.14.1
         requestId:
           $ref: '#/components/schemas/RequestID'
 

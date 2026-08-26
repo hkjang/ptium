@@ -136,6 +136,45 @@ if asset:
     # picture, so the leftovers of one run turn up on the slides of the next.
     call(alice, "DELETE", f"/assets/{asset['id']}")
 
+# Scoping a key is a promise that the machine holding it cannot do more than it
+# was given. A key with api_keys:manage could break that promise on its own: it
+# could issue itself another key, or widen the one it held, up to everything its
+# owner may do — which on an administrator's account meant admin:users.
+status, narrow = call(alice, "POST", "/api-keys",
+                      {"name": f"좁은 키 {RUN}", "scopes": ["api_keys:manage", "presentations:read"]})
+checks += 1
+if status != 201:
+    failures.append(f"a narrow key could not be created to check with: {status} {narrow!r}")
+else:
+    made = (narrow or {}).get("data") or narrow
+    secret = made.get("secret") or made.get("key") or ""
+    narrow_key = (made.get("apiKey") or made.get("api_key") or {}).get("id", "")
+    itself = {"Authorization": "Bearer " + secret}
+    checks += 1
+    if not secret or not narrow_key:
+        failures.append(f"a new key came back without a secret to check with: {sorted(made)}")
+    else:
+        for scopes in (["presentations:read", "presentations:write"], ["admin:users"]):
+            for method, path in (("POST", "/api-keys"), ("PATCH", f"/api-keys/{narrow_key}")):
+                asked = {"scopes": scopes}
+                if method == "POST":
+                    asked["name"] = f"넓힌 키 {RUN}"
+                code, body = call(itself, method, path, asked)
+                checks += 1
+                if code != 403:
+                    failures.append(f"a key holding neither granted {scopes} by {method}: {code} {body!r}")
+        # It may still narrow itself, and its owner may still widen it.
+        code, _ = call(itself, "PATCH", f"/api-keys/{narrow_key}", {"scopes": ["presentations:read"]})
+        checks += 1
+        if code != 200:
+            failures.append(f"a key was not allowed to narrow itself: {code}")
+        code, _ = call(alice, "PATCH", f"/api-keys/{narrow_key}",
+                       {"scopes": ["presentations:read", "presentations:write"]})
+        checks += 1
+        if code != 200:
+            failures.append(f"the owner was not allowed to widen their own key: {code}")
+        call(alice, "DELETE", f"/api-keys/{narrow_key}")
+
 status, snippet = call(alice, "POST", "/snippets", {"name": f"비밀 슬라이드 {RUN}",
                                                     "source": "# 비공개\n- 인수 후보\n"})
 checks += 1

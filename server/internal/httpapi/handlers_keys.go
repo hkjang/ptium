@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/keys"
 	"github.com/hkjang/ptium/server/internal/store"
 )
@@ -32,6 +34,9 @@ func (s *Server) createAPIKey(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	user, _ := UserFromContext(request.Context())
+	if !s.mayGrant(writer, request, input.Scopes) {
+		return
+	}
 	created, err := s.keys.Create(request.Context(), user.ID, strings.TrimSpace(input.Name), input.Scopes, input.ExpiresAt, user.IsAdmin)
 	if err != nil {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
@@ -48,6 +53,31 @@ func (s *Server) apiKeyScopes(writer http.ResponseWriter, request *http.Request)
 	writeData(writer, request, http.StatusOK, keys.Scopes(user.IsAdmin))
 }
 
+// mayGrant refuses to hand a key more than the key asking for it holds.
+//
+// Scoping a key is a promise that the machine holding it cannot do more than it
+// was given. A key with api_keys:manage could break that promise on its own: it
+// could issue itself another key — or, once scopes became editable, widen the
+// one it was holding — up to everything its owner may do, which on an
+// administrator's account meant admin:users. A person signing in with their own
+// account still grants whatever they are entitled to; it is their account.
+func (s *Server) mayGrant(writer http.ResponseWriter, request *http.Request, scopes []string) bool {
+	principal, ok := auth.PrincipalFromContext(request.Context())
+	if !ok || principal.AuthMethod != "api_key" {
+		return true
+	}
+	for _, scope := range scopes {
+		if principal.HasScope(strings.TrimSpace(scope)) {
+			continue
+		}
+		writeError(writer, request, http.StatusForbidden, "insufficient_scope",
+			fmt.Sprintf("This API key does not hold %q, so it cannot grant it", strings.TrimSpace(scope)),
+			map[string]any{"scope": strings.TrimSpace(scope)})
+		return false
+	}
+	return true
+}
+
 type updateAPIKeyRequest struct {
 	Scopes []string `json:"scopes"`
 }
@@ -59,6 +89,9 @@ func (s *Server) updateAPIKey(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	user, _ := UserFromContext(request.Context())
+	if !s.mayGrant(writer, request, input.Scopes) {
+		return
+	}
 	updated, err := s.keys.SetScopes(request.Context(), user.ID, request.PathValue("id"), input.Scopes, user.IsAdmin)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
