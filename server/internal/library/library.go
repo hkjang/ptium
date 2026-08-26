@@ -16,6 +16,7 @@
 package library
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -126,12 +127,68 @@ func Match(title string, entries []Entry) (Entry, bool) {
 					score = 60
 				}
 			}
+			// A model told to use the agreed slide's title exactly writes
+			// "1. 회사 소개 및 기술적 우위" — it numbers and it elaborates, and the
+			// agreed slide stayed on the shelf because the name was less than
+			// half of what it wrote. A name long enough to mean something, found
+			// whole inside the title and belonging to only one entry, is that
+			// entry: there is nothing else it could be.
+			if score == 0 && dressedUp(wanted, candidate) && namedOnce(candidate, entries) {
+				score = 40
+			}
 			if score > bestScore {
 				best, bestScore = entry, score
 			}
 		}
 	}
 	return best, bestScore > 0
+}
+
+// dressedUp reports whether a title is the agreed slide's name with a little
+// added — a number in front, a clause behind — rather than a title that merely
+// mentions it.
+//
+// The difference is how much else is there. "1. 회사 소개 및 기술적 우위" is the
+// agreed slide wearing a number and a qualifier; "회사 소개를 곁들인 2026년 상반기
+// 사업 계획과 조직 개편 보고" is a different slide that says the words in passing,
+// and putting the company's approved page in its place would be worse than
+// writing nothing. Three times the name is where those two sit either side of.
+func dressedUp(wanted, candidate string) bool {
+	name := utf8.RuneCountInString(candidate)
+	if name < 4 || utf8.RuneCountInString(wanted) > name*3 {
+		return false
+	}
+	// The agreed slide's name is what the title is about, so the title starts
+	// with it — after the number a model puts in front. A title that reaches it
+	// halfway through is about something else and mentions it on the way.
+	return strings.HasPrefix(withoutLeadingNumber(wanted), candidate)
+}
+
+// withoutLeadingNumber drops the "1", "2." or "제3장" a model writes in front of
+// a title it was told to write exactly.
+func withoutLeadingNumber(name string) string {
+	rest := leadingChapter.ReplaceAllString(name, "")
+	if rest == "" {
+		return name
+	}
+	return rest
+}
+
+var leadingChapter = regexp.MustCompile(`^(제?\d+(장|절|부)?)`)
+
+// namedOnce reports whether exactly one entry answers to this name, so a title
+// that contains it can only mean that one.
+func namedOnce(candidate string, entries []Entry) bool {
+	seen := 0
+	for _, entry := range entries {
+		for _, name := range append([]string{entry.Name}, entry.Aliases...) {
+			if normalize(name) == candidate {
+				seen++
+				break
+			}
+		}
+	}
+	return seen == 1
 }
 
 // withoutTrailingNumber drops the number a name ends with, and the punctuation
