@@ -144,6 +144,24 @@ with sync_playwright() as play:
     visit("/images", expect_text="내 이미지")
     visit("/guide", expect_text="사용 가이드")
     visit("/profile", expect_text="개인")
+    # The swatch is never empty: with no colour of their own it shows the
+    # deployment's, which on a deployment that never opened the branding screen
+    # is the colour this product seeds. Nobody picked it, the drawing ignores
+    # it, and saving a name must not turn it into their choice.
+    stored = api("/profile") or {}
+    had_colour = bool((stored.get("preferences") or {}).get("brandColor"))
+    swatch = page.locator("#brand input[type=text], #brand input:not([type=color])").first
+    shown = swatch.input_value() if swatch.count() else ""
+    hint = page.locator("#brand").inner_text()
+    seeded = api("/settings").get("branding.seeded_brand_color")
+    if shown and seeded and shown.upper() == str(seeded).upper() and "그대로 둡니다" not in hint:
+        failures.append(f"the profile screen shows {shown} and does not say the template keeps its accent")
+    if not had_colour:
+        page.get_by_role("button", name="변경사항 저장").first.click()
+        page.wait_for_timeout(1200)
+        written = ((api("/profile") or {}).get("preferences") or {}).get("brandColor")
+        if written:
+            failures.append(f"saving the profile wrote {written}, a colour nobody chose")
     visit("/api-keys", expect_text="API")
     visit("/docs", expect_text="API")
     visit("/admin", expect_text="관리")

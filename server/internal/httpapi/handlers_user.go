@@ -18,6 +18,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/model"
+	"github.com/hkjang/ptium/server/internal/pptx"
 	"github.com/hkjang/ptium/server/internal/store"
 )
 
@@ -87,6 +88,11 @@ func (s *Server) publicSettings(writer http.ResponseWriter, request *http.Reques
 	if s.version != "" {
 		settings["service.version"] = s.version
 	}
+	// Which colour means "nobody chose one". A deployment that never opened the
+	// branding screen still carries the colour this product seeds, and the
+	// drawing leaves a template's own accent alone when it meets it. A screen
+	// showing that value in a swatch has to be able to say so.
+	settings["branding.seeded_brand_color"] = pptx.SeededAccent
 	writeData(writer, request, http.StatusOK, settings)
 }
 

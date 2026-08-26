@@ -511,7 +511,11 @@ paths:
       summary: Get public branding and generation settings
       description: >-
         Returns only non-sensitive `branding.*` and `generation.*` settings, plus
-        `service.version` — the build the server is running. Authentication is not
+        `service.version` — the build the server is running — and
+        `branding.seeded_brand_color`, the accent colour this product ships with.
+        A deployment that never opened the branding screen still carries it, so a
+        screen showing that colour is showing nobody's choice: the drawing leaves
+        a template's own accent alone when it meets it. Authentication is not
         required.
       tags: [Settings]
       security: []
@@ -4900,11 +4904,12 @@ components:
           example:
             branding.product_name: Ptium
             branding.brand_color: '#7C3AED'
+            branding.seeded_brand_color: '#7C3AED'
             generation.default_slide_count: 10
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.24.2
+            service.version: 1.25.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

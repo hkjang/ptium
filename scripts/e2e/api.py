@@ -100,7 +100,14 @@ me = data_of(call("GET", "/me", expect=200))
 print("   signed in as", (me or {}).get("email"), "admin:", (me or {}).get("isAdmin"))
 call("GET", "/profile", expect=200)
 call("PATCH", "/profile", {"displayName": "E2E Tester", "company": "Ptium", "jobTitle": "QA"}, expect=200)
-call("GET", "/settings", expect=200)
+public_settings = data_of(call("GET", "/settings", expect=200)) or {}
+# The personalisation screen shows a colour in a swatch whether or not anybody
+# picked one — a deployment that never opened the branding screen still carries
+# the colour this product seeds. The drawing ignores exactly that colour, so a
+# screen that cannot tell which value it is goes back to promising a colour that
+# will never be drawn.
+if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
+    failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
 
 print("── templates ──")
