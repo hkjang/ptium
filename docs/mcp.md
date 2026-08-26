@@ -51,8 +51,13 @@ curl https://ptium.example.com/mcp \
 | `ptium.list_presentations` | optional `limit`, `offset` | List owner-visible decks. |
 | `ptium.get_presentation` | `id` | Read a deck and its generated slides. |
 | `ptium.create_presentation` | `title`, `prompt`; optional `templateId`, `theme`, `language`, `audience`, `tone`, `slideCount` | Create an owner-scoped draft. Omitted options use administrator generation defaults; an omitted `templateId` selects the built-in design matching `theme`. |
-| `ptium.generate_presentation` | `id` | Queue generation or regeneration. |
+| `ptium.generate_presentation` | `id` | Queue generation or regeneration. **Returns when the work is queued, not when the deck is written**: poll `ptium.get_presentation` until `status` reads `completed` or `failed`. A self-hosted model takes a minute or three. |
 | `ptium.list_templates` | optional `limit`, `offset` | List the PowerPoint templates the user may generate into, with each layout's role and text capacity. Call this first to pass a deliberate `templateId`. |
+
+Making a deck is two steps, and the second one is asynchronous: create returns a
+draft with no slides, generate queues the writing, and get reports `status` until
+it settles. An agent that fetches the deck straight after generating finds it
+empty and reports a failure that has not happened.
 
 `tools/call` returns both text content and `structuredContent`. Expected
 validation and ownership failures use `isError: true`; unexpected server errors

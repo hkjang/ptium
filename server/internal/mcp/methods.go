@@ -99,7 +99,10 @@ func (h *Handler) initialize(params json.RawMessage) (any, *rpcError) {
 			"title":   "Ptium AI Presentations",
 			"version": h.serverVersion,
 		},
-		"instructions": "Use Ptium tools to create, generate, list, and read presentations available to the authenticated user.",
+		"instructions": "Use Ptium tools to create, generate, list, and read presentations available to the " +
+			"authenticated user. Making a deck is two steps and the second one is asynchronous: " +
+			"ptium.create_presentation returns a draft with no slides, ptium.generate_presentation queues the " +
+			"writing, and ptium.get_presentation reports status until it reads \"completed\" or \"failed\".",
 	}, nil
 }
 
@@ -122,17 +125,20 @@ func toolDefinitions() []toolDefinition {
 			}, nil),
 		},
 		{
-			Name:        "ptium.get_presentation",
-			Title:       "Get a Ptium presentation",
-			Description: "Read one presentation, including its generated slides.",
+			Name:  "ptium.get_presentation",
+			Title: "Get a Ptium presentation",
+			Description: "Read one presentation, including its generated slides. " +
+				"The status field says where it is: draft, queued, generating, completed or failed. " +
+				"A deck that is still queued or generating has no slides yet.",
 			InputSchema: objectSchema(map[string]any{
 				"id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			}, []string{"id"}),
 		},
 		{
-			Name:        "ptium.create_presentation",
-			Title:       "Create a Ptium presentation",
-			Description: "Create a draft presentation from a title and generation prompt.",
+			Name:  "ptium.create_presentation",
+			Title: "Create a Ptium presentation",
+			Description: "Create a draft presentation from a title and generation prompt. " +
+				"The deck comes back with no slides: it is a draft until ptium.generate_presentation is called for it.",
 			InputSchema: objectSchema(map[string]any{
 				"title":      map[string]any{"type": "string", "minLength": 1, "maxLength": 200},
 				"prompt":     map[string]any{"type": "string", "minLength": 1, "maxLength": 20000},
@@ -145,9 +151,15 @@ func toolDefinitions() []toolDefinition {
 			}, []string{"title", "prompt"}),
 		},
 		{
-			Name:        "ptium.generate_presentation",
-			Title:       "Generate a Ptium presentation",
-			Description: "Queue generation (or regeneration) for an existing presentation.",
+			Name:  "ptium.generate_presentation",
+			Title: "Generate a Ptium presentation",
+			// A caller told only that generation was queued fetches the deck at
+			// once, finds it empty, and reports a failure that has not happened:
+			// a self-hosted model takes minutes, and nothing said so.
+			Description: "Queue generation (or regeneration) for an existing presentation. " +
+				"This returns as soon as the work is queued, not when the deck is written — " +
+				"poll ptium.get_presentation until status is \"completed\" or \"failed\". " +
+				"Writing a deck takes seconds to a few minutes depending on the provider.",
 			InputSchema: objectSchema(map[string]any{
 				"id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			}, []string{"id"}),
