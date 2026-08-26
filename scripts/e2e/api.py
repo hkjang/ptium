@@ -581,6 +581,57 @@ if linked:
         print(f"   link kept: {'https://example.com/plan' in read_back} · emphasis: {'**굵게**' in read_back}"
               f" · hidden: {'!skip' in read_back} · cited: {'!source' in read_back}")
         call("DELETE", f"/presentations/{brought_id}", expect=204)
+
+    # Most real decks bold their title. A heading is a slot rather than prose —
+    # the source has no way to bold part of one — so the marks come out as
+    # characters: every real deck measured against this was called
+    # "**목 차**" in the deck list and drew its own asterisks on the title slide.
+    def rewritten(rule):
+        made = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(stripped.getvalue())) as original:
+            with zipfile.ZipFile(made, "w", zipfile.ZIP_DEFLATED) as out:
+                for item in original.infolist():
+                    body = original.read(item.filename)
+                    if item.filename.startswith("ppt/slides/slide"):
+                        body = rule(body)
+                    out.writestr(item, body)
+        return made.getvalue()
+
+    emphatic = data_of(call("POST", "/presentations/import",
+                            files={"file": (f"굵은제목-{RUN}.pptx",
+                                            rewritten(lambda body: body.replace(b"<a:rPr ", b'<a:rPr b="1" ')),
+                                            "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                            expect=201)) or {}
+    emphatic_id = ((emphatic.get("presentation") or {}).get("id")) or ""
+    if emphatic_id:
+        checks += 1
+        name = ((emphatic.get("presentation") or {}).get("title")) or ""
+        if "*" in name:
+            failures.append(f"a deck whose title is bold is called {name!r}")
+        written = (data_of(call("GET", f"/presentations/{emphatic_id}/source", expect=200)) or {}).get("source", "")
+        checks += 1
+        if re.search(r"^# .*\*", written, re.M):
+            failures.append(f"an imported heading carries its emphasis marks: "
+                            f"{[line for line in written.splitlines() if line.startswith('#') and '*' in line][:2]}")
+        print(f"   bold title read as: {name!r}")
+        call("DELETE", f"/presentations/{emphatic_id}", expect=204)
+
+    # A deck exported as one picture per slide — what several deck generators
+    # produce — imports as slides called "3번 슬라이드" with nothing on them. That
+    # is what the file holds; saying nothing about it reads as a failed import.
+    wordless = data_of(call("POST", "/presentations/import",
+                            files={"file": (f"그림만-{RUN}.pptx",
+                                            rewritten(lambda body: re.sub(rb"<a:t>.*?</a:t>", b"<a:t></a:t>", body, flags=re.S)),
+                                            "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                            expect=201)) or {}
+    wordless_id = ((wordless.get("presentation") or {}).get("id")) or ""
+    if wordless_id:
+        checks += 1
+        said = " | ".join(wordless.get("warnings") or [])
+        if "글자가 없" not in said:
+            failures.append(f"a deck of slides with nothing to read was imported saying {said!r}")
+        print(f"   wordless deck told: {said[:60]!r}")
+        call("DELETE", f"/presentations/{wordless_id}", expect=204)
     call("DELETE", f"/presentations/{linked['id']}", expect=204)
 
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,

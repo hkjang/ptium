@@ -155,11 +155,15 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 		switch phType {
 		case "title", "ctrTitle":
 			if slide.Title == "" {
-				slide.Title = joinLines(lines)
+				slide.Title = plainly(joinLines(lines))
 			}
 			continue
 		case "subTitle":
 			if slide.Lead == "" {
+				// A lead is prose: "> …" carries links and emphasis the way a
+				// point does, and a single point on a slide is often drawn in
+				// this slot. Taking the markup out of it loses the address of a
+				// link nobody can type again from looking at the slide.
 				slide.Lead = joinLines(lines)
 			}
 			continue
@@ -174,7 +178,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 	}
 	// A slide with no title placeholder still has a title: its first line.
 	if slide.Title == "" && len(slide.Bullets) > 0 {
-		slide.Title = slide.Bullets[0].Text
+		slide.Title = plainly(slide.Bullets[0].Text)
 		slide.Bullets = slide.Bullets[1:]
 	}
 	// A picture and a table are read from the part itself: the shape parser does
@@ -370,6 +374,24 @@ func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine 
 	}
 	return lines
 }
+
+// plainly takes the inline markup back out of a line.
+//
+// A heading and a subtitle are slots, not prose: the deck source has no way to
+// bold part of a heading, so "**목 차**" is drawn with its asterisks and shown
+// with them in the deck list. Most real decks bold their title.
+func plainly(text string) string {
+	text = importedLinkPattern.ReplaceAllString(text, "$1")
+	text = importedBoldPattern.ReplaceAllString(text, "$1")
+	text = importedItalicPattern.ReplaceAllString(text, "$1")
+	return strings.TrimSpace(text)
+}
+
+var (
+	importedLinkPattern   = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
+	importedBoldPattern   = regexp.MustCompile(`\*\*([^*]+)\*\*`)
+	importedItalicPattern = regexp.MustCompile(`\*([^*]+)\*`)
+)
 
 func joinLines(lines []ImportedLine) string {
 	parts := make([]string, 0, len(lines))

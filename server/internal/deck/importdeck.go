@@ -27,8 +27,11 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 // decoration too small to be the point of the slide — is simply not placed.
 func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
-	pictures, placed, tables, charts, plots := 0, 0, 0, 0, 0
+	pictures, placed, tables, charts, plots, wordless := 0, 0, 0, 0, 0, 0
 	for index, slide := range imported.Slides {
+		if wordlessSlide(slide) {
+			wordless++
+		}
 		if index > 0 {
 			builder.WriteString("\n")
 		}
@@ -103,6 +106,20 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		charts += slide.OtherCharts
 	}
 	var warnings []string
+	// A deck exported as pictures — one image filling each slide, which is what
+	// several of the tools people generate decks with produce — reads as a run
+	// of slides called "3번 슬라이드" with nothing on them. That is what the file
+	// holds, and the import is not going to invent the words; but coming back to
+	// a deck of empty slides with no explanation reads as the import failing.
+	switch {
+	case wordless > 0 && wordless == len(imported.Slides):
+		warnings = append(warnings, fmt.Sprintf(
+			"슬라이드 %d장 모두에 읽을 수 있는 글자가 없습니다. 슬라이드가 그림 한 장으로 된 파일이라 "+
+				"제목을 임시로 붙였습니다", wordless))
+	case wordless > 0:
+		warnings = append(warnings, fmt.Sprintf(
+			"%d장에는 읽을 수 있는 글자가 없어 제목을 임시로 붙였습니다", wordless))
+	}
 	if placed > 0 {
 		warnings = append(warnings, fmt.Sprintf(
 			"그림 %d개를 이미지 라이브러리에 저장하고 슬라이드에 넣었습니다", placed))
@@ -122,6 +139,18 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			"차트 %d개는 가져오지 않았습니다. 숫자를 ::bars 나 ::line 으로 적으면 다시 그려집니다", charts))
 	}
 	return builder.String(), warnings
+}
+
+// wordlessSlide is a slide that carried nothing to read: no title, no subtitle,
+// no points, no table and no chart. A picture is not words.
+func wordlessSlide(slide pptx.ImportedSlide) bool {
+	if strings.TrimSpace(slide.Title) != "" || strings.TrimSpace(slide.Lead) != "" {
+		return false
+	}
+	if len(slide.Bullets) > 0 || len(slide.Tables) > 0 || len(slide.Charts) > 0 {
+		return false
+	}
+	return strings.TrimSpace(slide.Notes) == ""
 }
 
 // chartSource writes an imported chart as a component in deck source.
