@@ -3,6 +3,7 @@ import { Check, Copy, Link2, LoaderCircle, Trash2 } from 'lucide-react'
 import { Button, EmptyState, Modal } from '../../components/UI'
 import type { Share } from '../../types'
 import { relativeDate } from '../../utils'
+import { shareLife, shareState } from './sharelife'
 
 /**
  * Links that open this deck for someone who has no account here.
@@ -73,7 +74,7 @@ export function ShareDialog({
     }
   }
 
-  const openShares = shares.filter((share) => !share.revokedAt)
+  const openShares = shares.filter((share) => shareState(share) === 'open')
   return (
     <Modal open={open} onClose={onClose} title="링크로 공유"
       description="계정이 없는 사람도 이 링크로 덱을 볼 수 있습니다. 슬라이드만 보이고, 소스나 템플릿은 보이지 않습니다.">
@@ -111,18 +112,16 @@ export function ShareDialog({
             ? <EmptyState title="아직 만든 링크가 없습니다" description="위에서 하나 만들어 보세요." />
             : <ul className="share-list">
               {shares.map((share) => (
-                <li key={share.id} className={share.revokedAt ? 'revoked' : ''}>
+                <li key={share.id} className={shareState(share) === 'open' ? '' : 'revoked'}>
                   <div>
                     <strong>{share.label || '이름 없는 링크'}</strong>
                     <small>
-                      {share.revokedAt ? '회수됨'
-                        : share.expiresAt ? `${relativeDate(share.expiresAt)}까지`
-                          : '직접 회수할 때까지'}
+                      {shareLife(share)}
                       {' · '}{share.views}회 열림
                       {share.lastSeenAt ? ` · 마지막 ${relativeDate(share.lastSeenAt)}` : ''}
                     </small>
                   </div>
-                  {!share.revokedAt && (
+                  {shareState(share) === 'open' && (
                     <Button variant="ghost" size="small" disabled={working} onClick={() => void close(share)}>
                       <Trash2 size={14} /> 회수
                     </Button>

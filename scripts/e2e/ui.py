@@ -472,6 +472,26 @@ with sync_playwright() as play:
     problems.clear()
     reviewed = api("/presentations", "POST", {"title": f"검토 링크 {RUN}", "prompt": "점검", "language": "ko"})
     api(f"/presentations/{reviewed['id']}/source", "PUT", {"source": "# 실적\n- 매출 1,240억\n"})
+    # A link with a day on it stops working when that day passes, and the list
+    # used to keep it among the open ones — "3일 전까지", with a 회수 button
+    # beside it — so nobody could tell it was already dead.
+    dated = api(f"/presentations/{reviewed['id']}/shares", "POST", {"label": f"기한 링크 {RUN}", "days": 1})
+    page.goto(f"{BASE}/presentations/{reviewed['id']}/editor", wait_until="networkidle")
+    page.wait_for_timeout(2500)
+    if page.get_by_role("button", name="공유").count():
+        page.get_by_role("button", name="공유").first.click()
+        page.wait_for_timeout(1500)
+        rows = page.locator(".share-list li")
+        for index in range(rows.count()):
+            text = rows.nth(index).inner_text()
+            if f"기한 링크 {RUN}" not in text:
+                continue
+            if "까지" not in text:
+                failures.append(f"a link with a day on it does not say until when: {text[:60]!r}")
+            if rows.nth(index).locator("button").count() == 0:
+                failures.append("a link that still works cannot be revoked from the list")
+        page.keyboard.press("Escape")
+    api(f"/presentations/{reviewed['id']}/shares/{dated['id']}", "DELETE")
     opened = api(f"/presentations/{reviewed['id']}/shares", "POST", {})
     token = (opened.get("url") or "").rstrip("/").split("/")[-1]
     page.goto(f"{BASE}/view/{token}", wait_until="networkidle")
