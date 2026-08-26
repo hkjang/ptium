@@ -140,6 +140,35 @@ export function useSlideDrawings(presentationId: string, total: number, version:
   return drawings
 }
 
+/**
+ * What the presenter's window remembers between talks.
+ *
+ * The target length and the size of the notes belong to the person, not to the
+ * deck: somebody who needs bigger notes needs them on every deck, and the
+ * twenty minutes they are given is usually the same twenty minutes next week.
+ * Storage can be refused outright — a private window, a locked-down browser —
+ * so every read and write is allowed to fail into the default.
+ */
+function remembered(key: string, fallback: number) {
+  try {
+    const held = Number(window.localStorage.getItem(key))
+    return Number.isFinite(held) && held > 0 ? held : fallback
+  } catch { return fallback }
+}
+
+function remember(key: string, value: number) {
+  try { window.localStorage.setItem(key, String(value)) } catch { /* nothing to do about it */ }
+}
+
+/** How far behind (positive) or ahead (negative) the talk is, said in words. */
+export function pacing(seconds: number) {
+  const off = Math.abs(seconds)
+  if (off < 45) return { tone: 'on', text: '예정대로' }
+  const minutes = Math.round(off / 60)
+  const said = minutes >= 1 ? `${minutes}분` : `${off}초`
+  return seconds > 0 ? { tone: 'late', text: `${said} 늦음` } : { tone: 'early', text: `${said} 이름` }
+}
+
 function elapsed(from: number, now: number) {
   const seconds = Math.max(0, Math.floor((now - from) / 1000))
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -359,6 +388,13 @@ export function PresenterScreen({ presentationId, slides, version }: {
   const [now, setNow] = useState(Date.now())
   const [paused, setPaused] = useState(false)
   const [offset, setOffset] = useState(0)
+  // A talk has a length somebody agreed to. Knowing the clock is not the same
+  // as knowing whether you are behind, and the speaker cannot do that division
+  // while talking.
+  const [target, setTarget] = useState(() => remembered('ptium.presenter.target', 0))
+  // Notes are read from a metre away, standing, in a dim room.
+  const [notesScale, setNotesScale] = useState(() => remembered('ptium.presenter.notes', 100))
+  const [showAll, setShowAll] = useState(false)
   const images = useSlideImages(presentationId, state.total || slides.length, version, state.index, 900)
 
   const post = usePresentChannel(presentationId, (message) => {
@@ -383,8 +419,19 @@ export function PresenterScreen({ presentationId, slides, version }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [post])
 
+  useEffect(() => { remember('ptium.presenter.target', target) }, [target])
+  useEffect(() => { remember('ptium.presenter.notes', notesScale) }, [notesScale])
+
   const current = slides[state.index]
   const next = slides[state.index + 1]
+  const total = state.total || slides.length
+  const spent = Math.max(0, (paused ? state.startedAt + offset : now) - (state.startedAt + offset))
+  // Behind or ahead is measured against where the deck should be by now: a
+  // twenty-minute talk of ten slides should be leaving slide five at ten
+  // minutes. It is the only arithmetic a speaker cannot do while speaking.
+  const pace = target > 0 && total > 0
+    ? Math.round(spent / 1000 - (state.index / total) * target * 60)
+    : null
   const clock = useMemo(() => new Date(now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), [now])
 
   return <main className="presenter-screen">
@@ -398,6 +445,14 @@ export function PresenterScreen({ presentationId, slides, version }: {
           {elapsed(state.startedAt + offset, paused ? state.startedAt + offset : now)}
         </button>
         <button type="button" className="ghost" onClick={() => setOffset(Date.now() - state.startedAt)} title="타이머 초기화">초기화</button>
+        {pace !== null && <span className={`presenter-pace ${pacing(pace).tone}`} title={`목표 ${target}분 · ${state.index + 1}/${total}장`}>
+          {pacing(pace).text}
+        </span>}
+        <label className="presenter-target" title="발표에 주어진 시간">
+          <input type="number" min={0} max={240} value={target || ''} placeholder="목표"
+            onChange={(event) => setTarget(Math.max(0, Math.min(240, Number(event.target.value) || 0)))} />
+          <span>분</span>
+        </label>
         <span>{clock}</span>
       </div>
     </header>
@@ -422,14 +477,40 @@ export function PresenterScreen({ presentationId, slides, version }: {
           </div>
           {next && <strong>{next.title}</strong>}
         </div>
-        <div className="presenter-notes">
-          <span>발표 노트</span>
+        <div className="presenter-notes" style={{ fontSize: `${notesScale}%` }}>
+          <span>
+            발표 노트
+            <span className="presenter-notes-size">
+              <button type="button" onClick={() => setNotesScale((value) => Math.max(80, value - 15))}
+                disabled={notesScale <= 80} title="노트 글자 작게" aria-label="노트 글자 작게">가−</button>
+              <button type="button" onClick={() => setNotesScale((value) => Math.min(200, value + 15))}
+                disabled={notesScale >= 200} title="노트 글자 크게" aria-label="노트 글자 크게">가+</button>
+            </span>
+          </span>
           {current?.speakerNotes
             ? <p>{current.speakerNotes}</p>
             : <p className="presenter-empty">이 슬라이드에는 발표 노트가 없습니다. 편집기의 노트 탭에서 적어 두면 여기에 보입니다.</p>}
         </div>
       </div>
     </section>
-    <footer>← → 로 넘기고 ESC 로 종료합니다. 이 창은 발표자만 봅니다.</footer>
+    {/* Stepping one slide at a time is fine while the talk runs to plan. When
+        somebody asks about the number on slide eleven, pressing the arrow six
+        times in front of a room is the worst part of presenting. */}
+    {showAll && <section className="presenter-grid" aria-label="모든 슬라이드">
+      {slides.map((slide, index) => <button key={slide.id || index} type="button"
+        className={index === state.index ? 'current' : ''}
+        onClick={() => { post({ type: 'go', index }); setShowAll(false) }}>
+        <span className="presenter-grid-frame">
+          {images[index] ? <img src={images[index]} alt="" /> : <span className="present-thumb-empty" />}
+        </span>
+        <small>{index + 1}. {slide.title || '제목 없음'}</small>
+      </button>)}
+    </section>}
+    <footer>
+      <span>← → 로 넘기고 ESC 로 종료합니다. 이 창은 발표자만 봅니다.</span>
+      <button type="button" className="presenter-all" onClick={() => setShowAll((value) => !value)}>
+        {showAll ? '닫기' : '모든 슬라이드'}
+      </button>
+    </footer>
   </main>
 }

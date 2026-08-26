@@ -202,6 +202,39 @@ with sync_playwright() as play:
         moved = presenter.locator("body").inner_text()
         if moved == text:
             failures.append("the presenter window did not follow the audience screen")
+        # Stepping one slide at a time is fine while the talk runs to plan.
+        # When somebody asks about slide eleven, pressing the arrow six times in
+        # front of a room is the worst part of presenting.
+        presenter.get_by_role("button", name="모든 슬라이드").click()
+        presenter.wait_for_timeout(900)
+        tiles = presenter.locator(".presenter-grid button")
+        listed = tiles.count()
+        if listed < 2:
+            failures.append(f"the presenter window lists {listed} slides to jump to")
+        else:
+            # The grid closes as it jumps, so what it held is counted first.
+            tiles.last.click()
+            presenter.wait_for_timeout(1200)
+            jumped = presenter.locator(".presenter-step span").inner_text()
+            if not jumped.replace(" ", "").startswith(f"{listed}/"):
+                failures.append(f"jumping to slide {listed} left the presenter at {jumped!r}")
+            else:
+                print(f"   jumped straight to {jumped.strip()}")
+        # A talk has a length somebody agreed to, and the speaker cannot divide
+        # while speaking.
+        presenter.locator(".presenter-target input").fill("20")
+        presenter.wait_for_timeout(800)
+        if presenter.locator(".presenter-pace").count() == 0:
+            failures.append("a target length was given and the presenter says nothing about pace")
+        else:
+            print("   pace:", presenter.locator(".presenter-pace").inner_text())
+        # Notes are read from a metre away, standing, in a dim room.
+        before = presenter.locator(".presenter-notes").evaluate("node => getComputedStyle(node).fontSize")
+        presenter.get_by_role("button", name="노트 글자 크게").click()
+        presenter.wait_for_timeout(500)
+        after = presenter.locator(".presenter-notes").evaluate("node => getComputedStyle(node).fontSize")
+        if before == after:
+            failures.append(f"the notes stayed at {before} when asked to grow")
         presenter.screenshot(path=f"{OUT}/deep-presenter.png")
         page.keyboard.press("Escape")
         page.wait_for_timeout(800)
