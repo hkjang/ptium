@@ -5466,7 +5466,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.38.0
+            service.version: 1.39.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -7383,6 +7383,20 @@ components:
         openIncidents:
           type: integer
           minimum: 0
+        openIncidentsThisBuild:
+          type: integer
+          minimum: 0
+          description: >-
+            How many of the open error groups this running build has seen. An
+            open count alone cannot say whether this deployment is the broken
+            one.
+        openIncidentsOtherBuild:
+          type: integer
+          minimum: 0
+          description: >-
+            How many are recorded against some other build. These two need not
+            add up to openIncidents: a group recorded before the product kept
+            the build belongs to neither.
         activeApiKeys:
           type: integer
           minimum: 0
@@ -7500,6 +7514,18 @@ components:
         lastOccurredAt:
           type: string
           format: date-time
+        firstSeenVersion:
+          type: string
+          description: >-
+            The build that was running the first time this fault was seen.
+            Absent on records written before the product kept it, which means
+            unknown rather than an earlier release.
+        lastSeenVersion:
+          type: string
+          description: >-
+            The build that was running the last time this fault was seen. A
+            fault last seen on a build this deployment has left reads
+            differently from one that survived the upgrade.
 
     IncidentUpdate:
       type: object

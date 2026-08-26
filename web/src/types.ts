@@ -404,6 +404,9 @@ export interface ServerError {
   requestId?: string
   stack?: string
   notes?: string
+  /** The build that was running the first and the last time this fault was seen. */
+  firstSeenVersion?: string
+  lastSeenVersion?: string
 }
 
 export interface Incident {

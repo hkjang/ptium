@@ -33,6 +33,27 @@ function waitingFor(data: Record<string, unknown>) {
   return '작성 중'
 }
 
+/**
+ * How much of the open-error count belongs to the build that is running.
+ *
+ * Eight open groups on a deployment that has been upgraded twenty times is not
+ * eight things wrong with it — most of them can be faults it left behind, and
+ * the count alone cannot say which. Nothing here claims a fault is fixed: it
+ * says how many of the open groups this build has actually seen.
+ */
+export function incidentsHere(data: Record<string, unknown>) {
+  const open = Number(data.openIncidents ?? 0)
+  if (open === 0) return '확인 또는 해결 필요'
+  const here = Number(data.openIncidentsThisBuild ?? 0)
+  const elsewhere = Number(data.openIncidentsOtherBuild ?? 0)
+  if (here > 0) return here === open ? '모두 현재 버전에서 발생' : `현재 버전에서 발생 ${here.toLocaleString('ko-KR')}`
+  // A group recorded before the product kept the build belongs to no version at
+  // all, so the count stays quiet rather than calling it an earlier one.
+  if (elsewhere === open) return '모두 다른 버전에서 발생'
+  if (elsewhere > 0) return `다른 버전에서 발생 ${elsewhere.toLocaleString('ko-KR')}`
+  return '확인 또는 해결 필요'
+}
+
 /** What the model host said, or that this deployment does not use one. */
 function providerLine(provider: Record<string, unknown> | null) {
   if (provider === null) return '제공자에 물어보는 중…'
@@ -133,7 +154,7 @@ export function AdminOverviewPage() {
         <article><span className="metric-icon coral"><FileStack size={19} /></span><div><span>프레젠테이션</span><strong>{number(data.presentations)}</strong><small>전체 저장 덱</small></div></article>
         <article><span className="metric-icon mint"><CheckCircle2 size={19} /></span><div><span>생성 완료</span><strong>{number(data.completedDecks)}</strong><small>PPTX 내보내기 가능</small></div></article>
         <article><span className="metric-icon amber"><Sparkles size={19} /></span><div><span>생성 대기</span><strong>{number(data.queuedGenerations)}</strong><small>{waitingFor(data)}</small></div></article>
-        <article><span className="metric-icon coral"><Activity size={19} /></span><div><span>열린 오류</span><strong>{number(data.openIncidents)}</strong><small>확인 또는 해결 필요</small></div></article>
+        <article><span className="metric-icon coral"><Activity size={19} /></span><div><span>열린 오류</span><strong>{number(data.openIncidents)}</strong><small>{incidentsHere(data)}</small></div></article>
         <article><span className="metric-icon violet"><KeyRound size={19} /></span><div><span>키 상태 활성</span><strong>{number(data.activeApiKeys)}</strong><small>유효 기간·회전 기준, 사용자 정지 제외 전</small></div></article>
         {/* Every other number here counts what has not been deleted. A trash
             nobody empties grows for as long as the deployment runs, and the
@@ -185,7 +206,7 @@ export function AdminOverviewPage() {
             <Badge tone={provider === null ? 'neutral' : provider.reachable ? 'success' : provider.provider === 'fallback' ? 'neutral' : 'danger'}>
               {provider === null ? '확인 중' : provider.reachable ? '응답함' : provider.provider === 'fallback' ? '오프라인 작성기' : '응답 없음'}</Badge></div>
           <div><span className="service-icon"><Sparkles size={17} /></span><div><strong>생성 대기열</strong><small>현재 대기 또는 처리 상태인 작업 수</small></div><Badge tone={Number(data.queuedGenerations) > 0 ? 'info' : 'neutral'}>{number(data.queuedGenerations)}개</Badge></div>
-          <div><span className="service-icon"><CircleAlert size={17} /></span><div><strong>오류 센터</strong><small>{number(data.openIncidents)}개 열린 오류 그룹</small></div><Badge tone={Number(data.openIncidents) > 0 ? 'warning' : 'success'}>{Number(data.openIncidents) > 0 ? '확인 필요' : '정상'}</Badge></div>
+          <div><span className="service-icon"><CircleAlert size={17} /></span><div><strong>오류 센터</strong><small>{number(data.openIncidents)}개 열린 오류 그룹{Number(data.openIncidents) > 0 && Number(data.openIncidentsThisBuild) === 0 && Number(data.openIncidentsOtherBuild) > 0 ? ' · 이 버전에서 기록된 것은 없음' : ''}</small></div><Badge tone={Number(data.openIncidents) > 0 ? 'warning' : 'success'}>{Number(data.openIncidents) > 0 ? '확인 필요' : '정상'}</Badge></div>
         </div></section>
         <section className="admin-panel activity-panel"><div className="panel-head"><div><h2>운영 작업</h2><p>설정과 액세스, 오류 대응으로 이동합니다.</p></div></div><div className="admin-activity-list">
           <div><span className="event-dot violet" /><div><strong>서비스 구성</strong><small>AI, OIDC, 생성 기본값, 보안 설정</small></div><Link to="/admin/settings">열기 <ArrowRight size={13} /></Link></div>

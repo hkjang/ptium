@@ -28,6 +28,19 @@ type Overview struct {
 	OpenIncidents     int `json:"openIncidents"`
 	ActiveAPIKeys     int `json:"activeApiKeys"`
 
+	// How many of those open faults this build has actually seen. An error
+	// centre with eight open groups says nothing about whether this deployment
+	// is broken: most of them can belong to builds the site upgraded past
+	// months ago. The two numbers together are the ones worth acting on.
+	// Zero when the process was built without a version stamp, because then
+	// nothing can be attributed to it.
+	OpenIncidentsThisBuild int `json:"openIncidentsThisBuild"`
+	// And how many are recorded against some other build. The two do not have
+	// to add up to the open count: a group recorded before the product kept the
+	// build belongs to neither, and calling those "an earlier version" would be
+	// saying something nobody knows.
+	OpenIncidentsOtherBuild int `json:"openIncidentsOtherBuild"`
+
 	// DeletedDecks is what the trash is holding. Every other number here counts
 	// only what has not been deleted, so a deployment can carry thousands of
 	// decks nobody wanted — every draft, every trial, every import somebody
@@ -60,6 +73,8 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 		(SELECT count(*) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE status IN ('queued','generating') AND deleted_at IS NULL),
 		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged')),
+		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged') AND last_seen_version<>'' AND last_seen_version=$1),
+		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged') AND last_seen_version<>'' AND last_seen_version<>$1),
 		(SELECT count(*) FROM api_keys WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND (rotated_to_id IS NULL OR grace_until>now())),
 		(SELECT COALESCE(EXTRACT(EPOCH FROM now()-min(updated_at))::int,0) FROM presentations
 			WHERE status='queued' AND deleted_at IS NULL),
@@ -67,8 +82,8 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 			FROM presentations WHERE status='generating' AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE status='failed' AND deleted_at IS NULL AND updated_at>now()-interval '1 day'),
 		(SELECT max(updated_at) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
-		(SELECT count(*) FROM presentations WHERE deleted_at IS NOT NULL)`).Scan(
-		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys,
+		(SELECT count(*) FROM presentations WHERE deleted_at IS NOT NULL)`, s.Version).Scan(
+		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.OpenIncidentsThisBuild, &result.OpenIncidentsOtherBuild, &result.ActiveAPIKeys,
 		&result.OldestQueuedSeconds, &result.QuietestGenerationSeconds, &result.FailedLastDay,
 		&result.LastCompletedAt, &result.DeletedDecks)
 	return result, err
@@ -444,11 +459,18 @@ func (s *Store) CaptureIncident(ctx context.Context, incident model.Incident) er
 		sum := sha256.Sum256([]byte(stable))
 		incident.Fingerprint = fmt.Sprintf("%x", sum[:16])
 	}
-	_, err := s.Pool.Exec(ctx, `INSERT INTO server_errors(id,request_id,user_id,kind,severity,message,details,fingerprint,first_occurred_at,last_occurred_at)
-		VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),now()) ON CONFLICT(fingerprint) WHERE fingerprint <> '' AND status IN ('open','acknowledged')
+	// The build that saw it. A repeat of the same fault moves the last-seen
+	// version forward and never touches the first, so a fault that survived an
+	// upgrade reads differently from one that stopped at a release. A group
+	// recorded before the product kept the build keeps a blank first version
+	// when it happens again: blank there means nobody knows which build saw it
+	// first, and today's is not the answer.
+	_, err := s.Pool.Exec(ctx, `INSERT INTO server_errors(id,request_id,user_id,kind,severity,message,details,fingerprint,first_occurred_at,last_occurred_at,first_seen_version,last_seen_version)
+		VALUES($1,$2,$3,$4,$5,$6,$7,$8,now(),now(),$9,$9) ON CONFLICT(fingerprint) WHERE fingerprint <> '' AND status IN ('open','acknowledged')
 		DO UPDATE SET occurrence_count=server_errors.occurrence_count+1,last_occurred_at=now(),occurred_at=now(),
-		request_id=EXCLUDED.request_id,user_id=EXCLUDED.user_id,message=EXCLUDED.message,details=EXCLUDED.details,severity=EXCLUDED.severity,updated_at=now()`,
-		incident.ID, incident.RequestID, incident.UserID, incident.Kind, incident.Severity, incident.Message, incident.Details, incident.Fingerprint)
+		request_id=EXCLUDED.request_id,user_id=EXCLUDED.user_id,message=EXCLUDED.message,details=EXCLUDED.details,severity=EXCLUDED.severity,updated_at=now(),
+		last_seen_version=EXCLUDED.last_seen_version`,
+		incident.ID, incident.RequestID, incident.UserID, incident.Kind, incident.Severity, incident.Message, incident.Details, incident.Fingerprint, s.Version)
 	return err
 }
 
@@ -459,7 +481,7 @@ func (s *Store) ListIncidents(ctx context.Context, status string, limit, offset 
 		return nil, 0, err
 	}
 	rows, err := s.Pool.Query(ctx, `SELECT id::text,request_id,user_id::text,kind,severity,message,details,status,notes,occurred_at,updated_at,resolved_at,resolved_by::text,
-		fingerprint,occurrence_count,first_occurred_at,last_occurred_at
+		fingerprint,occurrence_count,first_occurred_at,last_occurred_at,first_seen_version,last_seen_version
 		FROM server_errors WHERE $1='' OR status=$1 ORDER BY occurred_at DESC LIMIT $2 OFFSET $3`, status, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -470,7 +492,7 @@ func (s *Store) ListIncidents(ctx context.Context, status string, limit, offset 
 		var incident model.Incident
 		if err := rows.Scan(&incident.ID, &incident.RequestID, &incident.UserID, &incident.Kind, &incident.Severity, &incident.Message, &incident.Details,
 			&incident.Status, &incident.Notes, &incident.OccurredAt, &incident.UpdatedAt, &incident.ResolvedAt, &incident.ResolvedBy,
-			&incident.Fingerprint, &incident.OccurrenceCount, &incident.FirstOccurredAt, &incident.LastOccurredAt); err != nil {
+			&incident.Fingerprint, &incident.OccurrenceCount, &incident.FirstOccurredAt, &incident.LastOccurredAt, &incident.FirstSeenVersion, &incident.LastSeenVersion); err != nil {
 			return nil, 0, err
 		}
 		incidents = append(incidents, incident)
@@ -484,10 +506,10 @@ func (s *Store) UpdateIncident(ctx context.Context, id, actorID, status string, 
 		resolved_at=CASE WHEN $3 IN ('resolved','ignored') THEN now() ELSE NULL END,
 		resolved_by=CASE WHEN $3 IN ('resolved','ignored') THEN $2::uuid ELSE NULL END
 		WHERE id=$1 RETURNING id::text,request_id,user_id::text,kind,severity,message,details,status,notes,occurred_at,updated_at,resolved_at,resolved_by::text,
-		fingerprint,occurrence_count,first_occurred_at,last_occurred_at`,
+		fingerprint,occurrence_count,first_occurred_at,last_occurred_at,first_seen_version,last_seen_version`,
 		id, actorID, status, notes).Scan(&incident.ID, &incident.RequestID, &incident.UserID, &incident.Kind, &incident.Severity, &incident.Message,
 		&incident.Details, &incident.Status, &incident.Notes, &incident.OccurredAt, &incident.UpdatedAt, &incident.ResolvedAt, &incident.ResolvedBy,
-		&incident.Fingerprint, &incident.OccurrenceCount, &incident.FirstOccurredAt, &incident.LastOccurredAt)
+		&incident.Fingerprint, &incident.OccurrenceCount, &incident.FirstOccurredAt, &incident.LastOccurredAt, &incident.FirstSeenVersion, &incident.LastSeenVersion)
 	return incident, mapNotFound(err)
 }
 

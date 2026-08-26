@@ -151,7 +151,13 @@ func writeReport(report deploymentReport) string {
 		report.Overview.Users, report.Overview.Presentations, report.Overview.CompletedDecks, report.Overview.DeletedDecks)
 	fmt.Fprintf(&out, "- 대기·작성 중 %d · 가장 오래 기다린 %d초 · 가장 조용한 작성 %d초\n",
 		report.Overview.QueuedGenerations, report.Overview.OldestQueuedSeconds, report.Overview.QuietestGenerationSeconds)
-	fmt.Fprintf(&out, "- 24시간 실패 %d · 열린 오류 %d\n", report.Overview.FailedLastDay, report.Overview.OpenIncidents)
+	// An open-error count on its own does not say whether this build is the one
+	// that is broken, so the report names how many of them this build has seen.
+	thisBuild := ""
+	if report.Overview.OpenIncidents > 0 {
+		thisBuild = fmt.Sprintf(" (이 버전에서 발생 %d)", report.Overview.OpenIncidentsThisBuild)
+	}
+	fmt.Fprintf(&out, "- 24시간 실패 %d · 열린 오류 %d%s\n", report.Overview.FailedLastDay, report.Overview.OpenIncidents, thisBuild)
 	fmt.Fprintf(&out, "- 데이터베이스 %s · 이미지 %s\n\n",
 		bytesWord(report.Storage.DatabaseBytes), bytesWord(report.Storage.AssetsInRows+report.Storage.AssetsInVolume))
 

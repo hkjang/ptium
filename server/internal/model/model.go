@@ -307,4 +307,10 @@ type Incident struct {
 	OccurrenceCount int             `json:"occurrenceCount"`
 	FirstOccurredAt time.Time       `json:"firstOccurredAt"`
 	LastOccurredAt  time.Time       `json:"lastOccurredAt"`
+	// Which build was running the first and the last time this fault was seen.
+	// An incident last seen on a build the deployment has since left is not the
+	// same thing as one still happening, and only the record can say which.
+	// Blank on rows written before the product kept it.
+	FirstSeenVersion string `json:"firstSeenVersion,omitempty"`
+	LastSeenVersion  string `json:"lastSeenVersion,omitempty"`
 }

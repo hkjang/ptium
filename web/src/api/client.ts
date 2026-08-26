@@ -235,6 +235,8 @@ function normalizeServerError(value: ServerError & Record<string, unknown>): Ser
     requestId: String(value.requestId || value.request_id || '') || undefined,
     stack: String(value.stack || details.stack || '') || undefined,
     notes: String(value.notes || '') || undefined,
+    firstSeenVersion: String(value.firstSeenVersion || value.first_seen_version || '') || undefined,
+    lastSeenVersion: String(value.lastSeenVersion || value.last_seen_version || '') || undefined,
   }
 }
 

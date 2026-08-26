@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hkjang/ptium/server/internal/model"
@@ -28,9 +29,21 @@ type Store struct {
 	// for them. Nil keeps them in the assets row, which is the default and needs
 	// nothing mounted.
 	Blobs BlobStore
+	// Version is the build this process is, stamped onto every incident so an
+	// operator reading one months later can tell whether it belongs to the
+	// deployment in front of them. Empty in tests and in a process that was
+	// built without a stamp, which is recorded as unknown rather than as a
+	// version that does not exist.
+	Version string
 }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{Pool: pool} }
+
+// WithVersion tells the store which build it is running, for the incident record.
+func (s *Store) WithVersion(version string) *Store {
+	s.Version = strings.TrimSpace(version)
+	return s
+}
 
 // WithBlobs points the store at a place to keep uploaded image bytes.
 func (s *Store) WithBlobs(blobs BlobStore) *Store {

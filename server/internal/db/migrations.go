@@ -105,6 +105,13 @@ var migrations = []string{
 	`ALTER TABLE server_errors ADD COLUMN IF NOT EXISTS occurrence_count integer NOT NULL DEFAULT 1`,
 	`ALTER TABLE server_errors ADD COLUMN IF NOT EXISTS first_occurred_at timestamptz NOT NULL DEFAULT now()`,
 	`ALTER TABLE server_errors ADD COLUMN IF NOT EXISTS last_occurred_at timestamptz NOT NULL DEFAULT now()`,
+	// Which build was running when a fault was first and last seen. An operator
+	// reading a critical incident cannot otherwise tell whether the deployment
+	// they are looking at still has the bug: the record says what happened but
+	// not what it happened to. Rows written before this column stay blank, and a
+	// blank version is shown as unknown rather than guessed at.
+	`ALTER TABLE server_errors ADD COLUMN IF NOT EXISTS first_seen_version text NOT NULL DEFAULT ''`,
+	`ALTER TABLE server_errors ADD COLUMN IF NOT EXISTS last_seen_version text NOT NULL DEFAULT ''`,
 	`CREATE UNIQUE INDEX IF NOT EXISTS server_errors_open_fingerprint_idx ON server_errors(fingerprint) WHERE fingerprint <> '' AND status IN ('open','acknowledged')`,
 	`CREATE TABLE IF NOT EXISTS audit_logs (
 		id bigserial PRIMARY KEY,

@@ -53,7 +53,7 @@ func main() {
 		fatal("initialize database", err)
 	}
 	defer pool.Close()
-	dataStore := store.New(pool)
+	dataStore := store.New(pool).WithVersion(version)
 	if applicationConfig.AssetStorage == "filesystem" {
 		// Checked here rather than on the first upload: a volume that is missing,
 		// read-only or owned by another user is a deployment mistake, and the pod
