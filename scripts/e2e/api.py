@@ -616,6 +616,42 @@ if linked:
         print(f"   bold title read as: {name!r}")
         call("DELETE", f"/presentations/{emphatic_id}", expect=204)
 
+    # A slide built in columns is read column by column. Every second real deck
+    # has a roadmap drawn as stages side by side, and reading it down the page
+    # interleaves the stages into one another — worse when the designer drew the
+    # middle stage lower to make a zigzag, which came out as 1, 3, 2.
+    INCH = 914400
+    boxes = [(INCH // 2, INCH // 2, 11 * INCH, "향후 추진 계획"),
+             (INCH // 2, 2 * INCH, 3 * INCH, "1단계 검증"),
+             (INCH // 2, 3 * INCH, 3 * INCH, "1개월"),
+             (9 * INCH // 2, 4 * INCH, 3 * INCH, "2단계 시범"),
+             (9 * INCH // 2, 5 * INCH, 3 * INCH, "2개월"),
+             (8 * INCH, 2 * INCH, 3 * INCH, "3단계 전환"),
+             (8 * INCH, 3 * INCH, 3 * INCH, "3~6개월")]
+    tree = ('<p:nvGrpSpPr><p:cNvPr id="1" name="Shape 1"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+            "".join(f'<p:sp><p:nvSpPr><p:cNvPr id="{index + 2}" name="Box {index + 2}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+                    f'<p:spPr><a:xfrm><a:off x="{left}" y="{top}"/><a:ext cx="{width}" cy="{INCH // 2}"/></a:xfrm></p:spPr>'
+                    f'<p:txBody><a:bodyPr/><a:p><a:r><a:rPr lang="ko-KR"/><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>'
+                    for index, (left, top, width, text) in enumerate(boxes)))
+    columns = data_of(call("POST", "/presentations/import",
+                           files={"file": (f"단쌓기-{RUN}.pptx",
+                                           rewritten(lambda body: re.sub(rb"<p:spTree>.*?</p:spTree>",
+                                                                         ("<p:spTree>" + tree + "</p:spTree>").encode(),
+                                                                         body, count=1, flags=re.S)),
+                                           "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                           expect=201)) or {}
+    columns_id = ((columns.get("presentation") or {}).get("id")) or ""
+    if columns_id:
+        written = (data_of(call("GET", f"/presentations/{columns_id}/source", expect=200)) or {}).get("source", "")
+        read_lines = [line.lstrip("# -").strip() for line in written.splitlines()
+                      if line.startswith("# ") or line.startswith("- ")]
+        checks += 1
+        wanted = ["향후 추진 계획", "1단계 검증", "1개월", "2단계 시범", "2개월", "3단계 전환", "3~6개월"]
+        if read_lines[:len(wanted)] != wanted:
+            failures.append(f"a slide built in columns was read as {read_lines[:len(wanted)]}")
+        print(f"   columns read as: {' · '.join(read_lines[:4])}")
+        call("DELETE", f"/presentations/{columns_id}", expect=204)
+
     # A deck exported as one picture per slide — what several deck generators
     # produce — imports as slides called "3번 슬라이드" with nothing on them. That
     # is what the file holds; saying nothing about it reads as a failed import.

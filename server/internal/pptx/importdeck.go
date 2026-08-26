@@ -249,7 +249,23 @@ func runLinkTarget(hlink *struct {
 // Tops within a quarter of an inch of each other are the same row: two boxes
 // side by side are rarely aligned to the EMU, and sorting them strictly by top
 // would put the lower-by-a-hair column first.
+//
+// A slide built in columns is read column by column instead. Down-the-page is
+// how a reader takes an ordinary slide, but a roadmap drawn as three stages
+// side by side — and every second deck has one — is read across: a stage, its
+// duration, what happens in it, then the next stage. Sorting that by rows
+// interleaves the three stages into one another, and a zigzag timeline (the
+// middle stage drawn lower than its neighbours) comes out as 1, 3, 2.
 func downThePage(shapes []placedShape) []placedShape {
+	sorted := byRow(shapes)
+	if columns := columnsOf(sorted); len(columns) > 1 {
+		return acrossColumns(sorted, columns)
+	}
+	return sorted
+}
+
+// byRow is down the page and then across it.
+func byRow(shapes []placedShape) []placedShape {
 	const row = 228600 // a quarter inch in EMU
 	sorted := make([]placedShape, len(shapes))
 	copy(sorted, shapes)
@@ -261,6 +277,162 @@ func downThePage(shapes []placedShape) []placedShape {
 		return sorted[a].Left < sorted[b].Left
 	})
 	return sorted
+}
+
+// span is the horizontal reach of a run of shapes.
+type span struct{ left, right int }
+
+func (s span) overlaps(other span) bool { return s.left < other.right && other.left < s.right }
+
+// columnsOf finds the columns a slide is built in, if it is built in columns.
+//
+// Only what carries the argument is considered: the rules, circles and bands a
+// design paints between columns span the page and would hide the very structure
+// they are drawn to show. A column has to hold more than one thing — two boxes
+// side by side are already read left to right — and there have to be at least
+// two such columns, or this is an ordinary slide.
+func columnsOf(shapes []placedShape) []span {
+	reach := span{}
+	var all []span
+	for _, shape := range shapes {
+		if shape.Width <= 0 || !hasWords(shape) {
+			continue
+		}
+		one := span{shape.Left, shape.Left + shape.Width}
+		all = append(all, one)
+		if reach.right == 0 || one.left < reach.left {
+			reach.left = one.left
+		}
+		if one.right > reach.right {
+			reach.right = one.right
+		}
+	}
+	if len(all) < 4 {
+		return nil
+	}
+	// A title, a rule or a footnote reaches across the whole slide. Left in, it
+	// bridges every column into one and hides the structure it sits above.
+	wide := (reach.right - reach.left) * 55 / 100
+	var spans []span
+	for _, one := range all {
+		if one.right-one.left <= wide {
+			spans = append(spans, one)
+		}
+	}
+	if len(spans) < 4 {
+		return nil
+	}
+	sort.Slice(spans, func(a, b int) bool { return spans[a].left < spans[b].left })
+	var columns []span
+	counts := []int{}
+	for _, one := range spans {
+		if len(columns) > 0 && one.left < columns[len(columns)-1].right {
+			last := &columns[len(columns)-1]
+			if one.right > last.right {
+				last.right = one.right
+			}
+			counts[len(counts)-1]++
+			continue
+		}
+		columns = append(columns, one)
+		counts = append(counts, 1)
+	}
+	// Every column has to be a stack of its own. A heading, a list and a caption
+	// that happen to fall into three bands are an ordinary slide read down the
+	// page; three stacks of three are a slide built in columns.
+	if len(columns) < 2 {
+		return nil
+	}
+	for _, count := range counts {
+		if count < 2 {
+			return nil
+		}
+	}
+	return columns
+}
+
+// acrossColumns reads the columns left to right, and what spans them in its own
+// place: a title above them comes first, a footnote under them comes last.
+func acrossColumns(sorted []placedShape, columns []span) []placedShape {
+	columnOf := func(shape placedShape) int {
+		if shape.Width <= 0 {
+			return -1
+		}
+		reach := span{shape.Left, shape.Left + shape.Width}
+		found := -1
+		for index, column := range columns {
+			if !reach.overlaps(column) {
+				continue
+			}
+			if found >= 0 {
+				return -1 // it spans more than one column
+			}
+			found = index
+		}
+		return found
+	}
+	firstColumnTop := 0
+	for index, shape := range sorted {
+		if columnOf(shape) >= 0 {
+			firstColumnTop = sorted[index].Top
+			break
+		}
+	}
+	above, below := []placedShape{}, []placedShape{}
+	inColumn := make([][]placedShape, len(columns))
+	for _, shape := range sorted {
+		switch index := columnOf(shape); {
+		case index >= 0:
+			inColumn[index] = append(inColumn[index], shape)
+		case shape.Top < firstColumnTop:
+			above = append(above, shape)
+		default:
+			below = append(below, shape)
+		}
+	}
+	result := make([]placedShape, 0, len(sorted))
+	result = append(result, above...)
+	for _, column := range inColumn {
+		result = append(result, column...)
+	}
+	return append(result, below...)
+}
+
+// hasWords is a shape with something written in it. Columns are found from
+// these alone: the photographs and shapes a design lays over a slide sit where
+// they look right rather than where the argument is, and one of them crossing
+// two columns would merge them into one.
+func hasWords(shape placedShape) bool {
+	if shape.Shape.TxBody == nil {
+		return false
+	}
+	for _, paragraph := range shape.Shape.TxBody.Para {
+		for _, run := range paragraph.Runs {
+			if strings.TrimSpace(run.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// saysSomething is a shape a reader would look at for what the slide says: it
+// has words in it, or it is a picture or a table.
+func saysSomething(shape placedShape) bool {
+	if shape.Shape.BlipFill != nil || shape.Shape.NvGraphicFramePr != nil || shape.Shape.NvPicPr != nil {
+		return true
+	}
+	if shape.Shape.TxBody == nil {
+		return false
+	}
+	for _, paragraph := range shape.Shape.TxBody.Para {
+		for _, run := range paragraph.Runs {
+			if strings.TrimSpace(run.Text) != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // withoutRepeatedCitations drops from the notes what the slide already cites.

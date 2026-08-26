@@ -127,6 +127,11 @@ type placedShape struct {
 	Shape rawShape
 	Top   int
 	Left  int
+	// Width and Height are how much of the slide the shape covers, which is what
+	// tells a column of a design apart from a box that spans the page. Zero
+	// means the file did not say.
+	Width  int
+	Height int
 }
 
 // placed flattens the tree and says where each shape is. A shape inside a group
@@ -137,7 +142,8 @@ func (t rawShapeTree) placed() []placedShape {
 	for _, kind := range [][]rawShape{t.Shapes, t.Pictures, t.Frames} {
 		for _, shape := range kind {
 			top, left := shape.position()
-			result = append(result, placedShape{Shape: shape, Top: top, Left: left})
+			width, height := shape.extent()
+			result = append(result, placedShape{Shape: shape, Top: top, Left: left, Width: width, Height: height})
 		}
 	}
 	for _, group := range t.Groups {
@@ -145,8 +151,12 @@ func (t rawShapeTree) placed() []placedShape {
 		if group.Transform != nil {
 			top, left = group.Transform.Off.Y, group.Transform.Off.X
 		}
+		width, height := 0, 0
+		if group.Transform != nil {
+			width, height = group.Transform.Ext.CX, group.Transform.Ext.CY
+		}
 		for _, child := range group.placed() {
-			result = append(result, placedShape{Shape: child.Shape, Top: top, Left: left})
+			result = append(result, placedShape{Shape: child.Shape, Top: top, Left: left, Width: width, Height: height})
 		}
 	}
 	return result
@@ -161,6 +171,18 @@ func (s rawShape) position() (top, left int) {
 	}
 	if s.SpPr != nil && s.SpPr.Xfrm != nil {
 		return s.SpPr.Xfrm.Off.Y, s.SpPr.Xfrm.Off.X
+	}
+	return 0, 0
+}
+
+// extent is how big a shape is, in EMU. Zero means the file did not say, which
+// is what a shape taking its size from the layout looks like from here.
+func (s rawShape) extent() (width, height int) {
+	if s.Xfrm != nil {
+		return s.Xfrm.Ext.CX, s.Xfrm.Ext.CY
+	}
+	if s.SpPr != nil && s.SpPr.Xfrm != nil {
+		return s.SpPr.Xfrm.Ext.CX, s.SpPr.Xfrm.Ext.CY
 	}
 	return 0, 0
 }
