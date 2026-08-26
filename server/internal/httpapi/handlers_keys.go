@@ -167,6 +167,18 @@ func (s *Server) rotateAPIKey(writer http.ResponseWriter, request *http.Request)
 		grace = time.Duration(*input.GraceSeconds) * time.Second
 	}
 	user, _ := UserFromContext(request.Context())
+	// Rotating a key hands its replacement's secret to whoever asked, with the
+	// old key's scopes on it. A key that may not hold a scope may not be handed
+	// a key that does: a narrow key with api_keys:manage could rotate its
+	// owner's administrator key and read the new secret out of the answer.
+	carried, err := s.keys.ScopesOf(request.Context(), user.ID, request.PathValue("id"), false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "api_key_rotate_failed")
+		return
+	}
+	if !s.mayGrant(writer, request, carried) {
+		return
+	}
 	created, err := s.keys.Rotate(request.Context(), user.ID, request.PathValue("id"), false, grace)
 	if err != nil {
 		if strings.Contains(err.Error(), "grace") {

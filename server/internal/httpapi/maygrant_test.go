@@ -97,3 +97,23 @@ func TestAKeyThatNamesNoScopesGetsItsOwn(t *testing.T) {
 		t.Errorf("named scopes were replaced by %v", named)
 	}
 }
+
+// Rotating a key hands its replacement's secret to whoever asked, with the old
+// key's scopes on it. A key that may not hold a scope may not be handed a key
+// that does: a narrow key with api_keys:manage could rotate its owner's
+// administrator key and read the new secret out of the answer.
+func TestAKeyCannotRotateAKeyWiderThanItself(t *testing.T) {
+	server := &Server{}
+	held := &auth.Principal{Subject: "someone", AuthMethod: "api_key",
+		Scopes: []string{"api_keys:manage", "presentations:read"}}
+	if server.mayGrant(httptest.NewRecorder(), askingAs("POST", held), []string{"admin:users", "presentations:read"}) {
+		t.Error("a narrow key was allowed to be handed an administrator key")
+	}
+	if !server.mayGrant(httptest.NewRecorder(), askingAs("POST", held), []string{"presentations:read"}) {
+		t.Error("a key was refused a rotation of something narrower than itself")
+	}
+	session := &auth.Principal{Subject: "someone", AuthMethod: "session"}
+	if !server.mayGrant(httptest.NewRecorder(), askingAs("POST", session), []string{"admin:users"}) {
+		t.Error("a person was refused a rotation of their own key")
+	}
+}

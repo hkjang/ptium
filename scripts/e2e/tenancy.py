@@ -177,6 +177,22 @@ else:
                 failures.append(f"a read-only key made a key that can write: {inherited}")
             call(alice, "DELETE", f"/api-keys/{(born.get('apiKey') or {}).get('id', '')}")
 
+        # Rotating a key hands its replacement's secret to whoever asked, with
+        # the old key's scopes on it: a narrow key could rotate its owner's
+        # administrator key and read the new secret out of the answer.
+        status, wide = call(alice, "POST", "/api-keys",
+                            {"name": f"넓은 키 {RUN}", "scopes": ["presentations:read", "presentations:write"]})
+        wide_key = (((wide or {}).get("data") or wide or {}).get("apiKey") or {}).get("id", "")
+        checks += 1
+        if status != 201 or not wide_key:
+            failures.append(f"a wider key could not be created to check with: {status}")
+        else:
+            code, answer = call(itself, "POST", f"/api-keys/{wide_key}/rotate", {})
+            checks += 1
+            if code != 403:
+                failures.append(f"a narrow key rotated a wider one and was handed the secret: {code} {answer!r}")
+            call(alice, "DELETE", f"/api-keys/{wide_key}")
+
         # It may still narrow itself, and its owner may still widen it.
         code, _ = call(itself, "PATCH", f"/api-keys/{narrow_key}", {"scopes": ["presentations:read"]})
         checks += 1

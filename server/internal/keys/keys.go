@@ -232,6 +232,22 @@ func (m *Manager) Revoke(ctx context.Context, userID, id string, admin bool) err
 	return nil
 }
 
+// ScopesOf is what one key carries, for a caller that has to decide whether it
+// may act on that key.
+func (m *Manager) ScopesOf(ctx context.Context, userID, id string, admin bool) ([]string, error) {
+	query := `SELECT scopes FROM api_keys WHERE id=$1`
+	args := []any{id}
+	if !admin {
+		query += ` AND user_id=$2`
+		args = append(args, userID)
+	}
+	var scopes []string
+	if err := m.pool.QueryRow(ctx, query, args...).Scan(&scopes); err != nil {
+		return nil, store.ErrNotFound
+	}
+	return scopes, nil
+}
+
 func (m *Manager) Rotate(ctx context.Context, userID, id string, admin bool, grace time.Duration) (Created, error) {
 	if grace < 0 || grace > 30*24*time.Hour {
 		return Created{}, errors.New("rotation grace must be between zero and 30 days")
