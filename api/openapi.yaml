@@ -547,7 +547,10 @@ paths:
         - $ref: '#/components/parameters/Offset'
         - name: q
           in: query
-          description: Matches the name or any tag.
+          description: >
+            Matches the name or any tag. Either `q` or `search` names this filter;
+            both are read, so a client that sends the other one is not handed the
+            whole list without being told.
           schema:
             type: string
         - name: tag
@@ -1119,7 +1122,9 @@ paths:
         - $ref: '#/components/parameters/Offset'
         - name: q
           in: query
-          description: Matches the name, the source text or any tag.
+          description: >
+            Matches the name, the source text or any tag. Either `q` or `search`
+            names this filter; both are read.
           schema:
             type: string
         - name: tag
@@ -1560,7 +1565,9 @@ paths:
           description: |
             Narrows the list to decks whose title or brief contains this text,
             case-insensitively. The count in the envelope is the number of
-            matches, so a client can page through them.
+            matches, so a client can page through them. Either `q` or `search`
+            names this filter; both are read, and what is typed is matched as
+            typed — a % or a _ in the text is those characters, not a wildcard.
       responses:
         '200':
           description: |
@@ -2920,6 +2927,7 @@ paths:
           in: query
           description: |
             Narrow to templates whose name contains this text, case-insensitively.
+            Either `search` or `q` names this filter; both are read.
             Tags are read out of a template's design as it is listed rather than
             stored, so they cannot be searched.
           schema:
@@ -3623,7 +3631,7 @@ paths:
         - { in: query, name: actor, schema: { type: string }, description: "An email or a user id" }
         - { in: query, name: target, schema: { type: string }, description: "The kind of thing acted on" }
         - { in: query, name: targetId, schema: { type: string }, description: "The one thing acted on" }
-        - { in: query, name: search, schema: { type: string }, description: "Looks through the action, the target, the actor and what was recorded" }
+        - { in: query, name: search, schema: { type: string }, description: "Looks through the action, the target, the actor and what was recorded. Either search or q names this filter; both are read" }
         - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 3650 }, description: "How far back to read" }
         - { in: query, name: format, schema: { type: string, enum: [csv] }, description: "csv sends the filtered trail as a file rather than a page" }
         - { $ref: '#/components/parameters/Limit' }
@@ -3821,7 +3829,9 @@ paths:
         - name: search
           in: query
           required: false
-          description: Case-insensitive substring match against email or name.
+          description: >
+            Case-insensitive substring match against email or name. Either
+            `search` or `q` names this filter; both are read.
           schema:
             type: string
         - $ref: '#/components/parameters/Limit'
@@ -4726,7 +4736,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.22.1
+            service.version: 1.22.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 

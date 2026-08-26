@@ -884,6 +884,19 @@ for typed, wanted in ((f"50% 보고 {RUN}", f"달성률 50% 보고 {RUN}"),
     if titles != [wanted]:
         failures.append(f"searching {typed!r} found {titles}")
 print("   searching for a % or a _ finds the name that has one")
+# Half of this API called the filter "q" and half "search", and the name that
+# was not read was ignored in silence — a client searching templates with "q"
+# was handed every template.
+for where, term in (("/presentations", f"50% 보고 {RUN}"), ("/templates", "Rail"),
+                    ("/assets", "e2e"), ("/snippets", "e2e")):
+    totals = []
+    for name in ("q", "search"):
+        page = call("GET", f"{where}?{name}={urllib.parse.quote(term)}&limit=5", expect=200)
+        totals.append(((page[1] or {}).get("meta") or {}).get("total"))
+    checks += 1
+    if totals[0] != totals[1]:
+        failures.append(f"{where} answers q={totals[0]} and search={totals[1]} for the same question")
+print("   q and search ask the same question at every door")
 for one in wild.values():
     if one:
         call("DELETE", f"/presentations/{one}?permanent=true", expect=[204, 404])

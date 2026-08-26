@@ -28,7 +28,7 @@ func (s *Server) listAssets(writer http.ResponseWriter, request *http.Request) {
 	limit, offset := pagination(request)
 	query := request.URL.Query()
 	items, total, err := s.store.ListAssets(request.Context(), user.ID, store.AssetQuery{
-		Search:   query.Get("q"),
+		Search:   searchTerm(request),
 		Tag:      query.Get("tag"),
 		Favorite: query.Get("favorite") == "true",
 		Sort:     query.Get("sort"),

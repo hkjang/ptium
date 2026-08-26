@@ -30,7 +30,7 @@ func (s *Server) listSnippets(writer http.ResponseWriter, request *http.Request)
 	limit, offset := pagination(request)
 	query := request.URL.Query()
 	items, total, err := s.store.ListSnippets(request.Context(), user.ID, store.SnippetQuery{
-		Search:   query.Get("q"),
+		Search:   searchTerm(request),
 		Tag:      query.Get("tag"),
 		Favorite: query.Get("favorite") == "true",
 		Sort:     query.Get("sort"),

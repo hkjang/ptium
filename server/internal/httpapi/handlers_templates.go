@@ -32,7 +32,7 @@ func (s *Server) listTemplates(writer http.ResponseWriter, request *http.Request
 	// before they choose.
 	filter := store.TemplateFilter{
 		Kind:   request.URL.Query().Get("kind"),
-		Search: request.URL.Query().Get("search"),
+		Search: searchTerm(request),
 	}
 	items, total, err := s.store.ListTemplatesFiltered(request.Context(), user.ID, filter, limit, offset)
 	if err != nil {

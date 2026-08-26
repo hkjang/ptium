@@ -123,7 +123,7 @@ func (s *Server) listPresentations(writer http.ResponseWriter, request *http.Req
 	// filters by fetching every deck first is fine at ten decks and a megabyte
 	// of JSON at six hundred.
 	items, total, err := s.store.SearchPresentations(request.Context(), user.ID, false, deleted,
-		request.URL.Query().Get("q"), limit, offset)
+		searchTerm(request), limit, offset)
 	if err != nil {
 		s.internalError(writer, request, "presentations_read_failed", err)
 		return

@@ -323,7 +323,7 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 
 func (s *Server) adminListUsers(writer http.ResponseWriter, request *http.Request) {
 	limit, offset := pagination(request)
-	items, total, err := s.store.ListUsers(request.Context(), strings.TrimSpace(request.URL.Query().Get("search")), limit, offset)
+	items, total, err := s.store.ListUsers(request.Context(), searchTerm(request), limit, offset)
 	if err != nil {
 		s.internalError(writer, request, "admin_users_read_failed", err)
 		return
@@ -574,7 +574,7 @@ func (s *Server) adminListAuditTrail(writer http.ResponseWriter, request *http.R
 		Actor:    strings.TrimSpace(query.Get("actor")),
 		Target:   strings.TrimSpace(query.Get("target")),
 		TargetID: strings.TrimSpace(query.Get("targetId")),
-		Search:   strings.TrimSpace(query.Get("search")),
+		Search:   searchTerm(request),
 	}
 	// "since" is said in days, because that is how the question is asked: what
 	// happened today, this week, since the deployment on Tuesday.
