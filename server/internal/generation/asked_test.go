@@ -75,6 +75,30 @@ func TestWhatWasAskedForDoesNotBecomeTheTitle(t *testing.T) {
 	}
 }
 
+// A slide word is not a request. "랜딩 페이지 개편" and "보안 섹션 강화 방안" are
+// subjects that happen to contain one, and reading those as requests took the
+// subject out of the deck and left a section called "랜딩".
+func TestASlideWordWithoutTheAskingIsJustAWord(t *testing.T) {
+	for brief, wanted := range map[string]string{
+		"랜딩 페이지 개편과 전환율 개선 계획":                          "랜딩 페이지",
+		"제품 소개 페이지 리뉴얼 계획을 보고합니다":                       "제품 소개 페이지",
+		"보안 섹션 강화 방안":                                   "보안 섹션",
+		"슬라이드 편집기 개선 로드맵":                               "슬라이드 편집기",
+		"The landing page redesign and conversion plan": "landing page",
+		"A pricing page experiment for the growth team": "pricing page",
+	} {
+		outline := outlinePrompt(brief, "", koreanCopy)
+		if !strings.Contains(outline.Subject, wanted) {
+			t.Errorf("%q lost %q from its subject: %q", brief, wanted, outline.Subject)
+		}
+		for _, topic := range outline.Topics {
+			if topic.Asked {
+				t.Errorf("%q was read as a request for a section called %q", brief, topic.Name)
+			}
+		}
+	}
+}
+
 // A count is not a section. "10장으로 정리해줘" says how long the deck is.
 func TestALengthIsNotASection(t *testing.T) {
 	for _, brief := range []string{

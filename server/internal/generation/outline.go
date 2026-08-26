@@ -113,22 +113,32 @@ var instructionPattern = regexp.MustCompile(
 // "마지막에 리스크 장을 꼭 넣어주세요" is somebody naming a section, and the deck
 // came out with a slide actually titled "리스크 장을 꼭 넣어주세요" — twice, plus a
 // "— 현황" of it. The English side was the same: "Include a slide on rollback"
-// became a heading three times over. What the sentence names is the subject;
+// became a heading three times over. What the sentence names is the section;
 // the rest of it is the asking.
 //
-// A slide word on its own — 슬라이드, 섹션, 페이지 — is enough, because nobody
-// writes those about anything else. 장 is not: it ends a hundred ordinary words,
-// so it counts only in front of an actual request.
+// The asking has to be there. A slide word by itself says nothing: "랜딩 페이지
+// 개편" and "보안 섹션 강화 방안" are subjects that happen to contain one, and
+// reading those as requests took the subject out of the deck and left a section
+// called "랜딩".
 var askedSection = regexp.MustCompile(
-	`([가-힣A-Za-z0-9][^,.。\n]{0,18}?)\s*(?:슬라이드|섹션|페이지)\s*(?:도|은|는|을|를|와|과|에|의)?\s*` +
+	`([^\s,.。\n][^,.。\n]{0,18}?)\s*(?:슬라이드|섹션|페이지|장)\s*(?:도|은|는|을|를)?\s*` +
 		`(?:꼭\s*|반드시\s*|하나\s*)?(?:넣어\s*주세요|넣어\s*줘|넣어라|넣어|넣고|포함해\s*주세요|포함해\s*줘|` +
-		`포함하고|포함해|포함|추가해\s*주세요|추가해\s*줘|추가하고|추가해|만들어\s*주세요|구성해\s*주세요)?|` +
-		`([가-힣A-Za-z0-9][^,.。\n]{0,18}?)\s*장\s*(?:도|은|는|을|를|와|과)?\s*` +
-		`(?:꼭\s*|반드시\s*)?(?:넣어\s*주세요|넣어\s*줘|넣어라|넣어|넣고|포함해\s*주세요|포함해\s*줘|` +
-		`포함하고|포함해|추가해\s*주세요|추가해\s*줘|추가하고|추가해)`)
+		`포함하고|포함해|포함|추가해\s*주세요|추가해\s*줘|추가하고|추가해|만들어\s*주세요|구성해\s*주세요)`)
 
-// askedSectionLatin is the same request written the other way round: English
-// puts the asking first and the subject after it.
+// namedBeforeSlideWord pulls the names out of a request once the request has
+// been found. Two sections asked for in one breath — "일정 슬라이드와 예산
+// 슬라이드를 포함해 주세요" — are one sentence with one verb, so the whole list is
+// one request and each name sits in front of a slide word inside it.
+var namedBeforeSlideWord = regexp.MustCompile(`([^\s,.。\n][^,.。\n]{0,18}?)\s*(?:슬라이드|섹션|페이지|장)`)
+
+// joinedOn is the conjunction the second name in such a list begins with.
+var joinedOn = regexp.MustCompile(`^\s*(?:와|과|,|랑|하고|및|그리고)\s*`)
+
+// askingLatin says the sentence is a request at all: English puts the asking
+// first, and without it "the landing page redesign" is a subject.
+var askingLatin = regexp.MustCompile(`(?i)\b(?:include|add)\b`)
+
+// askedSectionLatin is the request itself, in either order it gets written.
 var askedSectionLatin = regexp.MustCompile(
 	`(?i)\b(?:include|add)\s+(?:an?|the)?\s*(?:slides?|sections?|pages?)\s+(?:on|about|for|covering)\s+` +
 		`([a-z][a-z0-9'\- ]{1,28}?)(?:\s+(?:and|plus)\b|[,.]|$)|` +
@@ -138,46 +148,6 @@ var askedSectionLatin = regexp.MustCompile(
 // about order, not a thing to have a slide about.
 var wherePlaced = regexp.MustCompile(`(?:맨\s*)?(?:마지막|처음|끝|앞|뒤|중간)\s*(?:에|에다|으로|로)?\s*`)
 
-// sectionsAskedFor is the names of the slides a brief asks for outright.
-func sectionsAskedFor(subject string) []string {
-	var asked []string
-	take := func(matches [][]string) {
-		for _, match := range matches {
-			for _, group := range match[1:] {
-				// "마지막에 리스크 장" says where to put it as well as what it is
-				// about, and a slide titled "마지막에 리스크" is neither.
-				group = wherePlaced.ReplaceAllString(group, " ")
-				if name := cleanTopic(strings.TrimSpace(group)); utf8.RuneCountInString(name) >= 2 {
-					asked = append(asked, name)
-					break
-				}
-			}
-		}
-	}
-	take(askedSection.FindAllStringSubmatch(subject, 4))
-	take(askedSectionLatin.FindAllStringSubmatch(subject, 4))
-	return asked
-}
-
-// withoutTheAsking takes the whole request out of the brief: both the asking
-// and the name it asks for, because neither is what the deck is about.
-//
-// The name comes back as a section of its own further down. Leaving it in the
-// subject instead made it part of the deck's title — a report on warehouse
-// automation ending up called "물류센터 자동화 도입을 합니다. 리스크".
-//
-// The comma matters. Two sections asked for in one breath — "일정 슬라이드와 예산
-// 슬라이드를 포함해 주세요" — are joined by the 와 the asking is written with, and
-// taking that out without leaving a separator ran the sentences either side of
-// it together.
-func withoutTheAsking(subject string) string {
-	subject = askedSection.ReplaceAllString(subject, ", ")
-	subject = askedSectionLatin.ReplaceAllString(subject, ", ")
-	subject = wherePlaced.ReplaceAllString(subject, " ")
-	subject = strandedVerb.ReplaceAllString(subject, "${1}")
-	return strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
-}
-
 // strandedVerb is the verb a sentence ends on once what it was doing has been
 // taken out of it.
 //
@@ -186,6 +156,39 @@ func withoutTheAsking(subject string) string {
 // became the deck's title. The subject is the noun in front of the verb.
 var strandedVerb = regexp.MustCompile(
 	`\s*(?:을|를|이|가)?\s*(?:하고자\s*)?(?:합니다|입니다|했습니다|하였습니다|하겠습니다|됩니다|드립니다|한다|이다)\s*([.。,]|$)`)
+
+// askedFor separates a brief into what it is about and the sections it asks
+// for by name. The request goes out of the subject entirely: leaving the name
+// in made it part of the deck's title, and a report on warehouse automation
+// came out called "물류센터 자동화 도입을 합니다. 리스크".
+func askedFor(subject string) (string, []string) {
+	var names []string
+	take := func(matches [][]string) {
+		for _, match := range matches {
+			for _, group := range match[1:] {
+				// "마지막에 리스크 장" says where to put it as well as what it is
+				// about, and a slide titled "마지막에 리스크" is neither.
+				group = wherePlaced.ReplaceAllString(group, " ")
+				group = joinedOn.ReplaceAllString(group, "")
+				if name := cleanTopic(strings.TrimSpace(group)); utf8.RuneCountInString(name) >= 2 {
+					names = append(names, name)
+					break
+				}
+			}
+		}
+	}
+	for _, span := range askedSection.FindAllString(subject, 4) {
+		take(namedBeforeSlideWord.FindAllStringSubmatch(span, 4))
+	}
+	subject = askedSection.ReplaceAllString(subject, ", ")
+	if askingLatin.MatchString(subject) {
+		take(askedSectionLatin.FindAllStringSubmatch(subject, 4))
+		subject = askedSectionLatin.ReplaceAllString(subject, ", ")
+	}
+	subject = wherePlaced.ReplaceAllString(subject, " ")
+	subject = strandedVerb.ReplaceAllString(subject, "${1}")
+	return strings.TrimSpace(strings.Join(strings.Fields(subject), " ")), names
+}
 
 // periodPattern finds a stated timeframe, which belongs on the cover.
 var periodPattern = regexp.MustCompile(
@@ -254,8 +257,7 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	// After the counts and the audience are out of the way, what is left of a
 	// request for a section is the section's name. It is taken out here and put
 	// back as a section below.
-	asked := sectionsAskedFor(subject)
-	subject = withoutTheAsking(subject)
+	subject, asked := askedFor(subject)
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
 	subject = cleanTopic(subject)
 	if subject == "" {
