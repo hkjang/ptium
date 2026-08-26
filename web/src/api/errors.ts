@@ -54,6 +54,16 @@ const byMessage: Record<string, string> = {
   'The upload could not be read': '업로드한 파일을 읽지 못했습니다.',
   "A PowerPoint file must be supplied in the 'file' field": 'PowerPoint 파일을 file 항목으로 보내 주세요.',
   'a file field is required': '파일을 선택해 주세요.',
+  'the file is empty': '올린 파일이 비어 있습니다.',
+  'an image needs a name': '이미지에 이름이 필요합니다.',
+  'that name is too long for an image': '이미지 이름이 너무 깁니다.',
+  'another image already has that name': '같은 이름의 이미지가 이미 있습니다.',
+  'another saved slide already has that name': '같은 이름의 저장 슬라이드가 이미 있습니다.',
+  'a comment needs something to say': '의견을 입력해 주세요.',
+  'the selected template does not exist': '고른 템플릿이 없습니다. 목록에서 다시 골라 주세요.',
+  'a slide that does not exist is not an edit': '없는 슬라이드는 고칠 수 없습니다. 화면을 새로 고쳐 주세요.',
+  'The requested slide does not exist': '그 슬라이드가 없습니다. 화면을 새로 고쳐 주세요.',
+  'This API key does not exist, or it has been revoked': '이 API 키가 없거나 이미 폐기되었습니다.',
   'Template name is required and must not exceed 120 characters': '템플릿 이름은 1자 이상 120자 이하여야 합니다.',
   'Template name or description is too long': '템플릿 이름이나 설명이 너무 깁니다.',
   'scope must be private or shared': '공개 범위는 private 또는 shared여야 합니다.',
@@ -101,9 +111,63 @@ const byCode: Record<string, string> = {
   asset_too_large: '이미지가 너무 큽니다. 더 작은 파일로 올려 주세요.',
 }
 
+/**
+ * The messages that carry a field name or a limit in them.
+ *
+ * These arrived as "입력한 값이 올바르지 않습니다" — the code's fallback — because
+ * no exact string can match "title is required and must not exceed 200
+ * characters". The server said which field and what the limit is; saying only
+ * that something is wrong throws that away and leaves the person guessing which
+ * box to look at.
+ */
+const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
+  [/^(?:slide )?(\w+) is required and must not exceed (\d+) characters$/,
+    (m) => `${topic(fieldName(m[1]))} 비워 둘 수 없고 ${m[2]}자를 넘을 수 없습니다.`],
+  [/^(\w+) must not exceed (\d+) characters$/,
+    (m) => `${topic(fieldName(m[1]))} ${m[2]}자를 넘을 수 없습니다.`],
+  [/^(\w+) must be between (\d+) and (\d+)(?: before generation)?$/,
+    (m) => `${topic(fieldName(m[1]))} ${m[2]}에서 ${m[3]} 사이여야 합니다.`],
+  [/^Template name is required and must not exceed (\d+) characters$/,
+    (m) => `템플릿 이름은 비워 둘 수 없고 ${m[1]}자를 넘을 수 없습니다.`],
+  [/^slide (\d+) does not exist$/, (m) => `${m[1]}번 슬라이드가 없습니다. 화면을 새로 고쳐 주세요.`],
+  [/^invalid input: (.+)$/, (m) => byMessage[m[1]] || `입력한 값이 올바르지 않습니다: ${m[1]}`],
+  [/^AI provider must be (.+)$/,
+    (m) => `AI 공급자는 ${m[1].replace(/,? or /g, ' · ').replace(/, /g, ' · ')} 중 하나여야 합니다.`],
+]
+
+/**
+ * topic writes the 은/는 a Korean sentence marks its subject with.
+ *
+ * "제목은(는)" is what a message looks like when nobody chose, and Korean
+ * chooses by whether the last syllable ends in a consonant — which is
+ * arithmetic on the character, not a lookup.
+ */
+function topic(word: string) {
+  const last = word.trim().slice(-1)
+  const code = last.charCodeAt(0)
+  if (code < 0xac00 || code > 0xd7a3) return `${word}은(는)`
+  return `${word}${(code - 0xac00) % 28 === 0 ? '는' : '은'}`
+}
+
+/** fieldName names a field the way the screen labels it. */
+function fieldName(field: string) {
+  const named: Record<string, string> = {
+    title: '제목', name: '이름', description: '설명', prompt: '브리프', body: '내용',
+    audience: '청중', language: '언어', theme: '테마', tone: '어조', company: '회사',
+    requestedSlideCount: '슬라이드 수', slideCount: '슬라이드 수', email: '이메일',
+    username: '아이디', password: '비밀번호', displayName: '이름', jobTitle: '직함',
+    label: '이름', instruction: '요청', source: '덱 코드', scope: '공개 범위',
+  }
+  return named[field] || field
+}
+
 export function errorText(code: string, message: string) {
   const said = (message || '').trim()
   if (byMessage[said]) return byMessage[said]
+  for (const [pattern, write] of rules) {
+    const match = said.match(pattern)
+    if (match) return write(match)
+  }
   if (byCode[code]) return byCode[code]
   return said
 }

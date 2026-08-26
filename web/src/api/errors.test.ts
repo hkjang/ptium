@@ -43,4 +43,25 @@ describe('what the server refused, in the reader’s words', () => {
     // Even when the server words it some other way, the code carries it.
     expect(errorText('unsupported_image', 'something new about images')).toContain('이미지 파일이 아닙니다')
   })
+
+
+  it('keeps the field and the limit the server named', () => {
+    // These arrived as "입력한 값이 올바르지 않습니다" — the code's fallback —
+    // because no exact string matches a message with a number in it. The
+    // server said which field and what the limit is.
+    expect(errorText('validation_error', 'title is required and must not exceed 200 characters'))
+      .toBe('제목은 비워 둘 수 없고 200자를 넘을 수 없습니다.')
+    expect(errorText('validation_error', 'requestedSlideCount must be between 1 and 50'))
+      .toBe('슬라이드 수는 1에서 50 사이여야 합니다.')
+    expect(errorText('validation_error', 'slide 7 does not exist'))
+      .toContain('7번 슬라이드')
+    expect(errorText('validation_error', 'invalid input: the file is empty'))
+      .toBe('올린 파일이 비어 있습니다.')
+    expect(errorText('validation_error', 'AI provider must be fallback, openai, or openai-compatible'))
+      .toBe('AI 공급자는 fallback · openai · openai-compatible 중 하나여야 합니다.')
+    // The subject particle is chosen the way Korean chooses it.
+    expect(errorText('validation_error', 'name must not exceed 60 characters')).toContain('이름은')
+    // And anything with no rule is still shown as the server wrote it.
+    expect(errorText('', 'something nobody has written a rule for')).toBe('something nobody has written a rule for')
+  })
 })
