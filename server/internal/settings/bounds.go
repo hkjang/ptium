@@ -1,6 +1,9 @@
 package settings
 
-import "strings"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // What a setting is honoured at.
 //
@@ -53,4 +56,22 @@ func IsWord(key, value string) bool {
 		}
 	}
 	return false
+}
+
+// Honoured reports whether a stored value is one this deployment will act on.
+// A key with no bound at all is honoured as written.
+func Honoured(key string, value json.RawMessage) bool {
+	if bounds, ok := Numbers[key]; ok {
+		var number int
+		return json.Unmarshal(value, &number) == nil && bounds.Holds(number)
+	}
+	if _, ok := Flags[key]; ok {
+		var flag bool
+		return json.Unmarshal(value, &flag) == nil
+	}
+	if _, ok := Words[key]; ok {
+		var word string
+		return json.Unmarshal(value, &word) == nil && IsWord(key, word)
+	}
+	return true
 }

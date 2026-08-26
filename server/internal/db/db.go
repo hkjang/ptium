@@ -2,11 +2,16 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/hkjang/ptium/server/internal/settings"
 )
 
 func Open(ctx context.Context, dsn string, logger *slog.Logger) (*pgxpool.Pool, error) {
@@ -67,6 +72,59 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) error
 			return fmt.Errorf("seed setting %q: %w", key, err)
 		}
 	}
+	if restored, err := honourStoredSettings(ctx, conn, logger); err != nil {
+		return err
+	} else if restored > 0 {
+		logger.Info("settings reset to a value this deployment honours", "count", restored)
+	}
 	logger.Info("database migrations ready", "versions", len(migrations))
 	return nil
+}
+
+// honourStoredSettings puts back the seeded value wherever a stored one cannot
+// be acted on.
+//
+// Until this release the settings API took any value and answered 200, so a
+// deployment upgrading into it can be holding a timeout of 99999 seconds or a
+// repair count of 500 — values the readers have always ignored. Leaving them
+// stored would show an administrator a number their deployment does not use,
+// and would make the section they sit in impossible to save now that the API
+// refuses what it will not honour. The bounds are the ones the readers apply.
+func honourStoredSettings(ctx context.Context, conn interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}, logger *slog.Logger) (int, error) {
+	rows, err := conn.Query(ctx, `SELECT key, value FROM app_settings`)
+	if err != nil {
+		return 0, fmt.Errorf("read settings: %w", err)
+	}
+	stored := map[string]json.RawMessage{}
+	for rows.Next() {
+		var key string
+		var value []byte
+		if err := rows.Scan(&key, &value); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("read setting: %w", err)
+		}
+		stored[key] = append(json.RawMessage(nil), value...)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("read settings: %w", err)
+	}
+
+	restored := 0
+	for key, value := range stored {
+		seed, known := defaultSettings[key]
+		if !known || settings.Honoured(key, value) {
+			continue
+		}
+		if _, err := conn.Exec(ctx, `UPDATE app_settings SET value=$2::jsonb WHERE key=$1`, key, seed.Value); err != nil {
+			return restored, fmt.Errorf("reset setting %q: %w", key, err)
+		}
+		logger.Warn("a stored setting could not be honoured and was put back",
+			"key", key, "stored", string(value), "restored", seed.Value)
+		restored++
+	}
+	return restored, nil
 }
