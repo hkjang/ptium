@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -388,7 +389,7 @@ func pictureNames(ctx context.Context, read func(context.Context, string) []stri
 	}
 	var names []string
 	for _, name := range read(ctx, ownerID) {
-		if trimmed := strings.TrimSpace(name); trimmed != "" {
+		if trimmed := strings.TrimSpace(name); saysWhatItIs(trimmed) {
 			names = append(names, trimmed)
 		}
 		if len(names) >= maximumOfferedPictures {
@@ -397,6 +398,39 @@ func pictureNames(ctx context.Context, read func(context.Context, string) []stri
 	}
 	return names
 }
+
+// saysWhatItIs keeps the pictures whose names tell a model what is in them.
+//
+// The list is names and nothing else — a model cannot look at the pictures —
+// so a name that says nothing is an invitation to guess. Importing a deck
+// names its pictures after the file they came from: "해커톤 최종발표 ·
+// image22.png" is a screenshot of something, and a live model put that exact
+// picture on an English warehouse deck and again on a Japanese quarterly one.
+// A camera's own name — IMG_4821.jpg — is the same problem.
+func saysWhatItIs(name string) bool {
+	said := strings.TrimSpace(name)
+	if said == "" {
+		return false
+	}
+	// An imported picture is "<the deck it came from> · <its part name>", and
+	// the part name is what it would be offered as.
+	if _, part, found := strings.Cut(said, " · "); found {
+		said = strings.TrimSpace(part)
+	}
+	if index := strings.LastIndex(said, "."); index > 0 && len(said)-index <= 5 {
+		said = said[:index]
+	}
+	// What is left after the counter, the date and the punctuation that holds
+	// them on: a name that is only those is a file, not a subject.
+	said = strings.TrimSpace(strings.Trim(said, "0123456789 -_()[]#·."))
+	if said == "" {
+		return false
+	}
+	return !genericPictureName.MatchString(said)
+}
+
+// genericPictureName is what a picture is called when nobody named it.
+var genericPictureName = regexp.MustCompile(`(?i)^(image|img|imgp|photo|picture|pic|screenshot|screen ?shot|capture|untitled|파일|사진|그림|이미지|스크린샷|캡처|무제)$`)
 
 // fromLibrary puts the owner's registered slides into a deck that wrote its own
 // versions of them.
