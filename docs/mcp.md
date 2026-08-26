@@ -48,7 +48,7 @@ curl https://ptium.example.com/mcp \
 
 | Tool | Required arguments | Purpose |
 | --- | --- | --- |
-| `ptium.list_presentations` | optional `limit`, `offset` | List owner-visible decks. |
+| `ptium.list_presentations` | optional `q`, `limit`, `offset` | List owner-visible decks, newest first. `q` narrows to decks whose title or brief contains that text — an account holds thousands, and paging through them is not finding one. |
 | `ptium.get_presentation` | `id` | Read a deck and its generated slides. |
 | `ptium.create_presentation` | `title`, `prompt`; optional `templateId`, `theme`, `language`, `audience`, `tone`, `slideCount` | Create an owner-scoped draft. Omitted options use administrator generation defaults; an omitted `templateId` selects the built-in design matching `theme`. |
 | `ptium.generate_presentation` | `id` | Queue generation or regeneration. **Returns when the work is queued, not when the deck is written**: poll `ptium.get_presentation` until `status` reads `completed` or `failed`. A self-hosted model takes a minute or three. |

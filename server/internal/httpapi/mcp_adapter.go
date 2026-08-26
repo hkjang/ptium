@@ -28,9 +28,13 @@ func MCPUserFromRequest(request *http.Request) (model.User, error) {
 	return user, nil
 }
 
-func (operations MCPOperations) ListPresentations(ctx context.Context, user model.User, limit, offset int) ([]model.Presentation, int, error) {
+func (operations MCPOperations) ListPresentations(ctx context.Context, user model.User, limit, offset int,
+	search string) ([]model.Presentation, int, error) {
 	if !allowScope(ctx, "presentations:read") {
 		return nil, 0, mcp.NewServiceError(mcp.ServiceErrorForbidden, "presentations:read scope is required")
+	}
+	if strings.TrimSpace(search) != "" {
+		return operations.Store.SearchPresentations(ctx, user.ID, false, false, strings.TrimSpace(search), limit, offset)
 	}
 	return operations.Store.ListPresentations(ctx, user.ID, false, limit, offset)
 }

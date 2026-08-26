@@ -116,10 +116,13 @@ type toolDefinition struct {
 func toolDefinitions() []toolDefinition {
 	return []toolDefinition{
 		{
-			Name:        "ptium.list_presentations",
-			Title:       "List Ptium presentations",
-			Description: "List presentations visible to the authenticated Ptium user.",
+			Name:  "ptium.list_presentations",
+			Title: "List Ptium presentations",
+			Description: "List presentations visible to the authenticated Ptium user, newest first. " +
+				"Pass q to narrow the list to decks whose title or brief contains that text — an " +
+				"account can hold thousands, and paging through them to find one is not finding it.",
 			InputSchema: objectSchema(map[string]any{
+				"q":      map[string]any{"type": "string", "maxLength": 200, "description": "Narrows the list to decks whose title or brief contains this text"},
 				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
 				"offset": map[string]any{"type": "integer", "minimum": 0, "default": 0},
 			}, nil),
@@ -222,8 +225,9 @@ func (h *Handler) callTool(ctx context.Context, user model.User, params json.Raw
 	switch call.Name {
 	case "ptium.list_presentations":
 		var input struct {
-			Limit  int `json:"limit,omitempty"`
-			Offset int `json:"offset,omitempty"`
+			Query  string `json:"q,omitempty"`
+			Limit  int    `json:"limit,omitempty"`
+			Offset int    `json:"offset,omitempty"`
 		}
 		if decodeErr := decodeArguments(call.Arguments, &input); decodeErr != nil {
 			return toolFailure(ServiceErrorInvalidArgument, decodeErr.Error()), nil
@@ -234,9 +238,10 @@ func (h *Handler) callTool(ctx context.Context, user model.User, params json.Raw
 		if input.Limit < 1 || input.Limit > 100 || input.Offset < 0 || input.Offset > 1_000_000 {
 			return toolFailure(ServiceErrorInvalidArgument, "limit must be 1-100 and offset must be 0-1000000"), nil
 		}
-		presentations, total, operationErr := h.operations.ListPresentations(ctx, user, input.Limit, input.Offset)
+		presentations, total, operationErr := h.operations.ListPresentations(ctx, user, input.Limit, input.Offset, input.Query)
 		err = operationErr
-		result = map[string]any{"presentations": nonNilPresentations(presentations), "total": total, "limit": input.Limit, "offset": input.Offset}
+		result = map[string]any{"presentations": nonNilPresentations(presentations), "total": total,
+			"limit": input.Limit, "offset": input.Offset, "q": input.Query}
 
 	case "ptium.list_templates":
 		var input struct {
@@ -345,7 +350,7 @@ func (h *Handler) listResources(ctx context.Context, user model.User, params jso
 	if err != nil {
 		return nil, invalidParams("cursor is invalid")
 	}
-	presentations, total, err := h.operations.ListPresentations(ctx, user, resourcePageSize, offset)
+	presentations, total, err := h.operations.ListPresentations(ctx, user, resourcePageSize, offset, "")
 	if err != nil {
 		return nil, h.operationRPCError(ctx, err)
 	}

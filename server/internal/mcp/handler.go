@@ -42,7 +42,9 @@ type UserFromRequest func(*http.Request) (model.User, error)
 // PresentationOperations is the application-service boundary used by MCP. Its
 // implementation must enforce ownership and administrator policy for user.
 type PresentationOperations interface {
-	ListPresentations(context.Context, model.User, int, int) ([]model.Presentation, int, error)
+	// The last argument is what the caller is looking for: an agent's first job
+	// is finding the right deck, and paging through a thousand is not finding.
+	ListPresentations(context.Context, model.User, int, int, string) ([]model.Presentation, int, error)
 	GetPresentation(context.Context, model.User, string) (model.Presentation, error)
 	CreatePresentation(context.Context, model.User, CreatePresentationInput) (model.Presentation, error)
 	GeneratePresentation(context.Context, model.User, string) (model.Presentation, error)

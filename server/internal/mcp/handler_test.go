@@ -14,7 +14,10 @@ import (
 )
 
 type fakeOperations struct {
-	list      func(context.Context, model.User, int, int) ([]model.Presentation, int, error)
+	list func(context.Context, model.User, int, int) ([]model.Presentation, int, error)
+	// searched keeps what the last list was asked to look for, so a test can
+	// check the tool passes it on rather than dropping it.
+	searched  string
 	get       func(context.Context, model.User, string) (model.Presentation, error)
 	create    func(context.Context, model.User, CreatePresentationInput) (model.Presentation, error)
 	generate  func(context.Context, model.User, string) (model.Presentation, error)
@@ -28,7 +31,8 @@ func (f *fakeOperations) ListTemplates(ctx context.Context, user model.User, lim
 	return f.templates(ctx, user, limit, offset)
 }
 
-func (f *fakeOperations) ListPresentations(ctx context.Context, user model.User, limit, offset int) ([]model.Presentation, int, error) {
+func (f *fakeOperations) ListPresentations(ctx context.Context, user model.User, limit, offset int, search string) ([]model.Presentation, int, error) {
+	f.searched = search
 	if f.list == nil {
 		return nil, 0, nil
 	}
