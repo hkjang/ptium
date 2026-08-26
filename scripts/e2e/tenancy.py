@@ -163,6 +163,20 @@ else:
                 checks += 1
                 if code != 403:
                     failures.append(f"a key holding neither granted {scopes} by {method}: {code} {body!r}")
+        # Asking for nothing used to mean the deployment's defaults, and those
+        # include writing: the field could simply be left out.
+        code, quiet = call(itself, "POST", "/api-keys", {"name": f"조용한 키 {RUN}"})
+        checks += 1
+        if code != 201:
+            failures.append(f"a key could not make a key of its own kind: {code} {quiet!r}")
+        else:
+            born = (quiet or {}).get("data") or quiet
+            inherited = (born.get("apiKey") or born.get("api_key") or {}).get("scopes") or []
+            checks += 1
+            if "presentations:write" in inherited:
+                failures.append(f"a read-only key made a key that can write: {inherited}")
+            call(alice, "DELETE", f"/api-keys/{(born.get('apiKey') or {}).get('id', '')}")
+
         # It may still narrow itself, and its owner may still widen it.
         code, _ = call(itself, "PATCH", f"/api-keys/{narrow_key}", {"scopes": ["presentations:read"]})
         checks += 1

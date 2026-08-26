@@ -3322,7 +3322,8 @@ paths:
         does not itself hold, and is answered 403 naming the scope: scoping a
         key is a promise that whatever holds it cannot do more than it was
         given. A person signed in with their own account grants whatever the
-        account allows.
+        account allows. Creating a key without naming any scopes gives a person
+        the deployment's defaults, and gives an API key its own scopes.
       tags: [API keys]
       x-ptium-api-key-scopes: [api_keys:manage]
       requestBody:
@@ -4639,7 +4640,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.14.1
+            service.version: 1.14.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 

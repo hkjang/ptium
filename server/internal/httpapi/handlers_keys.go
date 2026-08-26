@@ -34,6 +34,11 @@ func (s *Server) createAPIKey(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	user, _ := UserFromContext(request.Context())
+	// What the key will actually carry is what has to be allowed. Asking for
+	// nothing used to mean the defaults, and the defaults include writing: a
+	// read-only key could not name presentations:write, but it could leave the
+	// field out and be handed it.
+	input.Scopes = s.scopesToGrant(request, input.Scopes)
 	if !s.mayGrant(writer, request, input.Scopes) {
 		return
 	}
@@ -51,6 +56,22 @@ func (s *Server) createAPIKey(writer http.ResponseWriter, request *http.Request)
 func (s *Server) apiKeyScopes(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	writeData(writer, request, http.StatusOK, keys.Scopes(user.IsAdmin))
+}
+
+// scopesToGrant is what a new key will carry when its creator named nothing.
+//
+// A person gets the deployment's defaults. A key gets its own scopes: a key
+// that may not write should not be able to make a key that can, and copying
+// what it holds is both safe and what somebody automating this would want.
+func (s *Server) scopesToGrant(request *http.Request, asked []string) []string {
+	if len(asked) > 0 {
+		return asked
+	}
+	principal, ok := auth.PrincipalFromContext(request.Context())
+	if ok && principal.AuthMethod == "api_key" && len(principal.Scopes) > 0 {
+		return append([]string{}, principal.Scopes...)
+	}
+	return keys.DefaultScopes()
 }
 
 // mayGrant refuses to hand a key more than the key asking for it holds.

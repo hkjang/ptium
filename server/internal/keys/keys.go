@@ -46,7 +46,7 @@ func (m *Manager) Create(ctx context.Context, userID, name string, scopes []stri
 		return Created{}, errors.New("API key name must not exceed 100 characters")
 	}
 	if len(scopes) == 0 {
-		scopes = []string{"presentations:read", "presentations:write", "templates:read", "mcp:use"}
+		scopes = DefaultScopes()
 	}
 	if err := ValidateScopes(scopes, admin); err != nil {
 		return Created{}, err
@@ -103,6 +103,12 @@ var scopeCatalogue = []Scope{
 	{ID: "admin:settings", Admin: true, Grants: "read and change deployment settings"},
 	{ID: "admin:users", Admin: true, Grants: "read the account list and change roles"},
 	{ID: "admin:errors", Admin: true, Grants: "read the error centre and resolve incidents"},
+}
+
+// DefaultScopes is what a key gets when nobody chooses: enough to write decks
+// from a machine, and nothing that manages the account.
+func DefaultScopes() []string {
+	return []string{"presentations:read", "presentations:write", "templates:read", "mcp:use"}
 }
 
 // Scopes is what this deployment may put on a key. An owner who is not an

@@ -71,3 +71,29 @@ func TestAPersonGrantsWhateverTheirAccountAllows(t *testing.T) {
 		t.Error("a request with no principal was judged by the key-to-key rule")
 	}
 }
+
+// Asking for nothing used to mean the deployment's defaults, and the defaults
+// include writing: a read-only key could not name presentations:write, but it
+// could leave the field out and be handed it. What a new key will carry is what
+// the rule has to judge.
+func TestAKeyThatNamesNoScopesGetsItsOwn(t *testing.T) {
+	server := &Server{}
+	held := &auth.Principal{Subject: "someone", AuthMethod: "api_key",
+		Scopes: []string{"api_keys:manage", "presentations:read"}}
+	granted := server.scopesToGrant(askingAs("POST", held), nil)
+	if strings.Join(granted, " ") != "api_keys:manage presentations:read" {
+		t.Errorf("a key naming no scopes would hand on %v", granted)
+	}
+	if !server.mayGrant(httptest.NewRecorder(), askingAs("POST", held), granted) {
+		t.Error("a key was refused the scopes it holds")
+	}
+	// A person gets the deployment's defaults, as before.
+	session := &auth.Principal{Subject: "someone", AuthMethod: "session"}
+	if defaults := server.scopesToGrant(askingAs("POST", session), nil); len(defaults) != 4 {
+		t.Errorf("a person naming no scopes gets %v", defaults)
+	}
+	// And what was named is what is judged.
+	if named := server.scopesToGrant(askingAs("POST", held), []string{"templates:read"}); len(named) != 1 {
+		t.Errorf("named scopes were replaced by %v", named)
+	}
+}
