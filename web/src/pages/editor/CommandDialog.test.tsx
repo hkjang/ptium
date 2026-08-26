@@ -49,3 +49,14 @@ describe('telling the deck what to do', () => {
     expect(onRun).toHaveBeenCalledOnce()
   })
 })
+
+// A sentence can be understood and ask for what the deck already is. There is
+// nothing to apply then, and the dialog used to offer the button anyway.
+it('offers nothing to apply when there is nothing to do', () => {
+  const nothing = { plan: [], notes: ['이 덱은 이미 5장입니다'], slides: 5, slidesAfter: 5 }
+  render(<CommandDialog open text="5장으로 줄여줘" plan={nothing} busy={false}
+    onText={() => {}} onPlan={() => {}} onRun={() => {}} onClose={() => {}} />)
+  expect(screen.getByText('바꿀 것이 없습니다')).toBeTruthy()
+  expect(screen.getByText('이 덱은 이미 5장입니다')).toBeTruthy()
+  expect(screen.queryByRole('button', { name: '적용' })).toBeNull()
+})

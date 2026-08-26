@@ -861,6 +861,32 @@ if {entry.get("key") for entry in (score.get("dimensions") or [])} != {
     failures.append(f"the score's dimensions are {score.get('dimensions')!r}")
 print(f"   score {score.get('total')} weakest slide {score.get('weakest')}")
 
+# Three answers, and they used to be one. A sentence naming a slide the deck
+# does not have was understood; so was one asking for what the deck already is.
+# Telling their authors that nothing they said made sense sends them looking for
+# better words rather than for the right number.
+already = data_of(call("GET", f"/presentations/{deck_id}", expect=200)) or {}
+count = len(already.get("slides") or [])
+if count:
+    status, answered = call("POST", f"/presentations/{deck_id}/command",
+                            {"text": f"{count}장으로 줄여줘", "dryRun": True}, expect=200)
+    said = data_of((status, answered)) or {}
+    checks += 1
+    if said.get("plan"):
+        failures.append(f"a deck already {count} slides long was told to trim: {said.get('plan')}")
+    checks += 1
+    if not any("이미" in note for note in (said.get("notes") or [])):
+        failures.append(f"asking for what the deck already is answered {said.get('notes')!r}")
+    status, refused = call("POST", f"/presentations/{deck_id}/command",
+                           {"text": f"{count + 40}번 슬라이드 삭제", "dryRun": True}, expect=422)
+    checks += 1
+    if "없습니다" not in json.dumps(refused, ensure_ascii=False):
+        failures.append(f"naming a slide the deck has not answered {refused!r}")
+    checks += 1
+    if "command_out_of_range" not in json.dumps(refused, ensure_ascii=False):
+        failures.append(f"a slide out of range was reported as not understood: {refused!r}")
+    print(f"   already {count} slides: told so · slide {count + 40}: named")
+
 print("── images ──")
 asset = data_of(call("POST", "/assets", files={"file": (f"logo-{RUN}.png", png(rgb=(int(RUN[-3:]) % 255, 120, 60)), "image/png")}, expect=201))
 asset_id = asset["id"]

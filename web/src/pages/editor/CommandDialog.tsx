@@ -35,7 +35,7 @@ export function CommandDialog({ open, text, plan, busy, onText, onPlan, onRun, o
       title="덱에 명령하기"
       description="문장에서 할 일을 읽어 그대로 실행합니다. 모델을 쓰지 않으므로 폐쇄망에서도 같습니다."
       footer={<>
-        {plan
+        {plan && plan.plan.length > 0
           ? <Button disabled={busy} onClick={onRun}>{busy ? '적용 중…' : '적용'}</Button>
           : <Button disabled={busy || !text.trim()} onClick={onPlan}>{busy ? '읽는 중…' : '무엇을 할지 보기'}</Button>}
         <Button variant="secondary" onClick={onClose}>닫기</Button>
@@ -56,9 +56,19 @@ export function CommandDialog({ open, text, plan, busy, onText, onPlan, onRun, o
       />
       {plan
         ? <div className="command-plan">
-            <ul>{plan.plan.map((entry, index) => <li key={index}>{entry.reason}</li>)}</ul>
-            {plan.notes.map((note, index) => <small key={index}>{note}</small>)}
-            <p>{plan.slides}장 → <b>{plan.slidesAfter}장</b></p>
+            {/* A sentence can be understood and ask for what the deck already
+                is. There is nothing to apply then, and offering the button
+                anyway is offering to do nothing. */}
+            {plan.plan.length > 0
+              ? <>
+                  <ul>{plan.plan.map((entry, index) => <li key={index}>{entry.reason}</li>)}</ul>
+                  {plan.notes.map((note, index) => <small key={index}>{note}</small>)}
+                  <p>{plan.slides}장 → <b>{plan.slidesAfter}장</b></p>
+                </>
+              : <>
+                  <p><b>바꿀 것이 없습니다</b></p>
+                  {plan.notes.map((note, index) => <small key={index}>{note}</small>)}
+                </>}
           </div>
         : <ul className="command-examples">
             <li>3번과 4번 합쳐줘</li>

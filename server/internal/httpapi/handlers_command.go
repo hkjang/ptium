@@ -45,6 +45,26 @@ func (s *Server) runPresentationCommand(writer http.ResponseWriter, request *htt
 	}
 	commands, err := copilot.Parse(input.Text, len(presentation.Slides))
 	if err != nil {
+		// Three different answers, and they used to be one. A sentence naming a
+		// slide the deck does not have was understood; so was one asking for
+		// what the deck already is. Telling their authors that nothing they
+		// said made sense sends them looking for better words rather than for
+		// the right number.
+		var nothing copilot.ErrNothingToDo
+		if errors.As(err, &nothing) {
+			writeData(writer, request, http.StatusOK, map[string]any{
+				"plan": []copilot.Command{}, "notes": []string{nothing.Reason}, "applied": false,
+				"slides": len(presentation.Slides), "slidesAfter": len(presentation.Slides),
+			})
+			return
+		}
+		var beyond copilot.ErrOutOfRange
+		if errors.As(err, &beyond) {
+			writeError(writer, request, http.StatusUnprocessableEntity, "command_out_of_range",
+				beyond.Error(), map[string]any{"text": strings.TrimSpace(input.Text),
+					"slides": beyond.Slides, "position": beyond.Position})
+			return
+		}
 		writeError(writer, request, http.StatusUnprocessableEntity, "command_not_understood",
 			"이 문장에서 할 일을 찾지 못했습니다. 예: 3번과 4번 합쳐줘 · 5번 삭제 · 8장으로 줄여줘",
 			map[string]any{"text": strings.TrimSpace(input.Text)})

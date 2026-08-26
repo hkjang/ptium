@@ -52,6 +52,24 @@ func (e ErrNotUnderstood) Error() string {
 	return fmt.Sprintf("no command in %q", e.Text)
 }
 
+// ErrNothingToDo says the sentence was understood and asks for what the deck
+// already is. "이미 그렇습니다" is a different answer from "무슨 말인지
+//모르겠습니다", and giving the second taught people the copilot was deaf: a
+// five-slide deck asked to fit ten minutes is already five slides.
+type ErrNothingToDo struct{ Reason string }
+
+func (e ErrNothingToDo) Error() string { return e.Reason }
+
+// ErrOutOfRange says the sentence named a slide the deck does not have.
+type ErrOutOfRange struct {
+	Position int
+	Slides   int
+}
+
+func (e ErrOutOfRange) Error() string {
+	return fmt.Sprintf("%d번 슬라이드가 없습니다. 이 덱은 %d장입니다", e.Position, e.Slides)
+}
+
 // A sentence names a verb and some slides. Reading it that way — rather than
 // with one regular expression per phrasing — is what lets Korean and English
 // share the parser: the two languages disagree about where the verb goes and
@@ -119,23 +137,40 @@ func Parse(text string, slides int) ([]Command, error) {
 		for _, entry := range figures {
 			switch entry.unit {
 			case "장", "slide", "slides":
-				if entry.value > 0 && entry.value < slides {
+				if entry.value <= 0 {
+					continue
+				}
+				if entry.value < slides {
 					return []Command{{Kind: KindTrim, Count: entry.value,
 						Reason: fmt.Sprintf("%d장에서 %d장으로 줄입니다", slides, entry.value)}}, nil
 				}
+				if entry.value == slides {
+					return nil, ErrNothingToDo{Reason: fmt.Sprintf("이 덱은 이미 %d장입니다", slides)}
+				}
+				return nil, ErrNothingToDo{Reason: fmt.Sprintf(
+					"이 덱은 %d장입니다. 줄이는 것은 하지만 %d장으로 늘리지는 않습니다", slides, entry.value)}
 			case "분", "minute", "minutes", "min":
 				count := entry.value / minutesPerSlide
-				if count > 0 && count < slides {
+				if count <= 0 {
+					continue
+				}
+				if count < slides {
 					return []Command{{Kind: KindTrim, Count: count,
 						Reason: fmt.Sprintf("%d분 발표에 맞춰 %d장에서 %d장으로 줄입니다 (한 장에 %d분)",
 							entry.value, slides, count, minutesPerSlide)}}, nil
 				}
+				return nil, ErrNothingToDo{Reason: fmt.Sprintf(
+					"이 덱은 %d장이라 %d분 분량입니다. %d분에 맞추려고 줄일 것이 없습니다 (한 장에 %d분)",
+					slides, slides*minutesPerSlide, entry.value, minutesPerSlide)}
 			}
 		}
 		return nil, ErrNotUnderstood{Text: text}
 	case KindMerge, KindMove:
 		positions := slidePositions(figures, slides)
 		if len(positions) < 2 || positions[0] == positions[1] {
+			if beyond, ok := beyondTheDeck(figures, slides); ok {
+				return nil, ErrOutOfRange{Position: beyond, Slides: slides}
+			}
 			return nil, ErrNotUnderstood{Text: text}
 		}
 		if kind == KindMerge {
@@ -151,6 +186,9 @@ func Parse(text string, slides int) ([]Command, error) {
 	case KindDelete:
 		positions := slidePositions(figures, slides)
 		if len(positions) == 0 {
+			if beyond, ok := beyondTheDeck(figures, slides); ok {
+				return nil, ErrOutOfRange{Position: beyond, Slides: slides}
+			}
 			return nil, ErrNotUnderstood{Text: text}
 		}
 		sort.Ints(positions)
@@ -159,6 +197,9 @@ func Parse(text string, slides int) ([]Command, error) {
 	default:
 		positions := slidePositions(figures, slides)
 		if len(positions) == 0 {
+			if beyond, ok := beyondTheDeck(figures, slides); ok {
+				return nil, ErrOutOfRange{Position: beyond, Slides: slides}
+			}
 			return nil, ErrNotUnderstood{Text: text}
 		}
 		reason := fmt.Sprintf("%d번을 두 장으로 나눕니다", positions[0])
@@ -189,6 +230,24 @@ func slidePositions(figures []figure, slides int) []int {
 }
 
 func valid(position, slides int) bool { return position >= 1 && position <= slides }
+
+// beyondTheDeck is the first slide a sentence named that the deck does not
+// have. "7번 슬라이드 삭제" on a three-slide deck is a sentence this understood
+// perfectly, and answering it with "무슨 말인지 모르겠습니다" sends its author
+// looking for better words rather than for the right number.
+func beyondTheDeck(figures []figure, slides int) (int, bool) {
+	for _, entry := range figures {
+		switch entry.unit {
+		case "", "번", "번째", "slide", "slides":
+		default:
+			continue
+		}
+		if entry.value > slides {
+			return entry.value, true
+		}
+	}
+	return 0, false
+}
 
 func number(value string) int {
 	parsed, err := strconv.Atoi(strings.TrimSpace(value))
