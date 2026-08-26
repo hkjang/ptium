@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -167,4 +168,27 @@ func (f fakeSettings) Get(_ context.Context, key string, target any) error {
 		return nil
 	}
 	return errors.New("unsupported target")
+}
+
+// Both doors that can refuse a rewrite say the same thing.
+//
+// The regenerate door was taught not to blame a deployment that ships this way;
+// the polish button still said "관리자에게 서비스 설정의 AI 항목을 요청하세요"
+// about the same fact, and asked the question with its own copy of the check.
+func TestBothWaysOfAskingForARewriteRefuseAlike(t *testing.T) {
+	t.Parallel()
+	source, err := os.ReadFile("handlers_import.go")
+	if err != nil {
+		t.Fatalf("read the handler: %v", err)
+	}
+	written := string(source)
+	if strings.Contains(written, "관리자에게 서비스 설정의 AI 항목을 요청하세요") {
+		t.Error("the polish button still sends the author after an administrator")
+	}
+	if strings.Contains(written, "func (s *Server) aiProviderConfigured") {
+		t.Error("there are two answers to whether a model is connected")
+	}
+	if !strings.Contains(written, "rewrite_needs_model") {
+		t.Error("the polish button no longer names the refusal the other door uses")
+	}
 }

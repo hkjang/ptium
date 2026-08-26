@@ -187,6 +187,16 @@ if polished_id:
         kept = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
         if not (kept.get("slides") or []):
             failures.append("a deck lost its slides to a rewrite that did not happen")
+        # The polish button asks the same question at a different door, and used
+        # to answer it by sending the author after an administrator.
+        polish_status, polish_answer = call("POST", f"/presentations/{polished_id}/rewrite",
+                                            {"instruction": "문장을 간결하게"}, expect=[200, 202, 409])
+        if polish_status == 409:
+            polished_error = ((polish_answer or {}).get("error") or {})
+            if polished_error.get("code") not in ("rewrite_needs_model", "nothing_to_rewrite"):
+                failures.append(f"the polish button refuses as {polished_error.get('code')!r}")
+            if "관리자" in str(polished_error.get("message")):
+                failures.append("the polish button sends the author after an administrator")
     call("DELETE", f"/presentations/{polished_id}?permanent=true", expect=[204, 200])
 
 print("── templates ──")

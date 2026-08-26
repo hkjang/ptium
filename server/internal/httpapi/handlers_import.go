@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -341,9 +340,12 @@ func (s *Server) rewritePresentation(writer http.ResponseWriter, request *http.R
 			"instruction must not exceed 2000 characters", nil)
 		return
 	}
-	if !s.aiProviderConfigured(request.Context()) {
-		writeError(writer, request, http.StatusConflict, "ai_provider_required",
-			"덱 다듬기는 AI 제공자가 설정되어 있어야 합니다. 관리자에게 서비스 설정의 AI 항목을 요청하세요", nil)
+	if !s.modelConnected(request.Context()) {
+		// The same fact the regenerate door answers, said the same way and in the
+		// language the deck was asked for. This one used to send the author after
+		// an administrator to fix a deployment that is exactly as it ships.
+		writeError(writer, request, http.StatusConflict, "rewrite_needs_model",
+			generation.AuthorMessage(errors.New("rewriting a deck needs an AI provider"), presentation.Language), nil)
 		return
 	}
 	queued, err := s.store.QueueGenerationWith(request.Context(), presentation.ID, user.ID, false,
@@ -359,9 +361,3 @@ func (s *Server) rewritePresentation(writer http.ResponseWriter, request *http.R
 }
 
 // aiProviderConfigured reports whether this deployment has a model to ask.
-func (s *Server) aiProviderConfigured(ctx context.Context) bool {
-	provider, key := "fallback", ""
-	_ = s.settings.Get(ctx, "ai.provider", &provider)
-	_ = s.settings.Get(ctx, "ai.api_key", &key)
-	return !strings.EqualFold(strings.TrimSpace(provider), "fallback") && strings.TrimSpace(key) != ""
-}
