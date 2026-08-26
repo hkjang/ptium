@@ -746,6 +746,23 @@ if linked:
 call("POST", "/presentations/import", files={"file": ("보고서.pdf", b"%PDF-1.7", "application/pdf")}, expect=422,
      note="a PDF this cannot open must say so rather than import an empty deck")
 
+# A .pptx that will not open is a presentation with something wrong with it —
+# usually document security. Sent to the document reader it was answered
+# "Ptium reads .pptx presentations and …", about a .pptx.
+locked = b"SCDS" + bytes(512)
+status, refused = call("POST", "/presentations/import",
+                       files={"file": (f"잠긴 파일-{RUN}.pptx", locked,
+                                       "application/vnd.openxmlformats-officedocument.presentationml.presentation")},
+                       expect=422, note="a locked presentation must be named for what it is")
+said = ((refused or {}).get("error") or {}).get("message", "") if isinstance(refused, dict) else str(refused)
+checks += 1
+if "DRM" not in said:
+    failures.append(f"a document-security wrapper was refused as {said[:120]!r}")
+checks += 1
+if "reads" in json.dumps(refused, ensure_ascii=False):
+    failures.append(f"a .pptx was told the product does not read .pptx: {said[:120]!r}")
+print("   locked .pptx told:", said[:56])
+
 print("── a PDF becomes slides ──")
 # A PDF is what a company sends things in, and it is also the format that keeps
 # the least: glyphs at coordinates, no headings and no points. What can be

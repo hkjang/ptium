@@ -43,6 +43,22 @@ func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Re
 	}
 	pkg, err := pptx.Open(data)
 	if err != nil {
+		// A file that says it is a presentation and will not open is not an
+		// unreadable format: it is a presentation with something wrong with it,
+		// usually document security. Handing it to the document reader answered
+		// "Ptium reads .pptx presentations and …" about a .pptx, which is both
+		// false and no help at all. The template door already says the true
+		// thing, and so does this one now.
+		if named := strings.ToLower(strings.TrimSpace(meta.Filename)); strings.HasSuffix(named, ".pptx") ||
+			strings.HasSuffix(named, ".potx") {
+			said := templateUploadHint(data)
+			if said == "" {
+				said = err.Error()
+			}
+			writeError(writer, request, http.StatusUnprocessableEntity, "presentation_unreadable", said,
+				map[string]any{"filename": meta.Filename})
+			return
+		}
 		// Not a presentation. It may still be the material for one: the report,
 		// the spreadsheet or the notes the deck would have been written from.
 		s.importDocument(writer, request, user, meta, data)
