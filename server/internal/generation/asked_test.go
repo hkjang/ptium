@@ -387,6 +387,36 @@ func TestABriefIsReadTheWayItIsWritten(t *testing.T) {
 	}
 }
 
+// Six ordinary briefs, driven through the writer, that came back with the
+// asking in their titles: what a person says around the subject — what they
+// intend to do, what they need, what the document is called, what something is
+// worse than — is not the subject.
+func TestTheAskingAroundASubjectIsNotTheSubject(t *testing.T) {
+	for brief, want := range map[string]string{
+		// "…개선하려고 합니다" — an intention.
+		"협력사 정산 프로세스를 개선하려고 합니다. 현재 정산까지 14일 걸리는데 7일로 줄이는 것이 목표입니다.": "협력사 정산 프로세스를 개선",
+		// "자료 만들어줘" — the verb left its ending behind: "회사 소개 어줘".
+		"다음 주 전사 워크숍에서 쓸 회사 소개 자료 만들어줘": "다음 주 전사 워크숍에서 쓸 회사 소개",
+		// "보고서" is one word: the deck was titled "AI 챗봇 도입 검토 서".
+		"AI 챗봇 도입 검토 보고서. 도입 비용 3억, 연간 절감 예상 8억.": "AI 챗봇 도입 검토 보고서",
+		// "새로 만들려고 하는데 … 8장 정도 필요합니다" — an intention and a need.
+		"고객센터 상담 품질 관리 체계를 새로 만들려고 하는데 임원 보고용으로 8장 정도 필요합니다": "고객센터 상담 품질 관리 체계",
+		// "팀원들에게 공유하려고 합니다" — 공유 went and left 하려고 standing.
+		"우리 팀 2026년 목표와 실행 계획을 팀원들에게 공유하려고 합니다": "우리 팀 2026년 목표와 실행 계획",
+		// A past tense and a comparison, and a title is one sentence.
+		"재고 회전율이 작년보다 나빠졌습니다. 원인 분석과 개선안을 정리해 주세요.": "재고 회전율",
+	} {
+		if got := TitleFor(brief, "", "ko"); got != want {
+			t.Errorf("TitleFor(%q)\n = %q\nwant %q", brief, got, want)
+		}
+	}
+	// The name of the document is part of what the deck is about, so it is left
+	// alone rather than taken out along with the asking.
+	if got := TitleFor("파트너십 제안서: 공동 마케팅과 채널 확대", "", "ko"); got != "파트너십 제안서: 공동 마케팅과 채널 확대" {
+		t.Errorf("TitleFor = %q", got)
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {

@@ -90,8 +90,18 @@ var instructionPattern = regexp.MustCompile(
 		// it in ended a slide title with "…이사회에" and then wrote "이사회에에".
 		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
 		`([가-힣]{1,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|한|하여|하고|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
-		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?\s*(용|자료)?(으로|로|를|을|에)?)|` +
-		`(자료(로|를)?\s*(만들|작성|정리))|` +
+		// "보고서", "제안서", "기획서": a document whose name begins with one of
+		// these verbs is one word. It is matched here so that the verb alternative
+		// below cannot take half of it — a deck came out titled "AI 챗봇 도입 검토
+		// 서" — and then handed back whole, because what the document is called is
+		// part of what the deck is about.
+		`(보고서|제안서|기획서|계획서|검토서|설명서|요약서)|` +
+		// The audience carries the space in front of the verb with it. Written as
+		// "(임원)?\s*보고", the match starts at the space even when no audience is
+		// there — one character to the left of "보고서", so the document noun
+		// above never got its turn.
+		`(((임원|경영진|고객|투자자|내부|사내|팀)\s*)?(보고|발표|공유|제출|설명)(할|하는|한|해|하여|하고|합니다|해서)?\s*(용|자료)?(으로|로|를|을|에)?)|` +
+		`(자료(로|를)?\s*(만들|작성|정리|준비|구성)(어|아|여)?\s*(줘|주세요|주시고|주라|줄래|주실래요)?)|` +
 		// The verbs a request for a section is written with. What was a request
 		// has already been read by then; what is left is an instruction with no
 		// section attached to it, and "…계획을 넣어줘" is not a subject.
@@ -162,6 +172,31 @@ var wherePlaced = regexp.MustCompile(`(?:맨\s*)?(?:마지막|처음|끝|앞|뒤
 // became the deck's title. The subject is the noun in front of the verb.
 var strandedVerb = regexp.MustCompile(
 	`\s*(?:을|를|이|가)?\s*(?:하고자\s*)?(?:합니다|입니다|했습니다|하였습니다|하겠습니다|됩니다|드립니다|한다|이다)\s*([.。,]|$)`)
+
+// intending is somebody saying what they are about to do — "개선하려고 합니다",
+// "새로 만들려고 하는데", "공유하려고" — which is the asking rather than the
+// subject. Left in, a deck came out titled "협력사 정산 프로세스를 개선하려고".
+var intending = regexp.MustCompile(
+	`\s*(?:하|되)?(?:려고|으려고|고자)\s*(?:합니다|해요|하는데|한다|하며|하고|해서|하면서)?`)
+
+// leftMidVerb is the stem an intention leaves standing when the verb was not
+// written with 하 — "새로 만들려고 하는데" comes back as "새로 만들". The adverb in
+// front of it belongs to the verb rather than to the subject.
+var leftMidVerb = regexp.MustCompile(
+	`\s*(?:을|를)?\s*(?:새로|다시|새롭게|추가로|따로)?\s*(?:만들|만드|시키)(\s|$)|` +
+		`\s*(?:을|를)?\s*(?:하|되)\s*$`)
+
+// pastTense is a verb that has already happened — "나빠졌습니다", "늘었습니다".
+// Unlike 합니다 and 입니다, which attach to a noun the subject needs, these
+// endings only ever follow a verb stem, so the whole word goes.
+var pastTense = regexp.MustCompile(`\s*[가-힣]{0,5}(?:었|았|였|졌)습니다\s*([.。,]|$)`)
+
+// comparedWith is the half of a sentence that says "than what". "재고 회전율이
+// 작년보다" is not a subject; 재고 회전율 is.
+var comparedWith = regexp.MustCompile(`\s*[가-힣]{1,8}보다\s*([.。,]|$)`)
+
+// stillNeeded is what "8장 정도 필요합니다" leaves once the count is out of it.
+var stillNeeded = regexp.MustCompile(`\s*(?:정도\s*)?필요(?:합니다|해요|하다|한)?\s*([.。,]|$)`)
 
 // strayComma is the punctuation an instruction leaves behind when it is taken
 // out from between two halves of a sentence.
@@ -247,6 +282,20 @@ func askedFor(subject string) (string, []string) {
 	subject = wherePlaced.ReplaceAllString(subject, " ")
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
 	return strings.TrimSpace(strings.Join(strings.Fields(subject), " ")), names
+}
+
+// documentNouns are the words for the thing being written. They are matched by
+// the instruction pattern only so that nothing else takes part of them.
+var documentNouns = map[string]bool{
+	"보고서": true, "제안서": true, "기획서": true, "계획서": true,
+	"검토서": true, "설명서": true, "요약서": true,
+}
+
+func keepDocumentNouns(match string) string {
+	if documentNouns[strings.TrimSpace(match)] {
+		return match
+	}
+	return " "
 }
 
 // audienceAddress is who a sentence is addressed to, at the front of it.
@@ -345,13 +394,18 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	// those have been stripped as instructions, "Q&A 슬라이드 추가해줘" is no
 	// longer a request, just a subject reading "Q&A 슬라이드 추가".
 	subject, asked := askedFor(prompt)
-	subject = instructionPattern.ReplaceAllString(subject, " ")
+	subject = instructionPattern.ReplaceAllStringFunc(subject, keepDocumentNouns)
 	// The room can be named at the front of a sentence whose verb comes at the
 	// end: "개발팀에 배포 절차를 설명하는 자료" is addressed to the development
 	// team, and the deck was titled "개발팀에 배포 절차".
 	if tellingSomebody.MatchString(prompt) {
 		subject = audienceAddress.ReplaceAllString(subject, " ")
 	}
+	subject = intending.ReplaceAllString(subject, " ")
+	subject = leftMidVerb.ReplaceAllString(strings.TrimSpace(subject), "${1}")
+	subject = stillNeeded.ReplaceAllString(subject, "${1}")
+	subject = pastTense.ReplaceAllString(subject, "${1}")
+	subject = comparedWith.ReplaceAllString(subject, "${1}")
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
 	subject = tidySeparators(subject)
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
@@ -1194,12 +1248,33 @@ func titlePhrase(subject string) (string, bool) {
 	// front — but only as far as it must, and giving way is worth reporting: a
 	// title that had to drop its opening words is not what the deck is about.
 	for start := 0; start < len(words); start++ {
-		candidate := cleanTopic(strings.Join(words[start:], " "))
+		candidate := withoutSubjectParticle(cleanTopic(strings.Join(words[start:], " ")))
 		if candidate != "" && utf8.RuneCountInString(candidate) <= limit {
 			return candidate, start > 0
 		}
 	}
 	return "", true
+}
+
+// withoutSubjectParticle drops the 이/가 a sentence marks its subject with.
+//
+// It is only ever dropped from a phrase of several words. On its own the same
+// syllable is the end of an ordinary noun — 높이, 길이, 손잡이 — and a heading
+// reading "높" would be worse than one reading "높이".
+func withoutSubjectParticle(name string) string {
+	words := strings.Fields(strings.TrimSpace(name))
+	if len(words) < 2 {
+		return name
+	}
+	last := words[len(words)-1]
+	for _, particle := range []string{"이", "가"} {
+		shortened := strings.TrimSuffix(last, particle)
+		if shortened != last && utf8.RuneCountInString(shortened) >= 2 {
+			words[len(words)-1] = shortened
+			return strings.Join(words, " ")
+		}
+	}
+	return name
 }
 
 // trimStrandedNouns drops what is left dangling when the words between two
@@ -1514,11 +1589,24 @@ var strandedStop = regexp.MustCompile(`\s+[.。!?]+(\s|$)`)
 
 // beforeStrandedStop keeps the first thought of a subject whose sentence lost
 // its verb to the instruction pattern.
+//
+// A title is one thought whether the stop was stranded or written that way:
+// "재고 회전율이. 원인 분석과 개선안" reads as two headings run together, which is
+// what it is.
 func beforeStrandedStop(subject string) string {
 	if match := strandedStop.FindStringIndex(subject); match != nil {
 		if head := strings.TrimSpace(subject[:match[0]]); utf8.RuneCountInString(head) >= 4 {
 			return head
 		}
 	}
+	if match := sentenceEnd.FindStringIndex(subject); match != nil {
+		if head := strings.TrimSpace(subject[:match[0]]); utf8.RuneCountInString(head) >= 4 {
+			return head
+		}
+	}
 	return subject
 }
+
+// sentenceEnd is a full stop that ends a sentence rather than sitting inside a
+// number or an abbreviation: it has to be followed by a space or nothing.
+var sentenceEnd = regexp.MustCompile(`[.。!?！？](?:\s|$)`)
