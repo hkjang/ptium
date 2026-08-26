@@ -838,6 +838,27 @@ if "스캔" not in said or "PDF" not in said:
     failures.append(f"a scanned PDF was refused without saying why: {said[:200]!r}")
 print("   scan refused with:", said[:70])
 
+# What a file is called decides nothing about what it is. A browser sends
+# "image/png" for whatever the person picked, and a picture that is not a
+# picture is found out by PowerPoint, which calls the exported deck damaged.
+for what, bytes_of in {"a line of text": b"nope not an image at all",
+                       "a web page": b"<!doctype html><html><body>hi</body></html>",
+                       "a PDF": b"%PDF-1.7\n1 0 obj\n<</Type /Catalog>>"}.items():
+    status, refused = call("POST", "/assets",
+                           files={"file": (f"{RUN}-not-an-image.png", bytes_of, "image/png")},
+                           expect=422, note=f"{what} named .png must be refused")
+    if status in (200, 201):
+        stored = data_of((status, refused)) or {}
+        if stored.get("id"):
+            call("DELETE", f"/assets/{stored['id']}", expect=[204, 404])
+checks += 1
+real = data_of(call("POST", "/assets", files={"file": (f"{RUN}-real.png", png(), "image/png")}, expect=201)) or {}
+if not real.get("id"):
+    failures.append("a real PNG was refused along with the impostors")
+else:
+    call("DELETE", f"/assets/{real['id']}", expect=[204, 404])
+print("   the picture library takes pictures and nothing else")
+
 print("── a link someone without an account can open ──")
 shared_deck = data_of(call("POST", "/presentations", {"title": f"공유 점검 {RUN}", "prompt": "공유",
                                                       "requestedSlideCount": 3, "language": "ko"}, expect=201)) or {}

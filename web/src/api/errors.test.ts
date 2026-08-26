@@ -32,4 +32,15 @@ describe('what the server refused, in the reader’s words', () => {
   it('says nothing when the server said nothing', () => {
     expect(errorText('', '')).toBe('')
   })
+
+
+  it('says a file that is not an image is not an image', () => {
+    // The bytes decide, and the person is told what to upload instead.
+    expect(errorText('unsupported_image', 'This file is not an image Ptium can place: PNG, JPEG, GIF and SVG'))
+      .toContain('PNG')
+    expect(errorText('unsupported_image', 'This file is not an image Ptium can place: PNG, JPEG, GIF and SVG'))
+      .toContain('확장자만 바뀐')
+    // Even when the server words it some other way, the code carries it.
+    expect(errorText('unsupported_image', 'something new about images')).toContain('이미지 파일이 아닙니다')
+  })
 })

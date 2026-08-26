@@ -46,6 +46,8 @@ const byMessage: Record<string, string> = {
   'Only pptx export is currently supported': '지금은 pptx 내보내기만 지원합니다.',
 
   // Templates and uploads.
+  'This file is not an image Ptium can place: PNG, JPEG, GIF and SVG':
+    '이미지 파일이 아닙니다. PNG · JPEG · GIF · SVG만 넣을 수 있습니다 — 확장자만 바뀐 파일일 수 있습니다.',
   'Built-in templates cannot be modified': '기본 제공 템플릿은 수정할 수 없습니다.',
   'Template uploads are disabled by the administrator': '관리자가 템플릿 업로드를 막아 두었습니다.',
   'The uploaded template is empty': '업로드한 템플릿이 비어 있습니다.',
@@ -95,6 +97,8 @@ const byCode: Record<string, string> = {
   presentation_has_no_slides: '슬라이드가 없습니다. 먼저 생성하거나 한 장 추가한 뒤 내보내세요.',
   presentation_has_no_printable_slides: '모든 슬라이드가 건너뛰기로 표시되어 인쇄할 장이 없습니다. 한 장 이상 발표에 넣어 주세요.',
   unsupported_export_format: '이 형식으로는 내보낼 수 없습니다.',
+  unsupported_image: '이미지 파일이 아닙니다. PNG · JPEG · GIF · SVG만 넣을 수 있습니다.',
+  asset_too_large: '이미지가 너무 큽니다. 더 작은 파일로 올려 주세요.',
 }
 
 export function errorText(code: string, message: string) {

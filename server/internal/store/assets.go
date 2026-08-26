@@ -430,7 +430,15 @@ func (s *Store) DeleteAsset(ctx context.Context, id, ownerID string) error {
 }
 
 // detectAssetType prefers what the bytes say over what the upload claimed.
+// detectAssetType reads what an upload actually is.
+//
+// What it is called decides nothing. A browser sends "image/png" for whatever
+// the person picked, so trusting that claim let a PDF, a web page and a line of
+// text into the picture library under a .png name — and a picture that is not a
+// picture is only found out later, by PowerPoint, which says the exported file
+// is damaged. The bytes say what a file is.
 func detectAssetType(claimed string, data []byte) string {
+	head := data[:min(len(data), 4096)]
 	switch {
 	case len(data) > 8 && string(data[1:4]) == "PNG":
 		return "image/png"
@@ -438,10 +446,13 @@ func detectAssetType(claimed string, data []byte) string {
 		return "image/jpeg"
 	case len(data) > 6 && string(data[:3]) == "GIF":
 		return "image/gif"
-	case bytes.Contains(data[:min(len(data), 512)], []byte("<svg")):
+	// An SVG is text, and it can open with a declaration, a doctype or a
+	// comment before the tag that names it.
+	case bytes.Contains(head, []byte("<svg")) || bytes.Contains(head, []byte("<SVG")):
 		return "image/svg+xml"
 	}
-	return strings.ToLower(strings.TrimSpace(strings.Split(claimed, ";")[0]))
+	_ = claimed
+	return ""
 }
 
 // imageSize reads an image's pixel dimensions, which decide how it is cropped

@@ -160,7 +160,7 @@ func (s *Server) createAsset(writer http.ResponseWriter, request *http.Request) 
 	if err != nil {
 		if errors.Is(err, store.ErrAssetUnsupported) {
 			writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_image",
-				"Ptium places PNG, JPEG, GIF and SVG images", nil)
+				"This file is not an image Ptium can place: PNG, JPEG, GIF and SVG", nil)
 			return
 		}
 		if errors.Is(err, store.ErrValidation) {
