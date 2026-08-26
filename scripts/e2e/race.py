@@ -53,10 +53,26 @@ def note(name, status, allowed=(200, 201, 202, 204)):
         failures.append(f"{name} answered {status}")
 
 
-_, decks = call("GET", "/presentations?limit=40")
-decks = [d for d in decks if (d.get("slideCount") or 0) >= 3][:8]
-_, templates = call("GET", "/templates?limit=20")
-_, assets = call("GET", "/assets?limit=20")
+def listed(path):
+    """What the server sent, or a clear word about why it sent nothing.
+
+    A connection this server never accepted comes back from call() as the error
+    text, and iterating that yields the bytes of the message: the sweep died on
+    "'int' object has no attribute 'get'" while the real news was that nothing
+    was listening. A harness that misreports its own failure costs the reader
+    the time it was written to save."""
+    status, payload = call("GET", path)
+    if isinstance(payload, list):
+        return payload
+    said = payload.decode("utf-8", "replace") if isinstance(payload, (bytes, bytearray)) else str(payload)
+    print(f"the server did not answer {path} ({status}): {said[:160]}")
+    print(f"is it running? PTIUM_URL={BASE.rsplit('/api/', 1)[0]}")
+    sys.exit(1)
+
+
+decks = [d for d in listed("/presentations?limit=40") if (d.get("slideCount") or 0) >= 3][:8]
+templates = listed("/templates?limit=20")
+assets = listed("/assets?limit=20")
 if not decks or not templates:
     print("this database has no decks or templates to work with")
     sys.exit(1)
