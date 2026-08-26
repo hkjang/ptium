@@ -63,3 +63,42 @@ func TestTheListToolCanBeAskedForOneDeck(t *testing.T) {
 		t.Errorf("the search reached the store as %q", operations.searched)
 	}
 }
+
+// What a caller is told about how long to wait.
+//
+// The tools used to say a deck takes "seconds to a few minutes". Since this
+// product stopped taking slow generations away from the workers writing them, a
+// deployment may allow an hour per model call and ten repair passes on top — so
+// a caller that follows a clock reports a failure that has not happened, over a
+// deck that is going perfectly well.
+func TestTheToolsDoNotPromiseATimeThisProductCannotKeep(t *testing.T) {
+	t.Parallel()
+	var generate, read string
+	for _, tool := range toolDefinitions() {
+		switch tool.Name {
+		case "ptium.generate_presentation":
+			generate = tool.Description
+		case "ptium.get_presentation":
+			read = tool.Description
+		}
+	}
+	if generate == "" || read == "" {
+		t.Fatal("the tools a caller generates and polls with are not both offered")
+	}
+	for _, promise := range []string{"a few minutes", "a minute or three", "seconds to a few minutes"} {
+		if strings.Contains(strings.ToLower(generate), promise) {
+			t.Errorf("generate promises %q", promise)
+		}
+	}
+	for _, said := range []string{"poll", "queued", "generating"} {
+		if !strings.Contains(strings.ToLower(generate), said) {
+			t.Errorf("generate does not say %q, so a caller has to guess", said)
+		}
+	}
+	// And the tool it polls with still names every state it can meet.
+	for _, state := range []string{"draft", "queued", "generating", "completed", "failed"} {
+		if !strings.Contains(read, state) {
+			t.Errorf("get_presentation does not name the state %q", state)
+		}
+	}
+}

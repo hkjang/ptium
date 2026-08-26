@@ -51,7 +51,7 @@ curl https://ptium.example.com/mcp \
 | `ptium.list_presentations` | optional `q`, `limit`, `offset` | List owner-visible decks, newest first. `q` narrows to decks whose title or brief contains that text — an account holds thousands, and paging through them is not finding one. |
 | `ptium.get_presentation` | `id` | Read a deck and its generated slides. |
 | `ptium.create_presentation` | `title`, `prompt`; optional `templateId`, `theme`, `language`, `audience`, `tone`, `slideCount` | Create an owner-scoped draft. Omitted options use administrator generation defaults; an omitted `templateId` selects the built-in design matching `theme`. |
-| `ptium.generate_presentation` | `id` | Queue generation or regeneration. **Returns when the work is queued, not when the deck is written**: poll `ptium.get_presentation` until `status` reads `completed` or `failed`. A self-hosted model takes a minute or three. |
+| `ptium.generate_presentation` | `id` | Queue generation or regeneration. **Returns when the work is queued, not when the deck is written**: poll `ptium.get_presentation` until `status` reads `completed` or `failed`, rather than giving up after a set time. The built-in generator answers in seconds; a self-hosted model with repair passes can take tens of minutes, and a deck still being written is not a deck in trouble. `queued` means no worker has picked it up yet, `generating` means one is writing it. |
 | `ptium.list_templates` | optional `limit`, `offset` | List the PowerPoint templates the user may generate into, with each layout's role and text capacity. Call this first to pass a deliberate `templateId`. |
 
 Making a deck is two steps, and the second one is asynchronous: create returns a

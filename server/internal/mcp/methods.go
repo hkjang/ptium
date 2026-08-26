@@ -159,10 +159,21 @@ func toolDefinitions() []toolDefinition {
 			// A caller told only that generation was queued fetches the deck at
 			// once, finds it empty, and reports a failure that has not happened:
 			// a self-hosted model takes minutes, and nothing said so.
+			//
+			// Nor is "a few minutes" a promise this product can keep. A
+			// deployment may allow an hour per model call and ask for ten repair
+			// passes on top, and since it stopped taking slow generations away
+			// from the workers writing them, a deck that runs half an hour is a
+			// deck going well. A caller that gives up on a clock reports a
+			// failure that has not happened either.
 			Description: "Queue generation (or regeneration) for an existing presentation. " +
 				"This returns as soon as the work is queued, not when the deck is written — " +
-				"poll ptium.get_presentation until status is \"completed\" or \"failed\". " +
-				"Writing a deck takes seconds to a few minutes depending on the provider.",
+				"poll ptium.get_presentation until status is \"completed\" or \"failed\", " +
+				"rather than giving up after any particular time. " +
+				"The built-in generator answers in seconds; a self-hosted model with repair " +
+				"passes enabled can take tens of minutes, and a deck still being written is " +
+				"not a deck in trouble. While status reads \"queued\" no worker has picked it " +
+				"up yet; \"generating\" is one writing it.",
 			InputSchema: objectSchema(map[string]any{
 				"id": map[string]any{"type": "string", "minLength": 1, "maxLength": 128},
 			}, []string{"id"}),
