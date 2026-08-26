@@ -12,7 +12,7 @@ import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
  */
 interface SharedPage { id: string; title: string }
 interface SharedDeck { title: string; slideCount: number; slides?: SharedPage[]; titles: string[]; language?: string }
-interface SharedComment { id: string; slideId?: string; author: string; body: string; createdAt: string; resolvedAt?: string }
+interface SharedComment { id: string; slideId?: string; parentId?: string; author: string; body: string; createdAt: string; resolvedAt?: string }
 
 export function SharedDeckPage({ token }: { token: string }) {
   const [deck, setDeck] = useState<SharedDeck | null>(null)
@@ -23,6 +23,10 @@ export function SharedDeckPage({ token }: { token: string }) {
   const [comments, setComments] = useState<SharedComment[]>([])
   const [author, setAuthor] = useState(() => window.localStorage.getItem('ptium.reviewer') || '')
   const [draft, setDraft] = useState('')
+  // Answering happens under the remark it answers: a review is a conversation,
+  // and an answer beside the point it answers reads as a second point.
+  const [answering, setAnswering] = useState('')
+  const [answer, setAnswer] = useState('')
   const [sending, setSending] = useState(false)
   // The drawing is drawn by this page rather than shown as a picture, because a
   // deck sent out for review is the one people read the links on: the source
@@ -88,20 +92,24 @@ export function SharedDeckPage({ token }: { token: string }) {
   useEffect(() => { void loadComments() }, [loadComments])
 
   const slideId = deck?.slides?.[position - 1]?.id || ''
-  const onThisSlide = comments.filter((comment) => comment.slideId === slideId)
+  // A thread is a remark and what was said under it. The author's answer is
+  // read where the remark was left, which is the whole reason for answering.
+  const onThisSlide = comments.filter((comment) => comment.slideId === slideId && !comment.parentId)
+  const repliesTo = (id: string) => comments.filter((comment) => comment.parentId === id)
 
-  const say = async () => {
-    if (!draft.trim()) return
+  const say = async (parentId = '') => {
+    const said = parentId ? answer.trim() : draft.trim()
+    if (!said) return
     setSending(true)
     try {
       const response = await fetch(`/api/v1/shared/${encodeURIComponent(token)}/comments`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slideId, author: author.trim(), body: draft.trim() }),
+        body: JSON.stringify({ slideId, author: author.trim(), body: said, parentId }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok) throw new Error(payload?.error?.message || '의견을 남기지 못했습니다.')
       window.localStorage.setItem('ptium.reviewer', author.trim())
-      setDraft('')
+      setDraft(''); setAnswer(''); setAnswering('')
       await loadComments()
     } catch (problem) {
       setError(problem instanceof Error ? problem.message : String(problem))
@@ -171,6 +179,20 @@ export function SharedDeckPage({ token }: { token: string }) {
                 <strong>{comment.author || '익명'}</strong>
                 <p>{comment.body}</p>
                 {comment.resolvedAt && <small>반영됨</small>}
+                {repliesTo(comment.id).map((said) => (
+                  <div key={said.id} className="shared-deck-reply">
+                    <strong>{said.author || '익명'}</strong>
+                    <p>{said.body}</p>
+                  </div>
+                ))}
+                {answering === comment.id
+                  ? <div className="shared-deck-answer">
+                      <textarea rows={2} autoFocus value={answer} placeholder="답글"
+                        onChange={(event) => setAnswer(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === 'Escape') { setAnswering(''); setAnswer('') } }} />
+                      <button type="button" disabled={sending || !answer.trim()} onClick={() => void say(comment.id)}>남기기</button>
+                    </div>
+                  : <button type="button" className="shared-deck-reply-open" onClick={() => { setAnswering(comment.id); setAnswer('') }}>답글</button>}
               </li>
             ))}
           </ul>

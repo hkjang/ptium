@@ -279,6 +279,8 @@ export interface DeckComment {
   slideId?: string
   author: string
   body: string
+  /** The remark this one answers, when it is an answer rather than a remark. */
+  parentId?: string
   resolvedAt?: string
   createdAt: string
 }

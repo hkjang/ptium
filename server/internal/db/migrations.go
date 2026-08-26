@@ -277,6 +277,13 @@ var migrations = []string{
 	// lives on the deck because the rewrite is queued: the words have to survive
 	// the wait between asking and the worker picking it up.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS rewrite_instruction text NOT NULL DEFAULT ''`,
+	// A review is a conversation. A reviewer says the number on slide four is
+	// out of date; the author says it was fixed — and until now that answer was
+	// another remark in a flat list, beside the point it answered rather than
+	// under it. A reply hangs off the remark it answers, one level deep: a
+	// thread is a conversation, a tree is an argument.
+	`ALTER TABLE slide_comments ADD COLUMN IF NOT EXISTS parent_id uuid REFERENCES slide_comments(id) ON DELETE CASCADE`,
+	`CREATE INDEX IF NOT EXISTS slide_comments_parent_idx ON slide_comments(parent_id)`,
 	// Where a generation has got to. A deck takes a minute or three to write on a
 	// self-hosted model, and until now the screen said "생성하고 있어요" for all of
 	// it — the same words at five seconds and at three minutes.

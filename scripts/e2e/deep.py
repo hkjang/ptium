@@ -239,6 +239,40 @@ with sync_playwright() as play:
         page.keyboard.press("Escape")
         page.wait_for_timeout(800)
 
+    # Pressing down in the slide rail chooses the next slide. It used to scroll
+    # the list under the hand: focus was on the thumbnail somebody had just
+    # clicked, and the arrow moved the scrollbar rather than the selection.
+    print("── the slide rail answers the arrow keys ──")
+    page.goto(f"{BASE}/presentations/{deck}/editor", wait_until="networkidle")
+    page.wait_for_selector(".slide-thumbnail-row", timeout=25000)
+    page.wait_for_timeout(2000)
+    rows = page.locator(".slide-thumbnail-row")
+    if rows.count() < 3:
+        print(f"   (only {rows.count()} slides; the rail check needs three)")
+    else:
+        rows.first.click()
+        page.wait_for_timeout(500)
+        chosen = lambda: page.locator(".slide-thumbnail-row.active .slide-number").inner_text().strip()
+        started = chosen()
+        page.keyboard.press("ArrowDown")
+        page.wait_for_timeout(400)
+        after = chosen()
+        if after == started:
+            failures.append(f"pressing down in the slide rail left the choice on {after}")
+        page.keyboard.press("ArrowUp")
+        page.wait_for_timeout(400)
+        if chosen() != started:
+            failures.append(f"pressing up did not come back to {started}: {chosen()}")
+        page.keyboard.press("End")
+        page.wait_for_timeout(500)
+        if chosen() != str(rows.count()):
+            failures.append(f"End chose {chosen()} of {rows.count()}")
+        page.keyboard.press("Home")
+        page.wait_for_timeout(500)
+        if chosen() != "1":
+            failures.append(f"Home chose {chosen()}")
+        print(f"   rail: 1 → {after} → back → {rows.count()} → 1")
+
     print("── keyboard only ──")
     page.goto(f"{BASE}/dashboard", wait_until="networkidle")
     page.wait_for_timeout(1500)

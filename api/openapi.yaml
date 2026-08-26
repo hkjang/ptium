@@ -1959,6 +1959,75 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/presentations/{id}/comments:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: listComments
+      summary: Every remark left on this deck
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: The remarks, oldest first, replies among them.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Comment' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: replyToComment
+      summary: Answer a remark, as the deck's owner
+      description: >
+        The other half of a review. Resolving is a state; the reason is a
+        sentence, and whoever holds the link reads it under the remark they
+        left. `parentId` answers a remark — answering an answer joins the same
+        thread rather than starting a branch, and a reply takes the slide of the
+        remark it answers. Without `parentId` this leaves a remark of its own.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 4000 }
+                parentId: { type: string, format: uuid }
+                slideId: { type: string, format: uuid }
+                author: { type: string, maxLength: 80, description: Defaults to the signed-in name. }
+      responses:
+        '201':
+          description: The remark as it was recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Comment' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          description: This deck holds as many remarks as it will take.
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/comments/{commentId}/resolve:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4645,7 +4714,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.15.0
+            service.version: 1.16.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -5412,6 +5481,12 @@ components:
         slideId: { type: string, format: uuid }
         author: { type: string }
         body: { type: string }
+        parentId:
+          type: string
+          format: uuid
+          description: >
+            The remark this one answers, when it is an answer. Resolving settles
+            a remark and everything under it.
         resolvedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
 

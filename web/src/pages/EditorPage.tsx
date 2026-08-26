@@ -660,6 +660,38 @@ export function EditorPage({ id }: { id: string }) {
     if (next) setActiveId(next.id)
   }
 
+  /**
+   * The arrow keys in the slide rail choose a slide.
+   *
+   * They used to scroll it. Focus was on a thumbnail — the thing the person had
+   * just clicked — and pressing down moved the list under it instead of moving
+   * to the next slide, which is what every deck tool in the world does and what
+   * the hand expects. Alt+arrow still reorders, so choosing and moving stay
+   * different gestures.
+   */
+  const railKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+    const at = activeIndex
+    let wanted: number | null = null
+    switch (event.key) {
+      case 'ArrowDown': case 'ArrowRight': wanted = at + 1; break
+      case 'ArrowUp': case 'ArrowLeft': wanted = at - 1; break
+      case 'Home': wanted = 0; break
+      case 'End': wanted = slides.length - 1; break
+      default: return
+    }
+    if (wanted < 0 || wanted >= slides.length) {
+      // Nothing to move to, but the page still must not scroll under the hand.
+      event.preventDefault()
+      return
+    }
+    event.preventDefault()
+    setActiveId(slides[wanted].id)
+    // The focus follows the choice, or the next arrow starts from the old row.
+    const rows = railRef.current?.querySelectorAll<HTMLElement>('.slide-thumbnail-row')
+    rows?.[wanted]?.focus()
+  }
+
   // The keys a deck is worked on with. Everything the canvas answers to is left
   // to the canvas — this is what belongs to the deck rather than to a drawing:
   // save, add, reorder, present. Typing is never interrupted, and the browser's
@@ -1203,7 +1235,7 @@ export function EditorPage({ id }: { id: string }) {
       <div className="editor-workspace">
         <aside className="slide-rail">
           <div className="slide-rail-head"><strong>슬라이드</strong><span>{slides.length} / {MAX_SLIDES}</span></div>
-          <div className="slide-list" ref={railRef}>{slides.map((slide, index) => {
+          <div className="slide-list" ref={railRef} onKeyDown={railKey}>{slides.map((slide, index) => {
             const holdings = slideHoldings(slide)
             const drawn = !slide.id.startsWith('new-') && index < savedSlideCount
             return <button
@@ -1469,6 +1501,7 @@ export function EditorPage({ id }: { id: string }) {
         load={api.comments}
         resolve={api.resolveComment}
         remove={api.deleteComment}
+        reply={api.replyToComment}
       />
       <ShareDialog
         open={shareOpen}

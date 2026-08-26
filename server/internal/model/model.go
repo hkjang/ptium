@@ -139,8 +139,11 @@ type Comment struct {
 	SlideID        string     `json:"slideId,omitempty"`
 	Author         string     `json:"author"`
 	Body           string     `json:"body"`
-	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
-	CreatedAt      time.Time  `json:"createdAt"`
+	// ParentID is the remark this one answers. A review is a conversation, and
+	// an answer beside the point it answers reads as a second point.
+	ParentID   string     `json:"parentId,omitempty"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
 }
 
 // Share is a link that opens one deck read-only, for someone who has no account

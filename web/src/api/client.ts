@@ -1047,6 +1047,18 @@ export const api = {
     })) as DeckComment[]
   },
   /** Marks a remark dealt with, or puts it back. */
+  /**
+   * The author answering what a reviewer said.
+   *
+   * Resolving is a state; the reason is a sentence, and the person holding the
+   * link reads it where they left the remark.
+   */
+  async replyToComment(id: string, parentId: string, body: string) {
+    const raw = await request<Record<string, unknown>>(`/presentations/${encodeURIComponent(id)}/comments`, {
+      method: 'POST', body: JSON.stringify({ parentId, body }),
+    })
+    return unwrapOne<DeckComment & Record<string, unknown>>(raw, ['comment', 'data'])
+  },
   resolveComment: (id: string, commentId: string, resolved = true) => request<void>(
     `/presentations/${encodeURIComponent(id)}/comments/${encodeURIComponent(commentId)}/resolve`,
     { method: 'POST', body: JSON.stringify({ resolved }) }),

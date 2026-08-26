@@ -204,6 +204,10 @@ type commentRequest struct {
 	SlideID string `json:"slideId"`
 	Author  string `json:"author"`
 	Body    string `json:"body"`
+	// ParentID answers a remark rather than adding one. Whoever holds the link
+	// may answer: half of a review is the reviewer being told what happened to
+	// what they said.
+	ParentID string `json:"parentId"`
 }
 
 func (s *Server) addSharedComment(writer http.ResponseWriter, request *http.Request) {
@@ -224,6 +228,7 @@ func (s *Server) addSharedComment(writer http.ResponseWriter, request *http.Requ
 	}
 	comment, err := s.store.AddComment(request.Context(), presentation.ID, store.CommentInput{
 		SlideID: strings.TrimSpace(input.SlideID), Author: input.Author, Body: input.Body,
+		ParentID: strings.TrimSpace(input.ParentID),
 	})
 	switch {
 	case errors.Is(err, store.ErrTooManyComments):
@@ -257,6 +262,51 @@ func (s *Server) listComments(writer http.ResponseWriter, request *http.Request)
 		return
 	}
 	writeData(writer, request, http.StatusOK, comments)
+}
+
+// addOwnerComment is the other half of a review: the author answering.
+//
+// Until now the only way a remark could be answered was from the link, by
+// somebody with no account — so the person who fixed the slide had nowhere to
+// say so, and a reviewer holding the link never learned what happened to what
+// they said. Resolving is a state; "고쳤습니다, 4번은 그대로 둡니다" is a
+// sentence, and reviews run on sentences.
+func (s *Server) addOwnerComment(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	var input commentRequest
+	if !decodeJSON(writer, request, &input) {
+		return
+	}
+	presentation, err := s.store.GetPresentation(request.Context(), request.PathValue("id"), user.ID, false)
+	if err != nil {
+		s.handleStoreError(writer, request, err, "presentation_read_failed")
+		return
+	}
+	if strings.TrimSpace(input.SlideID) != "" && !slideBelongsTo(presentation, input.SlideID) {
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
+			"that slide is not part of this deck", nil)
+		return
+	}
+	author := strings.TrimSpace(input.Author)
+	if author == "" {
+		author = strings.TrimSpace(user.Name)
+	}
+	if author == "" {
+		author = user.Email
+	}
+	comment, err := s.store.AddComment(request.Context(), presentation.ID, store.CommentInput{
+		SlideID: strings.TrimSpace(input.SlideID), Author: author, Body: input.Body,
+		ParentID: strings.TrimSpace(input.ParentID),
+	})
+	switch {
+	case errors.Is(err, store.ErrTooManyComments):
+		writeError(writer, request, http.StatusTooManyRequests, "too_many_comments", err.Error(), nil)
+		return
+	case err != nil:
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
+		return
+	}
+	writeData(writer, request, http.StatusCreated, comment)
 }
 
 func (s *Server) resolveComment(writer http.ResponseWriter, request *http.Request) {

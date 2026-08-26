@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, LoaderCircle, MessageSquare, Trash2, Undo2 } from 'lucide-react'
+import { Check, CornerDownRight, LoaderCircle, MessageSquare, Send, Trash2, Undo2 } from 'lucide-react'
 import { Button, EmptyState, Modal } from '../../components/UI'
 import type { DeckComment, Slide } from '../../types'
 import { relativeDate } from '../../utils'
@@ -13,7 +13,7 @@ import { relativeDate } from '../../utils'
  * is worth reading next time the same reviewer asks.
  */
 export function CommentsDialog({
-  open, deckId, slides, onClose, onGo, load, resolve, remove,
+  open, deckId, slides, onClose, onGo, load, resolve, remove, reply,
 }: {
   open: boolean
   deckId: string
@@ -23,11 +23,17 @@ export function CommentsDialog({
   load: (id: string) => Promise<DeckComment[]>
   resolve: (id: string, commentId: string, resolved: boolean) => Promise<void>
   remove: (id: string, commentId: string) => Promise<void>
+  reply: (id: string, parentId: string, body: string) => Promise<DeckComment>
 }) {
   const [comments, setComments] = useState<DeckComment[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
+  // Answering is the other half of a review. Resolving is a state; "고쳤습니다,
+  // 4번은 그대로 둡니다" is a sentence, and reviews run on sentences — the
+  // person holding the link reads the answer where they left the remark.
+  const [answering, setAnswering] = useState('')
+  const [draft, setDraft] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -67,7 +73,25 @@ export function CommentsDialog({
     }
   }
 
-  const openCount = comments.filter((comment) => !comment.resolvedAt).length
+  const send = async (parentId: string) => {
+    const said = draft.trim()
+    if (!said) return
+    setBusy(parentId); setError('')
+    try {
+      const written = await reply(deckId, parentId, said)
+      setComments((current) => [...current, written])
+      setAnswering(''); setDraft('')
+    } catch (problem) {
+      setError(problem instanceof Error ? problem.message : String(problem))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  // A thread is a remark and what was said under it, oldest first.
+  const roots = comments.filter((comment) => !comment.parentId)
+  const repliesTo = (id: string) => comments.filter((comment) => comment.parentId === id)
+  const openCount = roots.filter((comment) => !comment.resolvedAt).length
   return (
     <Modal open={open} onClose={onClose} title="받은 의견"
       description="공유 링크로 덱을 본 사람들이 남긴 말입니다. 어느 슬라이드에 대한 것인지 함께 옵니다.">
@@ -79,7 +103,7 @@ export function CommentsDialog({
             : <>
               <p className="inspector-help">{openCount}건이 아직 반영되지 않았습니다.</p>
               <ul className="comment-list">
-                {comments.map((comment) => (
+                {roots.map((comment) => (
                   <li key={comment.id} className={comment.resolvedAt ? 'resolved' : ''}>
                     <div className="comment-head">
                       <strong>{comment.author || '익명'}</strong>
@@ -89,7 +113,31 @@ export function CommentsDialog({
                       <small>{relativeDate(comment.createdAt)}</small>
                     </div>
                     <p>{comment.body}</p>
+                    {repliesTo(comment.id).map((answer) => (
+                      <div key={answer.id} className="comment-reply">
+                        <CornerDownRight size={13} />
+                        <div>
+                          <strong>{answer.author || '익명'}</strong> <small>{relativeDate(answer.createdAt)}</small>
+                          <p>{answer.body}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {answering === comment.id && <div className="comment-answer">
+                      <textarea autoFocus rows={2} value={draft} placeholder="무엇을 했는지 적어 두면 링크를 가진 사람이 읽습니다"
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); void send(comment.id) }
+                          if (event.key === 'Escape') { setAnswering(''); setDraft('') }
+                        }} />
+                      <Button size="small" disabled={busy === comment.id || !draft.trim()} onClick={() => void send(comment.id)}>
+                        <Send size={14} /> 답글
+                      </Button>
+                    </div>}
                     <div className="comment-actions">
+                      {answering !== comment.id && <Button variant="ghost" size="small"
+                        onClick={() => { setAnswering(comment.id); setDraft('') }}>
+                        <CornerDownRight size={14} /> 답글
+                      </Button>}
                       {comment.resolvedAt
                         ? <Button variant="ghost" size="small" disabled={busy === comment.id} onClick={() => void act(comment, 'reopen')}><Undo2 size={14} /> 다시 열기</Button>
                         : <Button variant="ghost" size="small" disabled={busy === comment.id} onClick={() => void act(comment, 'resolve')}><Check size={14} /> 반영함</Button>}

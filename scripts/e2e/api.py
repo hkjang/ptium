@@ -1367,6 +1367,51 @@ if "항목9" in carried:
 print(f"   long table: {told}")
 call("DELETE", f"/presentations/{wide_table['id']}", expect=204)
 
+# A review is a conversation. A reviewer says the number on slide four is out of
+# date; until now the author had nowhere to answer — resolving is a state, and
+# "고쳤습니다" is a sentence. An answer beside the remark reads as a second
+# remark, so it hangs under it.
+print("── a review answers back ──")
+reviewed = data_of(call("POST", "/presentations", {"title": f"검토 {RUN}", "prompt": "점검",
+                                                   "language": "ko"}, expect=201))
+call("PUT", f"/presentations/{reviewed['id']}/source",
+     {"source": "# 실적\n- 매출 1,240억\n\n# 계획\n- 요점\n"}, expect=200)
+held = data_of(call("GET", f"/presentations/{reviewed['id']}", expect=200)) or {}
+first_slide = ((held.get("slides") or [{}])[0]).get("id", "")
+opened = data_of(call("POST", f"/presentations/{reviewed['id']}/shares", {}, expect=201)) or {}
+review_token = (opened.get("url") or "").rstrip("/").split("/")[-1]
+remark = data_of(call("POST", f"/shared/{review_token}/comments",
+                      {"slideId": first_slide, "author": "검토자",
+                       "body": "이 숫자는 지난 분기 것입니다"}, expect=201, headers={})) or {}
+said = data_of(call("POST", f"/presentations/{reviewed['id']}/comments",
+                    {"parentId": remark.get("id"), "body": "확인했습니다. 방금 고쳤습니다"}, expect=201)) or {}
+checks += 1
+if said.get("parentId") != remark.get("id"):
+    failures.append(f"an answer was left beside the remark rather than under it: {said!r}")
+checks += 1
+if said.get("slideId") != first_slide:
+    failures.append(f"an answer landed on {said.get('slideId')!r} rather than the remark's slide")
+# Answering an answer joins the thread rather than starting a branch.
+deeper = data_of(call("POST", f"/shared/{review_token}/comments",
+                      {"parentId": said.get("id"), "author": "검토자", "body": "고맙습니다"},
+                      expect=201, headers={})) or {}
+checks += 1
+if deeper.get("parentId") != remark.get("id"):
+    failures.append(f"a reply to a reply started a branch: {deeper.get('parentId')!r}")
+# Resolving settles the remark and everything under it.
+call("POST", f"/presentations/{reviewed['id']}/comments/{remark.get('id')}/resolve",
+     {"resolved": True}, expect=[200, 204])
+thread = data_of(call("GET", f"/presentations/{reviewed['id']}/comments", expect=200)) or []
+checks += 1
+if not thread or any(not row.get("resolvedAt") for row in thread):
+    failures.append(f"resolving a remark left part of its thread open: {thread!r}")
+checks += 1
+if call("POST", f"/presentations/{reviewed['id']}/comments",
+        {"parentId": "00000000-0000-0000-0000-000000000000", "body": "x"}, expect=422)[0] != 422:
+    failures.append("a reply to a comment on no deck was accepted")
+print(f"   thread: {len(thread)} messages, all settled together")
+call("DELETE", f"/presentations/{reviewed['id']}", expect=204)
+
 print("── a numbered heading is not a claim ──")
 counted = data_of(call("POST", "/presentations", {"title": f"번호 제목 {RUN}", "prompt": "점검",
                                                   "language": "ko"}, expect=201))

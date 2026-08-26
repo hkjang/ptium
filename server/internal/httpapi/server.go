@@ -208,6 +208,8 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("DELETE /api/v1/presentations/{id}/shares/{shareId}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.revokeShare))))
 	// What the people who read it said, and what the author did about it.
 	api.Handle("GET /api/v1/presentations/{id}/comments", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.listComments))))
+	// The other half of a review: the author answering what a reviewer said.
+	api.Handle("POST /api/v1/presentations/{id}/comments", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.addOwnerComment))))
 	api.Handle("POST /api/v1/presentations/{id}/comments/{commentId}/resolve", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.resolveComment))))
 	api.Handle("DELETE /api/v1/presentations/{id}/comments/{commentId}", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.deleteComment))))
 	// Grid components an organisation defined for itself.

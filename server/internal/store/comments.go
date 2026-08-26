@@ -31,6 +31,11 @@ type CommentInput struct {
 	ShareID string
 	Author  string
 	Body    string
+	// ParentID is the remark this one answers. A reply belongs under its remark
+	// and to the same slide, whatever slide the answering window happens to be
+	// showing; a reply to a reply is a tree, and a review is a conversation, so
+	// answering an answer joins the same thread.
+	ParentID string
 }
 
 // ErrTooManyComments says this deck has had all the comments it will take.
@@ -38,7 +43,7 @@ var ErrTooManyComments = errors.New("this deck has as many comments as it will h
 
 // slide_id comes back as text: a uuid column scans into a driver type, and a
 // comment that lost the slide it was about is a comment about nothing.
-const commentColumns = `id,presentation_id,coalesce(slide_id::text,''),author_name,body,resolved_at,created_at`
+const commentColumns = `id,presentation_id,coalesce(slide_id::text,''),author_name,body,coalesce(parent_id::text,''),resolved_at,created_at`
 
 // AddComment records one remark about one slide.
 func (s *Store) AddComment(ctx context.Context, presentationID string, in CommentInput) (model.Comment, error) {
@@ -61,9 +66,21 @@ func (s *Store) AddComment(ctx context.Context, presentationID string, in Commen
 	if count >= MaximumComments {
 		return model.Comment{}, ErrTooManyComments
 	}
-	row := s.Pool.QueryRow(ctx, `INSERT INTO slide_comments(presentation_id,slide_id,share_id,author_name,body)
-		VALUES($1,nullif($2,'')::uuid,nullif($3,'')::uuid,$4,$5) RETURNING `+commentColumns,
-		presentationID, in.SlideID, in.ShareID, author, body)
+	parent, slide := strings.TrimSpace(in.ParentID), in.SlideID
+	if parent != "" {
+		var root, onSlide string
+		err := s.Pool.QueryRow(ctx, `SELECT coalesce(parent_id::text,id::text),coalesce(slide_id::text,'')
+			FROM slide_comments WHERE id=$1 AND presentation_id=$2`, parent, presentationID).Scan(&root, &onSlide)
+		if err != nil {
+			return model.Comment{}, errors.New("that comment is not on this deck")
+		}
+		// Answering an answer joins the thread rather than starting a branch,
+		// and a reply sits on the slide its remark is about.
+		parent, slide = root, onSlide
+	}
+	row := s.Pool.QueryRow(ctx, `INSERT INTO slide_comments(presentation_id,slide_id,share_id,author_name,body,parent_id)
+		VALUES($1,nullif($2,'')::uuid,nullif($3,'')::uuid,$4,$5,nullif($6,'')::uuid) RETURNING `+commentColumns,
+		presentationID, slide, in.ShareID, author, body, parent)
 	return scanComment(row)
 }
 
@@ -95,7 +112,9 @@ func (s *Store) OwnerComments(ctx context.Context, presentationID, ownerID strin
 	return s.Comments(ctx, presentationID)
 }
 
-// ResolveComment marks a remark dealt with, or puts it back.
+// ResolveComment marks a remark dealt with, or puts it back. Resolving belongs
+// to the thread, so answering a reply's resolution is not a separate question:
+// the remark and everything under it settle together.
 func (s *Store) ResolveComment(ctx context.Context, presentationID, ownerID, commentID string, resolved bool) error {
 	if _, err := s.GetPresentation(ctx, presentationID, ownerID, false); err != nil {
 		return err
@@ -106,7 +125,7 @@ func (s *Store) ResolveComment(ctx context.Context, presentationID, ownerID, com
 		when = &now
 	}
 	tag, err := s.Pool.Exec(ctx, `UPDATE slide_comments SET resolved_at=$1
-		WHERE id=$2 AND presentation_id=$3`, when, commentID, presentationID)
+		WHERE presentation_id=$3 AND (id=$2 OR parent_id=$2)`, when, commentID, presentationID)
 	if err != nil {
 		return err
 	}
@@ -136,7 +155,7 @@ func scanComment(row shareRow) (model.Comment, error) {
 	var comment model.Comment
 	var resolved *time.Time
 	if err := row.Scan(&comment.ID, &comment.PresentationID, &comment.SlideID, &comment.Author,
-		&comment.Body, &resolved, &comment.CreatedAt); err != nil {
+		&comment.Body, &comment.ParentID, &resolved, &comment.CreatedAt); err != nil {
 		return model.Comment{}, err
 	}
 	comment.ResolvedAt = resolved
