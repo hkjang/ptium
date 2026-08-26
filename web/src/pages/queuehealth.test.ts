@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { elapsedMeans, troubled } from './queuehealth'
+import { elapsedMeans, generationTrouble, troubled } from './queuehealth'
 
 describe('whether a deck in the queue is in trouble', () => {
   it('leaves a long generation alone while its worker is saying it is alive', () => {
@@ -28,5 +28,21 @@ describe('whether a deck in the queue is in trouble', () => {
   it('knows what the elapsed column is counting', () => {
     expect(elapsedMeans({ status: 'generating', waitingSeconds: 60 })).toBe('writing')
     expect(elapsedMeans({ status: 'queued', waitingSeconds: 60 })).toBe('waiting')
+  })
+})
+
+describe('what the overview says about generation', () => {
+  it('is calm while decks are picked up and workers keep talking', () => {
+    expect(generationTrouble(0, 0)).toBe(false)
+    // Thirty minutes of writing, a heartbeat ten seconds ago.
+    expect(generationTrouble(0, 10)).toBe(false)
+  })
+
+  it('warns when nothing has picked a deck up for fifteen minutes', () => {
+    expect(generationTrouble(1000, 0)).toBe(true)
+  })
+
+  it('warns when a worker writing a deck has gone quiet', () => {
+    expect(generationTrouble(0, 200)).toBe(true)
   })
 })

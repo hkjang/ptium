@@ -4920,7 +4920,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.28.1
+            service.version: 1.28.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6843,10 +6843,20 @@ components:
           type: integer
           minimum: 0
           description: >
-            How long the oldest generation still waiting has waited. A queue of
-            twelve says nothing on its own — twelve decks asked for in the last
-            minute is a busy morning, and one deck waiting since three hours ago
-            is a worker that died — so this is the number that tells them apart.
+            How long the oldest generation still waiting has waited — a deck
+            nothing has picked up yet, not one being written. A queue of twelve
+            says nothing on its own: twelve decks asked for in the last minute is
+            a busy morning, and one deck waiting since three hours ago is a worker
+            that died.
+        quietestGenerationSeconds:
+          type: integer
+          minimum: 0
+          description: >
+            The longest any deck being written has gone without its worker saying
+            it is alive. A worker says so every thirty seconds. How long a
+            generation has been running is not a fault — a self-hosted model takes
+            minutes per call and a deployment may ask for ten repair passes — so
+            silence, not elapsed time, is what says nobody is writing it.
         failedLastDay:
           type: integer
           minimum: 0

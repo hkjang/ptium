@@ -89,3 +89,63 @@ func TestTheQueueSaysHowLongADeckHasBeenSilent(t *testing.T) {
 		t.Errorf("a worker silent for nine minutes reads as %v", silent.QuietFor)
 	}
 }
+
+// The overview counts a deck being written as waiting, and it is not waiting.
+//
+// It used to take the oldest of everything queued or generating, so a deck half
+// an hour into a healthy generation made the overview say "가장 오래 기다린 덱
+// 30분 — 작업자를 확인하세요" with a stall warning next to it, over work that
+// was going fine.
+func TestTheOverviewSeparatesWaitingFromSilence(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	owner, err := store.UpsertUser(ctx, "overview-quiet", "overview-quiet@ptium.test", "quiet", []string{}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	deck, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: "개요 조용함 점검", Prompt: "브리프", Theme: "slate-classic",
+		Language: "ko", Audience: "general", Tone: "professional", SlideCount: 5})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID) }()
+
+	// Half an hour of writing, saying so ten seconds ago.
+	if _, err := pool.Exec(ctx, `UPDATE presentations SET status='generating',
+		generation_started_at=now()-interval '30 minutes', generation_heartbeat_at=now()-interval '10 seconds',
+		generation_lease=gen_random_uuid(), updated_at=now()-interval '30 minutes' WHERE id=$1`, deck.ID); err != nil {
+		t.Fatalf("hand it to a worker: %v", err)
+	}
+	healthy, err := store.AdminOverview(ctx)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if healthy.OldestQueuedSeconds >= 900 {
+		t.Errorf("a deck being written counts as %ds of waiting", healthy.OldestQueuedSeconds)
+	}
+	if healthy.QuietestGenerationSeconds > 60 {
+		t.Errorf("a worker that spoke ten seconds ago reads as %ds of silence", healthy.QuietestGenerationSeconds)
+	}
+
+	// And when it goes quiet, the overview says so.
+	if _, err := pool.Exec(ctx, `UPDATE presentations SET generation_heartbeat_at=now()-interval '7 minutes' WHERE id=$1`, deck.ID); err != nil {
+		t.Fatalf("go quiet: %v", err)
+	}
+	silent, err := store.AdminOverview(ctx)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+	if silent.QuietestGenerationSeconds < 300 {
+		t.Errorf("a worker silent for seven minutes reads as %ds", silent.QuietestGenerationSeconds)
+	}
+}

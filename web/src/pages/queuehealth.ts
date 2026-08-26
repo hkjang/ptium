@@ -31,3 +31,12 @@ export function troubled(deck: QueueRow) {
 export function elapsedMeans(deck: QueueRow): 'writing' | 'waiting' {
   return deck.status === 'generating' ? 'writing' : 'waiting'
 }
+
+/**
+ * What the overview says about generation, from the two numbers that separate
+ * patience from trouble: how long the oldest deck has been waiting for anybody
+ * to pick it up, and how long the quietest worker has said nothing.
+ */
+export function generationTrouble(oldestQueuedSeconds: number, quietestGenerationSeconds: number) {
+  return oldestQueuedSeconds >= waitedTooLong || quietestGenerationSeconds >= quietTooLong
+}

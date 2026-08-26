@@ -38,9 +38,17 @@ type Overview struct {
 	// twelve decks asked for in the last minute is a busy morning, and one deck
 	// waiting since three hours ago is a worker that died. The age of the oldest
 	// thing still waiting is the number that tells them apart.
-	OldestQueuedSeconds int        `json:"oldestQueuedSeconds"`
-	FailedLastDay       int        `json:"failedLastDay"`
-	LastCompletedAt     *time.Time `json:"lastCompletedAt,omitempty"`
+	OldestQueuedSeconds int `json:"oldestQueuedSeconds"`
+	// QuietestGenerationSeconds is the longest any deck being written has gone
+	// without its worker saying it is alive.
+	//
+	// The wait above used to count decks being written as well, so a deck thirty
+	// minutes into a perfectly good generation read as "가장 오래 기다린 덱
+	// 30분 — 작업자를 확인하세요" with a stall warning beside it. How long a
+	// generation has been running is not a fault; silence is.
+	QuietestGenerationSeconds int        `json:"quietestGenerationSeconds"`
+	FailedLastDay             int        `json:"failedLastDay"`
+	LastCompletedAt           *time.Time `json:"lastCompletedAt,omitempty"`
 }
 
 func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
@@ -53,12 +61,15 @@ func (s *Store) AdminOverview(ctx context.Context) (Overview, error) {
 		(SELECT count(*) FROM server_errors WHERE status IN ('open','acknowledged')),
 		(SELECT count(*) FROM api_keys WHERE revoked_at IS NULL AND (expires_at IS NULL OR expires_at>now()) AND (rotated_to_id IS NULL OR grace_until>now())),
 		(SELECT COALESCE(EXTRACT(EPOCH FROM now()-min(updated_at))::int,0) FROM presentations
-			WHERE status IN ('queued','generating') AND deleted_at IS NULL),
+			WHERE status='queued' AND deleted_at IS NULL),
+		(SELECT COALESCE(MAX(EXTRACT(EPOCH FROM now()-COALESCE(generation_heartbeat_at,generation_started_at)))::int,0)
+			FROM presentations WHERE status='generating' AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE status='failed' AND deleted_at IS NULL AND updated_at>now()-interval '1 day'),
 		(SELECT max(updated_at) FROM presentations WHERE status='completed' AND deleted_at IS NULL),
 		(SELECT count(*) FROM presentations WHERE deleted_at IS NOT NULL)`).Scan(
 		&result.Users, &result.Presentations, &result.CompletedDecks, &result.QueuedGenerations, &result.OpenIncidents, &result.ActiveAPIKeys,
-		&result.OldestQueuedSeconds, &result.FailedLastDay, &result.LastCompletedAt, &result.DeletedDecks)
+		&result.OldestQueuedSeconds, &result.QuietestGenerationSeconds, &result.FailedLastDay,
+		&result.LastCompletedAt, &result.DeletedDecks)
 	return result, err
 }
 

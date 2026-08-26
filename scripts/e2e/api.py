@@ -109,6 +109,13 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# The overview used to call a deck being written "waiting", so a healthy
+# half-hour generation read as a stall an operator was told to go and check.
+overview = data_of(call("GET", "/admin/overview", expect=[200, 403])) or {}
+if overview:
+    for field in ("oldestQueuedSeconds", "quietestGenerationSeconds"):
+        if not isinstance(overview.get(field), int):
+            failures.append(f"the overview does not answer {field}: {overview.get(field)!r}")
 # A setting this deployment will not honour used to be stored and shown back:
 # an administrator could read "생성 후 자동 수정 500" off their own screen while
 # generation ran three passes. Each of these is refused now, and what a

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Activity, Bot, ArrowRight, CheckCircle2, CircleAlert, Database, FileStack, KeyRound, Server, Settings2, Sparkles, Trash2, Users } from 'lucide-react'
 import { api } from '../api/client'
+import { generationTrouble, quietTooLong, waitedTooLong } from './queuehealth'
 import { AppShell } from '../components/AppShell'
 import { Badge, ErrorState, LoadingState } from '../components/UI'
 import { Link } from '../router'
@@ -20,9 +21,15 @@ function waitingFor(data: Record<string, unknown>) {
   const queued = Number(data.queuedGenerations ?? 0)
   if (queued === 0) return '대기 없음'
   const seconds = Number(data.oldestQueuedSeconds ?? 0)
-  if (seconds >= 900) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분 — 작업자를 확인하세요`
+  const quiet = Number(data.quietestGenerationSeconds ?? 0)
+  // Silence first: a deck nobody is writing is the thing to act on, and it can
+  // sit behind a queue that is otherwise moving.
+  if (quiet >= quietTooLong) return `작성 중인 덱이 ${Math.floor(quiet / 60)}분째 응답이 없습니다 — 작업자를 확인하세요`
+  if (seconds >= waitedTooLong) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분 — 작업자를 확인하세요`
   if (seconds >= 60) return `가장 오래 기다린 덱 ${Math.floor(seconds / 60)}분`
-  return `가장 오래 기다린 덱 ${seconds}초`
+  if (seconds > 0) return `가장 오래 기다린 덱 ${seconds}초`
+  // Everything in the queue is being written, and being written is not waiting.
+  return '작성 중'
 }
 
 /** What the model host said, or that this deployment does not use one. */
@@ -136,8 +143,8 @@ export function AdminOverviewPage() {
         <div className="service-list">
           <div><span className="service-icon"><Sparkles size={17} /></span>
             <div><strong>{waitingFor(data)}</strong><small>대기 {number(data.queuedGenerations)}건</small></div>
-            <Badge tone={Number(data.oldestQueuedSeconds ?? 0) >= 900 ? 'warning' : 'success'}>
-              {Number(data.oldestQueuedSeconds ?? 0) >= 900 ? '멈춤 의심' : '정상'}</Badge></div>
+            <Badge tone={generationTrouble(Number(data.oldestQueuedSeconds ?? 0), Number(data.quietestGenerationSeconds ?? 0)) ? 'warning' : 'success'}>
+              {generationTrouble(Number(data.oldestQueuedSeconds ?? 0), Number(data.quietestGenerationSeconds ?? 0)) ? '멈춤 의심' : '정상'}</Badge></div>
           <div><span className="service-icon"><CheckCircle2 size={17} /></span>
             <div><strong>{generationHealth(data).wrote}</strong><small>완성 누적 {number(data.completedDecks)}건</small></div>
             <Badge tone="success">기록됨</Badge></div>
