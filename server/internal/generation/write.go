@@ -121,9 +121,14 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 			previousFrame = frame
 			usedFrames[frame] = true
 			section := plan.Section(promptTopic{Name: topic.Name, Frame: frame, Chosen: topic.Chosen}, part, share)
-			// A deck whose title is its only subject would open with that title
-			// twice. The second one says which part of the subject the slide is.
-			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
+			// A deck whose title is its only subject would say that title on every
+			// slide: once as the cover and then as the first half of "제목 —
+			// 이행 순서", "제목 — 기대 효과", "제목 — 비용과 효과". The room reads
+			// the same twelve syllables four times and learns nothing from three
+			// of them. Where the subject is the deck's own title, each slide is
+			// titled by the part of it that slide is.
+			if withoutSpaces(topic.Name) == withoutSpaces(plan.Title) ||
+				strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
 				if aspect := unclaimedAspect(plan.Language, frame, outline.Topics); aspect != "" {
 					section.Title = capitalized(aspect)
 				}
