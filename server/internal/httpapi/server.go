@@ -271,6 +271,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/admin/settings", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminListSettings)))
 	api.Handle("PUT /api/v1/admin/settings", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminPutSettings)))
 	api.Handle("PATCH /api/v1/admin/settings", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminPutSettings)))
+	// The settings' own trail, and putting one back. Registered before the
+	// {key} route so "changes" is read as itself rather than as a setting named
+	// changes.
+	api.Handle("GET /api/v1/admin/settings/changes", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminSettingChanges)))
+	api.Handle("POST /api/v1/admin/settings/changes/{id}/revert", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminRevertSettingChange)))
 	api.Handle("PUT /api/v1/admin/settings/{key}", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminPutSetting)))
 	api.Handle("GET /api/v1/admin/users", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListUsers)))
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))

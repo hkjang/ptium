@@ -109,6 +109,39 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# What a settings change was. The trail used to record "settings.update_batch
+# count=1": which setting, what it had been and what it became were nowhere, and
+# these settings decide how every deck in the deployment is written.
+current = {row["key"]: row.get("value") for row in (data_of(call("GET", "/admin/settings", expect=[200, 403])) or [])}
+if "ai.timeout_seconds" in current:
+    kept = current["ai.timeout_seconds"]
+    call("PUT", "/admin/settings", {"values": {"ai.timeout_seconds": 600 if kept != 600 else 900}}, expect=200)
+    changes = data_of(call("GET", "/admin/settings/changes?limit=5", expect=200)) or []
+    mine = [c for c in changes if (c.get("metadata") or {}).get("key") == "ai.timeout_seconds"]
+    if not mine:
+        failures.append("a settings change is not in the settings' own trail")
+    else:
+        detail = mine[0].get("metadata") or {}
+        if detail.get("from") != kept:
+            failures.append(f"the trail says the timeout was {detail.get('from')!r}, it was {kept!r}")
+        if not mine[0].get("actorName") and not mine[0].get("actorEmail"):
+            failures.append("a settings change does not say who made it")
+        # And putting it back is one press, not retyping the old value.
+        call("POST", f"/admin/settings/changes/{mine[0]['id']}/revert", {}, expect=200)
+        after = {row["key"]: row.get("value") for row in (data_of(call("GET", "/admin/settings", expect=200)) or [])}
+        if after.get("ai.timeout_seconds") != kept:
+            failures.append(f"reverting left the timeout at {after.get('ai.timeout_seconds')!r}, not {kept!r}")
+    # A secret's value is never written down, so it cannot be put back.
+    call("PUT", "/admin/settings", {"values": {"ai.api_key": "sk-sweep-secret"}}, expect=200)
+    secret = [c for c in (data_of(call("GET", "/admin/settings/changes?limit=5", expect=200)) or [])
+              if (c.get("metadata") or {}).get("key") == "ai.api_key"]
+    if not secret:
+        failures.append("a secret changing is not in the trail at all")
+    else:
+        if "sk-sweep-secret" in json.dumps(secret[0], ensure_ascii=False):
+            failures.append("a secret's value was written into the audit trail")
+        call("POST", f"/admin/settings/changes/{secret[0]['id']}/revert", {}, expect=422)
+    call("PUT", "/admin/settings", {"values": {"ai.api_key": " "}}, expect=200)
 # The overview used to call a deck being written "waiting", so a healthy
 # half-hour generation read as a stall an operator was told to go and check.
 overview = data_of(call("GET", "/admin/overview", expect=[200, 403])) or {}

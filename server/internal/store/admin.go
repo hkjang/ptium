@@ -227,6 +227,22 @@ type AuditFilter struct {
 	Search string
 }
 
+// AuditEntry reads one thing that was written down, by its id. Acting on a
+// trail entry — putting a setting back to what it was before this change —
+// needs the entry itself, not a page of the trail it sits on.
+func (s *Store) AuditEntry(ctx context.Context, id int64) (model.AuditEntry, error) {
+	var entry model.AuditEntry
+	err := s.Pool.QueryRow(ctx, `SELECT a.id, COALESCE(a.actor_id::text,''), COALESCE(u.email,''), COALESCE(u.name,''),
+			a.action, a.target_type, a.target_id, a.metadata, a.created_at
+		FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_id WHERE a.id=$1`, id).Scan(
+		&entry.ID, &entry.ActorID, &entry.ActorEmail, &entry.ActorName,
+		&entry.Action, &entry.TargetType, &entry.TargetID, &entry.Metadata, &entry.CreatedAt)
+	if err != nil {
+		return model.AuditEntry{}, mapNotFound(err)
+	}
+	return entry, nil
+}
+
 // ListAuditTrail reads what was written down about who did what.
 //
 // Thirty-five places in this server write an audit record and, until this,

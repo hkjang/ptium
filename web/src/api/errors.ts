@@ -146,7 +146,7 @@ const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
 ]
 
 /** What a settings key is called on the screen that sets it. */
-function settingName(key: string) {
+export function settingName(key: string) {
   const named: Record<string, string> = {
     'ai.timeout_seconds': '응답 제한 시간',
     'ai.max_output_tokens': '최대 출력 토큰',

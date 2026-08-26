@@ -3980,6 +3980,118 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/settings/changes:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
+    get:
+      operationId: listSettingChanges
+      summary: What was changed in the settings, and by whom
+      description: >-
+        One entry per setting changed, newest first: the key, what it was, what
+        it became, and who did it. A secret is recorded as having changed and
+        never as its value. Add `key` to ask about one setting.
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The settings' own trail.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer, format: int64 }
+                        action: { type: string, enum: [settings.change] }
+                        targetType: { type: string, enum: [setting] }
+                        targetId: { type: string, description: The setting that changed }
+                        actorName: { type: string }
+                        actorEmail: { type: string }
+                        createdAt: { type: string, format: date-time }
+                        metadata:
+                          type: object
+                          description: >-
+                            key, and either from/to or sensitive:true for a
+                            secret, whose value is never recorded.
+                          properties:
+                            key: { type: string }
+                            from: { $ref: '#/components/schemas/JSONValue' }
+                            to: { $ref: '#/components/schemas/JSONValue' }
+                            sensitive: { type: boolean }
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /api/v1/admin/settings/changes/{id}/revert:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - name: id
+        in: path
+        required: true
+        schema: { type: integer, format: int64, minimum: 1 }
+    post:
+      operationId: revertSettingChange
+      summary: Put a setting back to what a change replaced
+      description: >-
+        Applies the recorded previous value, validated the way any other change
+        is, and records the revert as a change of its own. A secret cannot be
+        reverted (`secret_not_recorded`) because its value was never written
+        down, and neither can a change with no previous value
+        (`nothing_to_revert`).
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The setting and the value it was put back to.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      key: { type: string }
+                      value: { $ref: '#/components/schemas/JSONValue' }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: >-
+            The change cannot be undone: it is a secret whose value was never
+            recorded, it has no previous value, or the previous value is one
+            this deployment no longer honours.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/admin/settings/{key}:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4939,7 +5051,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.32.1
+            service.version: 1.33.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

@@ -1395,6 +1395,19 @@ export const api = {
   async adminSettings() {
     return normalizeAdminSettingsPayload(await request<unknown>('/admin/settings'))
   },
+  /**
+   * What was changed in the settings, and by whom. The audit trail holds every
+   * kind of event; this is the one question a settings screen is asked.
+   */
+  async settingChanges(limit = 8) {
+    return unwrapList<Record<string, unknown>>(
+      await request<unknown>(`/admin/settings/changes?limit=${limit}`), ['changes', 'items', 'data'])
+  },
+  /** Put a setting back to what the change replaced. */
+  async revertSettingChange(id: number) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>(`/admin/settings/changes/${id}/revert`, { method: 'POST' }), ['change', 'data'])
+  },
   async updateAdminSettings(section: string, values: Record<string, unknown>) {
     const raw = await request<unknown>('/admin/settings', {
       method: 'PUT', body: JSON.stringify({ settings: Object.entries(values)

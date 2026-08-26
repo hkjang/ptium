@@ -101,11 +101,20 @@ func (s *Server) adminPutSettings(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
 		return
 	}
+	// What each setting was, read before it is written. A trail that records
+	// "settings.update_batch count=1" answers nobody's question: an operator
+	// asking who turned the repair pass off last month, and what it had been,
+	// had the whole of it in one number.
+	was := s.settingsNow(request.Context())
+
 	result, err := s.settings.PutBatch(request.Context(), user.ID, prepared)
 	s.forgetProviderCheckIfAI(keysOf(prepared))
 	if err != nil {
 		s.internalError(writer, request, "admin_settings_update_failed", err)
 		return
+	}
+	for _, update := range prepared {
+		s.auditSettingChange(request.Context(), user.ID, update, was[update.Key])
 	}
 	s.store.Audit(request.Context(), &user.ID, "settings.update_batch", "settings", input.Section, map[string]any{"count": len(result)})
 	writeData(writer, request, http.StatusOK, result)
