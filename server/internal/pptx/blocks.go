@@ -999,6 +999,26 @@ func (d Design) tableBodySize(frame Frame, columns []string, rows [][]string, ro
 	return size
 }
 
+// cutToWidth shortens a line until it is drawn inside the width it has. It is
+// for text that is not wrapped: a heading, where the only other outcome is
+// paint across whatever is beside it.
+func cutToWidth(said string, size, width int) string {
+	if width <= 0 || textWidth(said, size) <= width {
+		return said
+	}
+	runes := []rune(said)
+	low, high := 0, len(runes)
+	for low < high {
+		middle := (low + high + 1) / 2
+		if textWidth(truncate(said, middle), size) <= width {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	return truncate(said, max(low, 1))
+}
+
 // cutToRows shortens a line until it wraps into the room it has, measuring
 // rather than estimating: a rule of thumb about how many characters fit in a
 // width is out by a third on Korean, where every glyph is as wide as it is
@@ -1083,14 +1103,26 @@ func (d Design) layoutTable(frame Frame, block Block) ([]Primitive, int) {
 	bodySize, drawnRows := d.tableCells(frame, columns, rows, rowHeight)
 	rows = drawnRows
 	const hairlineHeight = 9525
+	headerSize := d.Small
+	heads := make([]string, len(cells))
 	for index, cell := range cells {
+		heads[index] = PlainText(columns[index])
+		if fitted := fitToWidth(headerSize, cell.Width, d.Micro, heads[index]); fitted < headerSize {
+			headerSize = fitted
+		}
+	}
+	for index, cell := range cells {
+		// A heading is one line and is not wrapped, so a long one is painted
+		// across the table and off the slide. A document's table whose header
+		// cell held a paragraph drew two metres past the region it was given.
+		heads[index] = cutToWidth(heads[index], headerSize, cell.Width)
 		align := "l"
 		if index > 0 {
 			align = "r"
 		}
 		primitives = append(primitives, text(
 			Frame{X: cell.X, Y: frame.Y, Width: cell.Width, Height: headerHeight},
-			line(columns[index]), textOptions{Size: d.Small, Color: d.InkMuted, Bold: true, Align: align, Anchor: "b", Font: d.Minor}))
+			line(heads[index]), textOptions{Size: headerSize, Color: d.InkMuted, Bold: true, Align: align, Anchor: "b", Font: d.Minor}))
 	}
 	cursor := frame.Y + headerHeight
 	primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: 9525}, d.Line))

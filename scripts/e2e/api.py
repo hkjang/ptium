@@ -1296,6 +1296,28 @@ print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
 # A table stops at the bottom of its region and caps its columns. What is past
 # that is on no slide, and nothing said so: a twelve-row table drew eight rows
 # and the panel called the deck clean.
+# A report's table is longer than a slide holds. Cutting it at the eighth row is
+# how a twelve-row table arrived as eight rows with the rest on no slide and
+# nobody told; it continues on the next slide instead, header and all.
+print("── a document's long table continues ──")
+grid = "구분,내용\n" + "\n".join(f"항목{i},값{i}" for i in range(1, 13))
+carried = data_of(call("POST", "/presentations/import",
+                       files={"file": (f"실적-{RUN}.csv", grid, "text/csv")}, expect=201)) or {}
+carried_id = ((carried.get("presentation") or {}).get("id")) or ""
+if carried_id:
+    written = (data_of(call("GET", f"/presentations/{carried_id}/source", expect=200)) or {}).get("source", "")
+    checks += 1
+    missing = [f"항목{i}" for i in range(1, 13) if f"항목{i}" not in written]
+    if missing:
+        failures.append(f"a twelve-row document table lost {missing}")
+    looked = data_of(call("GET", f"/presentations/{carried_id}/inspect", expect=200)) or {}
+    checks += 1
+    if looked.get("defects"):
+        failures.append(f"a document's long table draws with defects: "
+                        f"{[f.get('detail') for f in (looked.get('findings') or []) if not f.get('advisory')][:2]}")
+    print(f"   rows carried: {12 - len(missing)}/12 · slides: {written.count(chr(35) + ' ')}")
+    call("DELETE", f"/presentations/{carried_id}", expect=204)
+
 print("── a table says what it could not draw ──")
 wide_table = data_of(call("POST", "/presentations", {"title": f"긴 표 {RUN}", "prompt": "점검",
                                                      "language": "ko"}, expect=201))

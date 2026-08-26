@@ -50,11 +50,23 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 		warnings = append(warnings, fmt.Sprintf("%s의 열이 많아 앞 %d개만 가져왔습니다",
 			sheetLabel(filename, sheet), maximumColumns))
 	}
-	body := rows[1:]
+	// A sheet longer than a slide holds continues on the next one rather than
+	// stopping at the eighth row: a twelve-row report table is a table, not the
+	// first eight rows of one. Past a few slides it is a spreadsheet rather than
+	// a deck, and what is left is said instead of drawn.
+	all := rows[1:]
+	body := all
+	var carried [][][]string
 	if len(body) > maximumRows {
-		body = body[:maximumRows]
-		warnings = append(warnings, fmt.Sprintf("%s의 행이 많아 앞 %d줄만 가져왔습니다",
-			sheetLabel(filename, sheet), maximumRows))
+		body = all[:maximumRows]
+		for at := maximumRows; at < len(all) && len(carried) < maximumTableSlides-1; at += maximumRows {
+			end := min(at+maximumRows, len(all))
+			carried = append(carried, all[at:end])
+		}
+		if written := maximumRows + len(carried)*maximumRows; written < len(all) {
+			warnings = append(warnings, fmt.Sprintf("%s의 행이 많아 앞 %d줄만 가져왔습니다",
+				sheetLabel(filename, sheet), written))
+		}
 	}
 
 	heading := strings.TrimSpace(sheet)
@@ -86,7 +98,34 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 	builder.WriteString("::\n")
 	builder.WriteString(citation(filename, rangeOf(sheet, columns, len(body)+1)))
 	builder.WriteString("\n")
-	return 1, warnings
+	written := 1
+	for _, piece := range carried {
+		fmt.Fprintf(builder, "# %s (계속)\n", escapeLine(heading))
+		if columns == 2 && allNumeric(piece, 1) {
+			fmt.Fprintf(builder, "::columns %s\n", escapeLine(strings.TrimSpace(rows[0][1])))
+			for _, row := range piece {
+				fmt.Fprintf(builder, "- %s | %s\n", escapeField(row[0]), escapeField(row[1]))
+			}
+		} else {
+			fmt.Fprintf(builder, "::table %s\n", escapeLine(strings.TrimSpace(rows[0][0])))
+			for _, row := range append([][]string{rows[0]}, piece...) {
+				fields := make([]string, 0, columns)
+				for index := 0; index < columns; index++ {
+					value := ""
+					if index < len(row) {
+						value = row[index]
+					}
+					fields = append(fields, escapeField(value))
+				}
+				fmt.Fprintf(builder, "- %s\n", strings.Join(fields, " | "))
+			}
+		}
+		builder.WriteString("::\n")
+		builder.WriteString(citation(filename, rangeOf(sheet, columns, len(piece)+1)))
+		builder.WriteString("\n")
+		written++
+	}
+	return written, warnings
 }
 
 func sheetLabel(filename, sheet string) string {

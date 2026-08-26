@@ -98,3 +98,33 @@ func TestATableSaysWhatItCouldNotDraw(t *testing.T) {
 		}
 	}
 }
+
+// A table heading is one line and is not wrapped, so a long one is painted
+// across the table and off the slide. A report's table whose header cell held a
+// paragraph drew two metres past the region it was given.
+func TestATableHeadingIsDrawnInsideItsColumn(t *testing.T) {
+	_, design, layout := testDesign(t, "plum-rail")
+	frame := bodyFrame(layout)
+	placeholder, _ := layout.Slot(SlotBody)
+	paragraph := "프로젝트 상세 내용 - OpenAI 호환 프록시 제공과 스트리밍 중계, 사용자별 토큰과 비용 집계, " +
+		"민감정보 마스킹, 라우팅 정책과 감사 로그까지 한 곳에서 다룹니다"
+	block := Block{Kind: BlockTable, Columns: []string{paragraph, "비고"},
+		Rows: [][]string{{"주요 기능", "SSE 중계"}}}
+	for _, finding := range inspectComponent(placeholder, frame, block, design, 12192000, 6858000) {
+		if finding.Kind == FindingOverflow {
+			t.Errorf("a long heading %s", finding.Detail)
+		}
+	}
+	// An ordinary heading is left as it was written.
+	plain := Block{Kind: BlockTable, Columns: []string{"항목", "2026"}, Rows: [][]string{{"인건비", "4.2"}}}
+	component := RenderBlock(design, frame, plain)
+	drawn := ""
+	for _, primitive := range component.Primitives {
+		if primitive.Kind == shapeText && len(primitive.Lines) > 0 && primitive.Lines[0].Text == "항목" {
+			drawn = primitive.Lines[0].Text
+		}
+	}
+	if drawn != "항목" {
+		t.Errorf("an ordinary heading was drawn as %q", drawn)
+	}
+}

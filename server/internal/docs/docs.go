@@ -115,5 +115,8 @@ const (
 	maximumSlides  = 30
 	maximumRows    = 8
 	maximumColumns = 5
+	// A sheet that runs longer than this is a spreadsheet, not a deck: what is
+	// past it is said rather than drawn.
+	maximumTableSlides = 4
 	maximumPoints  = 5
 )

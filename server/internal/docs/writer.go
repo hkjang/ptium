@@ -114,15 +114,30 @@ func (w *deckWriter) flush() {
 	if heading == "" {
 		heading = w.title
 	}
-	fmt.Fprintf(&w.builder, "# %s\n", escapeLine(heading))
-	for _, table := range w.tables {
-		columns := min(len(table[0]), maximumColumns)
-		body := table
-		if len(body) > maximumRows+1 {
-			body = body[:maximumRows+1]
+	tables, points, from := w.tables, w.points, w.heading
+	w.heading, w.points, w.tables = "", nil, nil
+	// A table longer than a slide holds continues on the next one, header and
+	// all. Cutting it at the eighth row is how a report's twelve-row table
+	// arrived as eight rows with the rest on no slide and nobody told.
+	first, rest := splitTables(tables, w.report)
+	w.writeSlide(heading, first, points, from)
+	for _, carried := range rest {
+		if w.slides >= maximumSlides {
+			w.dropped++
+			continue
 		}
+		w.writeSlide(heading+" (계속)", [][][]string{carried}, nil, from)
+	}
+}
+
+// writeSlide writes one slide: its heading, its tables, its points and where it
+// came from.
+func (w *deckWriter) writeSlide(heading string, tables [][][]string, points []string, from string) {
+	fmt.Fprintf(&w.builder, "# %s\n", escapeLine(heading))
+	for _, table := range tables {
+		columns := min(len(table[0]), maximumColumns)
 		fmt.Fprintf(&w.builder, "::table\n")
-		for _, row := range body {
+		for _, row := range table {
 			fields := make([]string, 0, columns)
 			for index := 0; index < columns; index++ {
 				value := ""
@@ -135,13 +150,47 @@ func (w *deckWriter) flush() {
 		}
 		w.builder.WriteString("::\n")
 	}
-	for _, point := range w.points {
+	for _, point := range points {
 		fmt.Fprintf(&w.builder, "- %s\n", escapeLine(point))
 	}
-	w.builder.WriteString(citation(w.filename, w.heading))
+	w.builder.WriteString(citation(w.filename, from))
 	w.builder.WriteString("\n")
 	w.slides++
-	w.heading, w.points, w.tables = "", nil, nil
+}
+
+// report notes something the reader should know about the import.
+func (w *deckWriter) report(warning string) {
+	for _, said := range w.warnings {
+		if said == warning {
+			return
+		}
+	}
+	w.warnings = append(w.warnings, warning)
+}
+
+// splitTables cuts each table into slide-sized pieces, repeating its header on
+// every one, and says when a table was wider than a slide holds.
+func splitTables(tables [][][]string, report func(string)) (first [][][]string, rest [][][]string) {
+	for _, table := range tables {
+		if len(table) == 0 {
+			continue
+		}
+		if report != nil && len(table[0]) > maximumColumns {
+			report(fmt.Sprintf("표 %q의 %d개 열 가운데 %d개만 가져왔습니다. 한 슬라이드가 담는 만큼입니다",
+				strings.TrimSpace(table[0][0]), len(table[0]), maximumColumns))
+		}
+		header, body := table[0], table[1:]
+		if len(body) <= maximumRows {
+			first = append(first, table)
+			continue
+		}
+		first = append(first, append([][]string{header}, body[:maximumRows]...))
+		for at := maximumRows; at < len(body); at += maximumRows {
+			end := min(at+maximumRows, len(body))
+			rest = append(rest, append([][]string{header}, body[at:end]...))
+		}
+	}
+	return first, rest
 }
 
 // document ends the writing and returns what was written.
