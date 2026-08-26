@@ -1962,6 +1962,24 @@ if overview is not None and isinstance(overview, dict) and "presentations" in ov
     else:
         print("   trash:", overview.get("deletedDecks"), "deck(s) · live:", overview.get("presentations"))
 
+# What the API answers with has to be what the schema says it answers with: the
+# overview's envelope is closed (additionalProperties: false), so a client that
+# validates the response refuses it over a field nobody documented.
+if overview is not None and isinstance(overview, dict) and "presentations" in overview:
+    documented = set()
+    try:
+        import re as _re
+        text = open(os.path.join(os.path.dirname(__file__), "..", "..", "api", "openapi.yaml"),
+                    encoding="utf-8").read()
+        block = text.split("    AdminOverview:", 1)[1].split("\n    AdminOverviewEnvelope:", 1)[0]
+        documented = set(_re.findall(r"\n        (\w+):", block))
+    except Exception as reason:
+        failures.append(f"the sweep could not read the overview schema: {reason}")
+    checks += 1
+    undocumented = sorted(set(overview) - documented)
+    if documented and undocumented:
+        failures.append(f"the admin overview answers with fields the schema does not list: {undocumented}")
+
 print("── api keys and mcp ──")
 made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}
 call("GET", "/api-keys", expect=200)

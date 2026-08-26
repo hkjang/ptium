@@ -4736,7 +4736,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.22.2
+            service.version: 1.22.3
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6617,6 +6617,24 @@ components:
             Decks in the trash. Every other count here is of decks that have not
             been deleted, so without this one an operator cannot see what the
             deployment is still holding — nothing empties the trash on its own.
+        oldestQueuedSeconds:
+          type: integer
+          minimum: 0
+          description: >
+            How long the oldest generation still waiting has waited. A queue of
+            twelve says nothing on its own — twelve decks asked for in the last
+            minute is a busy morning, and one deck waiting since three hours ago
+            is a worker that died — so this is the number that tells them apart.
+        failedLastDay:
+          type: integer
+          minimum: 0
+          description: Generations that ended in failure in the last 24 hours.
+        lastCompletedAt:
+          type: string
+          format: date-time
+          description: >
+            When a deck was last finished. Absent on a deployment where none has
+            been.
 
     AdminOverviewEnvelope:
       type: object
