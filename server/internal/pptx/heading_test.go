@@ -222,6 +222,13 @@ func TestASlidesOwnAccentColoursItsComponents(t *testing.T) {
 		chosen.Major != design.Major || chosen.Minor != design.Minor {
 		t.Error("a brand colour changed something the template decided")
 	}
+	// Every deck generated before the accent reached the drawing carries the
+	// colour this product seeds, on every slide. Painting a customer's template
+	// with it — on the next export of a deck they made months ago — is not what
+	// any screen promised.
+	if got := (Slide{Accent: SeededAccent}).withAccent(design); got.Accent != design.Accent {
+		t.Errorf("the seeded colour repainted the template as %q", got.Accent)
+	}
 	// Anything that is not a colour is ignored rather than drawn.
 	for _, said := range []string{"", "blue", "#12345", "#12345g", "0F62FE"} {
 		if got := (Slide{Accent: said}).withAccent(design); got.Accent != design.Accent {

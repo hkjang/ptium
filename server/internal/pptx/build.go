@@ -72,6 +72,16 @@ type Slide struct {
 	Accent string `json:"accent,omitempty"`
 }
 
+// SeededAccent is the brand colour this product ships with. A deployment that
+// has never opened the branding screen still carries it, so it is nobody's
+// choice — and every deck generated before the accent reached the drawing has
+// it written on every slide. Painting a customer's own template with it, on the
+// next export of a deck they made months ago, is not what any screen promised.
+//
+// An author who deliberately picks this exact purple gets their template's own
+// accent instead. That is the price of not repainting everybody else's decks.
+const SeededAccent = "#7C3AED"
+
 // withAccent is the design a slide's components are drawn in.
 //
 // The colour was computed for every slide, stored on every slide and read by
@@ -79,7 +89,8 @@ type Slide struct {
 // no difference anywhere.
 func (s Slide) withAccent(design Design) Design {
 	color := strings.ToUpper(strings.TrimSpace(s.Accent))
-	if !looksLikeHexColor(color) || strings.EqualFold(color, design.Accent) {
+	if !looksLikeHexColor(color) || strings.EqualFold(color, design.Accent) ||
+		strings.EqualFold(color, SeededAccent) {
 		return design
 	}
 	design.Accent = color

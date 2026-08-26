@@ -480,7 +480,7 @@ func TestOnlyAColourSomebodyChoseRepaintsATemplate(t *testing.T) {
 		return deck.Decode(made.Slides[0].Content).Accent
 	}
 	// What this product seeds is nobody's choice: the template keeps its own.
-	if got := accentOf(testSettings{"branding.brand_color": seededBrandColor, "ai.provider": "fallback"},
+	if got := accentOf(testSettings{"branding.brand_color": pptx.SeededAccent, "ai.provider": "fallback"},
 		model.Profile{Preferences: json.RawMessage(`{}`)}); got != "" {
 		t.Errorf("the seeded colour reached a slide as %q", got)
 	}

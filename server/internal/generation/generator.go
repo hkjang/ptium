@@ -1018,12 +1018,6 @@ func (e rejectedRequest) Error() string {
 	return fmt.Sprintf("AI provider status %d: %s", e.status, e.message)
 }
 
-// seededBrandColor is the colour this product ships with. A deployment that
-// never opened the branding screen still has it, so it is not a choice anybody
-// made — and repainting the components of every deck built on a customer's own
-// template, in a purple nobody picked, is not what that screen promises.
-const seededBrandColor = "#7C3AED"
-
 // withDefaultBrand fills in the deployment's own brand colour for an author who
 // has not chosen one, so a house colour reaches the components of every deck.
 // The colour this product seeds is left alone: a template's colours are the
@@ -1040,7 +1034,7 @@ func (g *Generator) withDefaultBrand(ctx context.Context, profile model.Profile)
 	if g.settings == nil || g.settings.Get(ctx, "branding.brand_color", &color) != nil || !validHexColor(color) {
 		return profile
 	}
-	if strings.EqualFold(strings.TrimSpace(color), seededBrandColor) {
+	if strings.EqualFold(strings.TrimSpace(color), pptx.SeededAccent) {
 		return profile
 	}
 	preferences["brandColor"] = strings.ToUpper(color)
