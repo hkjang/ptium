@@ -229,6 +229,25 @@ export function carryTrimmedEntries(slide: Slide, slot: string, drawn: number, n
 }
 
 /**
+ * Where the editor should stand after the deck was replaced under it.
+ *
+ * A rewrite hands back a deck of new slides — same shape, every id different —
+ * and matching by id lands the author back on slide one. They were working on
+ * slide seven; the rewrite was for slide seven; being thrown to the top of a
+ * forty-slide deck is the product losing their place, not a redraw.
+ *
+ * The id wins when it survived. Otherwise the position does: the slide that
+ * took the place of the one being looked at is the one to look at.
+ */
+export function keepPlace(currentId: string, before: Slide[], after: Slide[]): string {
+  if (after.length === 0) return ''
+  if (currentId && after.some((slide) => slide.id === currentId)) return currentId
+  const was = before.findIndex((slide) => slide.id === currentId)
+  if (was < 0) return after[0].id
+  return after[Math.min(was, after.length - 1)].id
+}
+
+/**
  * A slide moved to a new place in the deck.
  *
  * Dragging a thumbnail says "put this one here", where "here" is a gap between

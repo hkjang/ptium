@@ -441,10 +441,16 @@ func (d Design) layoutKPI(frame Frame, block Block) []Primitive {
 			if valueHeight <= 0 {
 				continue
 			}
+			// A figure gives way to its card down to the size of its label and no
+			// further; what will still not fit is cut rather than painted across
+			// the tile beside it. A brief that answers "인력" with a sentence —
+			// "12 staff redeployed" — is the case: it is not a figure, and the
+			// measurement says what was cut.
+			shown := min(valueSize, sizeForLine(valueHeight))
 			primitives = append(primitives, text(
 				Frame{X: inner.X, Y: cursor, Width: inner.Width, Height: valueHeight},
-				line(item.Display(block.Unit)),
-				textOptions{Size: min(valueSize, sizeForLine(valueHeight)), Color: d.InkPrimary, Bold: true, Font: d.Major}))
+				line(cutToWidth(PlainText(item.Display(block.Unit)), shown, inner.Width)),
+				textOptions{Size: shown, Color: d.InkPrimary, Bold: true, Font: d.Major}))
 			cursor += valueHeight
 
 			if detail := strings.TrimSpace(item.Delta + " " + item.Detail); showDetail && strings.TrimSpace(detail) != "" {

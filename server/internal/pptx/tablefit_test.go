@@ -128,3 +128,45 @@ func TestATableHeadingIsDrawnInsideItsColumn(t *testing.T) {
 		t.Errorf("an ordinary heading was drawn as %q", drawn)
 	}
 }
+
+// A figure gives way to its card down to the size of its label and no further.
+// What will still not fit used to be painted across the tile beside it: a brief
+// that answers "인력" with a sentence — "12 staff redeployed" — is not a figure,
+// and drawing it whole put it through the neighbouring number.
+func TestAKPIFigureIsCutRatherThanPaintedAcrossTheNextTile(t *testing.T) {
+	_, design, layout := testDesign(t, "plum-rail")
+	// Half a region wide: three tiles in the room a comparison slide gives its
+	// figures, which is where a live model put a sentence in a figure's place.
+	wide := bodyFrame(layout)
+	frame := Frame{X: wide.X, Y: wide.Y, Width: wide.Width / 2, Height: wide.Height / 2}
+	placeholder, _ := layout.Slot(SlotBody)
+	block := Block{Kind: BlockKPI, Items: []Item{
+		{Label: "Throughput", Value: "+34%"},
+		{Label: "Error rate", Value: "0.3%"},
+		{Label: "Labor model", Value: "12 staff redeployed"},
+	}}
+	for _, finding := range inspectComponent(placeholder, frame, block, design, 12192000, 6858000) {
+		if finding.Kind == FindingOverflow {
+			t.Errorf("a sentence in a figure's place %s", finding.Detail)
+		}
+	}
+	// And it says what it cut.
+	cut := ""
+	for _, finding := range inspectComponent(placeholder, frame, block, design, 12192000, 6858000) {
+		if finding.Kind == FindingTrimmed {
+			cut = finding.Detail
+		}
+	}
+	if !strings.Contains(cut, "cut") {
+		t.Errorf("a cut figure was not reported: %q", cut)
+	}
+	// An ordinary row of figures is left alone.
+	plain := Block{Kind: BlockKPI, Items: []Item{
+		{Label: "전환 대상", Value: "42개"}, {Label: "절감", Value: "18억"},
+	}}
+	for _, finding := range inspectComponent(placeholder, frame, plain, design, 12192000, 6858000) {
+		if finding.Kind == FindingTrimmed || finding.Kind == FindingOverflow {
+			t.Errorf("an ordinary figure row was reported: %s %s", finding.Kind, finding.Detail)
+		}
+	}
+}

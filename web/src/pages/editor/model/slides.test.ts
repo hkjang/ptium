@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, moveSlideTo, presentIndexOf, slidesToPresent, carryTrimmedEntries, bodyFromText, drawnSlots, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, bodyFromText, carryTrimmedEntries, drawnSlots, keepPlace, moveSlideTo, presentIndexOf, proseSlot, regionLabel, slideBody, slideFields, slideHoldings, slidesToPresent, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -169,5 +169,35 @@ describe('a slide kept out of the talk', () => {
     expect(presentIndexOf(slides, 0)).toBe(0)
     expect(presentIndexOf(slides, 1)).toBe(1) // b is skipped, so the show starts at d
     expect(presentIndexOf(slides, 3)).toBe(1)
+  })
+})
+
+// A rewrite hands back the same deck with every id new. Matching by id lands
+// the author on slide one — they were working on slide seven, and the rewrite
+// was for slide seven.
+describe('keeping the author’s place', () => {
+  const deck = (prefix: string, count: number): Slide[] =>
+    Array.from({ length: count }, (_, index): Slide =>
+      ({ id: `${prefix}${index}`, order: index + 1, layout: 'content', title: `${index + 1}` }))
+
+  it('stays on the slide when its id survived', () => {
+    const before = deck('a', 5)
+    expect(keepPlace('a3', before, before)).toBe('a3')
+  })
+
+  it('stands where that slide stood when every id changed', () => {
+    const before = deck('a', 8)
+    const after = deck('b', 8)
+    expect(keepPlace('a6', before, after)).toBe('b6')
+    expect(keepPlace('a0', before, after)).toBe('b0')
+  })
+
+  it('does not fall off the end of a shorter deck', () => {
+    expect(keepPlace('a7', deck('a', 8), deck('b', 3))).toBe('b2')
+  })
+
+  it('answers the first slide when it has nothing to go on', () => {
+    expect(keepPlace('gone', deck('a', 3), deck('b', 3))).toBe('b0')
+    expect(keepPlace('a1', deck('a', 3), [])).toBe('')
   })
 })

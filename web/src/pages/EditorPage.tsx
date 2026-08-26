@@ -24,7 +24,7 @@ import { displayError, relativeDate } from '../utils'
 import { roleLabel } from './TemplatesPage'
 
 import {
-  MAX_SLIDES, blockLabel, moveSlideTo, presentIndexOf, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
+  MAX_SLIDES, blockLabel, keepPlace, moveSlideTo, presentIndexOf, slidesToPresent, bodyFromFields, bodyFromText, carryTrimmedEntries, defaultSlide, drawnSlots, proseSlot,
   slideBody, slideBodyLines, slideFields, slideHoldings, textRegions, toApiSlides,
 } from './editor/model/slides'
 import { appliedMessage, findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
@@ -159,7 +159,16 @@ export function EditorPage({ id }: { id: string }) {
   useEffect(() => {
     if (presentation?.status !== 'generating') return
     const interval = window.setInterval(async () => {
-      try { const data = await api.presentation(id); setPresentation(data); setGenerationNotes(data.generationNotes || []); if (data.slides?.length) { setSlides(data.slides); setActiveId((current) => data.slides!.some((slide) => slide.id === current) ? current : data.slides![0].id) } } catch { /* polling resumes */ }
+      try {
+        const data = await api.presentation(id)
+        setPresentation(data); setGenerationNotes(data.generationNotes || [])
+        if (data.slides?.length) {
+          // A rewrite gives back the same deck with every id new. Standing on
+          // the slide that took the place of the one being looked at is what
+          // the author asked for; the top of the deck is not.
+          setSlides((current) => { setActiveId((held) => keepPlace(held, current, data.slides!)); return data.slides! })
+        }
+      } catch { /* polling resumes */ }
     }, 3000)
     return () => window.clearInterval(interval)
   }, [id, presentation?.status])
@@ -199,7 +208,7 @@ export function EditorPage({ id }: { id: string }) {
           editorState.current = { presentation: merged, slides: updatedSlides, dirty: false }
           setPresentation(merged)
           setSlides(updatedSlides)
-          setActiveId((current) => updatedSlides.some((slide) => slide.id === current) ? current : updatedSlides[0]?.id || '')
+          setActiveId((current) => keepPlace(current, snapshot.slides, updatedSlides))
           setDirty(false)
           setLastSaved(new Date())
           setSavedSlideCount(updatedSlides.length)

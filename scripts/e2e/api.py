@@ -1344,6 +1344,33 @@ if carried_id:
     print(f"   rows carried: {12 - len(missing)}/12 · slides: {written.count(chr(35) + ' ')}")
     call("DELETE", f"/presentations/{carried_id}", expect=204)
 
+# A figure gives way to its card down to the size of its label and no further.
+# A live model asked for "인력" answered "12 staff redeployed", which is not a
+# figure: drawn whole it went through the tile beside it.
+print("── a figure too long for its card ──")
+carded = data_of(call("POST", "/presentations", {"title": f"지표 {RUN}", "prompt": "점검",
+                                                 "language": "ko"}, expect=201))
+call("PUT", f"/presentations/{carded['id']}/source",
+     {"source": "# 표지\n> 오늘\n\n# 현황과 계획\n@comparison\n> 지금 | 도입 후\n> 수작업 | 자동화\n"
+                "::kpi 비교\n- 처리량 | +34%\n- 오류율 | 0.3%\n- 인력 | 12 staff redeployed\n::\n"}, expect=200)
+looked = data_of(call("GET", f"/presentations/{carded['id']}/inspect", expect=200)) or {}
+checks += 1
+if looked.get("defects"):
+    failures.append(f"a long figure is drawn over its neighbour: "
+                    f"{[f.get('detail') for f in (looked.get('findings') or []) if not f.get('advisory')][:2]}")
+checks += 1
+if not any(f.get("kind") == "trimmed" for f in (looked.get("findings") or [])):
+    failures.append("a figure cut to fit its card said nothing about it")
+# An ordinary row of figures is left alone.
+call("PUT", f"/presentations/{carded['id']}/source",
+     {"source": "# 표지\n> 오늘\n\n# 지표\n::kpi\n- 전환 대상 | 42개\n- 절감 | 18억\n::\n"}, expect=200)
+looked = data_of(call("GET", f"/presentations/{carded['id']}/inspect", expect=200)) or {}
+checks += 1
+if any(f.get("kind") == "trimmed" for f in (looked.get("findings") or [])):
+    failures.append("an ordinary row of figures was reported as cut")
+print("   long figure: cut and reported · ordinary figures: untouched")
+call("DELETE", f"/presentations/{carded['id']}", expect=204)
+
 print("── a table says what it could not draw ──")
 wide_table = data_of(call("POST", "/presentations", {"title": f"긴 표 {RUN}", "prompt": "점검",
                                                      "language": "ko"}, expect=201))
