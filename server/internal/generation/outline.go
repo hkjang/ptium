@@ -1140,12 +1140,32 @@ func modifierForm(word string) bool {
 // addressMarker reports whether a word names who the deck is for.
 func addressMarker(word string) bool {
 	trimmed := strings.Trim(word, " .,·!?")
-	for _, ending := range []string{"에게", "께", "한테", "대상으로", "용으로", "용", "위해", "위한"} {
+	for _, ending := range []string{"에게", "께", "한테", "대상으로", "위해", "위한"} {
 		if strings.HasSuffix(trimmed, ending) && utf8.RuneCountInString(trimmed) > utf8.RuneCountInString(ending) {
 			return true
 		}
 	}
+	// "보고용", "고객용": 용 says what something is for. It is also the last
+	// syllable of a great many ordinary words — 비용, 내용, 채용, 사용, 활용,
+	// 운용, 적용 — and taking it for a purpose cut every heading short at the
+	// first of them: "클라우드 비용 최적화 방안" was titled "클라우드", and
+	// "신규 채용 계획" was titled "신규". It is a purpose only when the word in
+	// front of it names one.
+	for _, ending := range []string{"용으로", "용의", "용"} {
+		if strings.HasSuffix(trimmed, ending) {
+			return purposeWords[strings.TrimSuffix(trimmed, ending)]
+		}
+	}
 	return false
+}
+
+// purposeWords are the things a deck is made for.
+var purposeWords = map[string]bool{
+	"보고": true, "발표": true, "공유": true, "제출": true, "설명": true, "안내": true,
+	"소개": true, "교육": true, "홍보": true, "배포": true, "인쇄": true, "참고": true,
+	"검토": true, "승인": true, "회의": true, "업무": true,
+	"내부": true, "외부": true, "사내": true, "대외": true,
+	"고객": true, "임원": true, "경영진": true, "투자자": true, "직원": true, "개인": true,
 }
 
 // strandedAuxiliary reports whether a word is what a removed verb left behind.

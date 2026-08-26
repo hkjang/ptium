@@ -171,6 +171,28 @@ func TestALengthIsNotASection(t *testing.T) {
 	}
 }
 
+// 용 says what something is for — "보고용", "고객용" — and it is also the last
+// syllable of a great many ordinary words. Reading every one of them as a
+// purpose cut each heading short at the first: a deck about cloud costs was
+// titled "클라우드", and one about hiring was titled "신규".
+func TestAWordEndingInTheSyllableForIsNotAPurpose(t *testing.T) {
+	for name, want := range map[string]string{
+		"신규 채용 계획":       "신규 채용 계획",
+		"클라우드 비용 최적화 방안": "클라우드 비용 최적화 방안",
+		"고객 사용 패턴 분석":    "고객 사용 패턴 분석",
+		"데이터 활용 전략":      "데이터 활용 전략",
+		"약관 내용 변경 안내":    "약관 내용 변경 안내",
+		"AI 적용 범위 확대":    "AI 적용 범위 확대",
+		// What the rule is actually for still works.
+		"임원 보고용 자료": "임원",
+		"고객 발표용 덱":  "고객",
+	} {
+		if got := topicPhrase(name); got != want {
+			t.Errorf("topicPhrase(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {
