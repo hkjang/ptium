@@ -73,3 +73,29 @@ describe('what the server refused, in the reader’s words', () => {
     expect(said).toContain('12장')
   })
 })
+
+describe('a setting this deployment will not honour', () => {
+  it('says what the setting is called and what it is honoured at', () => {
+    expect(errorText('validation_error', 'generation.repair_passes must be a whole number between 0 and 10'))
+      .toContain('생성 후 자동 수정')
+    expect(errorText('validation_error', 'ai.timeout_seconds must be a whole number between 10 and 3600'))
+      .toBe('응답 제한 시간은 10에서 3600 사이의 정수여야 합니다. 이 범위를 벗어난 값은 저장해도 적용되지 않습니다.')
+    expect(errorText('validation_error', 'generation.outline_pass must be true or false'))
+      .toContain('서사 계획 단계')
+    expect(errorText('validation_error', 'ai.reasoning must be one of auto, off, on'))
+      .toBe('추론 모드는 auto · off · on 중 하나여야 합니다.')
+  })
+
+  it('still shows a key it has no name for, rather than swallowing it', () => {
+    expect(errorText('validation_error', 'some.future_setting must be true or false'))
+      .toContain('some.future_setting')
+  })
+
+  // "제목은(는)" is what a message looks like when nobody chose the particle.
+  it('never leaves the particle unchosen', () => {
+    for (const message of ['ai.timeout_seconds must be a whole number between 10 and 3600',
+      'generation.outline_pass must be true or false', 'ai.reasoning must be one of auto, off, on']) {
+      expect(errorText('validation_error', message), message).not.toContain('은(는)')
+    }
+  })
+})

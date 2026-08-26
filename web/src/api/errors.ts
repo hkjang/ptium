@@ -135,7 +135,32 @@ const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
     (m) => `이 코드는 ${m[1]}장을 만드는데, 이 배포는 ${m[2]}장까지만 허용합니다. ${Number(m[1]) - Number(m[2])}장을 줄이거나 덱을 나눠 주세요.`],
   [/^AI provider must be (.+)$/,
     (m) => `AI 공급자는 ${m[1].replace(/,? or /g, ' · ').replace(/, /g, ' · ')} 중 하나여야 합니다.`],
+  // A setting the deployment will not honour is refused rather than stored and
+  // shown back. The message names the setting and what it is honoured at.
+  [/^([a-z_]+\.[a-z_]+) must be a whole number between (-?\d+) and (-?\d+)$/,
+    (m) => `${topic(settingName(m[1]))} ${m[2]}에서 ${m[3]} 사이의 정수여야 합니다. 이 범위를 벗어난 값은 저장해도 적용되지 않습니다.`],
+  [/^([a-z_]+\.[a-z_]+) must be true or false$/,
+    (m) => `${topic(settingName(m[1]))} 사용 또는 사용 안 함만 저장할 수 있습니다.`],
+  [/^([a-z_]+\.[a-z_]+) must be one of (.+)$/,
+    (m) => `${topic(settingName(m[1]))} ${m[2].replace(/, /g, ' · ')} 중 하나여야 합니다.`],
 ]
+
+/** What a settings key is called on the screen that sets it. */
+function settingName(key: string) {
+  const named: Record<string, string> = {
+    'ai.timeout_seconds': '응답 제한 시간',
+    'ai.max_output_tokens': '최대 출력 토큰',
+    'ai.reasoning': '추론 모드',
+    'ai.provider': 'AI 공급자',
+    'generation.repair_passes': '생성 후 자동 수정',
+    'generation.outline_pass': '서사 계획 단계',
+    'generation.default_slide_count': '기본 슬라이드',
+    'generation.max_slides': '최대 슬라이드',
+    'generation.max_template_mb': '템플릿 최대 크기',
+    'generation.allow_user_uploads': '사용자 템플릿 업로드',
+  }
+  return named[key] || key
+}
 
 /**
  * topic writes the 은/는 a Korean sentence marks its subject with.

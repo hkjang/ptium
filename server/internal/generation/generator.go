@@ -19,6 +19,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
+	"github.com/hkjang/ptium/server/internal/settings"
 )
 
 type SettingReader interface {
@@ -516,18 +517,20 @@ func (g *Generator) forRun(ctx context.Context, slides int) *Generator {
 
 // applyProviderSettings reads the knobs a self-hosted provider needs.
 func (g *Generator) applyProviderSettings(ctx context.Context) {
+	// The bounds live with the settings, so what is stored and what is honoured
+	// cannot come apart: the API refuses anything outside them.
 	seconds := int(defaultRequestTimeout / time.Second)
-	if _ = g.settings.Get(ctx, "ai.timeout_seconds", &seconds); seconds >= 10 && seconds <= 3600 {
+	if _ = g.settings.Get(ctx, "ai.timeout_seconds", &seconds); settings.Numbers["ai.timeout_seconds"].Holds(seconds) {
 		g.client.Timeout = time.Duration(seconds) * time.Second
 	}
 	tokens := defaultOutputTokens
 	g.outputTokensSet = false
-	if _ = g.settings.Get(ctx, "ai.max_output_tokens", &tokens); tokens >= 500 && tokens <= 32000 {
+	if _ = g.settings.Get(ctx, "ai.max_output_tokens", &tokens); settings.Numbers["ai.max_output_tokens"].Holds(tokens) {
 		g.maxOutputTokens = tokens
 		g.outputTokensSet = tokens != defaultOutputTokens
 	}
 	repairs := maximumRepairs
-	if _ = g.settings.Get(ctx, "generation.repair_passes", &repairs); repairs >= 0 && repairs <= 10 {
+	if _ = g.settings.Get(ctx, "generation.repair_passes", &repairs); settings.Numbers["generation.repair_passes"].Holds(repairs) {
 		g.repairs = repairs
 	}
 	mode := string(reasoningAuto)

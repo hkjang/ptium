@@ -18,6 +18,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/export"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
+	"github.com/hkjang/ptium/server/internal/settings"
 	"github.com/hkjang/ptium/server/internal/store"
 )
 
@@ -794,7 +795,8 @@ func (s *Server) presentationTemplate(ctx context.Context, presentation model.Pr
 
 func (s *Server) maximumTemplateBytes(ctx context.Context) int64 {
 	megabytes := 32
-	if s.settings.Get(ctx, "generation.max_template_mb", &megabytes) != nil || megabytes < 1 {
+	if s.settings.Get(ctx, "generation.max_template_mb", &megabytes) != nil ||
+		!settings.Numbers["generation.max_template_mb"].Holds(megabytes) {
 		megabytes = 32
 	}
 	limit := int64(megabytes) << 20

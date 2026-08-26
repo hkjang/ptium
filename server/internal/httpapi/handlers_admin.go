@@ -240,12 +240,31 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 		return !originOnly || parsed.Path == "" || parsed.Path == "/"
 	}
 
-	switch key {
-	case "ai.provider":
-		value, err := decodeString()
-		if err != nil || (value != "fallback" && value != "openai" && value != "openai-compatible") {
-			return errors.New("AI provider must be fallback, openai, or openai-compatible")
+	// A setting outside what this deployment honours used to be stored and shown
+	// back, so the screen could name a value the product was not using.
+	if bounds, ok := settings.Numbers[key]; ok {
+		var value int
+		if err := json.Unmarshal(raw, &value); err != nil || !bounds.Holds(value) {
+			return fmt.Errorf("%s must be a whole number between %d and %d", key, bounds.Low, bounds.High)
 		}
+		return nil
+	}
+	if _, ok := settings.Flags[key]; ok {
+		var value bool
+		if err := json.Unmarshal(raw, &value); err != nil {
+			return fmt.Errorf("%s must be true or false", key)
+		}
+		return nil
+	}
+	if words, ok := settings.Words[key]; ok {
+		value, err := decodeString()
+		if err != nil || !settings.IsWord(key, value) {
+			return fmt.Errorf("%s must be one of %s", key, strings.Join(words, ", "))
+		}
+		return nil
+	}
+
+	switch key {
 	case "ai.base_url":
 		value, err := decodeString()
 		if err != nil || !validURL(value, false, false) {
@@ -292,11 +311,6 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 			if strings.TrimSpace(role) == "" || utf8.RuneCountInString(role) > 100 {
 				return errors.New("OIDC admin roles must contain non-empty values of at most 100 characters")
 			}
-		}
-	case "generation.default_slide_count", "generation.max_slides":
-		var value int
-		if err := json.Unmarshal(raw, &value); err != nil || value < 1 || value > 50 {
-			return errors.New("slide count settings must be integers between 1 and 50")
 		}
 	case "security.api_key_grace":
 		value, err := decodeString()

@@ -109,6 +109,26 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# A setting this deployment will not honour used to be stored and shown back:
+# an administrator could read "생성 후 자동 수정 500" off their own screen while
+# generation ran three passes. Each of these is refused now, and what a
+# deployment does honour still saves.
+for key, refused, honoured in [
+    ("ai.timeout_seconds", 99999, 300),
+    ("ai.max_output_tokens", 90, 8000),
+    ("ai.reasoning", "thinking-hard", "auto"),
+    ("generation.repair_passes", 500, 3),
+    ("generation.outline_pass", "yes", True),
+    ("generation.max_template_mb", 0, 32),
+    ("generation.allow_user_uploads", "sure", True),
+    ("generation.max_slides", 900, 50),
+]:
+    status, answered = call("PUT", "/admin/settings", {"values": {key: refused}}, expect=[422, 403])
+    if status == 422:
+        said = ((answered or {}).get("error") or {}).get("message") or ""
+        if key not in said:
+            failures.append(f"refusing {key} does not say which setting: {said!r}")
+    call("PUT", "/admin/settings", {"values": {key: honoured}}, expect=[200, 403])
 
 print("── templates ──")
 templates = data_of(call("GET", "/templates?limit=100", expect=200)) or []

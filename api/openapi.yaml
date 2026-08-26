@@ -4909,7 +4909,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.26.2
+            service.version: 1.27.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6610,6 +6610,27 @@ components:
             properties:
               value:
                 $ref: '#/components/schemas/SettingSlideCount'
+        - if:
+            properties:
+              key:
+                const: generation.max_template_mb
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 1
+                maximum: 64
+                description: >-
+                  Larger uploads are refused rather than stored: the reader
+                  opens at most 64 MiB, so a bigger limit could not be honoured.
+        - if:
+            properties:
+              key:
+                enum: [generation.outline_pass, generation.allow_user_uploads]
+          then:
+            properties:
+              value:
+                type: boolean
         - if:
             properties:
               key:
