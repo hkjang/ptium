@@ -1293,6 +1293,32 @@ print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
 # figure, "1. 개요" is a claim the deck has to cite: the quality panel asked the
 # author for the source of "1. 개" on every numbered heading of every deck
 # carried in from PowerPoint.
+# A table stops at the bottom of its region and caps its columns. What is past
+# that is on no slide, and nothing said so: a twelve-row table drew eight rows
+# and the panel called the deck clean.
+print("── a table says what it could not draw ──")
+wide_table = data_of(call("POST", "/presentations", {"title": f"긴 표 {RUN}", "prompt": "점검",
+                                                     "language": "ko"}, expect=201))
+rows = "\n".join(f"- 항목{i} | 값{i} | 비고{i}" for i in range(1, 13))
+call("PUT", f"/presentations/{wide_table['id']}/source",
+     {"source": f"# 표지\n> 오늘\n\n# 열두 줄 표\n::table\n- 구분 | 값 | 비고\n{rows}\n::\n"}, expect=200)
+looked = data_of(call("GET", f"/presentations/{wide_table['id']}/inspect", expect=200)) or {}
+told = [f.get("detail") for f in (looked.get("findings") or []) if f.get("kind") == "trimmed"]
+checks += 1
+if not any("rows" in (said or "") for said in told):
+    failures.append(f"a twelve-row table drew eight and said {told}")
+checks += 1
+if looked.get("defects"):
+    failures.append(f"a long table is drawn with defects: {looked.get('findings')}")
+# And what the file carries is what the preview draws.
+status, drawn = call("GET", f"/presentations/{wide_table['id']}/export?format=pptx", raw=True, expect=200)
+carried = zipfile.ZipFile(io.BytesIO(drawn)).read("ppt/slides/slide2.xml").decode("utf-8", "replace")
+checks += 1
+if "항목9" in carried:
+    failures.append("the exported file carries a row the slide does not draw")
+print(f"   long table: {told}")
+call("DELETE", f"/presentations/{wide_table['id']}", expect=204)
+
 print("── a numbered heading is not a claim ──")
 counted = data_of(call("POST", "/presentations", {"title": f"번호 제목 {RUN}", "prompt": "점검",
                                                   "language": "ko"}, expect=201))

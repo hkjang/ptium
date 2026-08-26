@@ -1,6 +1,7 @@
 package pptx
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -59,5 +60,41 @@ func TestACellNoSizeCanHoldIsCutAndMarked(t *testing.T) {
 	}
 	if !strings.HasPrefix(drawn, "ITSM 운영") {
 		t.Errorf("the cut cell no longer starts with what it said: %q", drawn)
+	}
+}
+
+// A table stops at the bottom of its region and caps its columns. Whatever is
+// past that is on no slide, and until now nothing said so: a twelve-row table
+// drew eight rows and the quality panel called the deck clean.
+func TestATableSaysWhatItCouldNotDraw(t *testing.T) {
+	_, design, layout := testDesign(t, "plum-rail")
+	frame := bodyFrame(layout)
+	placeholder, _ := layout.Slot(SlotBody)
+	rows := make([][]string, 0, 12)
+	for index := 1; index <= 12; index++ {
+		rows = append(rows, []string{fmt.Sprintf("항목%d", index), fmt.Sprintf("값%d", index)})
+	}
+	block := Block{Kind: BlockTable, Columns: []string{"구분", "값"}, Rows: rows}
+	said := ""
+	for _, finding := range inspectComponent(placeholder, frame, block, design, 12192000, 6858000) {
+		if finding.Kind == FindingTrimmed {
+			said = finding.Detail
+		}
+	}
+	if !strings.Contains(said, "8 of its 12 rows") {
+		t.Errorf("a twelve-row table reported %q", said)
+	}
+	// What the file carries is what the preview draws.
+	component := RenderBlock(design, frame, block)
+	if component.Table == nil || len(component.Table.Rows) != component.RowsDrawn {
+		t.Errorf("the exported table holds %d rows of the %d drawn",
+			len(component.Table.Rows), component.RowsDrawn)
+	}
+	// A table that fits says nothing.
+	small := Block{Kind: BlockTable, Columns: []string{"항목", "2026"}, Rows: [][]string{{"인건비", "4.2"}}}
+	for _, finding := range inspectComponent(placeholder, frame, small, design, 12192000, 6858000) {
+		if finding.Kind == FindingTrimmed {
+			t.Errorf("a table that fits was reported as trimmed: %q", finding.Detail)
+		}
 	}
 }

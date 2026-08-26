@@ -248,8 +248,10 @@ func RenderBlock(design Design, frame Frame, block Block) Component {
 	case BlockMeter:
 		primitives = design.layoutMeter(body, block)
 	case BlockTable:
-		primitives = design.layoutTable(body, block)
-		component.Table = design.tablePart(body, block)
+		var drawnRows int
+		primitives, drawnRows = design.layoutTable(body, block)
+		component.RowsDrawn = drawnRows
+		component.Table = design.tablePart(body, block, drawnRows)
 	case BlockQuote:
 		primitives = design.layoutQuote(body, block)
 	case BlockCallout:
@@ -939,17 +941,17 @@ func (d Design) tableRhythm(frame Frame, rows int) (headerHeight, rowHeight int)
 // tablePart describes the same table as a table, for the exported file. The
 // numbers here follow layoutTable so that what PowerPoint holds and what the
 // preview draws are the same table.
-func (d Design) tablePart(frame Frame, block Block) *TablePart {
+func (d Design) tablePart(frame Frame, block Block, drawnRows int) *TablePart {
 	if len(block.Columns) == 0 || len(block.Rows) == 0 {
 		return nil
 	}
 	columns := block.Columns
-	if len(columns) > 5 {
-		columns = columns[:5]
+	if len(columns) > tableColumnCap {
+		columns = columns[:tableColumnCap]
 	}
 	rows := block.Rows
-	if len(rows) > 8 {
-		rows = rows[:8]
+	if len(rows) > tableRowCap {
+		rows = rows[:tableRowCap]
 	}
 	aligns := make([]string, len(columns))
 	for index := range aligns {
@@ -957,6 +959,11 @@ func (d Design) tablePart(frame Frame, block Block) *TablePart {
 		if index == 0 {
 			aligns[index] = "l"
 		}
+	}
+	if drawnRows > 0 && drawnRows < len(rows) {
+		// What PowerPoint holds is what the preview draws: a row the design had
+		// no room for is not quietly present in the file either.
+		rows = rows[:drawnRows]
 	}
 	trimmed := make([][]string, 0, len(rows))
 	for _, row := range rows {
@@ -1048,17 +1055,27 @@ func (d Design) tableCells(frame Frame, columns []string, rows [][]string, rowHe
 	return size, drawn
 }
 
-func (d Design) layoutTable(frame Frame, block Block) []Primitive {
+// A table is a shape a reader takes in at a glance. Past these it is a
+// spreadsheet on a wall, and the measurement reports what did not fit rather
+// than letting it disappear.
+const (
+	tableColumnCap = 5
+	tableRowCap    = 8
+)
+
+// layoutTable draws the table and says how many of its rows it drew: a row the
+// design has no room for is on no slide, and the author has to be told which.
+func (d Design) layoutTable(frame Frame, block Block) ([]Primitive, int) {
 	if len(block.Columns) == 0 || len(block.Rows) == 0 {
-		return nil
+		return nil, 0
 	}
 	columns := block.Columns
-	if len(columns) > 5 {
-		columns = columns[:5]
+	if len(columns) > tableColumnCap {
+		columns = columns[:tableColumnCap]
 	}
 	rows := block.Rows
-	if len(rows) > 8 {
-		rows = rows[:8]
+	if len(rows) > tableRowCap {
+		rows = rows[:tableRowCap]
 	}
 	var primitives []Primitive
 	cells := frame.Columns(len(columns), d.Unit)
@@ -1077,10 +1094,12 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 	}
 	cursor := frame.Y + headerHeight
 	primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: 9525}, d.Line))
+	drawn := 0
 	for _, row := range rows {
 		if cursor+rowHeight+hairlineHeight > frame.Bottom() {
 			break
 		}
+		drawn++
 		for index, cell := range cells {
 			if index >= len(row) {
 				break
@@ -1099,7 +1118,7 @@ func (d Design) layoutTable(frame Frame, block Block) []Primitive {
 		cursor += rowHeight
 		primitives = append(primitives, hairline(Frame{X: frame.X, Y: cursor, Width: frame.Width, Height: hairlineHeight}, mixColor(d.Surface, d.Line, 0.6)))
 	}
-	return primitives
+	return primitives, drawn
 }
 
 // --- charts -----------------------------------------------------------------

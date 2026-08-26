@@ -141,7 +141,12 @@ func describeTable(part *TablePart, block Block, language string) string {
 	if part == nil {
 		return ""
 	}
-	description := describeBlock(block, language)
+	// What is read aloud is what is drawn. A table caps its rows and stops at
+	// the bottom of its region, and describing the rows that did not make it
+	// tells someone who cannot see the slide about content nobody else has.
+	drawn := block
+	drawn.Columns, drawn.Rows = part.Columns, part.Rows
+	description := describeBlock(drawn, language)
 	shape := tableShape(len(part.Columns), len(part.Rows)+1, describeLanguage(language))
 	if shape == "" {
 		return description

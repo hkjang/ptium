@@ -662,6 +662,36 @@ func trimmedComponents(slide Slide) []Finding {
 	return findings
 }
 
+// blockSays is every line a component was given, so a line the drawing ends in
+// an ellipsis can be told from one the author wrote that way.
+func blockSays(block Block) map[string]bool {
+	said := map[string]bool{}
+	remember := func(text string) {
+		if line := strings.TrimSpace(PlainText(text)); line != "" {
+			said[line] = true
+		}
+	}
+	remember(block.Heading)
+	remember(block.Caption)
+	for _, column := range block.Columns {
+		remember(column)
+	}
+	for _, row := range block.Rows {
+		for _, cell := range row {
+			remember(cell)
+		}
+	}
+	for _, item := range block.Items {
+		remember(item.Label)
+		remember(item.Value)
+		remember(item.Detail)
+		for _, bullet := range item.Bullets {
+			remember(bullet)
+		}
+	}
+	return said
+}
+
 // FiguresNotIn lists the figures in text that the brief does not state. It is
 // how generation tells a number the author supplied from one the model brought
 // in by itself.
@@ -1063,6 +1093,13 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 	var drawn []Frame
 	overflow, overflowText := 0, ""
 	wide, wideText := 0, ""
+	// What a component cut to make its text fit is the reader's business. The
+	// components shorten a line and mark the cut with an ellipsis rather than
+	// draw it over their neighbours — which is right — but until now the panel
+	// called such a slide clean, and a table cell holding the point of a
+	// paragraph came out as its first eight words with nobody told.
+	cut := ""
+	said := blockSays(block)
 	for _, primitive := range component.Primitives {
 		bounds := primitive.bounds()
 		if bounds.Width <= 0 && bounds.Height <= 0 {
@@ -1070,6 +1107,12 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 		}
 		if primitive.Kind == shapeText {
 			height, text := drawnTextHeight(primitive)
+			for _, paragraph := range primitive.Lines {
+				line := strings.TrimSpace(paragraph.Text)
+				if cut == "" && strings.HasSuffix(line, "…") && !said[line] {
+					cut = line
+				}
+			}
 			if height > bounds.Height && height-bounds.Height > overflow {
 				overflow, overflowText = height-bounds.Height, text
 			}
@@ -1117,6 +1160,26 @@ func inspectComponent(placeholder Placeholder, frame Frame, block Block, design 
 		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingOverflow,
 			Detail: fmt.Sprintf("%s draws %q %.2fcm wider than the room it reserved",
 				block.Kind, shorten(wideText, 28), emuToCm(wide))})
+	}
+	// A table stops at the bottom of its region and caps its columns; whatever
+	// is past that is on no slide. The author wrote twelve rows, eight were
+	// drawn, and nothing said which four the room would never see.
+	if block.Kind == BlockTable {
+		if left := len(block.Rows) - component.RowsDrawn; left > 0 && component.RowsDrawn > 0 {
+			findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingTrimmed, Advisory: true,
+				Detail: fmt.Sprintf("table draws %d of its %d rows; the last %d are on no slide",
+					component.RowsDrawn, len(block.Rows), left)})
+		}
+		if left := len(block.Columns) - tableColumnCap; left > 0 {
+			findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingTrimmed, Advisory: true,
+				Detail: fmt.Sprintf("table draws %d of its %d columns; %q and what follows are on no slide",
+					tableColumnCap, len(block.Columns), block.Columns[tableColumnCap])})
+		}
+	}
+	if cut != "" {
+		findings = append(findings, Finding{Slot: placeholder.Slot, Kind: FindingTrimmed, Advisory: true,
+			Detail: fmt.Sprintf("%s cut %q to fit; the rest of that line is on no slide",
+				block.Kind, shorten(cut, 28))})
 	}
 	// Two lines of a component's own text may not land on each other.
 	for i := 0; i < len(drawn); i++ {

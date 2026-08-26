@@ -129,6 +129,10 @@ type Component struct {
 	// the same reason as Table: the numbers behind a chart are the first thing
 	// anyone needs to change.
 	Chart *ChartPart
+	// RowsDrawn is how many of a table's rows were drawn. A table caps its rows
+	// and stops at the bottom of its region; the rest are on no slide, and the
+	// measurement reports them rather than letting them disappear.
+	RowsDrawn int
 	// BodyFrom is where the component's own drawing starts, after its heading and
 	// caption. Only those lead primitives are exported alongside a real table or
 	// chart.
