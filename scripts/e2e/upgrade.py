@@ -225,12 +225,18 @@ try:
         # section holding one cannot be saved at all once it is refused, so the
         # upgrade has to put them back. What an administrator actually chose,
         # inside what this deployment honours, must survive untouched.
+        # An old enough release does not have all of these keys yet, and a plain
+        # update against a row that is not there proves nothing — so each is
+        # written whether or not that release knew it.
         docker("exec", database, "psql", "-U", "postgres", "-d", "ptium", "-c",
-               "update app_settings set value='99999'::jsonb where key='ai.timeout_seconds';"
-               "update app_settings set value='500'::jsonb where key='generation.repair_passes';"
-               "update app_settings set value='\"thinking-hard\"'::jsonb where key='ai.reasoning';"
-               "update app_settings set value='\"yes\"'::jsonb where key='generation.outline_pass';"
-               "update app_settings set value='16000'::jsonb where key='ai.max_output_tokens';")
+               "".join(f"insert into app_settings(key,value,sensitive,description) "
+                       f"values('{key}','{value}'::jsonb,false,'upgrade check') "
+                       f"on conflict(key) do update set value=excluded.value;"
+                       for key, value in [("ai.timeout_seconds", "99999"),
+                                          ("generation.repair_passes", "500"),
+                                          ("ai.reasoning", '\"thinking-hard\"'),
+                                          ("generation.outline_pass", '\"yes\"'),
+                                          ("ai.max_output_tokens", "16000")]))
 
         docker("rm", "-f", before)
         new_port = run_container("run", "-d", "--name", after, "--network", network, "-p", f"{new_port}:8080",
