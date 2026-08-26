@@ -2,6 +2,7 @@ package docs
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -63,7 +64,25 @@ func (w *deckWriter) cover() {
 			w.heading = ""
 		}
 	}
+	// The line under the title is the file the deck came from, and a document
+	// named after what it is about makes that line say the title again. The
+	// product's own measurement calls a cover like that "the same point twice",
+	// and it is right: every slide already cites the file.
+	if sameThing(title, w.filename) {
+		fmt.Fprintf(&w.builder, "# %s\n@cover\n\n", escapeLine(title))
+		return
+	}
 	fmt.Fprintf(&w.builder, "# %s\n@cover\n> %s\n\n", escapeLine(title), escapeLine(w.filename))
+}
+
+// copyMarker is what a second download of the same file is called: "보고서 (1)".
+var copyMarker = regexp.MustCompile(`\s*\(\d+\)$`)
+
+// sameThing says whether a file's name and a deck's title name the same thing.
+func sameThing(title, filename string) bool {
+	named := copyMarker.ReplaceAllString(titleOf(filename), "")
+	return strings.EqualFold(strings.Join(strings.Fields(named), " "),
+		strings.Join(strings.Fields(strings.TrimSpace(title)), " "))
 }
 
 // slide ends the slide being written and starts another.

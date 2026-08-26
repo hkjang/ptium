@@ -77,6 +77,39 @@ func TestAPDFsPagesBecomeSlidesThatCiteTheirPage(t *testing.T) {
 	}
 }
 
+// A document named after what it is about makes the cover say its own title
+// twice — once as the title and once as the file it came from. The product's
+// own measurement calls that "the same point twice" on a deck nobody has even
+// edited yet.
+func TestACoverDoesNotSayItsTitleTwice(t *testing.T) {
+	for _, filename := range []string{"협업 도구 소개.pdf", "협업 도구 소개 (1).pdf", "협업 도구 소개 (12).pdf"} {
+		document, err := Read(filename, pdfOf(
+			[]string{"협업 도구 소개", "여는 문장입니다."},
+			[]string{"도입 효과", "둘째 쪽입니다."}))
+		if err != nil {
+			t.Fatalf("Read(%q) error = %v", filename, err)
+		}
+		if strings.Contains(document.Source, "> 협업 도구 소개") {
+			t.Errorf("the cover of %q repeats its own title:\n%s", filename, document.Source)
+		}
+		if !strings.Contains(document.Source, "# 협업 도구 소개\n@cover") {
+			t.Errorf("the cover of %q lost its title:\n%s", filename, document.Source)
+		}
+		// The file is still named on every slide, which is where it matters.
+		if !strings.Contains(document.Source, "!source "+filename) {
+			t.Errorf("the slides of %q no longer cite the file:\n%s", filename, document.Source)
+		}
+	}
+	// A file whose name is not the deck's title still says where it came from.
+	document, err := Read("2026-02-11 내려받음.pdf", pdfOf([]string{"협업 도구 소개", "여는 문장입니다."}))
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !strings.Contains(document.Source, "> 2026-02-11 내려받음.pdf") {
+		t.Errorf("a cover lost the file it came from:\n%s", document.Source)
+	}
+}
+
 // A page that is one long sentence has no heading on it. Making the sentence
 // the heading is how an import produces a slide titled with its own body.
 func TestAPageWithNoHeadingContinuesTheOneBefore(t *testing.T) {

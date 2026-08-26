@@ -776,6 +776,30 @@ if pdf_id:
     print("   PDF read as:", " · ".join(line[2:] for line in source.splitlines() if line.startswith("# "))[:70])
     call("DELETE", f"/presentations/{pdf_id}", expect=204)
 
+# A document is usually named after what it is about, so the cover's title and
+# the line under it — the file it came from — say the same thing. The product's
+# own measurement calls that "the same point twice" on a deck nobody has edited.
+named = f"협업 도구 소개 {RUN}"
+same = data_of(call("POST", "/presentations/import",
+                    files={"file": (f"{named}.pdf",
+                                    pdf_of([[named, "여는 문장입니다."], ["도입 효과", "둘째 쪽입니다."]]),
+                                    "application/pdf")},
+                    expect=201)) or {}
+same_id = ((same.get("presentation") or {}).get("id")) or ""
+if same_id:
+    measured = data_of(call("GET", f"/presentations/{same_id}/inspect", expect=200)) or {}
+    repeated = [f for f in (measured.get("findings") or [])
+                if f.get("kind") == "repeat" and f.get("slide") == 1]
+    checks += 1
+    if repeated:
+        failures.append(f"a freshly imported cover repeats itself: {repeated}")
+    source = (data_of(call("GET", f"/presentations/{same_id}/source", expect=200)) or {}).get("source", "")
+    checks += 1
+    if f"# {named}" not in source:
+        failures.append(f"the cover lost its title:\n{source[:200]}")
+    print(f"   cover of a file named after itself: {len(repeated)} repeat finding(s)")
+    call("DELETE", f"/presentations/{same_id}", expect=204)
+
 # A scan has no text in it. An import that answers with an empty deck teaches
 # people the product does not work; one that says what is wrong tells them what
 # to upload instead.
