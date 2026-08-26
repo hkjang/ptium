@@ -588,35 +588,69 @@ func (s *Store) QueueGenerationWith(ctx context.Context, id, ownerID string, adm
 	return model.Presentation{}, mapNotFound(err)
 }
 
-func (s *Store) ClaimGeneration(ctx context.Context) (model.Presentation, error) {
+// GenerationSilence is how long a deck being written may say nothing before
+// another worker may take it.
+//
+// It used to be ten minutes measured from the start, which is a guess about how
+// long generation takes rather than a fact about whether anybody is still doing
+// it. A self-hosted model answers in five minutes or more with thinking on, and
+// a deployment may ask for up to ten repair passes on top — so a healthy deck
+// was handed to a second worker while the first was still waiting on the model,
+// and both wrote it. A worker says it is alive every half minute; three minutes
+// of silence is a worker that is gone.
+const GenerationSilence = 3 * time.Minute
+
+// ClaimGeneration takes the next deck waiting to be written, and answers with
+// the lease that says this worker is the one writing it.
+func (s *Store) ClaimGeneration(ctx context.Context) (model.Presentation, string, error) {
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return model.Presentation{}, err
+		return model.Presentation{}, "", err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	// Reclaim work abandoned by a crashed process after ten minutes.
-	_, _ = tx.Exec(ctx, `UPDATE presentations SET status='queued',generation_stage='',updated_at=now() WHERE status='generating' AND deleted_at IS NULL AND generation_started_at < now()-interval '10 minutes'`)
+	// Reclaim work whose worker has stopped saying it is alive. A deck claimed
+	// before this release has no heartbeat, so its start time answers for it.
+	_, _ = tx.Exec(ctx, `UPDATE presentations SET status='queued',generation_stage='',generation_lease=NULL,updated_at=now()
+		WHERE status='generating' AND deleted_at IS NULL
+		AND COALESCE(generation_heartbeat_at, generation_started_at) < now()-$1::interval`,
+		GenerationSilence.String())
 	var p model.Presentation
 	err = tx.QueryRow(ctx, `SELECT `+presentationColumns("presentations")+`
 		FROM presentations WHERE status='queued' AND deleted_at IS NULL ORDER BY updated_at FOR UPDATE OF presentations SKIP LOCKED LIMIT 1`).Scan(presentationScan(&p)...)
 	if err != nil {
-		return model.Presentation{}, mapNotFound(err)
+		return model.Presentation{}, "", mapNotFound(err)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE presentations SET status='generating',generation_started_at=now(),updated_at=now() WHERE id=$1`, p.ID); err != nil {
-		return model.Presentation{}, err
+	var lease string
+	if err := tx.QueryRow(ctx, `UPDATE presentations SET status='generating',generation_started_at=now(),
+		generation_heartbeat_at=now(),generation_lease=gen_random_uuid(),updated_at=now()
+		WHERE id=$1 RETURNING generation_lease::text`, p.ID).Scan(&lease); err != nil {
+		return model.Presentation{}, "", err
 	}
 	p.Status = "generating"
 	now := time.Now().UTC()
 	p.GenerationStartedAt = &now
 	if err := tx.Commit(ctx); err != nil {
-		return model.Presentation{}, err
+		return model.Presentation{}, "", err
 	}
-	return p, nil
+	return p, lease, nil
+}
+
+// HeartbeatGeneration is the worker holding this lease saying it is still
+// writing the deck. It answers false when the lease is no longer theirs — the
+// deck was stopped, requeued, or taken by somebody else — which is the worker's
+// signal to stop rather than race whoever has it now.
+func (s *Store) HeartbeatGeneration(ctx context.Context, id, lease string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE presentations SET generation_heartbeat_at=now()
+		WHERE id=$1 AND generation_lease=$2::uuid AND status='generating' AND deleted_at IS NULL`, id, lease)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // CompleteGeneration stores a finished deck: its source, its outline and its
 // slides, in one transaction.
-func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.RawMessage, slides []model.Slide,
+func (s *Store) CompleteGeneration(ctx context.Context, id, lease string, outline json.RawMessage, slides []model.Slide,
 	source string, notes []string) error {
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -645,9 +679,14 @@ func (s *Store) CompleteGeneration(ctx context.Context, id string, outline json.
 	if err != nil || len(notes) == 0 {
 		recorded = []byte(`[]`)
 	}
+	// Only the worker that holds this deck's lease may finish it. Without that,
+	// an attempt taken over by another worker still wrote its answer over the
+	// live one when it eventually came back.
 	result, err := tx.Exec(ctx, `UPDATE presentations SET status='completed',outline=$2,source=$3,
-		generation_notes=$4,error_message='',generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now()
-		WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, outline, source, recorded)
+		generation_notes=$4,error_message='',generation_ended_at=now(),generation_stage='',generation_lease=NULL,
+		version=version+1,updated_at=now()
+		WHERE id=$1 AND status='generating' AND deleted_at IS NULL AND generation_lease=$5::uuid`,
+		id, outline, source, recorded, lease)
 	if err != nil {
 		return err
 	}
@@ -720,8 +759,10 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 // author is told to retry something somebody deliberately stopped. And an
 // operator pushes a stuck deck back into the queue, and a worker still holding
 // the previous attempt fails the fresh one before anybody picks it up.
-func (s *Store) FailGeneration(ctx context.Context, id, message string) error {
-	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),generation_stage='',version=version+1,updated_at=now() WHERE id=$1 AND status='generating' AND deleted_at IS NULL`, id, message)
+func (s *Store) FailGeneration(ctx context.Context, id, lease, message string) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),
+		generation_stage='',generation_lease=NULL,version=version+1,updated_at=now()
+		WHERE id=$1 AND status='generating' AND deleted_at IS NULL AND generation_lease=$3::uuid`, id, message, lease)
 	return err
 }
 

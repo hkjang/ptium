@@ -50,17 +50,24 @@ func (w *Worker) Run(ctx context.Context) {
 }
 
 func (w *Worker) processOne(ctx context.Context) error {
-	presentation, err := w.store.ClaimGeneration(ctx)
+	presentation, lease, err := w.store.ClaimGeneration(ctx)
 	if err != nil {
 		return err
 	}
+	// While this deck is being written, say so twice a minute. A worker that
+	// stops saying it has gone, and its deck may be taken; a worker whose deck
+	// was taken from it — stopped, requeued, claimed by somebody else — stops
+	// rather than racing whoever holds it now.
+	ctx, done := context.WithCancel(ctx)
+	defer done()
+	go w.beat(ctx, presentation.ID, lease, done)
 	profile, err := w.store.GetProfile(ctx, presentation.OwnerID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
-		return w.fail(ctx, presentation, err)
+		return w.fail(ctx, presentation, lease, err)
 	}
 	template, err := w.resolveTemplate(ctx, presentation)
 	if err != nil {
-		return w.fail(ctx, presentation, err)
+		return w.fail(ctx, presentation, lease, err)
 	}
 	// A deck queued with text in it is being rewritten — it was brought in from a
 	// file, or written here, and someone asked for it to be improved. A deck with
@@ -72,11 +79,11 @@ func (w *Worker) processOne(ctx context.Context) error {
 	}
 	generated, err := generate(ctx, presentation, profile, template)
 	if err != nil {
-		return w.fail(ctx, presentation, err)
+		return w.fail(ctx, presentation, lease, err)
 	}
-	if err := w.store.CompleteGeneration(ctx, presentation.ID, generated.Outline, generated.Slides,
+	if err := w.store.CompleteGeneration(ctx, presentation.ID, lease, generated.Outline, generated.Slides,
 		generated.Source, generated.Notes); err != nil {
-		return w.fail(ctx, presentation, err)
+		return w.fail(ctx, presentation, lease, err)
 	}
 	w.logger.Info("presentation generated", "presentation_id", presentation.ID,
 		"slides", len(generated.Slides), "template", template.Name,
@@ -115,15 +122,41 @@ func (w *Worker) resolveTemplate(ctx context.Context, presentation model.Present
 	return Template{ID: stored.ID, Name: stored.Name, Manifest: manifest}, nil
 }
 
-func (w *Worker) fail(ctx context.Context, presentation model.Presentation, cause error) error {
+// beat says this worker is still writing the deck, until the work is over or
+// the lease is somebody else's.
+func (w *Worker) beat(ctx context.Context, id, lease string, lost func()) {
+	ticker := time.NewTicker(store.GenerationSilence / 6)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			held, err := w.store.HeartbeatGeneration(context.WithoutCancel(ctx), id, lease)
+			if err != nil {
+				continue
+			}
+			if !held {
+				w.logger.Warn("this deck is no longer ours to write", "presentation_id", id)
+				lost()
+				return
+			}
+		}
+	}
+}
+
+func (w *Worker) fail(ctx context.Context, presentation model.Presentation, lease string, cause error) error {
 	// Two readers, two messages. The operator gets the cause as it happened; the
 	// author gets what kind of thing went wrong, whether trying again is worth
 	// it, and who to ask — in the language they asked for the deck in, and
 	// without the address of an internal service in it.
 	message := truncate(cause.Error(), 1000)
-	_ = w.store.FailGeneration(ctx, presentation.ID, AuthorMessage(cause, presentation.Language))
+	// The deck may have been taken away while this attempt was running, and the
+	// context it was running in cancelled with it — the failure still has to be
+	// written, and FailGeneration itself refuses if the lease moved on.
+	_ = w.store.FailGeneration(context.WithoutCancel(ctx), presentation.ID, lease, AuthorMessage(cause, presentation.Language))
 	details, _ := json.Marshal(map[string]any{"presentationId": presentation.ID, "ownerId": presentation.OwnerID})
-	_ = w.store.CaptureIncident(ctx, model.Incident{UserID: stringPointer(presentation.OwnerID), Kind: "generation", Severity: "error", Message: message, Details: details})
+	_ = w.store.CaptureIncident(context.WithoutCancel(ctx), model.Incident{UserID: stringPointer(presentation.OwnerID), Kind: "generation", Severity: "error", Message: message, Details: details})
 	return cause
 }
 

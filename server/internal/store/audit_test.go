@@ -147,6 +147,15 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 		t.Errorf("the queue names the owner %q", mine.OwnerEmail)
 	}
 
+	// The lease a worker holds while it writes this deck. A late report is only
+	// the holder's to make, so the test has to speak as the worker that claimed
+	// it rather than as nobody.
+	var workerLease string
+	if err := pool.QueryRow(ctx, `UPDATE presentations SET generation_lease=gen_random_uuid() WHERE id=$1
+		RETURNING generation_lease::text`, deck.ID).Scan(&workerLease); err != nil {
+		t.Fatalf("hand it a lease: %v", err)
+	}
+
 	// Stopping one gives a reason, and the reason is what its author reads.
 	const reason = "예산 승인 전까지 중단합니다"
 	didStop, err := store.StopGeneration(ctx, deck.ID, reason)
@@ -167,7 +176,7 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 	}
 	// A worker finishing a moment later must not overwrite that reason: the deck
 	// is no longer being written, and what the operator said stands.
-	if err := store.FailGeneration(ctx, deck.ID, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
+	if err := store.FailGeneration(ctx, deck.ID, workerLease, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
 		t.Fatalf("the late failure errored: %v", err)
 	}
 	again, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
@@ -185,7 +194,7 @@ func TestTheQueueIsVisibleAndStoppable(t *testing.T) {
 	if _, err := store.QueueGeneration(ctx, deck.ID, owner.ID, false, 50); err != nil {
 		t.Fatalf("push it back: %v", err)
 	}
-	if err := store.FailGeneration(ctx, deck.ID, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
+	if err := store.FailGeneration(ctx, deck.ID, workerLease, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
 		t.Fatalf("the straggler errored: %v", err)
 	}
 	waiting, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)

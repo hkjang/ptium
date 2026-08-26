@@ -288,6 +288,12 @@ var migrations = []string{
 	// self-hosted model, and until now the screen said "생성하고 있어요" for all of
 	// it — the same words at five seconds and at three minutes.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_stage text NOT NULL DEFAULT ''`,
+	// A worker writing a deck says so every half minute. What decides whether an
+	// attempt was abandoned is that it stopped saying so — not how long it has
+	// been going, which used to hand a slow but healthy generation to a second
+	// worker while the first was still waiting on the model.
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_heartbeat_at timestamptz`,
+	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_lease uuid`,
 }
 
 var defaultSettings = map[string]struct {

@@ -41,8 +41,10 @@ func TestAWorkerFinishingLaterKeepsTheReasonAnOperatorGave(t *testing.T) {
 	}
 	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID) }()
 
-	// A worker is holding it.
-	if _, err := pool.Exec(ctx, `UPDATE presentations SET status='generating' WHERE id=$1`, deck.ID); err != nil {
+	// A worker is holding it, with the lease it claimed it under.
+	var workerLease string
+	if err := pool.QueryRow(ctx, `UPDATE presentations SET status='generating',generation_lease=gen_random_uuid()
+		WHERE id=$1 RETURNING generation_lease::text`, deck.ID).Scan(&workerLease); err != nil {
 		t.Fatalf("hand it to a worker: %v", err)
 	}
 	stopped, err := store.StopGeneration(ctx, deck.ID, "점검 중단")
@@ -50,7 +52,7 @@ func TestAWorkerFinishingLaterKeepsTheReasonAnOperatorGave(t *testing.T) {
 		t.Fatalf("StopGeneration() = %v, %v", stopped, err)
 	}
 	// The worker finishes and reports what it found.
-	if err := store.FailGeneration(ctx, deck.ID, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
+	if err := store.FailGeneration(ctx, deck.ID, workerLease, "생성에 실패했습니다. 다시 시도해 주세요."); err != nil {
 		t.Fatalf("FailGeneration: %v", err)
 	}
 	after, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
