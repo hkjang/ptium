@@ -31,3 +31,6 @@
 .storage-row small { color: var(--ink-muted); text-align: right; font-variant-numeric: tabular-nums; font-size: 12px; }
 .storage-foot { display: flex; flex-wrap: wrap; gap: 18px; border-top: 1px solid var(--line, #eee); padding-top: 12px; color: var(--ink-muted); font-size: 13px; }
 .storage-panel { margin-bottom: 18px; }
+
+.profile-design-picker{display:flex;flex-direction:column;gap:11px}
+.profile-design-picker .profile-design-preview{width:100%;max-width:420px;aspect-ratio:16/9;border:1px solid var(--line);border-radius:10px;object-fit:cover;background:#f1f0ec}

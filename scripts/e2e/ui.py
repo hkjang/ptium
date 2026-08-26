@@ -150,6 +150,19 @@ with sync_playwright() as play:
     # it, and saving a name must not turn it into their choice.
     stored = api("/profile") or {}
     had_colour = bool((stored.get("preferences") or {}).get("brandColor"))
+    # The theme picker offered four names from an older version of this product,
+    # none of them a design key today: an admin whose default is slate-classic
+    # read "Aurora" off the screen, and forty-six designs could not be reached.
+    shipped = {row["paletteKey"] for row in (api("/templates?limit=200") or []) if row.get("kind") == "builtin"}
+    design_on_profile = ""
+    picker = page.locator(".profile-design-picker select")
+    if not picker.count():
+        failures.append("the personalisation screen offers no design to choose")
+    else:
+        offered = picker.first.evaluate("el => Array.from(el.options).map(o => o.value)")
+        if set(offered) != shipped:
+            failures.append(f"the design picker offers {len(offered)} of this deployment's {len(shipped)} designs")
+        design_on_profile = picker.first.evaluate("el => el.options[el.selectedIndex].text")
     swatch = page.locator("#brand input[type=text], #brand input:not([type=color])").first
     shown = swatch.input_value() if swatch.count() else ""
     hint = page.locator("#brand").inner_text()
@@ -299,6 +312,16 @@ with sync_playwright() as play:
     page.screenshot(path=f"{OUT}/ui-create.png")
     if page.locator(".template-tile").count() == 0:
         failures.append("the design step shows no templates")
+    # Which design the stored theme means. This screen, the personalisation
+    # screen and the server each answered it separately, and a value an older
+    # version stored — "aurora", "graphite" — sent this one to whichever design
+    # the listing happened to return first.
+    design_on_create = page.evaluate("""() => (Array.from(document.querySelectorAll('strong'))
+        .map((el) => el.innerText).filter((text) => text.startsWith('Ptium'))[0] || '')""")
+    if not design_on_create:
+        failures.append("the design step does not name the design it picked")
+    elif design_on_profile and design_on_profile != design_on_create:
+        failures.append(f"the personalisation screen says the design is {design_on_profile!r}, this one says {design_on_create!r}")
     page.click("text=모든 디자인 보기")
     page.wait_for_timeout(1800)
     if page.locator(".template-browser .template-tile").count() == 0:

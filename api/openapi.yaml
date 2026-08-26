@@ -4909,7 +4909,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.25.0
+            service.version: 1.26.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -5280,6 +5280,16 @@ components:
         paletteKey:
           type: string
           description: Palette identifier of a built-in design; matches the deck `theme` value.
+        designRank:
+          type: integer
+          minimum: 1
+          description: >-
+            Where this design sits in the shipped library's own order, counting
+            from one; absent for an uploaded template. That order decides which
+            design a stored theme naming only a family (`graphite`) selects, and
+            which one a value this product does not ship falls back to — so a
+            screen showing what a stored theme means needs the order itself,
+            not an alphabetical listing.
         sizeBytes:
           type: integer
           minimum: 0

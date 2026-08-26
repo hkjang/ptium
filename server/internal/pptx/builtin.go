@@ -382,6 +382,20 @@ func BuiltinDesignKeys() []string {
 	return keys
 }
 
+// BuiltinDesignRank is where a design sits in the library's own order, counting
+// from one, and zero for a key this product does not ship. That order is what
+// decides which design a bare family name selects and which one an unknown
+// value falls back to, so a screen showing what a stored value means needs it.
+func BuiltinDesignRank(key string) int {
+	key = strings.ToLower(strings.TrimSpace(key))
+	for index, design := range BuiltinDesigns() {
+		if design.Key == key {
+			return index + 1
+		}
+	}
+	return 0
+}
+
 // legacyDesignAliases keep theme values stored by earlier versions working.
 var legacyDesignAliases = map[string]string{
 	"aurora": "plum-rail",

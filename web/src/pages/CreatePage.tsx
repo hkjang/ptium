@@ -4,6 +4,7 @@ import {
   LayoutTemplate, LoaderCircle, MessageSquareText, Palette, Shapes, Sparkles, Star, Upload, WandSparkles,
 } from 'lucide-react'
 import { api } from '../api/client'
+import { designChoices, resolveDesignKey } from '../branding/designs'
 import { BrandMark, useBrand } from '../branding/BrandContext'
 import { SlidePreview } from '../components/SlidePreview'
 import { TemplateBrowser, TemplateTile, recommendTemplates } from '../components/TemplateChooser'
@@ -123,7 +124,11 @@ export function CreatePage() {
       const configuredDefault = Math.max(1, Math.min(configuredMaximum, Number(settings['generation.default_slide_count']) || 10))
       setMaxSlides(configuredMaximum)
       setSlideCount(configuredDefault)
-      const configuredTheme = String(profile?.defaultTheme || settings['generation.default_theme'] || '')
+      // A theme stored by an older version — "aurora", "graphite" — is not a
+      // design key, and looking for a template with that palette finds nothing.
+      // The screens read it the way the server does, and so does this.
+      const stored = String(profile?.defaultTheme || settings['generation.default_theme'] || '')
+      const configuredTheme = stored ? resolveDesignKey(stored, designChoices(available)) : ''
       if (configuredTheme) setTheme(configuredTheme)
 
       // A customer's own template outranks the built-in palette, because the

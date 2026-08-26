@@ -670,6 +670,7 @@ func describeTemplate(template *model.Template) {
 		design := pptx.LookupBuiltinDesign(template.PaletteKey)
 		template.Dark = design.Palette.Dark
 		template.Tags = design.Tags()
+		template.DesignRank = pptx.BuiltinDesignRank(design.Key)
 		return
 	}
 	tags := []string{"내 템플릿"}

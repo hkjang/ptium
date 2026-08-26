@@ -65,6 +65,12 @@ type Template struct {
 	// design, and the design can change with a release.
 	Tags []string `json:"tags,omitempty"`
 	Dark bool     `json:"dark,omitempty"`
+	// DesignRank is where a shipped design sits in the library's own order,
+	// counting from one. A stored theme value naming a family — or naming
+	// nothing this product ships — is answered with the first design in that
+	// order, so a screen showing which design a value means needs the order
+	// itself rather than an alphabetical listing. Zero for an uploaded file.
+	DesignRank int `json:"designRank,omitempty"`
 	// UsageCount is how many of this person's own decks were built on it, and
 	// Favorite is whether they pinned it. Both are personal: a library is only
 	// useful if it learns what this person reaches for.

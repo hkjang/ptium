@@ -54,7 +54,7 @@ func (e ErrNotUnderstood) Error() string {
 
 // ErrNothingToDo says the sentence was understood and asks for what the deck
 // already is. "이미 그렇습니다" is a different answer from "무슨 말인지
-//모르겠습니다", and giving the second taught people the copilot was deaf: a
+// 모르겠습니다", and giving the second taught people the copilot was deaf: a
 // five-slide deck asked to fit ten minutes is already five slides.
 type ErrNothingToDo struct{ Reason string }
 
