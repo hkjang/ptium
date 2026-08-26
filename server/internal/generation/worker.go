@@ -146,6 +146,24 @@ func (w *Worker) beat(ctx context.Context, id, lease string, lost func()) {
 }
 
 func (w *Worker) fail(ctx context.Context, presentation model.Presentation, lease string, cause error) error {
+	// A deck that stopped being ours mid-flight is not a fault. It was deleted,
+	// it was stopped, or another worker holds it now — every one of those is
+	// somebody's decision, and the lease exists so that this attempt loses
+	// harmlessly when it happens. Recording it as an error made the largest
+	// group in the error centre a fence doing its job: a hundred and fifty
+	// "presentation generation state changed" against decks that finished
+	// perfectly well, drowning the faults an operator has to act on.
+	//
+	// The lease is the question, not the cause: a claim taken away shows up as a
+	// refused completion, as a cancelled context, or as whatever the generator
+	// was in the middle of. If the store cannot say, the fault is recorded — a
+	// database nobody can reach is not a reason to go quiet.
+	written := context.WithoutCancel(ctx)
+	if held, err := w.store.HeartbeatGeneration(written, presentation.ID, lease); err == nil && !held {
+		w.logger.Info("this deck moved on while it was being written",
+			"presentation_id", presentation.ID, "cause", cause.Error())
+		return nil
+	}
 	// Two readers, two messages. The operator gets the cause as it happened; the
 	// author gets what kind of thing went wrong, whether trying again is worth
 	// it, and who to ask — in the language they asked for the deck in, and
@@ -159,7 +177,6 @@ func (w *Worker) fail(ctx context.Context, presentation model.Presentation, leas
 	// to be rewritten and that did not work, which leaves them exactly what they
 	// had. Burying it behind a failure screen loses them a deck they can still
 	// present, so it goes back to what it was with the reason in its notes.
-	written := context.WithoutCancel(ctx)
 	said := AuthorMessage(cause, presentation.Language)
 	kept, err := w.store.FailRewrite(written, presentation.ID, lease, said)
 	if err != nil || !kept {
