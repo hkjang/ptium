@@ -131,3 +131,29 @@ func TestTwoFactsSharingAValueAreNotOnePointTwice(t *testing.T) {
 		t.Error("a line repeated under a label was not reported")
 	}
 }
+
+// A citation is written twice on the way out — drawn on the slide and repeated
+// under the notes — so reading both back gives the deck the same source twice.
+// The note this product's own offline writer puts on such a slide is "숫자는
+// 출처와 함께 말합니다", which contains the word the repetition is introduced
+// with, and stopping at the first mention left the citation in the notes: one
+// more copy on every trip out and back.
+func TestACitationIsNotReadBackTwice(t *testing.T) {
+	sources := []string{"2026 시장 조사 보고서, p.42"}
+	cases := map[string]string{
+		"숫자는 출처와 함께 말합니다 출처 2026 시장 조사 보고서 — p.42": "숫자는 출처와 함께 말합니다",
+		"출처 2026 시장 조사 보고서 — p.42":                 "",
+		"숫자는 출처와 함께 말합니다":                          "숫자는 출처와 함께 말합니다",
+		// An author who ends a note with the word and something else keeps it.
+		"출처 확인이 필요합니다": "출처 확인이 필요합니다",
+	}
+	for notes, want := range cases {
+		if got := withoutRepeatedCitations(notes, sources); got != want {
+			t.Errorf("withoutRepeatedCitations(%q) = %q, want %q", notes, got, want)
+		}
+	}
+	// With nothing cited, the notes are the notes.
+	if got := withoutRepeatedCitations("출처 2026 시장 조사 보고서", nil); got != "출처 2026 시장 조사 보고서" {
+		t.Errorf("a note was cut with no citation to match: %q", got)
+	}
+}

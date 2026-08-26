@@ -605,6 +605,14 @@ if linked:
         checks += 1
         if "- 출처" in read_back:
             failures.append("a citation came back as a point rather than a citation")
+        # A citation is written twice on the way out — drawn on the slide and
+        # under the notes — and reading both back gave the deck the same source
+        # as a citation and as a sentence in its notes, one more copy each trip.
+        checks += 1
+        note_lines = [line for line in read_back.splitlines() if line.startswith("!notes")]
+        doubled = [line for line in note_lines if "내부 자료 2026" in line]
+        if doubled:
+            failures.append(f"a citation came back inside the notes as well: {doubled}")
         print(f"   link kept: {'https://example.com/plan' in read_back} · emphasis: {'**굵게**' in read_back}"
               f" · hidden: {'!skip' in read_back} · cited: {'!source' in read_back}")
         call("DELETE", f"/presentations/{brought_id}", expect=204)

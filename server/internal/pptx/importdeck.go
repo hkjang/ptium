@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Reading a deck someone already has.
@@ -446,21 +447,45 @@ func withoutRepeatedCitations(notes string, sources []string) string {
 	if trimmed == "" || len(sources) == 0 {
 		return trimmed
 	}
-	tail := citationTail.FindStringIndex(trimmed)
-	if tail == nil {
-		return trimmed
+	// From the last mention of the word backwards. A note that says "숫자는
+	// 출처와 함께 말합니다" — which is what this product's own offline writer
+	// writes — has the word in it twice, and stopping at the first left the
+	// citation in the notes as well as in the deck, growing by one copy on
+	// every trip out and back.
+	places := citationTail.FindAllStringIndex(trimmed, -1)
+	for index := len(places) - 1; index >= 0; index-- {
+		// Only when what follows the heading is the citations themselves: an
+		// author who ends a note with the word "출처" and something else keeps it.
+		if onlyTheseCitations(trimmed[places[index][1]:], sources) {
+			return strings.TrimSpace(trimmed[:places[index][0]])
+		}
 	}
-	// Only when what follows the heading is the citations themselves: an author
-	// who ends a note with the word "출처" and something else keeps it.
-	rest := strings.TrimSpace(trimmed[tail[1]:])
+	return trimmed
+}
+
+// onlyTheseCitations says the tail of a note is the works cited and nothing
+// else. What separates a title from its page is written one way where it is
+// drawn and another where it is stored — "보고서 — p.42" against "보고서, p.42"
+// — so the comparison is on the letters and digits alone.
+func onlyTheseCitations(rest string, sources []string) bool {
+	left := squashed(rest)
+	if left == "" {
+		return false
+	}
 	for _, cited := range sources {
-		rest = strings.TrimSpace(strings.Replace(rest, strings.TrimSpace(cited), "", 1))
-		rest = strings.Trim(rest, " .,·-—0123456789).")
+		left = strings.Replace(left, squashed(cited), "", 1)
 	}
-	if rest != "" {
-		return trimmed
+	return left == ""
+}
+
+func squashed(text string) string {
+	var kept strings.Builder
+	for _, character := range text {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			kept.WriteRune(character)
+		}
 	}
-	return strings.TrimSpace(trimmed[:tail[0]])
+	return kept.String()
 }
 
 // citationTail is the heading that introduces the citations repeated under the
