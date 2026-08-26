@@ -289,6 +289,13 @@ func repeatedPoints(slide Slide) []Finding {
 			if len(words[other]) < 4 {
 				continue
 			}
+			// A line twice the length of another is not a restatement of it. A
+			// real deck's diagram label enumerated a dozen features, and every
+			// short point on the slide whose words appeared in that list was
+			// reported as having been said twice.
+			if longerThan(words[index], words[other], 2) {
+				continue
+			}
 			if wordOverlap(words[index], words[other]) >= 0.65 {
 				findings = append(findings, Finding{Kind: FindingRepeat, Advisory: true,
 					Detail: fmt.Sprintf("the same point twice: %q and %q",
@@ -315,6 +322,16 @@ func contentWords(text string) []string {
 
 // wordOverlap is the share of the shorter line's words the longer one repeats,
 // counting a word whose stem matches as the same word.
+// longerThan reports whether one line runs more than the given multiple of the
+// other, counting the words that carry meaning.
+func longerThan(left, right []string, times int) bool {
+	long, short := len(left), len(right)
+	if short > long {
+		long, short = short, long
+	}
+	return short > 0 && long > short*times
+}
+
 func wordOverlap(left, right []string) float64 {
 	used := make([]bool, len(right))
 	shared := 0
@@ -471,7 +488,14 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 // asks it of.
 var aDate = regexp.MustCompile(`(19|20)\d{2}\s*(년|年|년도)?|\d[\d,.]*\s*(개월|시간|주일|분기|주차|일차|년|주|일|분|초)`)
 
-var statedFigure = regexp.MustCompile(`\d[\d,.]*\s*(%|억|만|천|원|달러|명|건|개|배|퍼센트|` +
+// A figure is a number and the unit written on it: "1,240억", "42개", "9.4%".
+// The unit follows the number directly, or after a single space — never after a
+// full stop. Korean decks number their sections, and "1. 개요" read as a figure
+// is a claim the deck has to cite: the quality panel asked authors for the
+// source of "1. 개" on every numbered heading of every imported deck. Every one
+// of those counters is also the first syllable of an ordinary word — 개(요),
+// 배(경), 원(인), 만(족) — so the full stop is what tells them apart.
+var statedFigure = regexp.MustCompile(`\d[\d,]*(\.\d+)?\s?(%|억|만|천|원|달러|명|건|개|배|퍼센트|` +
 	`억원|만원|亿|億|円|元|USD|KRW|EUR|JPY|[kmb]n?\b)|\d{1,3}(,\d{3})+`)
 
 // statesFigures reports whether a slide puts numbers in front of a room.
@@ -512,7 +536,7 @@ func statesFigures(slide Slide) bool {
 // statesFigure reports whether one piece of text puts a number in front of a
 // room, with dates read as dates.
 func statesFigure(text string) bool {
-	return statedFigure.MatchString(aDate.ReplaceAllString(text, " "))
+	return len(StatedFigures(text)) > 0
 }
 
 // unbriefedFigures lists the figures a slide states that the brief did not.

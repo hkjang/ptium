@@ -1288,6 +1288,33 @@ print(f"   {report.get('name')}: {report.get('layouts')} layouts, "
 # and a line or two; a table put on one is written out as text into the room
 # kept for that line, and a real weekly report drawn on the title layout every
 # week came in as nine lines of text in room for two, on every slide.
+# Korean decks number their sections, and every one of those counters is also
+# the first syllable of an ordinary word — 개(요), 배(경), 원(인). Read as a
+# figure, "1. 개요" is a claim the deck has to cite: the quality panel asked the
+# author for the source of "1. 개" on every numbered heading of every deck
+# carried in from PowerPoint.
+print("── a numbered heading is not a claim ──")
+counted = data_of(call("POST", "/presentations", {"title": f"번호 제목 {RUN}", "prompt": "점검",
+                                                  "language": "ko"}, expect=201))
+call("PUT", f"/presentations/{counted['id']}/source",
+     {"source": "# 표지\n> 오늘\n\n# 1. 개요\n- 상담 품질 관리의 한계\n- 실시간 감정 분석의 필요성\n"
+                "\n# 2. 배경\n- 현황을 정리합니다\n- 문제를 짚습니다\n"}, expect=200)
+looked = data_of(call("GET", f"/presentations/{counted['id']}/inspect", expect=200)) or {}
+cited = [f for f in (looked.get("findings") or []) if f.get("kind") == "source"]
+checks += 1
+if cited:
+    failures.append(f"a numbered heading is read as a figure to cite: {[f.get('detail') for f in cited]}")
+# And a real figure is still asked about.
+call("PUT", f"/presentations/{counted['id']}/source",
+     {"source": "# 표지\n> 오늘\n\n# 개요\n- 매출 1,240억으로 늘었습니다\n- 이익률 9.4%\n"}, expect=200)
+looked = data_of(call("GET", f"/presentations/{counted['id']}/inspect", expect=200)) or {}
+cited = [f for f in (looked.get("findings") or []) if f.get("kind") == "source"]
+checks += 1
+if not cited:
+    failures.append("a slide of unsourced figures is no longer asked about")
+print(f"   numbered headings: clean · figures: {[f.get('detail') for f in cited]}")
+call("DELETE", f"/presentations/{counted['id']}", expect=204)
+
 print("── an end page holds what an end page holds ──")
 shapely = data_of(call("POST", "/presentations", {"title": f"끝장 {RUN}", "prompt": "점검",
                                                   "language": "ko"}, expect=201))

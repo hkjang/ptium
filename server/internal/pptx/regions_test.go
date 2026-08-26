@@ -127,6 +127,20 @@ func TestRepeatedPointIsReported(t *testing.T) {
 	if findings := repeatedPoints(parallel); len(findings) != 0 {
 		t.Fatalf("parallel lines must not be reported: %v", findings)
 	}
+
+	// A line that enumerates is not a restatement of every point whose words it
+	// happens to contain. Overlap was measured against the shorter line, so a
+	// diagram label listing a dozen features swallowed every point on the slide:
+	// a real deck was told three times that it had said the same thing twice.
+	enumeration := Slide{LayoutID: "content", Fields: map[string][]Paragraph{
+		SlotBody: {
+			{Text: "상담 요약 / 키워드 추출 / 화자 분리 / 감정 분석 / 성과 분석 / 품질 및 규정 준수 체크 / 프롬프트 관리"},
+			{Text: "화자 분리 및 대화 요약을 함께 제공합니다"},
+			{Text: "감정 분석으로 상담 품질을 가늠합니다"},
+		}}}
+	if findings := repeatedPoints(enumeration); len(findings) != 0 {
+		t.Fatalf("an enumeration must not be read as a restatement: %v", findings)
+	}
 }
 
 func TestRegionStyleOverridesTheTemplate(t *testing.T) {
