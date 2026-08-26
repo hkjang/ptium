@@ -333,3 +333,54 @@ func TestAnOperatorSeesEveryLinkAndCanCloseOne(t *testing.T) {
 		t.Error("a closed link is not among the closed ones")
 	}
 }
+
+// An organisation's standard can be its own file.
+//
+// A deployment that uploads the company template and makes it the standard
+// means that template. The theme a deck falls back to used to be read only as a
+// shipped design key, so a deck asked for with no template chosen landed in
+// Ptium Slate Classic while the settings said otherwise.
+//
+// Needs a database: set PTIUM_TEST_DSN to run it.
+func TestTheStandardCanBeAnUploadedTemplate(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	owner, err := store.UpsertUser(ctx, "standard-template", "standard@ptium.test", "표준", []string{}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	var uploaded string
+	if err := pool.QueryRow(ctx, `INSERT INTO templates(owner_id,name,description,filename,kind,scope,size_bytes,checksum,manifest,data)
+		VALUES($1,'회사 표준','', 'standard.pptx','uploaded','shared',1,'deadbeef','{"layouts":[]}'::jsonb,'\\x00')
+		RETURNING id::text`, owner.ID).Scan(&uploaded); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM templates WHERE id=$1`, uploaded) }()
+
+	got, err := store.DefaultTemplateID(ctx, owner.ID, uploaded)
+	if err != nil {
+		t.Fatalf("DefaultTemplateID: %v", err)
+	}
+	if got != uploaded {
+		t.Errorf("the standard resolved to %s, not the uploaded template", got)
+	}
+	// A shipped design key still resolves to that design.
+	shipped, err := store.DefaultTemplateID(ctx, owner.ID, "slate-classic")
+	if err != nil || shipped == uploaded {
+		t.Errorf("a built-in standard resolved to %s (err %v)", shipped, err)
+	}
+	// And a uuid that is nobody's template falls back rather than failing.
+	missing, err := store.DefaultTemplateID(ctx, owner.ID, "11111111-2222-3333-4444-555555555555")
+	if err != nil || missing == "" {
+		t.Errorf("an unknown standard resolved to %q (err %v)", missing, err)
+	}
+}

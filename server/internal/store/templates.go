@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/model"
@@ -272,6 +273,18 @@ func (s *Store) EnsureBuiltinTemplates(ctx context.Context) error {
 // caller did not choose one: the user's most recent upload if they have any,
 // otherwise the built-in design matching the requested theme.
 func (s *Store) DefaultTemplateID(ctx context.Context, ownerID, theme string) (string, error) {
+	// An organisation's standard can be its own file rather than a shipped
+	// design: a deployment that uploads the company template and makes it the
+	// standard means that template. Every design key is a word and every
+	// uploaded template is a uuid, so the two cannot be mistaken for each other.
+	if id, err := uuid.Parse(strings.TrimSpace(theme)); err == nil {
+		var found string
+		if err := s.Pool.QueryRow(ctx, `SELECT id::text FROM templates
+			WHERE id=$1 AND (kind='builtin' OR scope='shared' OR owner_id=$2)`,
+			id.String(), nullableOwner(ownerID)).Scan(&found); err == nil {
+			return found, nil
+		}
+	}
 	// The theme may be a design key, a legacy theme name or a bare palette; the
 	// design library resolves all three to one shipped design.
 	resolved := pptx.LookupBuiltinDesign(theme).Key
@@ -312,4 +325,83 @@ func decorateTemplate(template *model.Template) {
 	}
 	template.AspectRatio = manifest.AspectRatio
 	template.LayoutCount = len(manifest.Layouts)
+}
+
+// DeploymentTemplate is one design as an operator sees it: whose it is, who can
+// use it, and how much of this deployment's work goes through it.
+type DeploymentTemplate struct {
+	model.Template
+	OwnerEmail string `json:"ownerEmail,omitempty"`
+	OwnerName  string `json:"ownerName,omitempty"`
+	// Decks is how many decks in this deployment were made on it, and Recent is
+	// how many of those in the last thirty days. A design nobody has used in a
+	// month is a different thing from one nobody has ever used.
+	Decks  int `json:"decks"`
+	Recent int `json:"recent"`
+	// Standard says this is the design a new deck lands in when nobody chooses.
+	Standard bool `json:"standard"`
+}
+
+// ListDeploymentTemplates reads every design in the deployment, whoever owns
+// it, with how much work goes through each.
+//
+// A person's own screens show the designs they may use. An operator asked which
+// designs their organisation actually writes decks in — or asked to make one
+// team's upload the standard — could see none of it.
+func (s *Store) ListDeploymentTemplates(ctx context.Context, filter TemplateFilter, standardKey string, limit, offset int) ([]DeploymentTemplate, int, error) {
+	limit, offset = clampPage(limit, offset)
+	kind := strings.TrimSpace(filter.Kind)
+	search := strings.TrimSpace(filter.Search)
+	where := `WHERE ($1='' OR t.kind=$1) AND ($2='' OR t.name ILIKE $3)`
+	pattern := likePattern(search)
+	var total int
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM templates t `+where, kind, search, pattern).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT `+templateColumnsFor("t.")+`,
+			COALESCE(u.email,''), COALESCE(u.name,''),
+			(SELECT count(*) FROM presentations p WHERE p.template_id = t.id AND p.deleted_at IS NULL),
+			(SELECT count(*) FROM presentations p WHERE p.template_id = t.id AND p.deleted_at IS NULL
+				AND p.created_at > now() - interval '30 days')
+		FROM templates t LEFT JOIN users u ON u.id = t.owner_id `+where+`
+		ORDER BY t.kind, t.name LIMIT $4 OFFSET $5`, kind, search, pattern, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	standard := strings.ToLower(strings.TrimSpace(standardKey))
+	designs := make([]DeploymentTemplate, 0, limit)
+	for rows.Next() {
+		var one DeploymentTemplate
+		fields := append(templateScan(&one.Template), &one.OwnerEmail, &one.OwnerName, &one.Decks, &one.Recent)
+		if err := rows.Scan(fields...); err != nil {
+			return nil, 0, err
+		}
+		one.Manifest = nil
+		one.Standard = standard != "" &&
+			(strings.EqualFold(one.PaletteKey, standard) || strings.EqualFold(one.ID, standard))
+		designs = append(designs, one)
+	}
+	return designs, total, rows.Err()
+}
+
+// templateColumnsFor is templateColumns qualified with a table alias.
+func templateColumnsFor(alias string) string {
+	parts := strings.Split(templateColumns, ",")
+	for index, part := range parts {
+		parts[index] = alias + strings.TrimSpace(part)
+	}
+	return strings.Join(parts, ",")
+}
+
+// nullableOwner is an owner id a query can compare against, for a caller that
+// has none — the deployment's own default, asked for before anybody signs in.
+func nullableOwner(ownerID string) any {
+	if strings.TrimSpace(ownerID) == "" {
+		return nil
+	}
+	if _, err := uuid.Parse(ownerID); err != nil {
+		return nil
+	}
+	return ownerID
 }

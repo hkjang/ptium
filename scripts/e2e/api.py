@@ -109,6 +109,37 @@ public_settings = data_of(call("GET", "/settings", expect=200)) or {}
 if not re.fullmatch(r"#[0-9A-Fa-f]{6}", str(public_settings.get("branding.seeded_brand_color", ""))):
     failures.append(f"settings do not say which colour nobody chose: {public_settings.get('branding.seeded_brand_color')!r}")
 call("GET", "/admin/settings", expect=[200, 403])
+# The designs this deployment writes decks in. An upload is private to whoever
+# uploaded it and the standard was a text field whose value meant nothing to
+# anyone reading it, so an operator could see neither.
+designs = data_of(call("GET", "/admin/templates?limit=100", expect=[200, 403])) or []
+if designs:
+    builtin = [one for one in designs if one.get("kind") == "builtin"]
+    if len(builtin) < 10:
+        failures.append(f"the deployment's designs list holds {len(builtin)} built-in designs")
+    for one in designs:
+        if one.get("decks") is None or one.get("recent") is None:
+            failures.append(f"{one.get('name')!r} does not say how much it is used")
+        if (one.get("recent") or 0) > (one.get("decks") or 0):
+            failures.append(f"{one.get('name')!r} was used more in thirty days than ever")
+    standard_now = [one for one in designs if one.get("standard")]
+    if len(standard_now) > 1:
+        failures.append(f"{len(standard_now)} designs claim to be the standard")
+    call("GET", "/admin/templates?kind=nonsense", expect=422)
+    # A built-in design belongs to everybody already, and says so rather than
+    # pretending to change.
+    if builtin:
+        call("POST", f"/admin/templates/{builtin[0]['id']}/shared", {"shared": True}, expect=422)
+        # Making one the standard is the same setting the settings screen holds,
+        # and the trail says which design it became.
+        kept = {row["key"]: row.get("value") for row in (data_of(call("GET", "/admin/settings", expect=200)) or [])}
+        call("POST", f"/admin/templates/{builtin[0]['id']}/standard", {}, expect=200)
+        after = data_of(call("GET", "/admin/templates?kind=builtin&limit=100", expect=200)) or []
+        if not any(one.get("id") == builtin[0]["id"] and one.get("standard") for one in after):
+            failures.append("a design just made the standard does not read as the standard")
+        call("PUT", "/admin/settings",
+             {"values": {"generation.default_theme": kept.get("generation.default_theme", "slate-classic")}}, expect=200)
+
 # What this deployment has been doing. The overview says what is true now; a
 # week of decks — how many, how many failed, how long they took, who asked — was
 # nowhere, and on a self-hosted model that time is what running it costs.

@@ -6,6 +6,7 @@ import { AdminAuditPage } from './pages/AdminAuditPage'
 import { AdminQueuePage } from './pages/AdminQueuePage'
 import { AdminSharesPage } from './pages/AdminSharesPage'
 import { AdminUsagePage } from './pages/AdminUsagePage'
+import { AdminTemplatesPage } from './pages/AdminTemplatesPage'
 import { AdminErrorsPage } from './pages/AdminErrorsPage'
 import { AdminOverviewPage } from './pages/AdminOverviewPage'
 import { AdminSettingsPage } from './pages/AdminSettingsPage'
@@ -65,6 +66,7 @@ export function App() {
   if (pathname === '/admin/queue') return <AdminQueuePage />
   if (pathname === '/admin/shares') return <AdminSharesPage />
   if (pathname === '/admin/usage') return <AdminUsagePage />
+  if (pathname === '/admin/designs') return <AdminTemplatesPage />
   return <NotFound />
 }
 

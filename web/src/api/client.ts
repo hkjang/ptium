@@ -1399,6 +1399,27 @@ export const api = {
    * What was changed in the settings, and by whom. The audit trail holds every
    * kind of event; this is the one question a settings screen is asked.
    */
+  /** Every design in the deployment, with how much work goes through it. */
+  async adminTemplates(filter: { kind?: string; search?: string } = {}) {
+    const query = new URLSearchParams({ limit: '100' })
+    if (filter.kind) query.set('kind', filter.kind)
+    if (filter.search?.trim()) query.set('search', filter.search.trim())
+    const raw = await request<unknown>(`/admin/templates?${query.toString()}`)
+    const items = unwrapList<Record<string, unknown>>(raw, ['templates', 'items', 'data'])
+    const meta = (raw as { meta?: { total?: number } } | null)?.meta
+    return { items, total: Number(meta?.total ?? items.length) }
+  },
+  /** Make one design what a new deck lands in when nobody chooses. */
+  async setStandardTemplate(id: string) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>(`/admin/templates/${encodeURIComponent(id)}/standard`, { method: 'POST' }), ['data'])
+  },
+  /** Open one person's upload to everybody, or take it back. */
+  async shareTemplate(id: string, shared: boolean) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>(`/admin/templates/${encodeURIComponent(id)}/shared`,
+        { method: 'POST', body: JSON.stringify({ shared }) }), ['template', 'data'])
+  },
   /** What this deployment has been doing, day by day. */
   async adminUsage(days = 14) {
     return unwrapOne<Record<string, unknown>>(

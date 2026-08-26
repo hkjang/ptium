@@ -239,16 +239,26 @@ with sync_playwright() as play:
     visit("/admin/queue", expect_text="생성 큐")
     # What this deployment has handed out. Only a deck's owner could see their
     # own links, so nobody could answer what is readable outside.
-    visit("/admin/shares", expect_text="공유 링크")
-    visit("/admin/usage", expect_text="사용 현황")
-    if page.locator(".usage-bar").count() == 0:
-        failures.append("the usage screen draws no days")
-    counted = page.locator(".error-stat-grid article strong").first
-    if counted.count() and not counted.inner_text().strip():
-        failures.append("the share screen does not say how many links there are")
-    rows = page.locator(".error-row")
-    if rows.count() > 0 and "회수" not in rows.first.inner_text():
-        failures.append("an open link cannot be closed from the share screen")
+    # These screens fetch after they render, so the heading appearing is not the
+    # data appearing: counting rows straight after the heading measured an empty
+    # page and called it a defect.
+    def waits_for(path, expect_text, selector, missing):
+        visit(path, expect_text=expect_text)
+        try:
+            page.wait_for_selector(selector, timeout=9000)
+            return True
+        except Exception:
+            failures.append(missing)
+            return False
+
+    if waits_for("/admin/shares", "공유 링크", ".error-row", "the share screen lists no links at all"):
+        counted = page.locator(".error-stat-grid article strong").first
+        if counted.count() and not counted.inner_text().strip():
+            failures.append("the share screen does not say how many links there are")
+        if "회수" not in page.locator(".error-row").first.inner_text():
+            failures.append("an open link cannot be closed from the share screen")
+    waits_for("/admin/usage", "사용 현황", ".usage-bar", "the usage screen draws no days")
+    waits_for("/admin/designs", "디자인", ".error-row", "the designs screen lists nothing at all")
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 

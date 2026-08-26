@@ -3980,6 +3980,145 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/templates:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Offset'
+      - { in: query, name: kind, schema: { type: string, enum: [builtin, uploaded] } }
+      - { in: query, name: search, schema: { type: string }, description: "Matches a design's name" }
+    get:
+      operationId: listDeploymentTemplates
+      summary: Every design this deployment writes decks in
+      description: >-
+        Built-in designs and every uploaded template, whoever owns it, with who
+        may use it, how many decks were made on it and how many of those in the
+        last thirty days. `standard` marks the one a new deck lands in when
+        nobody chooses.
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The designs, built-in first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Template'
+                        - type: object
+                          properties:
+                            ownerEmail: { type: string }
+                            ownerName: { type: string }
+                            decks: { type: integer, minimum: 0 }
+                            recent: { type: integer, minimum: 0, description: Decks made on it in the last thirty days }
+                            standard: { type: boolean }
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          description: kind must be builtin or uploaded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/admin/templates/{id}/standard:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: setStandardTemplate
+      summary: Make one design the deployment's standard
+      description: >-
+        Sets `generation.default_theme` to this design — its palette key for a
+        built-in one, its id for an uploaded one, both of which generation
+        resolves — and records the change in the settings trail.
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: The design that is now the standard.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      standard: { type: string }
+                      templateId: { type: string, format: uuid }
+                      name: { type: string }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/admin/templates/{id}/shared:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: shareTemplate
+      summary: Open one person's upload to everybody, or take it back
+      description: >-
+        An uploaded template is private to whoever uploaded it until this makes
+        it shared. A built-in design is everybody's already and is refused
+        (`builtin_template`).
+      tags: [Admin]
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [shared]
+              properties:
+                shared: { type: boolean }
+      responses:
+        '200':
+          description: The template as it now stands.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Template' }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: A built-in design cannot be shared or unshared.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/admin/usage:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5214,7 +5353,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.35.0
+            service.version: 1.36.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
