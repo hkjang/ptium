@@ -1,8 +1,6 @@
 import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2,
-  Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, LoaderCircle, MessageSquare, Plus, RotateCcw, Trash2, Link2, MonitorPlay, WandSparkles, X, MessageSquareText } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2, Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, Link2, ListOrdered, LoaderCircle, MessageSquare, MessageSquareText, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X } from 'lucide-react'
 import { markupFor } from './editor/model/markup'
 import { RewriteDialog } from './editor/RewriteDialog'
 import { stageText } from './editor/model/stage'
@@ -316,6 +314,16 @@ export function EditorPage({ id }: { id: string }) {
     if (railScroll.current !== null) { window.clearInterval(railScroll.current); railScroll.current = null }
   }
   useEffect(() => stopFollowing, [])
+
+  // Giving a slide's points to the room one at a time. A list put on the wall
+  // whole is read ahead of the speaker, and until now saying so meant opening
+  // the source view and typing !build — which most people never do.
+  const toggleBuilt = (slideId: string) => {
+    markEdited()
+    setSlides((current) => current.map((slide) =>
+      slide.id === slideId ? { ...slide, built: !slide.built } : slide))
+    setDirty(true)
+  }
 
   // Keeping a slide out of the talk without taking it out of the deck.
   const toggleSkipped = (slideId: string) => {
@@ -1282,7 +1290,7 @@ export function EditorPage({ id }: { id: string }) {
             <button className={canvasMode === 'edit' ? 'active' : ''} onClick={() => setCanvasMode('edit')}>편집</button>
             <button className={canvasMode === 'preview' ? 'active' : ''} onClick={() => { if (dirty) void save().catch(() => { /* the preview falls back to the saved state */ }); setCanvasMode('preview') }}>템플릿 미리보기</button>
             <button className={canvasMode === 'source' ? 'active' : ''} onClick={() => void openSource()}><Code2 size={13} /> 코드</button>
-          </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className={`icon-button small${active?.skipped ? ' active' : ''}`} onClick={() => { if (active) toggleSkipped(active.id) }} disabled={!active} aria-pressed={Boolean(active?.skipped)} title={active?.skipped ? '발표에서 건너뜁니다. 눌러서 다시 발표에 넣습니다' : '발표할 때 이 슬라이드를 건너뜁니다. 덱과 내려받은 파일에는 그대로 남습니다'} aria-label="발표에서 건너뛰기"><EyeOff size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
+          </div><div><button className="icon-button small" onClick={() => moveSlide(-1)} disabled={!active || activeIndex === 0} aria-label="왼쪽으로 이동"><ChevronLeft size={16} /></button><button className="icon-button small" onClick={() => moveSlide(1)} disabled={!active || activeIndex >= slides.length - 1} aria-label="오른쪽으로 이동"><ChevronRight size={16} /></button><button className="icon-button small" onClick={duplicateSlide} disabled={!active || slides.length >= MAX_SLIDES} title={slides.length >= MAX_SLIDES ? `최대 ${MAX_SLIDES}장까지 편집할 수 있습니다.` : undefined} aria-label="복제"><Copy size={15} /></button><button className={`icon-button small${active?.built ? ' active' : ''}`} onClick={() => { if (active) toggleBuilt(active.id) }} disabled={!active} aria-pressed={Boolean(active?.built)} title={active?.built ? '발표할 때 요점을 한 줄씩 내놓습니다. 눌러서 한 번에 보이게 합니다' : '발표할 때 요점을 한 줄씩 내놓습니다. 내보낸 파일에는 전부 나옵니다'} aria-label="요점을 한 줄씩"><ListOrdered size={15} /></button><button className={`icon-button small${active?.skipped ? ' active' : ''}`} onClick={() => { if (active) toggleSkipped(active.id) }} disabled={!active} aria-pressed={Boolean(active?.skipped)} title={active?.skipped ? '발표에서 건너뜁니다. 눌러서 다시 발표에 넣습니다' : '발표할 때 이 슬라이드를 건너뜁니다. 덱과 내려받은 파일에는 그대로 남습니다'} aria-label="발표에서 건너뛰기"><EyeOff size={15} /></button><button className="icon-button small danger-hover" onClick={removeSlide} disabled={!active || slides.length <= 1} aria-label="삭제"><Trash2 size={15} /></button></div></div>
           {active ? <div className={`canvas-stage ${canvasMode === 'edit' ? 'detail-mode' : ''}`}>
             {canvasMode === 'edit' ? <FreeformCanvas
               presentationId={id}

@@ -254,6 +254,10 @@ with sync_playwright() as play:
     page.goto(f"{BASE}/presentations/{built_deck}/editor", wait_until="networkidle")
     page.wait_for_selector(".slide-thumbnail-row", timeout=25000)
     page.wait_for_timeout(2200)
+    # The source says !build; the button beside 건너뛰기 says the same thing to
+    # somebody who never opens the source view, and has to mean it.
+    if page.get_by_role("button", name="요점을 한 줄씩").get_attribute("aria-pressed") != "true":
+        failures.append("a slide whose source says !build does not show as built in the editor")
     page.get_by_role("button", name="발표", exact=True).first.click()
     page.wait_for_timeout(2500)
     def waiting():

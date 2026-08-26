@@ -187,6 +187,8 @@ export function toApiSlides(slides: Slide[], layouts: TemplateLayout[]) {
         // same place, which is what carries it through a duplicate, a restore
         // and an export.
         skipped: slide.skipped || undefined,
+        // A slide that gives its points out one at a time while presenting.
+        built: slide.built || undefined,
         accent: slide.accent,
       },
     }
