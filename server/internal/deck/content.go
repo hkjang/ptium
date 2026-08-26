@@ -45,11 +45,11 @@ type Content struct {
 	// Skipped is a slide the presenter walks past. It stays in the deck, in the
 	// file and in the exported pptx — where PowerPoint reads the same flag — and
 	// only presenting and the presenter's own screen leave it out.
-	Skipped bool     `json:"skipped,omitempty"`
+	Skipped bool `json:"skipped,omitempty"`
 	// Built reveals this slide's points one at a time while presenting, the way
 	// a speaker walks a room through a list rather than handing them all of it
 	// and talking over their reading.
-	Built bool `json:"built,omitempty"`
+	Built   bool     `json:"built,omitempty"`
 	Bullets []string `json:"bullets,omitempty"`
 	Body    string   `json:"body,omitempty"`
 	Accent  string   `json:"accent,omitempty"`
@@ -450,7 +450,7 @@ func (c *Content) SetBlock(slot string, block pptx.Block) {
 func RenderSlide(slide model.Slide, layout pptx.Layout) pptx.Slide {
 	content := Decode(slide.Content)
 	rendered := pptx.Slide{LayoutID: layout.ID, Fields: map[string][]pptx.Paragraph{}, Notes: slide.SpeakerNotes,
-		Sources: content.Sources}
+		Sources: content.Sources, Accent: content.Accent}
 	for slot, paragraphs := range content.Fields {
 		if _, ok := layout.Slot(slot); !ok {
 			continue

@@ -2019,6 +2019,35 @@ if overview is not None and isinstance(overview, dict) and "presentations" in ov
     if documented and undocumented:
         failures.append(f"the admin overview answers with fields the schema does not list: {undocumented}")
 
+# A colour somebody chose has to reach the drawing. Every slide carried the
+# author's brand colour, the profile screen said it would be used, and nothing
+# read it.
+was = data_of(call("GET", "/profile", expect=200)) or {}
+call("PATCH", "/profile", {"preferences": {**(was.get("preferences") or {}), "brandColor": "#0F62FE"}}, expect=200)
+branded = data_of(call("POST", "/presentations", {"title": f"브랜드 색 {RUN}",
+                                                  "prompt": "클라우드 전환 로드맵과 투자 타당성을 정리해 주세요",
+                                                  "requestedSlideCount": 6, "language": "ko"}, expect=201)) or {}
+if branded.get("id"):
+    call("POST", f"/presentations/{branded['id']}/generate", {}, expect=[200, 202])
+    for _ in range(240):
+        state = data_of(call("GET", f"/presentations/{branded['id']}", expect=200)) or {}
+        if state.get("status") in ("completed", "failed"):
+            break
+        time.sleep(1)
+    if state.get("status") == "completed":
+        painted = []
+        for position in range(1, len(state.get("slides") or []) + 1):
+            _, drawing = call("GET", f"/presentations/{branded['id']}/preview.svg?slide={position}&width=900",
+                              raw=True, expect=200)
+            if b"0F62FE" in (drawing or b"").upper():
+                painted.append(position)
+        checks += 1
+        if not painted:
+            failures.append("a brand colour was set and no slide was drawn with it")
+        print("   slides drawn in the author's colour:", painted)
+    call("DELETE", f"/presentations/{branded['id']}?permanent=true", expect=[204, 404])
+call("PATCH", "/profile", {"preferences": was.get("preferences") or {}}, expect=200)
+
 print("── api keys and mcp ──")
 made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}
 call("GET", "/api-keys", expect=200)

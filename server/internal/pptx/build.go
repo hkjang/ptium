@@ -64,6 +64,45 @@ type Slide struct {
 	// The cover of a deck carries no number, the way covers do not.
 	Number     int  `json:"number,omitempty"`
 	HideNumber bool `json:"hideNumber,omitempty"`
+	// Accent colours the components this product draws — the tiles, the bars,
+	// the rules — when the author has chosen a colour of their own. The
+	// template's masters, layouts, fonts and text colours are untouched by it:
+	// what a company designed stays as they designed it, and an empty value
+	// uses the template's own accent, which is what it always did.
+	Accent string `json:"accent,omitempty"`
+}
+
+// withAccent is the design a slide's components are drawn in.
+//
+// The colour was computed for every slide, stored on every slide and read by
+// nothing: a person could set a brand colour, be told it would be used, and see
+// no difference anywhere.
+func (s Slide) withAccent(design Design) Design {
+	color := strings.ToUpper(strings.TrimSpace(s.Accent))
+	if !looksLikeHexColor(color) || strings.EqualFold(color, design.Accent) {
+		return design
+	}
+	design.Accent = color
+	design.OnAccent = readableInk(color, design.Surface, design.InkPrimary)
+	return design
+}
+
+// looksLikeHexColor is #RRGGBB and nothing else: a colour that reaches a
+// drawing has to be one.
+func looksLikeHexColor(value string) bool {
+	if len(value) != 7 || value[0] != '#' {
+		return false
+	}
+	for _, character := range value[1:] {
+		switch {
+		case character >= '0' && character <= '9':
+		case character >= 'A' && character <= 'F':
+		case character >= 'a' && character <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // Style is what a slide changes about one region's type. Every field is
@@ -622,7 +661,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design,
 		// it, so the exported slide has no empty text box behind the drawing.
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
 			frame := slide.blockFrame(layout, placeholder, block)
-			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
+			if component := RenderBlock(slide.withAccent(design), frame, block); len(component.Primitives) > 0 {
 				if slide.StandsAlone(layout, placeholder.Slot) {
 					centreInFrame(&component, frame)
 				}

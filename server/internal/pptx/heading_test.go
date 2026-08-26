@@ -190,3 +190,42 @@ func TestAClosingPageAndAQuotationKeepTheirKind(t *testing.T) {
 		}
 	}
 }
+
+// A colour somebody chose has to reach the drawing.
+//
+// Every generated slide carried the author's brand colour, the profile screen
+// said it would be used, and nothing read it: the value was computed, stored on
+// every slide, and thrown away at the moment of drawing.
+func TestASlidesOwnAccentColoursItsComponents(t *testing.T) {
+	data, err := BuiltinTemplate("plum-rail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	design := NewDesign(manifest)
+	// Without one, the template's own accent is what it always was.
+	if got := (Slide{}).withAccent(design); got.Accent != design.Accent {
+		t.Errorf("a slide with no colour of its own changed the design to %q", got.Accent)
+	}
+	chosen := (Slide{Accent: "#0f62fe"}).withAccent(design)
+	if chosen.Accent != "#0F62FE" {
+		t.Errorf("the slide's colour reached the drawing as %q", chosen.Accent)
+	}
+	if chosen.OnAccent == "" || chosen.OnAccent == design.OnAccent && design.Accent != "#0F62FE" {
+		t.Errorf("what is written on the accent was not recomputed: %q", chosen.OnAccent)
+	}
+	// The rest of the design — the template's own — is untouched.
+	if chosen.Surface != design.Surface || chosen.InkPrimary != design.InkPrimary ||
+		chosen.Major != design.Major || chosen.Minor != design.Minor {
+		t.Error("a brand colour changed something the template decided")
+	}
+	// Anything that is not a colour is ignored rather than drawn.
+	for _, said := range []string{"", "blue", "#12345", "#12345g", "0F62FE"} {
+		if got := (Slide{Accent: said}).withAccent(design); got.Accent != design.Accent {
+			t.Errorf("%q was taken for a colour", said)
+		}
+	}
+}

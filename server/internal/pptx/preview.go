@@ -113,7 +113,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 		}
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
 			frame := slide.blockFrame(layout, placeholder, block)
-			if component := RenderBlock(design, frame, block); len(component.Primitives) > 0 {
+			if component := RenderBlock(slide.withAccent(design), frame, block); len(component.Primitives) > 0 {
 				if slide.StandsAlone(layout, placeholder.Slot) {
 					centreInFrame(&component, frame)
 				}
