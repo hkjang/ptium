@@ -88,11 +88,15 @@ var instructionPattern = regexp.MustCompile(
 		// travels into the deck's title.
 		// "이사회에 보고" addresses the room with 에 rather than 에게, and leaving
 		// it in ended a slide title with "…이사회에" and then wrote "이사회에에".
-		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?)|` +
-		`([가-힣]{2,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?)|` +
-		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)\s*(용|자료)?(으로|로|에)?)|` +
+		`([가-힣]{2,10}(에게|께|한테)\s*(보고|발표|공유|제출|설명|안내|소개)?(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
+		`([가-힣]{2,10}에\s*(보고|발표|공유|제출|설명|안내|소개)(하는|할|해|하기\s*위한|하기\s*위해)?\s*(용|자료)?(으로|로|를|을)?)|` +
+		`((임원|경영진|고객|투자자|내부|사내|팀)?\s*(보고|발표|공유|제출|설명)\s*(용|자료)?(으로|로|를|을|에)?)|` +
 		`(자료(로|를)?\s*(만들|작성|정리))|` +
-		`(만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
+		// The verbs a request for a section is written with. What was a request
+		// has already been read by then; what is left is an instruction with no
+		// section attached to it, and "…계획을 넣어줘" is not a subject.
+		`(넣어\s*줘|넣어\s*주세요|넣어\s*주시고|포함해\s*줘|포함해\s*주세요|추가해\s*줘|추가해\s*주세요|` +
+		`만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
 		`please|make me|create|generate|write|prepare|summari[sz]e|` +
 		// "A board update on …", "An update for the team on …": in English the
@@ -122,8 +126,10 @@ var instructionPattern = regexp.MustCompile(
 // called "랜딩".
 var askedSection = regexp.MustCompile(
 	`([^\s,.。\n][^,.。\n]{0,18}?)\s*(?:슬라이드|섹션|페이지|장)\s*(?:도|은|는|을|를)?\s*` +
-		`(?:꼭\s*|반드시\s*|하나\s*)?(?:넣어\s*주세요|넣어\s*줘|넣어라|넣어|넣고|포함해\s*주세요|포함해\s*줘|` +
-		`포함하고|포함해|포함|추가해\s*주세요|추가해\s*줘|추가하고|추가해|만들어\s*주세요|구성해\s*주세요)`)
+		`(?:꼭\s*|반드시\s*|하나\s*)?(?:넣어\s*주세요|넣어\s*주시고|넣어\s*줘|넣어라|넣어|넣기|넣고|` +
+		`포함해\s*주세요|포함해\s*줘|포함시켜|포함하고|포함해|포함|` +
+		`추가해\s*주세요|추가해\s*줘|추가하고|추가해|추가|` +
+		`만들어\s*주세요|만들어\s*줘|만들어|구성해\s*주세요|부탁해|부탁드립니다|부탁)`)
 
 // namedBeforeSlideWord pulls the names out of a request once the request has
 // been found. Two sections asked for in one breath — "일정 슬라이드와 예산
@@ -157,6 +163,22 @@ var wherePlaced = regexp.MustCompile(`(?:맨\s*)?(?:마지막|처음|끝|앞|뒤
 var strandedVerb = regexp.MustCompile(
 	`\s*(?:을|를|이|가)?\s*(?:하고자\s*)?(?:합니다|입니다|했습니다|하였습니다|하겠습니다|됩니다|드립니다|한다|이다)\s*([.。,]|$)`)
 
+// slideCount is how long the deck should be, written the way anyone asks for
+// it — in digits or in words.
+var slideCount = regexp.MustCompile(
+	`(?i)(\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇)\s*(장|매|쪽|페이지|slides?|pages?)` +
+		`(짜리|정도|이내|분량)?(로|으로|의|을|를)?`)
+
+// justACount says the name is how many slides rather than what one is about.
+// "세 장을 넣어줘" asks for three slides, not for a section called 세.
+var countWord = regexp.MustCompile(`^(?:\d{1,3}|한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|몇|여러)$`)
+
+func justACount(name string) bool { return countWord.MatchString(strings.TrimSpace(name)) }
+
+// leftoverAsking is the "include" an English request leaves behind once the
+// slide it asked for has been taken out of the sentence.
+var leftoverAsking = regexp.MustCompile(`(?i)\b(?:please\s+)?(?:include|add)\s*,`)
+
 // askedFor separates a brief into what it is about and the sections it asks
 // for by name. The request goes out of the subject entirely: leaving the name
 // in made it part of the deck's title, and a report on warehouse automation
@@ -170,7 +192,8 @@ func askedFor(subject string) (string, []string) {
 				// about, and a slide titled "마지막에 리스크" is neither.
 				group = wherePlaced.ReplaceAllString(group, " ")
 				group = joinedOn.ReplaceAllString(group, "")
-				if name := cleanTopic(strings.TrimSpace(group)); utf8.RuneCountInString(name) >= 2 {
+				name := cleanTopic(strings.TrimSpace(group))
+				if utf8.RuneCountInString(name) >= 2 && !justACount(name) {
 					names = append(names, name)
 					break
 				}
@@ -184,6 +207,7 @@ func askedFor(subject string) (string, []string) {
 	if askingLatin.MatchString(subject) {
 		take(askedSectionLatin.FindAllStringSubmatch(subject, 4))
 		subject = askedSectionLatin.ReplaceAllString(subject, ", ")
+		subject = leftoverAsking.ReplaceAllString(subject, ", ")
 	}
 	subject = wherePlaced.ReplaceAllString(subject, " ")
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
@@ -253,11 +277,17 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		outline.Figures = append(outline.Figures, promptFigure{Label: label, Value: value})
 	}
 
-	subject := instructionPattern.ReplaceAllString(prompt, " ")
-	// After the counts and the audience are out of the way, what is left of a
-	// request for a section is the section's name. It is taken out here and put
-	// back as a section below.
-	subject, asked := askedFor(subject)
+	// How many slides is read before what they are about. "세 장을 넣어줘" is a
+	// length written with the same verb a request is, and left in it made a
+	// section called "클라우드 전환 계획을 세" out of the whole brief.
+	prompt = slideCount.ReplaceAllString(prompt, " ")
+	// The request for a section is read first: it is written with the same
+	// verbs an instruction is — "추가해줘", "만들어 주세요", "부탁해" — and once
+	// those have been stripped as instructions, "Q&A 슬라이드 추가해줘" is no
+	// longer a request, just a subject reading "Q&A 슬라이드 추가".
+	subject, asked := askedFor(prompt)
+	subject = instructionPattern.ReplaceAllString(subject, " ")
+	subject = strandedVerb.ReplaceAllString(subject, "${1}")
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
 	subject = cleanTopic(subject)
 	if subject == "" {

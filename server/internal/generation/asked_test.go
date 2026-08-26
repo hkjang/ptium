@@ -99,6 +99,60 @@ func TestASlideWordWithoutTheAskingIsJustAWord(t *testing.T) {
 	}
 }
 
+// People ask for a section in whatever words come to hand, and the verbs they
+// use are the same ones an instruction is written with — which is why the
+// request has to be read before the instructions are stripped out of the brief.
+func TestASectionIsAskedForInWhateverWords(t *testing.T) {
+	for brief, wanted := range map[string]string{
+		"클라우드 전환 계획입니다. 리스크 장도 넣어줘":                             "리스크",
+		"클라우드 전환 계획입니다. Q&A 슬라이드 추가해줘":                          "Q&A",
+		"클라우드 전환 계획입니다. 마지막에 감사 인사 페이지 하나 넣어주세요":                "감사 인사",
+		"클라우드 전환 계획입니다. 일정표 섹션 포함":                              "일정표",
+		"클라우드 전환 계획입니다. 경쟁사 비교 장을 만들어 주세요":                      "경쟁사 비교",
+		"클라우드 전환 계획입니다. 부록 슬라이드도 부탁해":                           "부록",
+		"클라우드 전환 계획입니다. 요약 슬라이드 넣기":                             "요약",
+		"Cloud migration plan. Please include a summary slide.": "summary",
+		"Cloud migration plan. Add a risks section.":            "risks",
+	} {
+		outline := outlinePrompt(brief, "", koreanCopy)
+		found := false
+		for _, topic := range outline.Topics {
+			if topic.Asked && strings.EqualFold(topic.Name, wanted) {
+				found = true
+			}
+			if !topic.Asked && strings.Contains(topic.Name, "슬라이드") {
+				t.Errorf("%q left the request in a section title: %q", brief, topic.Name)
+			}
+		}
+		if !found {
+			t.Errorf("%q did not ask for a %q section: %v", brief, wanted, outline.Topics)
+		}
+	}
+}
+
+// "세 장을 넣어줘" is a length written with the verb a request uses. Read as a
+// request it made a section out of the whole brief.
+func TestALengthWrittenLikeARequestIsStillALength(t *testing.T) {
+	outline := outlinePrompt("클라우드 전환 계획을 세 장을 넣어줘", "", koreanCopy)
+	if outline.Subject != "클라우드 전환 계획" {
+		t.Errorf("the subject is %q", outline.Subject)
+	}
+	for _, topic := range outline.Topics {
+		if topic.Asked {
+			t.Errorf("a length was read as a request for %q", topic.Name)
+		}
+	}
+}
+
+// The audience takes its particle with it. "이사회에 보고하는 자료로 만들어
+// 주세요" left "로" behind, and a board pack was titled "2026년 상반기 실적을 로".
+func TestTheAudienceLeavesNothingBehind(t *testing.T) {
+	outline := outlinePrompt("2026년 상반기 실적을 이사회에 보고하는 자료로 만들어 주세요", "", koreanCopy)
+	if outline.Subject != "2026년 상반기 실적" {
+		t.Errorf("the subject is %q", outline.Subject)
+	}
+}
+
 // A count is not a section. "10장으로 정리해줘" says how long the deck is.
 func TestALengthIsNotASection(t *testing.T) {
 	for _, brief := range []string{
