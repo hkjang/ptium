@@ -3537,7 +3537,25 @@ paths:
         is one, and is not written to the audit trail: a dashboard that records
         itself every time it opens fills the trail it is meant to help read.
       responses:
-        '200': { description: What the host said, possibly from a moment ago }
+        '200':
+          description: What the host said, possibly from a moment ago
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider: { type: string }
+                      baseUrl: { type: string }
+                      model: { type: string }
+                      reachable: { type: boolean, description: Whether the endpoint answered at all }
+                      answered: { type: boolean, description: Whether it answered with something usable }
+                      milliseconds: { type: integer }
+                      detail: { type: string, description: What went wrong, when something did }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '403': { description: Administrators only }
     post:
       operationId: checkProvider
@@ -3550,7 +3568,25 @@ paths:
         and reports whether it was reachable, how long it took and what came
         back. Administrators only.
       responses:
-        '200': { description: What the host said, asked fresh and written to the trail }
+        '200':
+          description: What the host said, asked fresh and written to the trail
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider: { type: string }
+                      baseUrl: { type: string }
+                      model: { type: string }
+                      reachable: { type: boolean, description: Whether the endpoint answered at all }
+                      answered: { type: boolean, description: Whether it answered with something usable }
+                      milliseconds: { type: integer }
+                      detail: { type: string, description: What went wrong, when something did }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '403': { description: Asking somebody's model host is the administrator's }
         '503': { description: This deployment has no generator at all }
   /api/v1/admin/storage:
@@ -3566,7 +3602,29 @@ paths:
         are on a mounted volume — how much of that volume is free.
         Administrators only.
       responses:
-        '200': { description: Sizes in bytes, largest table first }
+        '200':
+          description: Sizes in bytes, largest table first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      databaseBytes: { type: integer, description: What the whole database occupies }
+                      assetsInRows: { type: integer, description: Images kept in the table itself }
+                      assetsInVolume: { type: integer, description: Images kept on the volume beside it }
+                      tables:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name: { type: string }
+                            rows: { type: integer }
+                            bytes: { type: integer }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '403': { description: What a deployment keeps is the administrator's to read }
   /api/v1/admin/generations:
     get:
@@ -3581,7 +3639,29 @@ paths:
       parameters:
         - { in: query, name: failedHours, schema: { type: integer, minimum: 0, maximum: 720 }, description: "How far back to include failures; 0 for none" }
       responses:
-        '200': { description: The queue, being-written first, then waiting, then recent failures }
+        '200':
+          description: The queue, being-written first, then waiting, then recent failures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        title: { type: string }
+                        ownerId: { type: string, format: uuid }
+                        ownerEmail: { type: string }
+                        status: { type: string }
+                        errorMessage: { type: string }
+                        waitingSeconds: { type: integer, description: How long this one has been waiting }
+                        startedAt: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '403': { description: The queue is the administrator's to read }
   /api/v1/admin/generations/{id}/requeue:
     post:
@@ -3593,7 +3673,12 @@ paths:
         author cannot get back without asking for the whole thing again.
       parameters: [{ $ref: '#/components/parameters/PresentationID' }]
       responses:
-        '200': { description: The deck, queued }
+        '200':
+          description: The deck, queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
         '403': { description: Administrators only }
         '404': { description: No such deck }
   /api/v1/admin/generations/{id}/cancel:
@@ -3613,7 +3698,12 @@ paths:
               type: object
               properties: { reason: { type: string, maxLength: 300 } }
       responses:
-        '200': { description: The deck, stopped }
+        '200':
+          description: The deck, stopped
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresentationEnvelope'
         '409': { description: That deck is not waiting or being written, or it finished before the stop arrived }
         '403': { description: Administrators only }
   /api/v1/admin/audit:
@@ -3639,6 +3729,31 @@ paths:
       responses:
         '200':
           description: A page of the trail, newest first — or, with format=csv, the whole of what was asked for as a file
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        action: { type: string, description: 'What was done, in dotted form: presentation.import' }
+                        targetType: { type: string }
+                        targetId: { type: string }
+                        actorId: { type: string }
+                        actorName: { type: string, description: The address of whoever did it, when it is known }
+                        metadata:
+                          $ref: '#/components/schemas/JSONValue'
+                        createdAt: { type: string, format: date-time }
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+            text/csv:
+              schema: { type: string, description: The same trail as a file, with format=csv }
         '403': { description: The trail is the administrator's to read }
   /api/v1/admin/audit/actions:
     get:
@@ -3651,7 +3766,22 @@ paths:
       parameters:
         - { in: query, name: days, schema: { type: integer, minimum: 1, maximum: 3650 } }
       responses:
-        '200': { description: Each action and its count, most frequent first }
+        '200':
+          description: Each action and its count, most frequent first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        action: { type: string }
+                        count: { type: integer }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
         '403': { description: The trail is the administrator's to read }
   /api/v1/admin/overview:
     parameters:
@@ -4736,7 +4866,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.22.3
+            service.version: 1.22.4
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -4834,6 +4964,13 @@ components:
             Exact number of persisted slides at response time. List responses
             populate this count even though they omit the `slides` array. The
             field may be omitted when the count is zero.
+        source:
+          type: string
+          description: >
+            The deck as text, in the same language the editor edits — returned
+            when one deck is read, not when they are listed. It was answered
+            without being documented, and this schema is closed, so a client
+            validating the reply refused the deck's own words.
         outline:
           $ref: '#/components/schemas/JSONValue'
         errorMessage:
