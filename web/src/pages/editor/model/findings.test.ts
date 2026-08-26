@@ -191,4 +191,12 @@ describe('the warnings an author meets most often', () => {
   it('keeps the place, so the author can find the line', () => {
     expect(warningText('line 9 (slide 2): 1 line(s) were shortened to fit title')).toContain('9')
   })
+
+  it('names a heading that stops mid-sentence, and says why it might have', () => {
+    expect(findingLabel('unfinished')).toBe('제목이 문장 중간에서 끊김')
+    expect(findingDetail('the heading "협력사 정산 프로세스를 개선하려고" stops in the middle of what it was saying'))
+      .toContain('제목 "협력사 정산 프로세스를 개선하려고"')
+    // Anything the server adds later is still shown rather than swallowed.
+    expect(findingLabel('somethingnew')).toBe('somethingnew')
+  })
 })

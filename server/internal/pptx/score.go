@@ -68,6 +68,9 @@ func weightOf(finding Finding) int {
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.
 			return 12
+		case FindingUnfinished:
+			// The heading is the line the room reads before anything else.
+			return 12
 		default:
 			return 4
 		}

@@ -1,0 +1,73 @@
+package pptx
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
+
+// A heading is the one line everybody in the room reads. It is also the line a
+// deck built from somebody's own words is most likely to get wrong: a brief
+// says "…개선하려고 합니다" and the slide comes out headed "…개선하려고", which is
+// half a sentence and not a title of anything.
+//
+// Six decks measured at 98 to 100 while carrying headings like that. Everything
+// the measurement looked at — the drawing, the fit, the contrast — was right.
+// Nothing looked at whether the words were words.
+
+// unfinishedEnding matches a heading that stops in the middle of what it was
+// saying: an intention with no verb, an instruction that leaked in, a modifier
+// with nothing to modify, or a particle waiting for the rest of its clause.
+var unfinishedEnding = regexp.MustCompile(
+	`(?:하려고|으려고|려고|고자|하는데|하려|해서|어줘|해줘|줘|주세요|부탁해|부탁드립니다)$|` +
+		`(?:^|\s)(?:하|되|만들|만드|작성|정리|준비)$|` +
+		`(?:^|\s)(?:위한|위해|통한|통해|대한|관한)$`)
+
+// strandedParticle is a heading whose last word is still holding the particle
+// that joined it to words that are no longer there.
+var strandedParticle = regexp.MustCompile(`[가-힣]{2,}(?:을|를|의|와|과|에게|에서|으로|로서)$`)
+
+// latinFragment is the same in English: a heading cannot end on a word whose
+// whole job is to introduce the next one.
+var latinTail = map[string]bool{
+	"of": true, "for": true, "the": true, "a": true, "an": true, "and": true,
+	"to": true, "with": true, "in": true, "on": true, "by": true, "from": true,
+	"about": true, "into": true, "over": true, "as": true, "at": true, "or": true,
+}
+
+// unfinishedHeadings reports a slide whose title is not a phrase.
+func unfinishedHeadings(slide Slide) []Finding {
+	var findings []Finding
+	for _, paragraph := range slide.Fields[SlotTitle] {
+		heading := strings.TrimSpace(paragraph.Text)
+		if heading == "" || utf8.RuneCountInString(heading) < 3 {
+			continue
+		}
+		if !unfinishedHeading(heading) {
+			continue
+		}
+		findings = append(findings, Finding{Slot: SlotTitle, Kind: FindingUnfinished, Advisory: true,
+			Detail: fmt.Sprintf("the heading %q stops in the middle of what it was saying", shortDetail(heading))})
+		break
+	}
+	return findings
+}
+
+func unfinishedHeading(heading string) bool {
+	trimmed := strings.TrimRight(strings.TrimSpace(heading), " .·—-")
+	if trimmed == "" {
+		return false
+	}
+	words := strings.Fields(trimmed)
+	last := words[len(words)-1]
+	if latinTail[strings.ToLower(last)] && len(words) > 1 {
+		return true
+	}
+	if unfinishedEnding.MatchString(trimmed) {
+		return true
+	}
+	// A particle at the end is only a fragment when something came before it:
+	// "매출을" alone is a slide about revenue, badly named but not cut off.
+	return len(words) > 1 && strandedParticle.MatchString(last)
+}

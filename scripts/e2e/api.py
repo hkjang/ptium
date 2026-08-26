@@ -1833,6 +1833,12 @@ if state["status"] == "completed":
     print("   generated deck defects:", (generated or {}).get("defects"), "advisories:", (generated or {}).get("advisories"))
     if (generated or {}).get("defects"):
         failures.append(f"the generated deck has defects: {generated.get('findings')}")
+    # A deck can be drawn perfectly and headed with half a sentence. The
+    # measurement says so now, so the sweep can ask it.
+    checks += 1
+    unfinished = [f for f in ((generated or {}).get("findings") or []) if f.get("kind") == "unfinished"]
+    if unfinished:
+        failures.append(f"the generated deck is headed with a fragment: {unfinished}")
     call("DELETE", f"/presentations/{draft['id']}", expect=204)
 
 # A brief that asks for a section is not a brief about the asking. "마지막에
@@ -1857,6 +1863,11 @@ if asked_state["status"] == "completed":
     said = [title for title in titles if "넣어" in title or "슬라이드" in title or "마지막에" in title]
     if said:
         failures.append(f"a slide is titled with the request itself: {said}")
+    measured = data_of(call("GET", f"/presentations/{asked_deck['id']}/inspect", expect=200)) or {}
+    checks += 1
+    fragments = [f for f in (measured.get("findings") or []) if f.get("kind") == "unfinished"]
+    if fragments:
+        failures.append(f"a deck written from a brief is headed with a fragment: {fragments}")
     print("   asked-for section:", " · ".join(titles)[:70])
 call("DELETE", f"/presentations/{asked_deck['id']}", expect=204)
 

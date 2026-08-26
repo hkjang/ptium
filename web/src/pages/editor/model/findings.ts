@@ -36,6 +36,7 @@ export function findingLabel(kind: string) {
     case 'trimmed': return '일부가 안 그려짐'
     case 'link': return '링크로 인식되지 않음'
     case 'source': return '숫자의 출처 없음'
+    case 'unfinished': return '제목이 문장 중간에서 끊김'
   }
   return kind
 }
@@ -78,6 +79,8 @@ export function findingDetail(detail: string) {
       (m) => `한 영역에 요점이 ${m[1]}개입니다. ${m[2]}개를 넘으면 듣지 않고 읽습니다`],
     [/^the region is (\d+)% full; a slide needs room to breathe$/,
       (m) => `영역이 ${m[1]}% 찼습니다. 슬라이드에는 여백이 필요합니다`],
+    [/^the heading "(.+)" stops in the middle of what it was saying$/,
+      (m) => `제목 "${m[1]}" 이(가) 문장 중간에서 끊깁니다 — 브리프의 부탁하는 말이 제목에 섞였을 수 있습니다`],
     [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
     [/^(\d+) of this slide's (\d+) points were already made on slide (\d+)$/,
       (m) => `이 장의 요점 ${m[2]}개 중 ${m[1]}개를 ${m[3]}번 슬라이드에서 이미 말했습니다`],

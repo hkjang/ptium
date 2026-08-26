@@ -53,6 +53,11 @@ const (
 	// measured across the deck rather than inside one slide, which is where the
 	// repetition that a room actually notices lives.
 	FindingEcho = "echo"
+	// FindingUnfinished is a heading that stops in the middle of what it was
+	// saying — "…개선하려고", "Plan for the" — which is the one line everybody in
+	// the room reads and the one a deck written from somebody's own words gets
+	// wrong most easily.
+	FindingUnfinished = "unfinished"
 )
 
 // A slide is a thing someone stands next to and talks over. Two of its failures
@@ -450,6 +455,13 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 		// shortened with an ellipsis. A heading of sixteen words arrived on the
 		// slide as eight and a "…", and the quality panel called the deck clean.
 		for _, finding := range shortenedText(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
+		// And whether the heading is a phrase at all. Everything else measured
+		// here is about the drawing; a deck can be drawn perfectly and headed
+		// with half a sentence.
+		for _, finding := range unfinishedHeadings(slide) {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}

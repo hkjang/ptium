@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hkjang/ptium/server/internal/deck"
 	"github.com/hkjang/ptium/server/internal/model"
+	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
 // A brief that asks for a section is not a brief about the asking.
@@ -414,6 +416,38 @@ func TestTheAskingAroundASubjectIsNotTheSubject(t *testing.T) {
 	// alone rather than taken out along with the asking.
 	if got := TitleFor("파트너십 제안서: 공동 마케팅과 채널 확대", "", "ko"); got != "파트너십 제안서: 공동 마케팅과 채널 확대" {
 		t.Errorf("TitleFor = %q", got)
+	}
+}
+
+// And the measurement now sees what reading the deck saw: a heading that is
+// half a sentence. Before this, six decks headed "…개선하려고" and "회사 소개
+// 어줘" measured between 98 and 100 — everything looked at was the drawing.
+func TestAWrittenDeckIsMeasuredForWhatItSays(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("plum-rail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, brief := range []string{
+		"협력사 정산 프로세스를 개선하려고 합니다. 현재 정산까지 14일 걸리는데 7일로 줄이는 것이 목표입니다.",
+		"고객센터 상담 품질 관리 체계를 새로 만들려고 하는데 임원 보고용으로 8장 정도 필요합니다",
+		"우리 팀 2026년 목표와 실행 계획을 팀원들에게 공유하려고 합니다",
+	} {
+		presentation := model.Presentation{OwnerID: "owner-1", Language: "ko", RequestedSlideCount: 8, Prompt: brief}
+		made, err := New(testSettings{"ai.provider": "fallback"}).Generate(context.Background(),
+			presentation, model.Profile{}, testTemplate(t))
+		if err != nil {
+			t.Fatalf("Generate() error = %v", err)
+		}
+		presentation.Slides = made.Slides
+		for _, finding := range pptx.InspectDeck(manifest, deck.Build(presentation, manifest, "")) {
+			if finding.Kind == pptx.FindingUnfinished {
+				t.Errorf("%q produced a deck the measurement calls unfinished: %s", brief, finding.Detail)
+			}
+		}
 	}
 }
 
