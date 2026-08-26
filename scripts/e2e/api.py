@@ -1409,7 +1409,25 @@ checks += 1
 if call("POST", f"/presentations/{reviewed['id']}/comments",
         {"parentId": "00000000-0000-0000-0000-000000000000", "body": "x"}, expect=422)[0] != 422:
     failures.append("a reply to a comment on no deck was accepted")
-print(f"   thread: {len(thread)} messages, all settled together")
+# What is waiting on a deck belongs beside its name: somebody with a dozen decks
+# had no way to see which two were waiting on them without opening each one.
+listed = [row for row in (data_of(call("GET", "/presentations?limit=50", expect=200)) or [])
+          if row.get("id") == reviewed["id"]]
+checks += 1
+if not listed:
+    failures.append("a deck with remarks on it is missing from the listing")
+elif listed[0].get("openComments"):
+    failures.append(f"a settled thread is still counted as waiting: {listed[0].get('openComments')}")
+# Another remark, and the count says so — replies are not counted, a thread is
+# one thing to deal with.
+call("POST", f"/shared/{review_token}/comments",
+     {"slideId": first_slide, "author": "검토자", "body": "제목도 봐 주세요"}, expect=201, headers={})
+again = [row for row in (data_of(call("GET", "/presentations?limit=50", expect=200)) or [])
+         if row.get("id") == reviewed["id"]]
+checks += 1
+if (again[0].get("openComments") if again else 0) != 1:
+    failures.append(f"one remark waiting was counted as {again[0].get('openComments') if again else None}")
+print(f"   thread: {len(thread)} messages, all settled together · waiting on the list: {again[0].get('openComments') if again else '-'}")
 call("DELETE", f"/presentations/{reviewed['id']}", expect=204)
 
 print("── a numbered heading is not a claim ──")

@@ -350,3 +350,4 @@
 .shared-deck-answer{display:flex;gap:8px;align-items:flex-end;margin-top:8px}
 .shared-deck-answer textarea{flex:1;padding:7px 9px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:inherit;font:inherit}
 .shared-deck-reply-open{margin-top:6px;background:none;border:0;padding:0;color:var(--accent,#6d4aff);cursor:pointer;font-size:12px;text-decoration:underline}
+.card-waiting{display:inline-flex;align-items:center;gap:4px;color:var(--accent,#6d4aff);font-weight:600}

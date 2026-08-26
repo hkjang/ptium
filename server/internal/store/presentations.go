@@ -124,8 +124,14 @@ func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, de
 		return nil, 0, err
 	}
 	args := append(append([]any{}, filterArgs...), limit, offset)
+	// What is waiting on a deck belongs beside its name. Reviewers leave remarks
+	// on the link and nothing said so until the deck was opened, one at a time:
+	// somebody with a dozen decks had no way to see which two were waiting on
+	// them. Replies are not counted — a thread is one thing to deal with.
 	projection := `SELECT ` + presentationListColumns("presentations") + `,
-		(SELECT count(*)::int FROM slides s WHERE s.presentation_id=presentations.id) FROM presentations `
+		(SELECT count(*)::int FROM slides s WHERE s.presentation_id=presentations.id),
+		(SELECT count(*)::int FROM slide_comments c WHERE c.presentation_id=presentations.id
+			AND c.parent_id IS NULL AND c.resolved_at IS NULL) FROM presentations `
 	query := projection + where + fmt.Sprintf(` ORDER BY presentations.updated_at DESC LIMIT $%d OFFSET $%d`,
 		len(args)-1, len(args))
 	rows, err := s.Pool.Query(ctx, query, args...)
@@ -136,7 +142,7 @@ func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, de
 	result := make([]model.Presentation, 0)
 	for rows.Next() {
 		var p model.Presentation
-		if err := rows.Scan(append(presentationScan(&p), &p.SlideCount)...); err != nil {
+		if err := rows.Scan(append(presentationScan(&p), &p.SlideCount, &p.OpenComments)...); err != nil {
 			return nil, 0, err
 		}
 		result = append(result, p)

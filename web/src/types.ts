@@ -46,6 +46,8 @@ export interface Presentation {
   audience?: string
   language?: string
   slideCount?: number
+  /** Remarks still waiting on this deck, threads rather than messages. */
+  openComments?: number
   thumbnailUrl?: string
   createdAt: string
   updatedAt: string

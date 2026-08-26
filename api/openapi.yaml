@@ -1914,6 +1914,12 @@ paths:
                     properties:
                       title: { type: string }
                       slideCount: { type: integer }
+        openComments:
+          type: integer
+          description: >
+            Remarks still waiting on this deck, counted as threads rather than
+            messages. Present in listings so a deck waiting on somebody says so
+            beside its name.
                       slides:
                         type: array
                         description: Each slide's name and the id a remark attaches itself to.
@@ -4714,7 +4720,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.16.0
+            service.version: 1.16.1
         requestId:
           $ref: '#/components/schemas/RequestID'
 

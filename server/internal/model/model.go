@@ -134,11 +134,11 @@ type AssetTag struct {
 // share link has none, and asking them to make one to say "the number on slide
 // 4 is out of date" is how a review does not happen.
 type Comment struct {
-	ID             string     `json:"id"`
-	PresentationID string     `json:"presentationId"`
-	SlideID        string     `json:"slideId,omitempty"`
-	Author         string     `json:"author"`
-	Body           string     `json:"body"`
+	ID             string `json:"id"`
+	PresentationID string `json:"presentationId"`
+	SlideID        string `json:"slideId,omitempty"`
+	Author         string `json:"author"`
+	Body           string `json:"body"`
 	// ParentID is the remark this one answers. A review is a conversation, and
 	// an answer beside the point it answers reads as a second point.
 	ParentID   string     `json:"parentId,omitempty"`
@@ -188,8 +188,12 @@ type Presentation struct {
 	RequestedSlideCount int    `json:"requestedSlideCount"`
 	// Source is the deck written in Ptium's slide language. It is the editable
 	// form of the deck: compiling it reproduces the slides.
-	Source              string          `json:"source,omitempty"`
-	SlideCount          int             `json:"slideCount,omitempty"`
+	Source     string `json:"source,omitempty"`
+	SlideCount int    `json:"slideCount,omitempty"`
+	// OpenComments is how many remarks on this deck are still waiting, threads
+	// rather than messages. It belongs beside the deck's name: a reviewer left
+	// it on the link, and nothing said so until somebody opened the deck.
+	OpenComments        int             `json:"openComments,omitempty"`
 	Outline             json.RawMessage `json:"outline,omitempty"`
 	ErrorMessage        string          `json:"errorMessage,omitempty"`
 	Slides              []Slide         `json:"slides,omitempty"`
