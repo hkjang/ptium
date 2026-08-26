@@ -117,7 +117,10 @@ func TestARejectedUploadIsNamedForWhatItIs(t *testing.T) {
 		{"a 97-2003 deck", []byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0x00}, ".pptx"},
 		{"a file wrapped by document security", []byte("SCDSA002\x00\x01"), "문서보안"},
 		{"something else entirely", []byte("%PDF-1.7\n%..."), "PowerPoint 파일이 아닙니다"},
-		{"a zip that is not a deck", []byte("PK\x03\x04rest of a zip"), ""},
+		// A package that would not open is answered too — in the workspace's
+		// language, and without claiming which of the two reasons it is, because
+		// the bytes do not say.
+		{"a zip that is not a deck", []byte("PK\x03\x04rest of a zip"), "PowerPoint 파일로 열리지 않습니다"},
 	}
 	for _, one := range cases {
 		hint := templateUploadHint(one.bytes)

@@ -117,6 +117,23 @@ func templateUploadHint(data []byte) string {
 	case len(data) >= 4 && !bytes.HasPrefix(data, []byte("PK")):
 		return "PowerPoint 파일이 아닙니다. 문서보안(DRM)으로 감싸였거나 다른 형식일 수 있습니다. " +
 			"PowerPoint에서 열리는 .pptx 파일을 올려 주세요."
+	// An Office package that is not a presentation says what it is in the names
+	// of its own parts, and saying "the package does not contain a PowerPoint
+	// presentation" to somebody who renamed a Word file is a dead end. Ptium
+	// reads Word and Excel at the import door: the answer is which door.
+	case bytes.Contains(data, []byte("word/document.xml")):
+		return "PowerPoint 파일이 아니라 Word 문서입니다. 확장자를 .docx 로 되돌려 " +
+			"[기존 자료 가져오기]에 올리면 제목이 슬라이드가 됩니다."
+	case bytes.Contains(data, []byte("xl/workbook.xml")):
+		return "PowerPoint 파일이 아니라 Excel 문서입니다. 확장자를 .xlsx 로 되돌려 " +
+			"[기존 자료 가져오기]에 올리면 시트마다 한 장이 됩니다."
+	// Anything else that reached this function is a package that would not open.
+	// Which of the two it is — damaged, or simply not a presentation — the bytes
+	// do not say, so neither does this; what it does say is what to try, and it
+	// says it in the language the person is reading.
+	case bytes.HasPrefix(data, []byte("PK")):
+		return "PowerPoint 파일로 열리지 않습니다. 파일이 손상됐거나 PowerPoint 파일이 아닐 수 있습니다. " +
+			"PowerPoint에서 열리는지 확인한 뒤 다시 올려 주세요."
 	}
 	return ""
 }
@@ -203,7 +220,7 @@ func (s *Server) readUpload(writer http.ResponseWriter, request *http.Request, l
 		return nil, meta, false
 	}
 	if len(data) == 0 {
-		writeError(writer, request, http.StatusBadRequest, "invalid_upload", "The uploaded template is empty", nil)
+		writeError(writer, request, http.StatusBadRequest, "invalid_upload", "올린 파일이 비어 있습니다", nil)
 		return nil, meta, false
 	}
 	// A template must be a PowerPoint file. An import may also be the material

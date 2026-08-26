@@ -22,9 +22,26 @@ func TestAFileThatCannotBeOpenedIsNamedForWhatItIs(t *testing.T) {
 	if said := templateUploadHint(old); said == "" || !strings.Contains(said, ".pptx") {
 		t.Errorf("a 97-2003 file is not told what to save it as: %q", said)
 	}
-	// A zip that is simply not a presentation has no hint, and the import path
-	// falls through to the document reader as it always did.
-	if said := templateUploadHint([]byte("PK\x03\x04 an ordinary zip")); said != "" {
-		t.Errorf("an ordinary package was given a wrapper's message: %q", said)
+	// An Office package that is not a presentation says what it is in the names
+	// of its own parts, and this product reads both — so the answer is which
+	// door to use, not "the package does not contain a PowerPoint presentation".
+	word := []byte("PK\x03\x04................word/document.xml")
+	if said := templateUploadHint(word); !strings.Contains(said, "Word") || !strings.Contains(said, ".docx") {
+		t.Errorf("a renamed Word file is not named for what it is: %q", said)
+	}
+	sheet := []byte("PK\x03\x04................xl/workbook.xml")
+	if said := templateUploadHint(sheet); !strings.Contains(said, "Excel") || !strings.Contains(said, ".xlsx") {
+		t.Errorf("a renamed Excel file is not named for what it is: %q", said)
+	}
+	// Anything else that got here is a package that would not open.
+	if said := templateUploadHint([]byte("PK\x03\x04 an ordinary zip")); !strings.Contains(said, "열리지 않습니다") {
+		t.Errorf("a package that would not open was not told so: %q", said)
+	}
+	// And every one of these is written in the language the workspace is in.
+	for _, data := range [][]byte{word, sheet, locked, old, []byte("PK\x03\x04 zip")} {
+		said := templateUploadHint(data)
+		if said == "" || !strings.ContainsAny(said, "가나다라마바사아자차카타파하업다니") {
+			t.Errorf("a refusal reaches the reader in English: %q", said)
+		}
 	}
 }
