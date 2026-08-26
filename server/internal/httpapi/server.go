@@ -254,7 +254,12 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/templates/{id}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))
 	api.Handle("GET /api/v1/templates/{id}/layouts/{layoutId}/preview.svg", requireUUIDPath(requireScope("templates:read", http.HandlerFunc(s.templateLayoutPreview))))
 	api.Handle("GET /api/v1/api-keys", requireScope("api_keys:manage", http.HandlerFunc(s.listAPIKeys)))
+	// What a key may do, from the one list the server validates against.
+	api.Handle("GET /api/v1/api-keys/scopes", requireScope("api_keys:manage", http.HandlerFunc(s.apiKeyScopes)))
 	api.Handle("POST /api/v1/api-keys", requireScope("api_keys:manage", http.HandlerFunc(s.createAPIKey)))
+	// A key is written into a machine's configuration and forgotten. Changing
+	// what it may do should not mean issuing another one and going back there.
+	api.Handle("PATCH /api/v1/api-keys/{id}", requireUUIDPath(requireScope("api_keys:manage", http.HandlerFunc(s.updateAPIKey))))
 	api.Handle("POST /api/v1/api-keys/{id}/revoke", requireUUIDPath(requireScope("api_keys:manage", http.HandlerFunc(s.revokeAPIKey))))
 	api.Handle("DELETE /api/v1/api-keys/{id}", requireUUIDPath(requireScope("api_keys:manage", http.HandlerFunc(s.revokeAPIKey))))
 	api.Handle("POST /api/v1/api-keys/{id}/rotate", requireUUIDPath(requireScope("api_keys:manage", http.HandlerFunc(s.rotateAPIKey))))

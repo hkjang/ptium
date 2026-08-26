@@ -1643,10 +1643,17 @@ if state["status"] == "completed":
         failures.append(f"the generated deck has defects: {generated.get('findings')}")
 
 print("── api keys and mcp ──")
-key = data_of(call("POST", "/api-keys", {"name": "e2e", "scopes": ["presentations:read"]}, expect=201))
+made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}
 call("GET", "/api-keys", expect=200)
-if key and key.get("token"):
-    token = key["token"]
+# The secret comes back once, under its own name; the key itself is beside it.
+# Reading it from the wrong field made every check below quietly skip — the
+# account collected eighty-nine keys and nothing had used one since.
+key = made.get("apiKey") or made.get("api_key") or made
+token = made.get("secret") or made.get("key") or made.get("token") or ""
+checks += 1
+if not token or not key.get("id"):
+    failures.append(f"a new api key came back without a secret to use: {sorted(made)}")
+if token and key.get("id"):
     request = urllib.request.Request(BASE + "/presentations", headers={"Authorization": "Bearer " + token})
     try:
         with urllib.request.urlopen(request) as response:
@@ -1665,7 +1672,42 @@ if key and key.get("token"):
         checks += 1
         if error.code != 403:
             failures.append(f"a read-only key writing gave {error.code}, expected 403")
+    # What a key may do can be changed without changing the key: the key is
+    # written into a machine's configuration and forgotten, and issuing another
+    # one to add a permission means going back there.
+    offered = data_of(call("GET", "/api-keys/scopes", expect=200)) or []
+    checks += 1
+    if not {"templates:read", "presentations:write"} <= {scope.get("id") for scope in offered}:
+        failures.append(f"the scopes a key may carry are not all offered: {[s.get('id') for s in offered]}")
+    request = urllib.request.Request(BASE + "/templates?limit=1", headers={"Authorization": "Bearer " + token})
+    try:
+        urllib.request.urlopen(request)
+        failures.append("a key without templates:read read the templates")
+    except urllib.error.HTTPError as error:
+        checks += 1
+        if error.code != 403:
+            failures.append(f"a key without templates:read gave {error.code}, expected 403")
+    widened = data_of(call("PATCH", f"/api-keys/{key['id']}",
+                           {"scopes": ["presentations:read", "templates:read"]}, expect=200)) or {}
+    checks += 1
+    if "templates:read" not in (widened.get("scopes") or []):
+        failures.append(f"widening a key's scopes answered {widened.get('scopes')!r}")
+    try:
+        with urllib.request.urlopen(urllib.request.Request(
+                BASE + "/templates?limit=1", headers={"Authorization": "Bearer " + token})) as response:
+            checks += 1
+            if response.status != 200:
+                failures.append(f"a widened key still cannot read templates: {response.status}")
+    except urllib.error.HTTPError as error:
+        failures.append(f"a widened key still cannot read templates: {error.code}")
+    call("PATCH", f"/api-keys/{key['id']}", {"scopes": ["nope:everything"]}, expect=422)
     call("DELETE", f"/api-keys/{key['id']}", expect=[204, 200])
+    # Deleting a key revokes it: the row stays so the audit trail still names
+    # what used it. What must not stay is a key that still works.
+    mine = [row for row in (data_of(call("GET", "/api-keys", expect=200)) or []) if RUN in (row.get("name") or "")]
+    checks += 1
+    if any(not row.get("revokedAt") for row in mine):
+        failures.append(f"this run left a usable api key behind: {[row.get('name') for row in mine]}")
 
 # What a sweep uploads, a sweep takes away. The account's library is what the
 # writer offers a deck when it looks for a picture, so a run's leftovers end up

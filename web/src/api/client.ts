@@ -1327,6 +1327,25 @@ export const api = {
     const keyValue = unwrapOne<ApiKey & Record<string, unknown>>(payload, ['apiKey', 'api_key', 'key'])
     return { ...normalizeApiKey(keyValue), key: typeof payload.key === 'string' ? payload.key : undefined, secret: typeof payload.secret === 'string' ? payload.secret : undefined }
   },
+  /**
+   * What this deployment may put on a key.
+   *
+   * The list comes from the server rather than from this file: a scope the
+   * server adds has to appear on the screen that grants it, and one kept here
+   * had already drifted — templates:read, which seven routes require, could not
+   * be granted at all.
+   */
+  async apiKeyScopes() {
+    return unwrapList<{ id: string; admin?: boolean; grants?: string }>(
+      await request<unknown>('/api-keys/scopes'), ['scopes', 'items', 'data'])
+  },
+  /** Changes what a key may do, without changing the key itself. */
+  async updateApiKeyScopes(id: string, scopes: string[]) {
+    const raw = await request<Record<string, unknown>>(`/api-keys/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify({ scopes }),
+    })
+    return normalizeApiKey(unwrapOne<ApiKey & Record<string, unknown>>(raw, ['apiKey', 'api_key', 'data']))
+  },
   async rotateApiKey(id: string) {
     const raw = await request<Record<string, unknown>>(`/api-keys/${encodeURIComponent(id)}/rotate`, { method: 'POST' })
     const payload = unwrapOne<Record<string, unknown>>(raw, ['data'])

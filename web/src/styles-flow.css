@@ -310,3 +310,12 @@
 .slide-thumbnail-row.skipped .slide-thumbnail{opacity:.42;filter:grayscale(.6)}.slide-thumbnail-row.skipped .slide-thumbnail-meta strong{color:var(--muted-2);text-decoration:line-through}.slide-thumbnail-row.skipped .slide-number:after{content:" 건너뜀";font-size:9px;color:var(--muted-2)}.icon-button.small.active{color:var(--violet);background:var(--violet-soft)}
 .rewrite-ask{display:flex;flex-direction:column;gap:7px}.rewrite-ask>span{font-size:13px;font-weight:600;color:var(--ink)}.rewrite-ask small{font-weight:400;color:var(--muted)}.rewrite-ask textarea{width:100%;resize:vertical;padding:10px 12px;border:1px solid var(--line-strong);border-radius:9px;font:inherit;font-size:13px;line-height:1.55;background:var(--surface);color:var(--ink)}
 .generation-stage{margin-top:-6px;color:var(--violet);font-size:13px;font-weight:600}
+
+/* The permission list on the API key screens: the product's words for a scope,
+   and the API's own name for it underneath, so what is granted here can be
+   matched to what a 403 talks about. */
+.scope-options label > span{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.scope-options label > span small{color:var(--ink-muted);font-family:var(--mono,ui-monospace,monospace);font-size:11px}
+.scope-options label > span .badge{padding:1px 7px;font-size:11px}
+.retired-keys{margin:12px 2px 0}
+.link-button{background:none;border:0;padding:0;color:var(--accent,#6d4aff);cursor:pointer;text-decoration:underline}

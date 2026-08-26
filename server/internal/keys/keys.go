@@ -79,13 +79,59 @@ func (m *Manager) Create(ctx context.Context, userID, name string, scopes []stri
 	return Created{APIKey: key, Secret: token}, nil
 }
 
-var userScopes = map[string]struct{}{
-	"presentations:read": {}, "presentations:write": {}, "profile:read": {}, "profile:write": {},
-	"templates:read": {}, "templates:write": {}, "mcp:use": {}, "api_keys:manage": {},
+// Scope is one permission a key can carry, and what it lets a key do. The list
+// is the same one ValidateScopes arbitrates on, so a scope added to the server
+// appears on the screen that grants it: the screen used to carry its own list
+// and had drifted, leaving templates:read — which seven routes require and
+// every default key holds — impossible to grant from the product.
+type Scope struct {
+	ID    string `json:"id"`
+	Admin bool   `json:"admin"`
+	// Grants is what a key with this scope may do, in the API's own terms.
+	Grants string `json:"grants"`
 }
 
-var adminScopes = map[string]struct{}{
-	"admin:settings": {}, "admin:users": {}, "admin:errors": {},
+var scopeCatalogue = []Scope{
+	{ID: "presentations:read", Grants: "read decks, their slides and exports"},
+	{ID: "presentations:write", Grants: "create, edit, generate and delete decks"},
+	{ID: "templates:read", Grants: "list templates, read one and draw its previews"},
+	{ID: "templates:write", Grants: "upload, rename and delete templates"},
+	{ID: "profile:read", Grants: "read the account's profile"},
+	{ID: "profile:write", Grants: "change the account's profile"},
+	{ID: "api_keys:manage", Grants: "list, create, rotate and revoke API keys"},
+	{ID: "mcp:use", Grants: "connect an MCP client (tools also need their own scopes)"},
+	{ID: "admin:settings", Admin: true, Grants: "read and change deployment settings"},
+	{ID: "admin:users", Admin: true, Grants: "read the account list and change roles"},
+	{ID: "admin:errors", Admin: true, Grants: "read the error centre and resolve incidents"},
+}
+
+// Scopes is what this deployment may put on a key. An owner who is not an
+// administrator is not offered the scopes only an administrator may hold.
+func Scopes(admin bool) []Scope {
+	result := make([]Scope, 0, len(scopeCatalogue))
+	for _, scope := range scopeCatalogue {
+		if scope.Admin && !admin {
+			continue
+		}
+		result = append(result, scope)
+	}
+	return result
+}
+
+var userScopes = scopeSet(false)
+
+var adminScopes = scopeSet(true)
+
+// scopeSet is the catalogue as a lookup, which is what validation reads. Both
+// come from the one list so neither can drift from it.
+func scopeSet(admin bool) map[string]struct{} {
+	set := map[string]struct{}{}
+	for _, scope := range scopeCatalogue {
+		if scope.Admin == admin {
+			set[scope.ID] = struct{}{}
+		}
+	}
+	return set
 }
 
 func ValidateScopes(scopes []string, admin bool) error {
@@ -131,6 +177,36 @@ func (m *Manager) List(ctx context.Context, userID string) ([]model.APIKey, erro
 		result = append(result, key)
 	}
 	return result, rows.Err()
+}
+
+// SetScopes changes what a key may do, without changing the key itself.
+//
+// A key is handed to a machine, written into its configuration and forgotten;
+// making the owner issue a new one to add a permission means touching that
+// machine again, so most people give every key everything instead. A revoked
+// key is not changed: it is over.
+func (m *Manager) SetScopes(ctx context.Context, userID, id string, scopes []string, admin bool) (model.APIKey, error) {
+	if len(scopes) == 0 {
+		return model.APIKey{}, errors.New("an API key needs at least one scope")
+	}
+	if err := ValidateScopes(scopes, admin); err != nil {
+		return model.APIKey{}, err
+	}
+	query := `UPDATE api_keys SET scopes=$2 WHERE id=$1 AND revoked_at IS NULL`
+	args := []any{id, scopes}
+	if !admin {
+		query += ` AND user_id=$3`
+		args = append(args, userID)
+	}
+	query += ` RETURNING id::text,user_id::text,name,key_prefix,scopes,expires_at,revoked_at,rotated_to_id::text,grace_until,last_used_at,created_at`
+	var key model.APIKey
+	err := m.pool.QueryRow(ctx, query, args...).Scan(
+		&key.ID, &key.UserID, &key.Name, &key.Prefix, &key.Scopes, &key.ExpiresAt, &key.RevokedAt,
+		&key.RotatedToID, &key.GraceUntil, &key.LastUsedAt, &key.CreatedAt)
+	if err != nil {
+		return model.APIKey{}, store.ErrNotFound
+	}
+	return key, nil
 }
 
 func (m *Manager) Revoke(ctx context.Context, userID, id string, admin bool) error {

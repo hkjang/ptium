@@ -273,6 +273,29 @@ with sync_playwright() as play:
     for kind, message in problems:
         failures.append(f"templates: {kind} {message}")
 
+    # The permission list belongs to the server: this screen used to keep its
+    # own and had drifted, leaving templates:read — which seven routes require —
+    # impossible to grant. And a revoked key is over; the list is about the keys
+    # somebody is running.
+    print("── what a key may do ──")
+    problems.clear()
+    page.goto(f"{BASE}/api-keys", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    page.get_by_role("button", name="새 API 키").first.click()
+    page.wait_for_timeout(900)
+    page.screenshot(path=f"{OUT}/ui-api-key-scopes.png")
+    offered = page.locator(".scope-options label").count()
+    if offered < 8:
+        failures.append(f"the key screen offers {offered} permissions; the server has more")
+    for wanted in ("templates:read", "presentations:write"):
+        if page.locator(f".scope-options:has-text('{wanted}')").count() == 0:
+            failures.append(f"the key screen does not offer {wanted}")
+    print(f"   permissions offered: {offered}")
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(500)
+    for kind, message in problems:
+        failures.append(f"api-keys: {kind} {message}")
+
     print("── search and the command palette ──")
     problems.clear()
     page.goto(f"{BASE}/dashboard", wait_until="networkidle")

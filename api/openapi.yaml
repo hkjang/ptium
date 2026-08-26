@@ -3265,6 +3265,96 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/api-keys/scopes:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listAPIKeyScopes
+      summary: What a key may be given
+      description: >
+        Every scope this deployment accepts on an API key, with what each one
+        grants. Administrator scopes are listed only for an administrator. The
+        screen that grants scopes reads this rather than keeping its own list,
+        so a scope the server adds appears where it is granted.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      responses:
+        '200':
+          description: The scopes on offer.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, example: templates:read }
+                        admin: { type: boolean, description: Only an administrator may hold this scope. }
+                        grants: { type: string, example: list templates, read one and draw its previews }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/api-keys/{id}:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/APIKeyID'
+    patch:
+      operationId: updateAPIKeyScopes
+      summary: Change what a key may do
+      description: >
+        Replaces the key's scopes. The key itself does not change, so whatever
+        holds it keeps working — a key is written into a machine's configuration
+        and forgotten, and issuing another one to add a permission means going
+        back there. A revoked key cannot be changed.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scopes]
+              properties:
+                scopes:
+                  type: array
+                  minItems: 1
+                  items: { type: string }
+                  example: [presentations:read, templates:read]
+      responses:
+        '200':
+          description: The key, with its new scopes.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/APIKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/api-keys/{id}/revoke:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4542,7 +4632,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.13.18
+            service.version: 1.14.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

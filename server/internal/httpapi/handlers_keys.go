@@ -1,9 +1,13 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/hkjang/ptium/server/internal/keys"
+	"github.com/hkjang/ptium/server/internal/store"
 )
 
 type createAPIKeyRequest struct {
@@ -35,6 +39,39 @@ func (s *Server) createAPIKey(writer http.ResponseWriter, request *http.Request)
 	}
 	s.store.Audit(request.Context(), &user.ID, "api_key.create", "api_key", created.APIKey.ID, map[string]any{"scopes": created.APIKey.Scopes})
 	writeData(writer, request, http.StatusCreated, created)
+}
+
+// apiKeyScopes is what this deployment may put on a key, so the screen that
+// grants them does not keep its own list and drift from the server's.
+func (s *Server) apiKeyScopes(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	writeData(writer, request, http.StatusOK, keys.Scopes(user.IsAdmin))
+}
+
+type updateAPIKeyRequest struct {
+	Scopes []string `json:"scopes"`
+}
+
+// updateAPIKey changes what a key may do without changing the key.
+func (s *Server) updateAPIKey(writer http.ResponseWriter, request *http.Request) {
+	var input updateAPIKeyRequest
+	if !decodeJSON(writer, request, &input) {
+		return
+	}
+	user, _ := UserFromContext(request.Context())
+	updated, err := s.keys.SetScopes(request.Context(), user.ID, request.PathValue("id"), input.Scopes, user.IsAdmin)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(writer, request, http.StatusNotFound, "not_found",
+				"This API key does not exist, or it has been revoked", nil)
+			return
+		}
+		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
+		return
+	}
+	s.store.Audit(request.Context(), &user.ID, "api_key.scopes", "api_key", updated.ID,
+		map[string]any{"scopes": updated.Scopes})
+	writeData(writer, request, http.StatusOK, updated)
 }
 
 func (s *Server) revokeAPIKey(writer http.ResponseWriter, request *http.Request) {
