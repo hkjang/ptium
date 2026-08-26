@@ -37,6 +37,13 @@ type promptTopic struct {
 	// — rather than the deck being about it. It gets a section like any other
 	// topic and stays out of the deck's title.
 	Asked bool
+	// Chosen says the frame came from the topic's own words rather than from the
+	// rotation that keeps three wordless topics from looking alike. A frame the
+	// words chose is not swapped for variety: a section the brief called "채용
+	// 일정" was coming back with the body of a metrics slide because an earlier
+	// slide had used the sequence frame first, so the deck told its author to
+	// write targets under a heading about a schedule.
+	Chosen bool
 }
 
 type promptFigure struct {
@@ -106,6 +113,10 @@ var instructionPattern = regexp.MustCompile(
 		// has already been read by then; what is left is an instruction with no
 		// section attached to it, and "…계획을 넣어줘" is not a subject.
 		`(넣어\s*줘|넣어\s*주세요|넣어\s*주시고|포함해\s*줘|포함해\s*주세요|추가해\s*줘|추가해\s*주세요|` +
+		// "…를 담아 주세요" asks for a section as plainly as "…를 넣어 주세요", and
+		// without it the request stayed glued to the last section the brief
+		// listed: a deck came back with a slide headed "예산을 담아 주세요".
+		`담아\s*줘|담아\s*주세요|담아\s*주시고|담아주|담아서\s*주세요|` +
 		`만들어\s*줘|만들어\s*주세요|만들어라|작성해\s*줘|작성해\s*주세요|정리해\s*줘|정리해\s*주세요|` +
 		`요약해\s*줘|요약해\s*주세요|구성해\s*줘|준비해\s*줘|해\s*줘|부탁해|부탁드립니다|` +
 		`please|make me|create|generate|write|prepare|summari[sz]e|` +
@@ -439,18 +450,19 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		if name == "" || utf8.RuneCountInString(name) < 2 || measurementOnly(name) {
 			continue
 		}
-		frame := frameFor(name)
-		if frame == frameSituation {
+		frame, chosen := frameChosenFor(name)
+		if !chosen {
 			// Nothing in the words says how to argue this one. Three subjects that
 			// all default to the same frame produce three slides with the same lead
 			// and the same shape, so each takes a different angle instead.
 			frame = defaultFrames[len(outline.Topics)%len(defaultFrames)]
 		}
-		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame})
+		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame, Chosen: chosen})
 	}
 	// A subject that does not split is still one topic.
 	if len(outline.Topics) == 0 {
-		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frameFor(subject)}}
+		frame, chosen := frameChosenFor(subject)
+		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frame, Chosen: chosen}}
 	}
 	// A section somebody asked for by name is a section the deck has, whatever
 	// else the brief is about.
@@ -458,11 +470,11 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		if alreadyATopic(name, outline.Topics) {
 			continue
 		}
-		frame := frameFor(name)
-		if frame == frameSituation {
+		frame, chosen := frameChosenFor(name)
+		if !chosen {
 			frame = defaultFrames[len(outline.Topics)%len(defaultFrames)]
 		}
-		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame, Asked: true})
+		outline.Topics = append(outline.Topics, promptTopic{Name: name, Frame: frame, Asked: true, Chosen: chosen})
 	}
 	return outline
 }
@@ -780,15 +792,33 @@ func cleanTopic(value string) string {
 var defaultFrames = []string{frameSituation, frameCase, frameRisk}
 
 func frameFor(topic string) string {
+	frame, _ := frameChosenFor(topic)
+	return frame
+}
+
+// frameChosenFor is frameFor with the difference that matters kept: whether the
+// words said how to argue this topic, or nothing at all and the situation frame
+// is standing in.
+func frameChosenFor(topic string) (string, bool) {
 	lowered := strings.ToLower(topic)
+	// The word that decides is the one that ends last. Korean puts the head noun
+	// last — "도입 효과" is a slide about 효과, not about 도입 — and taking the
+	// first table entry that matched anywhere made it a roadmap. Where two words
+	// end together the longer one is the more specific: "기대효과" over "효과".
+	frame, ends, length := frameSituation, -1, 0
 	for _, entry := range frameMarkers {
 		for _, pattern := range entry.patterns {
-			if strings.Contains(lowered, pattern) {
-				return entry.frame
+			index := strings.LastIndex(lowered, pattern)
+			if index < 0 {
+				continue
+			}
+			finish := index + len(pattern)
+			if finish > ends || (finish == ends && len(pattern) > length) {
+				frame, ends, length = entry.frame, finish, len(pattern)
 			}
 		}
 	}
-	return frameSituation
+	return frame, ends >= 0
 }
 
 // figureLabel takes the few words before a number as its label, which is where

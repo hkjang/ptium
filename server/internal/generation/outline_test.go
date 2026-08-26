@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -363,5 +364,59 @@ func TestAnEnglishPurposePhraseIsNotTheSubject(t *testing.T) {
 		if strings.Contains(strings.ToLower(topic.Name), "board update") {
 			t.Fatalf("the purpose became the subject: %+v", outline.Topics)
 		}
+	}
+}
+
+// What a section is about is the word at the end of its name.
+//
+// A deck asked for "도입 효과" came back with the body of a roadmap, because the
+// table was read frame by frame and 도입 — a sequence word — sits at the front.
+// Korean puts the head noun last: the slide is about 효과.
+func TestASectionIsAboutTheWordAtItsEnd(t *testing.T) {
+	t.Parallel()
+	for name, want := range map[string]string{
+		"도입 효과":  frameCase,
+		"도입 일정":  frameSequence,
+		"비용 절감":  frameCase,
+		"위험 대응":  frameRisk,
+		"현재 문제":  frameSituation,
+		"채용 일정":  frameSequence,
+		"기대효과":   frameOutcome,
+		"전환 로드맵": frameSequence,
+		"보안 리스크": frameRisk,
+	} {
+		if got, chosen := frameChosenFor(name); got != want || !chosen {
+			t.Errorf("%q is argued as %q (chosen %v), expected %q", name, got, chosen, want)
+		}
+	}
+	// A name with none of these words says nothing about how to argue it, and
+	// says so rather than pretending the situation frame was chosen.
+	if got, chosen := frameChosenFor("필요 인원"); chosen {
+		t.Errorf("%q chose the frame %q from words that do not say", "필요 인원", got)
+	}
+}
+
+// A request for a section is not part of the section's name.
+//
+// "…, 예산을 담아 주세요" listed a section and asked for it in one breath, and
+// the asking stayed glued to the name: a deck came back with a slide headed
+// "예산을 담아 주세요".
+func TestARequestIsNotPartOfASectionName(t *testing.T) {
+	t.Parallel()
+	outline := outlinePrompt("올해 채용 계획을 경영진에게 보고합니다. 현재 인력 현황, 필요 인원, 채용 일정, 예산을 담아 주세요.",
+		"", koreanCopy)
+	var names []string
+	for _, topic := range outline.Topics {
+		names = append(names, topic.Name)
+	}
+	for _, name := range names {
+		for _, asking := range []string{"담아", "주세요", "넣어", "포함해"} {
+			if strings.Contains(name, asking) {
+				t.Errorf("a section is named %q, which is how it was asked for", name)
+			}
+		}
+	}
+	if !slices.Contains(names, "예산") {
+		t.Errorf("the section the brief listed last is named %v", names)
 	}
 }

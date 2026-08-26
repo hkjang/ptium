@@ -95,7 +95,22 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 		for part := 0; part < share; part++ {
 			// A second slide about the same topic argues a different aspect of it;
 			// repeating the first one is worse than not having it.
-			frame, fresh := unusedFrame(topic.Frame, part, previousFrame, usedFrames)
+			// A frame the topic's own words chose is the slide that heading is
+			// asking for, and variety is worth less than a body that belongs
+			// under its heading. It gives way only when an earlier slide has
+			// already been that kind of slide — two sections both about cost
+			// would otherwise print the same three points twice.
+			frame, fresh := topic.Frame, true
+			// A frame the words chose is kept unless this deck has already been
+			// that kind of slide: no two slides here open with the same lead, so
+			// the second section that wants the same frame takes another angle.
+			// Which is the one thing still worth improving here — a second
+			// schedule section reads better as a schedule than as a risk slide,
+			// and that needs a second body for each frame rather than a rule.
+			claimed := usedFrames[frame]
+			if !topic.Chosen || part > 0 || claimed {
+				frame, fresh = unusedFrame(topic.Frame, part, previousFrame, usedFrames)
+			}
 			if !fresh {
 				// Every angle is spoken for. Another slide about this topic would
 				// repeat one word for word, and the questions the deck raises next
@@ -104,7 +119,7 @@ func writeSourceWith(outline promptOutline, plan deckPlanCopy, count int, pictur
 			}
 			previousFrame = frame
 			usedFrames[frame] = true
-			section := plan.Section(promptTopic{Name: topic.Name, Frame: frame}, part, share)
+			section := plan.Section(promptTopic{Name: topic.Name, Frame: frame, Chosen: topic.Chosen}, part, share)
 			// A deck whose title is its only subject would open with that title
 			// twice. The second one says which part of the subject the slide is.
 			if strings.TrimSpace(section.Title) == strings.TrimSpace(plan.Title) {
