@@ -51,3 +51,35 @@ func TestAFailedGenerationTellsTheAuthorSomethingUseful(t *testing.T) {
 		t.Fatalf("the Japanese message reads %q", japanese)
 	}
 }
+
+// A deployment with no model host is not a broken deployment.
+//
+// It writes decks with the offline writer and cannot rewrite one — and it told
+// the person who pressed "AI로 다듬기" that no provider was configured and to go
+// and ask an administrator to check the service settings. There was nothing for
+// the administrator to fix: the deployment is exactly as it ships, and this is
+// the one thing the offline writer will not stand in for. Worse, the deck they
+// had went behind a failure screen.
+func TestRewritingWithoutAModelSaysWhatItNeedsRatherThanBlamingTheDeployment(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("rewriting a deck needs an AI provider; ask an administrator to configure one")
+	for language, wanted := range map[string][]string{
+		"ko": {"다시 쓰려면", "덱은 그대로입니다"},
+		"en": {"needs a connected AI model", "unchanged"},
+	} {
+		said := AuthorMessage(cause, language)
+		for _, part := range wanted {
+			if !strings.Contains(said, part) {
+				t.Errorf("%s: %q does not say %q", language, said, part)
+			}
+		}
+		if strings.Contains(said, "설정되어 있지 않습니다") || strings.Contains(said, "No AI provider is configured") {
+			t.Errorf("%s: a deployment that ships this way is still called misconfigured: %q", language, said)
+		}
+	}
+	// A deployment that really is misconfigured still hears about it.
+	misconfigured := AuthorMessage(errors.New(`unsupported AI provider "wat"`), "ko")
+	if !strings.Contains(misconfigured, "설정") {
+		t.Errorf("a genuinely unsupported provider says %q", misconfigured)
+	}
+}

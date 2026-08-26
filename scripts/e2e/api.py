@@ -154,6 +154,32 @@ elif repeated[0].get("slide") != 3 or "다음 단계" not in str(repeated[0].get
     failures.append(f"the repeated heading was reported as {repeated[0]!r}")
 call("DELETE", f"/presentations/{twice['id']}?permanent=true", expect=[204, 200])
 
+# Rewriting a deck needs a connected model, and this deployment writes decks
+# with the built-in writer. Asking for a rewrite anyway used to leave a deck
+# somebody already had behind a failure screen, blaming an administrator for a
+# service that is exactly as it ships.
+polished = data_of(call("POST", "/presentations/generate",
+                        {"prompt": f"다듬기 실패 확인 {RUN}", "slideCount": 3}, expect=[200, 201, 202])) or {}
+polished_id = polished.get("id")
+if polished_id:
+    for _ in range(90):
+        state = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
+        if state.get("status") in ("completed", "failed"):
+            break
+        time.sleep(2)
+    if state.get("status") == "completed" and (state.get("slides") or []):
+        call("POST", f"/presentations/{polished_id}/generate", {}, expect=[200, 202])
+        for _ in range(90):
+            after = data_of(call("GET", f"/presentations/{polished_id}", expect=200)) or {}
+            if after.get("status") in ("completed", "failed"):
+                break
+            time.sleep(2)
+        if after.get("status") == "failed" and (after.get("slides") or []):
+            failures.append("a deck with slides was left failed after a rewrite it could not do")
+        if not (after.get("generationNotes") or []):
+            failures.append("nothing was said about why the rewrite did not happen")
+    call("DELETE", f"/presentations/{polished_id}?permanent=true", expect=[204, 200])
+
 print("── templates ──")
 templates = data_of(call("GET", "/templates?limit=100", expect=200)) or []
 print(f"   {len(templates)} templates")

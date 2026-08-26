@@ -780,6 +780,29 @@ func (s *Store) ReplaceSlidesFromSource(ctx context.Context, id, ownerID string,
 // author is told to retry something somebody deliberately stopped. And an
 // operator pushes a stuck deck back into the queue, and a worker still holding
 // the previous attempt fails the fresh one before anybody picks it up.
+// FailRewrite is a worker saying that rewriting a deck did not come out — of a
+// deck that already had slides.
+//
+// Failing it the way a first draft fails puts a deck somebody has, and can
+// still present, behind a screen that says "슬라이드 생성에 실패했습니다": its
+// slides are in the database and on no screen. What went wrong belongs in the
+// notes the editor already shows, and the deck stays what it was.
+//
+// It answers whether it put a deck back. A deck with no slides has nothing to
+// keep, and its failure is a failure.
+func (s *Store) FailRewrite(ctx context.Context, id, lease, message string) (bool, error) {
+	tag, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='completed',error_message='',
+		generation_ended_at=now(),generation_stage='',generation_lease=NULL,
+		generation_notes=COALESCE(generation_notes,'[]'::jsonb) || to_jsonb($2::text),
+		version=version+1,updated_at=now()
+		WHERE id=$1 AND status='generating' AND deleted_at IS NULL AND generation_lease=$3::uuid
+		AND EXISTS (SELECT 1 FROM slides WHERE presentation_id=$1)`, id, message, lease)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (s *Store) FailGeneration(ctx context.Context, id, lease, message string) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE presentations SET status='failed',error_message=$2,generation_ended_at=now(),
 		generation_stage='',generation_lease=NULL,version=version+1,updated_at=now()

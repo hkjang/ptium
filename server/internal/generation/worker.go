@@ -153,8 +153,18 @@ func (w *Worker) fail(ctx context.Context, presentation model.Presentation, leas
 	message := truncate(cause.Error(), 1000)
 	// The deck may have been taken away while this attempt was running, and the
 	// context it was running in cancelled with it — the failure still has to be
-	// written, and FailGeneration itself refuses if the lease moved on.
-	_ = w.store.FailGeneration(context.WithoutCancel(ctx), presentation.ID, lease, AuthorMessage(cause, presentation.Language))
+	// written, and the store itself refuses if the lease moved on.
+	//
+	// A deck that already has slides is not a failed deck: somebody asked for it
+	// to be rewritten and that did not work, which leaves them exactly what they
+	// had. Burying it behind a failure screen loses them a deck they can still
+	// present, so it goes back to what it was with the reason in its notes.
+	written := context.WithoutCancel(ctx)
+	said := AuthorMessage(cause, presentation.Language)
+	kept, err := w.store.FailRewrite(written, presentation.ID, lease, said)
+	if err != nil || !kept {
+		_ = w.store.FailGeneration(written, presentation.ID, lease, said)
+	}
 	details, _ := json.Marshal(map[string]any{"presentationId": presentation.ID, "ownerId": presentation.OwnerID})
 	_ = w.store.CaptureIncident(context.WithoutCancel(ctx), model.Incident{UserID: stringPointer(presentation.OwnerID), Kind: "generation", Severity: "error", Message: message, Details: details})
 	return cause

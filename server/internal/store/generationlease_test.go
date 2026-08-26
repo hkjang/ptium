@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
+	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -164,5 +166,81 @@ func TestAnImportedDeckKeepsWhatTheImportSaid(t *testing.T) {
 	again, _ := store.GetPresentation(ctx, deck.ID, owner.ID, false)
 	if still := again.GenerationNotes; len(still) != 2 {
 		t.Errorf("somebody else wrote on this deck: %q", again.GenerationNotes)
+	}
+}
+
+// A rewrite that does not work leaves the deck somebody already had.
+//
+// Needs a database: set PTIUM_TEST_DSN to run it.
+func TestAFailedRewriteLeavesTheDeckItHad(t *testing.T) {
+	dsn := os.Getenv("PTIUM_TEST_DSN")
+	if dsn == "" {
+		t.Skip("set PTIUM_TEST_DSN to run the database-backed store tests")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer pool.Close()
+	store := New(pool)
+	owner, err := store.UpsertUser(ctx, "failed-rewrite", "failed-rewrite@ptium.test", "rewrite", []string{}, false)
+	if err != nil {
+		t.Fatalf("owner: %v", err)
+	}
+	deck, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: "다듬기 실패", Prompt: "브리프", Theme: "slate-classic",
+		Language: "ko", Audience: "general", Tone: "professional", SlideCount: 3})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, deck.ID) }()
+	if err := store.CompleteGeneration(ctx, deck.ID, "", []byte(`{}`), []model.Slide{
+		{Position: 1, Title: "한 장", Content: []byte(`{}`)}}, "# 한 장", nil); err != nil {
+		// Completing needs the lease it was claimed under; this deck was never
+		// claimed, so write the slide directly.
+		if _, err := pool.Exec(ctx, `INSERT INTO slides(id,presentation_id,position,title,content) VALUES(gen_random_uuid(),$1,1,'한 장','{}'::jsonb)`, deck.ID); err != nil {
+			t.Fatalf("give it a slide: %v", err)
+		}
+	}
+	var lease string
+	if err := pool.QueryRow(ctx, `UPDATE presentations SET status='generating',generation_lease=gen_random_uuid()
+		WHERE id=$1 RETURNING generation_lease::text`, deck.ID).Scan(&lease); err != nil {
+		t.Fatalf("hand it to a worker: %v", err)
+	}
+
+	kept, err := store.FailRewrite(ctx, deck.ID, lease, "덱을 다시 쓰려면 연결된 AI 모델이 필요합니다")
+	if err != nil || !kept {
+		t.Fatalf("FailRewrite() = %v, %v", kept, err)
+	}
+	after, err := store.GetPresentation(ctx, deck.ID, owner.ID, false)
+	if err != nil {
+		t.Fatalf("read it back: %v", err)
+	}
+	if after.Status != "completed" {
+		t.Errorf("a deck that already had slides reads as %q after a failed rewrite", after.Status)
+	}
+	if len(after.Slides) == 0 {
+		t.Error("the deck lost its slides")
+	}
+	if len(after.GenerationNotes) == 0 || !strings.Contains(after.GenerationNotes[len(after.GenerationNotes)-1], "AI 모델") {
+		t.Errorf("the reason is not in the deck's notes: %q", after.GenerationNotes)
+	}
+
+	// A deck with nothing in it has nothing to keep: that failure is a failure.
+	empty, err := store.CreatePresentation(ctx, owner.ID, PresentationInput{
+		Title: "빈 덱", Prompt: "브리프", Theme: "slate-classic",
+		Language: "ko", Audience: "general", Tone: "professional", SlideCount: 3})
+	if err != nil {
+		t.Fatalf("deck: %v", err)
+	}
+	defer func() { _, _ = pool.Exec(ctx, `DELETE FROM presentations WHERE id=$1`, empty.ID) }()
+	var emptyLease string
+	if err := pool.QueryRow(ctx, `UPDATE presentations SET status='generating',generation_lease=gen_random_uuid()
+		WHERE id=$1 RETURNING generation_lease::text`, empty.ID).Scan(&emptyLease); err != nil {
+		t.Fatalf("hand it to a worker: %v", err)
+	}
+	if kept, err := store.FailRewrite(ctx, empty.ID, emptyLease, "무엇이든"); err != nil || kept {
+		t.Errorf("an empty deck was kept as though it had something: %v, %v", kept, err)
 	}
 }
