@@ -560,7 +560,11 @@ func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine 
 			builder.WriteString(markedUpRun(run.Text, run.RPr.Bold, run.RPr.Italic, runLinkTarget(run.RPr.HlinkClick, link)))
 		}
 		text := strings.TrimSpace(builder.String())
-		if text == "" {
+		if text == "" || saysNothing(text) {
+			// A line whose whole text is the bullet glyph its own design drew —
+			// "•", "▪", "-" — is decoration that a text reader sees as a
+			// paragraph. Carried across it becomes a point that says nothing,
+			// and three of them arrived in a deck imported from a real file.
 			continue
 		}
 		level := paragraph.PPr.Level
@@ -996,4 +1000,18 @@ func importedChart(kind string, plot rawChartPlot) (ImportedChart, bool) {
 		return ImportedChart{}, false
 	}
 	return chart, true
+}
+
+// saysNothing reports a line that is only the marks around words: bullet
+// glyphs, dashes, and the emphasis markup this importer writes around them.
+func saysNothing(text string) bool {
+	for _, r := range text {
+		switch {
+		case unicode.IsSpace(r):
+		case strings.ContainsRune("•·▪◦‣∙※-–—*_~`", r):
+		default:
+			return false
+		}
+	}
+	return true
 }
