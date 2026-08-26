@@ -1,6 +1,7 @@
 package pdftext
 
 import (
+	"math"
 	"strings"
 	"unicode/utf16"
 )
@@ -342,6 +343,22 @@ func (m matrix) offsetBy(x, y float64) matrix {
 	}
 }
 
+// through is this matrix followed by another: where text space lands on the
+// page once the page's own transform has been applied to it.
+func (m matrix) through(outer matrix) matrix {
+	return matrix{
+		a: m.a*outer.a + m.b*outer.c,
+		b: m.a*outer.b + m.b*outer.d,
+		c: m.c*outer.a + m.d*outer.c,
+		d: m.c*outer.b + m.d*outer.d,
+		e: m.e*outer.a + m.f*outer.c + outer.e,
+		f: m.e*outer.b + m.f*outer.d + outer.f,
+	}
+}
+
+// tall is how high one unit of this matrix draws.
+func (m matrix) tall() float64 { return math.Hypot(m.c, m.d) }
+
 // extractLines walks a content stream and gathers what it draws, in lines.
 //
 // A PDF has no lines in it. It has glyphs at coordinates, and a generator is
@@ -351,15 +368,37 @@ func (m matrix) offsetBy(x, y float64) matrix {
 // here is what shares a baseline, and a gap wide enough to be a space becomes
 // one.
 func extractLines(content []byte, fonts map[name]*font) []string {
+	placed := extractPlaced(content, fonts)
+	lines := make([]string, 0, len(placed))
+	for _, line := range placed {
+		lines = append(lines, line.text)
+	}
+	return lines
+}
+
+// placed is a line and where on the page it was drawn.
+type placed struct {
+	text string
+	x, y float64
+}
+
+func extractPlaced(content []byte, fonts map[name]*font) []placed {
 	if len(content) == 0 {
 		return nil
 	}
 	reader := &lexer{data: content}
 	var stack []value
-	var lines []string
+	var lines []placed
 	var line strings.Builder
+	var startedAt float64
 	var current *font
 	text, next := identity, identity
+	// A page is free to move, scale and flip everything drawn on it, and the
+	// files people have do exactly that — several write "1 0 0 -1 0 595 cm" and
+	// then draw upside down into it. Without this, a line's height and the gap
+	// before it are measured in a space the page has already changed.
+	here := identity
+	var stacked []matrix
 	size, leading := 10.0, 0.0
 	baseline, pen := 0.0, 0.0
 	open := false
@@ -368,7 +407,7 @@ func extractLines(content []byte, fonts map[name]*font) []string {
 		// The jamo are joined here rather than as each code is read: a map
 		// hands back one jamo per code, and a syllable is three of them.
 		if said := composeHangul(strings.Join(strings.Fields(line.String()), " ")); said != "" {
-			lines = append(lines, said)
+			lines = append(lines, placed{text: said, x: startedAt, y: baseline})
 		}
 		line.Reset()
 		open = false
@@ -377,14 +416,7 @@ func extractLines(content []byte, fonts map[name]*font) []string {
 	// "the same baseline" and "a wide gap" mean the same thing on a page scaled
 	// by its own matrix as on one that is not.
 	drawn := func() float64 {
-		scale := text.d
-		if scale < 0 {
-			scale = -scale
-		}
-		if scale == 0 {
-			scale = 1
-		}
-		height := size * scale
+		height := size * text.through(here).tall()
 		if height <= 0 {
 			height = 10
 		}
@@ -400,22 +432,26 @@ func extractLines(content []byte, fonts map[name]*font) []string {
 			return
 		}
 		height := drawn()
+		at := text.through(here)
 		switch {
 		case !open:
 			open = true
-		case difference(text.f, baseline) > height*0.4,
-			text.e < pen-height*0.5,
-			text.e-pen > height*4:
+			startedAt = at.e
+		case difference(at.f, baseline) > height*0.4,
+			at.e < pen-height*0.5,
+			at.e-pen > height*4:
 			// A gap this wide on one baseline is the next column, not a space.
 			endLine()
 			open = true
-		case text.e-pen > height*0.22:
+			startedAt = at.e
+		case at.e-pen > height*0.22:
 			line.WriteString(" ")
 		}
 		line.WriteString(said)
-		baseline = text.f
-		pen = text.e + widthOf(said, height)
-		text.e = pen
+		// The pen moves in the space the text is written in; where that lands
+		// on the page is worked out again from the page's own transform.
+		text.e += widthOf(said, size)
+		baseline, pen = at.f, text.through(here).e
 	}
 	number := func(at int) float64 {
 		if len(stack) < at {
@@ -438,6 +474,18 @@ func extractLines(content []byte, fonts map[name]*font) []string {
 			continue
 		}
 		switch word {
+		case "q":
+			stacked = append(stacked, here)
+		case "Q":
+			if len(stacked) > 0 {
+				here = stacked[len(stacked)-1]
+				stacked = stacked[:len(stacked)-1]
+			}
+		case "cm":
+			if len(stack) >= 6 {
+				applied := matrix{a: number(6), b: number(5), c: number(4), d: number(3), e: number(2), f: number(1)}
+				here = applied.through(here)
+			}
 		case "BT":
 			text, next = identity, identity
 		case "ET":
@@ -489,7 +537,7 @@ func extractLines(content []byte, fonts map[name]*font) []string {
 						case float64:
 							// A kern moves the pen, and a wide one is the space
 							// a page draws by moving rather than by writing.
-							text.e -= shown / 1000 * drawn()
+							text.e -= shown / 1000 * size
 						}
 					}
 				}

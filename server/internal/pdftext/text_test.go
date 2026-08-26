@@ -84,6 +84,47 @@ BT /F1 12 Tf 1 0 0 1 400 700 Tm (right column) Tj ET`
 	}
 }
 
+// A page is free to move and flip everything drawn on it, and generators use
+// that instead of moving the text: each block is wrapped in its own transform
+// and then written at the same place in its own space. Read the text matrix
+// alone and every one of those blocks sits on the same baseline, so a page of
+// paragraphs comes back as one run-on line.
+func TestLinesMovedByThePageItselfAreStillLines(t *testing.T) {
+	// Both blocks say the same baseline and the second carries on from where
+	// the first left off, so nothing but the page's own transform separates
+	// them — and on the page they are forty points apart.
+	content := `q 1 0 0 1 72 700 cm BT /F1 12 Tf 1 0 0 1 0 0 Tm (First) Tj ET Q
+q 1 0 0 1 72 660 cm BT /F1 12 Tf 1 0 0 1 31 0 Tm (Second) Tj ET Q`
+	lines := linesOf(t, onePage("<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>", content))
+	if len(lines) != 2 || lines[0] != "First" || lines[1] != "Second" {
+		t.Errorf("lines = %#v, want the two paragraphs apart", lines)
+	}
+}
+
+// A transform lasts until the page takes it back. What is drawn after a Q
+// belongs where the page was before the q.
+func TestATransformEndsWhereThePageEndsIt(t *testing.T) {
+	content := `q 1 0 0 1 0 400 cm BT /F1 12 Tf 1 0 0 1 72 300 Tm (Inside) Tj ET Q
+BT /F1 12 Tf 1 0 0 1 110 300 Tm (Outside) Tj ET`
+	lines := linesOf(t, onePage("<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>", content))
+	if len(lines) != 2 {
+		t.Errorf("lines = %#v: the two are four hundred points apart on the page and came back as one", lines)
+	}
+}
+
+// Text on one baseline is one line however the page was moved to get there:
+// the transform must not turn a sentence into a bullet per word.
+func TestOneBaselineUnderATransformIsStillOneLine(t *testing.T) {
+	content := `q 2 0 0 2 40 300 cm
+BT /F1 6 Tf 1 0 0 1 0 0 Tm (Quarterly) Tj ET
+BT /F1 6 Tf 1 0 0 1 29 0 Tm (review) Tj ET
+Q`
+	lines := linesOf(t, onePage("<</Type /Font /Subtype /Type1 /BaseFont /Helvetica>>", content))
+	if len(lines) != 1 || lines[0] != "Quarterly review" {
+		t.Errorf("lines = %#v, want one line", lines)
+	}
+}
+
 // koreanCMap writes a ToUnicode map in one block of the given size. Real files
 // write twelve thousand entries in a single block, which is a hundred and
 // twenty times what the specification suggests.
