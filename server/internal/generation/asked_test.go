@@ -258,6 +258,52 @@ func TestANumberInFrontOfANounIsWhenNotWhat(t *testing.T) {
 	}
 }
 
+// A year on its own is when, not what. A brief ending "…, 2026" gave the deck
+// a section titled "2026".
+func TestAYearOnItsOwnIsNotASection(t *testing.T) {
+	for _, brief := range []string{
+		"Cost reduction plan for cloud infrastructure, 2026",
+		"클라우드 비용 절감 계획, 2026",
+		"Roadmap for the platform team, FY2026",
+	} {
+		for _, topic := range outlinePrompt(brief, "", englishCopy).Topics {
+			if justAPeriod(topic.Name) {
+				t.Errorf("%q made a section called %q", brief, topic.Name)
+			}
+		}
+	}
+	// A year in front of a subject still belongs to it.
+	found := false
+	for _, topic := range outlinePrompt("2026년 계획, 조직 개편", "", koreanCopy).Topics {
+		if topic.Name == "2026년 계획" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("the year was taken off the subject it belongs to")
+	}
+}
+
+// Taking an instruction out from between two halves of a sentence leaves the
+// punctuation that joined them. "Budget request for the design team, 250M KRW"
+// put "Budget request , 250M KRW" on the cover.
+func TestAnInstructionLeavesNoPunctuationBehind(t *testing.T) {
+	for _, brief := range []string{
+		"Budget request for the design team, 250M KRW",
+		"Roadmap for the platform team, FY2026",
+	} {
+		if subject := outlinePrompt(brief, "", englishCopy).Subject; strings.Contains(subject, " ,") {
+			t.Errorf("%q left a gap before its comma: %q", brief, subject)
+		}
+	}
+	if got := tidySeparators("Budget request , 250M KRW"); got != "Budget request, 250M KRW" {
+		t.Errorf("tidySeparators = %q", got)
+	}
+	if got := tidySeparators(" , 계획 , , 예산 , "); got != "계획, 예산" {
+		t.Errorf("tidySeparators = %q", got)
+	}
+}
+
 func headingsOf(source string) string {
 	var headings []string
 	for _, line := range strings.Split(source, "\n") {

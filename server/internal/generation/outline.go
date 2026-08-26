@@ -163,6 +163,41 @@ var wherePlaced = regexp.MustCompile(`(?:맨\s*)?(?:마지막|처음|끝|앞|뒤
 var strandedVerb = regexp.MustCompile(
 	`\s*(?:을|를|이|가)?\s*(?:하고자\s*)?(?:합니다|입니다|했습니다|하였습니다|하겠습니다|됩니다|드립니다|한다|이다)\s*([.。,]|$)`)
 
+// strayComma is the punctuation an instruction leaves behind when it is taken
+// out from between two halves of a sentence.
+var strayComma = regexp.MustCompile(`\s+([,;:])`)
+
+// emptyClause is a separator with nothing between it and the next one.
+var emptyClause = regexp.MustCompile(`([,;:])\s*[,;:]`)
+
+// tidySeparators closes the gap an instruction left. Taking the audience out of
+// "Budget request for the design team, 250M KRW" left "Budget request , 250M
+// KRW", and that space before the comma was on the cover.
+func tidySeparators(subject string) string {
+	subject = strayComma.ReplaceAllString(subject, "${1}")
+	for range 3 {
+		tidied := emptyClause.ReplaceAllString(subject, "${1}")
+		if tidied == subject {
+			break
+		}
+		subject = tidied
+	}
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(subject), ",;:"))
+}
+
+// justAPeriod says the clause names a time and nothing else. A brief that ends
+// "…, 2026" gave the deck a section titled "2026".
+func justAPeriod(clause string) bool {
+	trimmed := strings.TrimSpace(clause)
+	if trimmed == "" {
+		return false
+	}
+	if place := periodPattern.FindStringIndex(trimmed); place != nil {
+		return place[0] == 0 && place[1] == len(trimmed)
+	}
+	return false
+}
+
 // slideCount is how long the deck should be, written the way anyone asks for
 // it — in digits or in words.
 var slideCount = regexp.MustCompile(
@@ -303,6 +338,7 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	subject, asked := askedFor(prompt)
 	subject = instructionPattern.ReplaceAllString(subject, " ")
 	subject = strandedVerb.ReplaceAllString(subject, "${1}")
+	subject = tidySeparators(subject)
 	subject = strings.TrimSpace(strings.Join(strings.Fields(subject), " "))
 	subject = cleanTopic(subject)
 	if subject == "" {
@@ -317,7 +353,7 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		// "목표 가용성 99.95%" is a figure the deck should show, not a subject it
 		// should argue. Treating one as a topic gave it its own slides — and a
 		// twelve-slide deck came out with the same step diagram three times.
-		if figureClause(candidate, outline.Figures) || measurementOnly(candidate) {
+		if figureClause(candidate, outline.Figures) || measurementOnly(candidate) || justAPeriod(candidate) {
 			continue
 		}
 		name := topicPhrase(cleanTopic(candidate))
