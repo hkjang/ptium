@@ -76,6 +76,11 @@ else:
     if status >= 500:
         failures.append(f"an unknown MCP tool gave {status}")
 
+# The key has done its work. A sweep that leaves live keys behind fills the
+# account with them — and a key nobody remembers making is a key nobody revokes.
+if token:
+    api(f"/api/v1/api-keys/{key['data']['apiKey']['id']}", "DELETE")
+
 print("── a deck exported, then uploaded back as a template ──")
 status, decks = api("/api/v1/presentations?limit=10")
 existing = [d for d in decks["data"] if (d.get("slideCount") or 0) > 2]

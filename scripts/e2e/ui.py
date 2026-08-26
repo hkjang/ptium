@@ -1,12 +1,15 @@
 """A walk through every screen, watching for anything the browser complains
 about and for pages that render nothing."""
 import atexit
-import os, sys, json, urllib.request
+import os, sys, json, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/")
 SECRET = os.environ.get("PTIUM_DEV_SECRET", "devsecret-devsecret-devsecret-devsecret")
 OUT = sys.argv[1] if len(sys.argv) > 1 else "."
+# Each run names what it makes, so a screen can be told this run's row from
+# what an earlier one left.
+RUN = str(int(time.time()))[-6:]
 failures = []
 
 
@@ -29,10 +32,15 @@ def report():
 sys.excepthook = stopped_early
 atexit.register(report)
 
-def api(path):
-    request = urllib.request.Request(BASE + "/api/v1" + path, headers={"X-Ptium-Dev-Secret": SECRET})
+def api(path, method="GET", body=None):
+    data = json.dumps(body).encode() if body is not None else None
+    headers = {"X-Ptium-Dev-Secret": SECRET}
+    if data:
+        headers["Content-Type"] = "application/json"
+    request = urllib.request.Request(BASE + "/api/v1" + path, data=data, headers=headers, method=method)
     with urllib.request.urlopen(request) as response:
-        return json.loads(response.read())["data"]
+        payload = response.read()
+        return json.loads(payload)["data"] if payload else None
 
 decks = api("/presentations?limit=20")
 ready = [d for d in decks if (d.get("slideCount") or 0) > 0] or decks
@@ -293,6 +301,34 @@ with sync_playwright() as play:
     print(f"   permissions offered: {offered}")
     page.keyboard.press("Escape")
     page.wait_for_timeout(500)
+    for kind, message in problems:
+        failures.append(f"api-keys: {kind} {message}")
+
+    # Changing what a key may do is a screen, not just an endpoint: the point of
+    # it is that somebody can widen a key without reissuing it.
+    print("── changing what a key may do ──")
+    problems.clear()
+    made = api("/api-keys", "POST", {"name": f"화면 권한 {RUN}", "scopes": ["presentations:read"]})
+    key_id = (made.get("apiKey") or {}).get("id", "")
+    page.goto(f"{BASE}/api-keys", wait_until="networkidle")
+    page.wait_for_timeout(1500)
+    row = page.locator(".api-key-table tbody tr", has_text=f"화면 권한 {RUN}")
+    if row.count() == 0:
+        failures.append("a key just created is not on the key screen")
+    else:
+        row.first.get_by_title("권한 수정").click()
+        page.wait_for_timeout(800)
+        page.locator(".scope-options label", has_text="templates:read").locator("input").check()
+        page.get_by_role("button", name="권한 저장").click()
+        page.wait_for_timeout(1500)
+        page.screenshot(path=f"{OUT}/ui-api-key-edited.png")
+        after = api(f"/api-keys")
+        mine = next((row for row in after if row.get("id") == key_id), {})
+        if "templates:read" not in (mine.get("scopes") or []):
+            failures.append(f"editing a key's permissions on screen left it at {mine.get('scopes')}")
+        print(f"   after editing on screen: {mine.get('scopes')}")
+    if key_id:
+        api(f"/api-keys/{key_id}", "DELETE")
     for kind, message in problems:
         failures.append(f"api-keys: {kind} {message}")
 
