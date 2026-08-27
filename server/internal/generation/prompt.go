@@ -136,6 +136,12 @@ Writing craft:
   in the notes — comes from the brief or follows arithmetically from it. A target
   nobody set, a percentage nobody measured, a saving nobody counted: write the
   point without the number instead. The room asks about the number first.
+- A plan runs forward from today. Every step of a roadmap, every milestone and
+  every "next" date is Today or later — a deck presented this week whose first
+  milestone is two years behind it is read as written by somebody who did not
+  know what month it was, and the room stops trusting the rest of it. Where the
+  brief names a deadline, work back from that deadline to today rather than
+  starting from a year you remember.
 - Notes are two or three sentences of what to say, not a repeat of the bullets.
 - When the brief says where a figure came from — a report, a survey, a system,
   a date — put it on that slide with !source. It is printed at the foot of the

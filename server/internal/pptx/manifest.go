@@ -436,6 +436,14 @@ func (m Manifest) SummaryFor(language string, limit int) string {
 			}
 			fmt.Fprintf(&builder, " [%s:%s]", slot.Slot, slot.Kind)
 		}
+		// A layout for traditional CJK typesetting holds more lines than any
+		// other, which is exactly why a writer choosing on capacity lands in one.
+		// Automatic selection already ranks these last; a model picking a layout
+		// by name was never told, and a deck of ordinary Korean bullets came back
+		// in one — its body running 3.11cm off the slide and over its own title.
+		if verticalLayout(layout) {
+			builder.WriteString(" (vertical CJK typesetting — not for ordinary bullets)")
+		}
 		builder.WriteString("\n")
 	}
 	return builder.String()
@@ -495,6 +503,20 @@ func (m *Manifest) finalize() {
 // purpose. It is exported because choosing by fit alone lands a Korean bullet
 // slide in a vertical-text layout — it holds the most lines, after all.
 func (l Layout) PreferenceRank() int { return preferenceRank(l) }
+
+// verticalLayout reports whether a layout sets its text vertically.
+func verticalLayout(layout Layout) bool {
+	switch layout.Type {
+	case "vertTx", "vertTitleAndTx", "vertTitleAndTxOverChart", "clipArtAndVertTx":
+		return true
+	}
+	for _, placeholder := range layout.Placeholders {
+		if placeholder.Vertical && placeholder.AcceptsText() {
+			return true
+		}
+	}
+	return false
+}
 
 // preferenceRank orders layouts that share a role, so automatic selection
 // reaches for the conventional one first. Vertical-text layouts exist for
