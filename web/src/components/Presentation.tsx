@@ -171,6 +171,25 @@ function remember(key: string, value: number) {
   try { window.localStorage.setItem(key, String(value)) } catch { /* nothing to do about it */ }
 }
 
+/**
+ * How far behind (positive) or ahead (negative) a talk is, in seconds.
+ *
+ * The schedule is where the deck should be by now, and where the deck is is
+ * measured from the slide the speaker is on. The half is the point: a slide is
+ * not a moment, it is a stretch of time the speaker is somewhere inside, and
+ * reading it from its start told a speaker keeping perfect time that they were
+ * late — further behind with every second, right up to the moment they pressed
+ * the arrow and it snapped back to on-time, having learnt nothing about their
+ * pace. Over a talk kept exactly to plan the old reading ran from zero to two
+ * minutes late and never once said ahead; from the middle of the slide it runs
+ * a minute either side of zero, which is what being on time looks like.
+ */
+export function pacingSeconds(spentSeconds: number, index: number, total: number, targetMinutes: number) {
+  if (targetMinutes <= 0 || total <= 0) return null
+  const at = Math.min(Math.max(index, 0), total - 1)
+  return Math.round(spentSeconds - ((at + 0.5) / total) * targetMinutes * 60)
+}
+
 /** How far behind (positive) or ahead (negative) the talk is, said in words. */
 export function pacing(seconds: number) {
   const off = Math.abs(seconds)
@@ -507,12 +526,10 @@ export function PresenterScreen({ presentationId, slides, version }: {
   const next = slides[state.index + 1]
   const total = state.total || slides.length
   const spent = Math.max(0, (paused ? state.startedAt + offset : now) - (state.startedAt + offset))
-  // Behind or ahead is measured against where the deck should be by now: a
-  // twenty-minute talk of ten slides should be leaving slide five at ten
-  // minutes. It is the only arithmetic a speaker cannot do while speaking.
-  const pace = target > 0 && total > 0
-    ? Math.round(spent / 1000 - (state.index / total) * target * 60)
-    : null
+  // Behind or ahead against where the deck should be by now: a twenty-minute
+  // talk of ten slides should be halfway through slide five at nine minutes.
+  // It is the only arithmetic a speaker cannot do while speaking.
+  const pace = pacingSeconds(spent / 1000, state.index, total, target)
   const clock = useMemo(() => new Date(now).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), [now])
 
   return <main className="presenter-screen">
