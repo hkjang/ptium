@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bodyFromFields, bodyFromText, carryTrimmedEntries, drawnSlots, keepPlace, moveSlideTo, presentIndexOf, proseSlot, regionLabel, reviseOutcome, slideBody, slideFields, slideHoldings, slidesToPresent, textRegions, toApiSlides } from './slides'
+import { bodyFromFields, bodyFromText, carryTrimmedEntries, drawnSlots, keepPlace, moveSlideTo, presentIndexOf, proseSlot, regionLabel, reviseOutcome, slideBody, slideFields, showPositions, slideHoldings, slidesToPresent, textRegions, toApiSlides } from './slides'
 import type { Slide, TemplateLayout } from '../../../types'
 
 const layout: TemplateLayout = {
@@ -169,6 +169,27 @@ describe('a slide kept out of the talk', () => {
     expect(presentIndexOf(slides, 0)).toBe(0)
     expect(presentIndexOf(slides, 1)).toBe(1) // b is skipped, so the show starts at d
     expect(presentIndexOf(slides, 3)).toBe(1)
+  })
+
+  // The one that was wrong. Everything that draws a slide asks the server for
+  // it by its number in the deck, and the show was counting its own places
+  // instead: with the second slide of four skipped, the projector drew deck
+  // slides 1, 2, 3 — the skipped one among them — and never reached the fourth.
+  it('says which slide of the deck each place in the show is', () => {
+    const show = slidesToPresent(deck([1]))
+    expect(show.map((slide) => slide.id)).toEqual(['a', 'c', 'd'])
+    expect(showPositions(show)).toEqual([1, 3, 4])
+    expect(showPositions(show)).not.toEqual([1, 2, 3])
+  })
+
+  it('is the deck\'s own numbering when nothing is skipped', () => {
+    expect(showPositions(deck([]))).toEqual([1, 2, 3, 4])
+  })
+
+  // A slide the server has not numbered yet still has to be asked for.
+  it('falls back to the place in the show when a slide carries no number', () => {
+    const unnumbered = deck([]).map((slide) => ({ ...slide, order: 0 }))
+    expect(showPositions(unnumbered)).toEqual([1, 2, 3, 4])
   })
 })
 

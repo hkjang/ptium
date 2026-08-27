@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
 import { api } from '../api/client'
 import { PresenterScreen } from '../components/Presentation'
+import { slidesToPresent } from './editor/model/slides'
 import type { Presentation } from '../types'
 import { displayError } from '../utils'
 
@@ -29,9 +30,14 @@ export function PresenterPage({ id }: { id: string }) {
 
   if (error) return <main className="presenter-screen loading"><p>{error}</p></main>
   if (!presentation) return <main className="presenter-screen loading"><LoaderCircle className="spin" size={22} /><p>발표 자료를 불러오는 중…</p></main>
+  // The show, not the deck: the presenting window takes out the slides marked
+  // 발표에서 건너뛰기 before it starts, so this window has to take out the same
+  // ones. Handed the whole deck it counted from a different list, and from the
+  // first skipped slide onward it showed the speaker a slide that was not the
+  // one on the wall — and the notes that went with it.
   return <PresenterScreen
     presentationId={presentation.id}
-    slides={presentation.slides || []}
+    slides={slidesToPresent(presentation.slides || [])}
     version={presentation.updatedAt}
   />
 }

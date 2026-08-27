@@ -1,7 +1,7 @@
 """The flows that change something: generating, editing text, applying source,
 saving a slide, uploading a template, restoring from the bin, admin settings."""
 import atexit
-import os, sys, json, time, urllib.request
+import os, re, sys, json, time, urllib.request
 from playwright.sync_api import sync_playwright
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/")
@@ -220,6 +220,60 @@ with sync_playwright() as play:
         failures.append(f"the downloaded pptx is only {size} bytes")
     page.keyboard.press("Escape")
     check("export")
+
+    # ── a slide kept out of the talk ──
+    # Everything that draws a slide asks the server for it by its number in the
+    # deck, and until v1.54.0 the show counted its own places instead. With one
+    # slide marked 발표에서 건너뛰기 the projector drew the skipped slide,
+    # mislabelled every slide after it, and never reached the last slide of the
+    # deck — and the speaker's own window, handed the whole deck, drew a
+    # different list again.
+    print("── presenting past a skipped slide ──")
+    page.goto(f"{BASE}/presentations/{deck_id}/editor", wait_until="networkidle")
+    page.wait_for_selector(".canvas-area", timeout=20000)
+    page.wait_for_timeout(1500)
+    rail = page.locator(".slide-thumbnail-row")
+    deck_slides = rail.count()
+    if deck_slides < 3:
+        failures.append(f"the deck has {deck_slides} slides, too few to present past a skip")
+    else:
+        rail.nth(1).click()
+        page.wait_for_timeout(1200)
+        page.get_by_role("button", name="발표에서 건너뛰기").click()
+        page.wait_for_timeout(3000)
+        expected = [n for n in range(1, deck_slides + 1) if n != 2]
+
+        drawn = []
+        def note(request):
+            if "preview" in request.url and "width=1600" in request.url:
+                found = re.search(r"[?&]slide=(\d+)", request.url)
+                if found:
+                    number = int(found.group(1))
+                    if number not in drawn:
+                        drawn.append(number)
+        page.on("request", note)
+        rail.nth(0).click()
+        page.wait_for_timeout(900)
+        page.get_by_role("button", name="발표", exact=False).first.click()
+        page.wait_for_timeout(3000)
+        for _ in range(deck_slides):
+            page.keyboard.press("ArrowRight")
+            page.wait_for_timeout(2200)
+        page.remove_listener("request", note)
+        if 2 in drawn:
+            failures.append("presenting drew the slide marked 발표에서 건너뛰기")
+        if drawn[:len(expected)] != expected:
+            failures.append(f"presenting drew deck slides {drawn[:len(expected)]}, expected {expected}")
+        if deck_slides not in drawn:
+            failures.append(f"presenting never reached slide {deck_slides}, the last in the deck")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(1200)
+        # Put the slide back in the show so nothing after this reads a short deck.
+        rail.nth(1).click()
+        page.wait_for_timeout(1000)
+        page.get_by_role("button", name="발표에서 건너뛰기").click()
+        page.wait_for_timeout(2500)
+    check("presenting past a skip")
 
     print("── the recycle bin ──")
     page.goto(f"{BASE}/presentations", wait_until="networkidle")

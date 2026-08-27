@@ -301,6 +301,20 @@ export function slidesToPresent(slides: Slide[]): Slide[] {
 }
 
 /**
+ * Which slide of the deck each slide of the show is, 1-based.
+ *
+ * A show is not the deck. A slide marked skipped stays in the deck and is taken
+ * out of the show, so the fourth slide the room sees can be the fifth slide of
+ * the file — and everything that draws a slide asks the server for it by its
+ * number in the deck. Counting the show's own places instead drew the skipped
+ * slide, mislabelled every slide after it, and put the last slide of the deck
+ * out of reach.
+ */
+export function showPositions(slides: Slide[]): number[] {
+  return slides.map((slide, at) => slide.order || at + 1)
+}
+
+/**
  * Where a slide sits in the show, given where it sits in the deck.
  *
  * Presenting from a slide that is skipped starts at the next one that is not,

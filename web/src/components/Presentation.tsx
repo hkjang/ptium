@@ -6,6 +6,7 @@ import {
 import { api } from '../api/client'
 import { ShortcutSheet, presentationShortcuts, useShortcutSheet } from './Shortcuts'
 import type { Slide } from '../types'
+import { showPositions } from '../pages/editor/model/slides'
 
 /**
  * Presenting a deck.
@@ -61,7 +62,10 @@ export function usePresentChannel(presentationId: string, onMessage: (message: P
  * unacceptable, so the next and previous slides are pulled while the current one
  * is on screen.
  */
-export function useSlideImages(presentationId: string, total: number, version: string | number, index: number, width = 1600) {
+/** No slides to draw: one array, so a closed overview does not refetch. */
+const noPositions: number[] = []
+
+export function useSlideImages(presentationId: string, positions: number[], version: string | number, index: number, width = 1600) {
   const [images, setImages] = useState<Record<number, string>>({})
   const cache = useRef<Map<string, string>>(new Map())
   useEffect(() => {
@@ -72,13 +76,13 @@ export function useSlideImages(presentationId: string, total: number, version: s
   }, [presentationId, version, width])
   useEffect(() => {
     let active = true
-    const wanted = [index, index + 1, index - 1, index + 2].filter((position) => position >= 0 && position < total)
+    const wanted = [index, index + 1, index - 1, index + 2].filter((at) => at >= 0 && at < positions.length)
     void (async () => {
       for (const position of wanted) {
         const key = `${position}`
         if (cache.current.has(key)) continue
         try {
-          const url = await api.slidePreview(presentationId, position + 1, width)
+          const url = await api.slidePreview(presentationId, positions[position], width)
           if (!active) { URL.revokeObjectURL(url); return }
           cache.current.set(key, url)
           setImages((current) => ({ ...current, [position]: url }))
@@ -86,7 +90,7 @@ export function useSlideImages(presentationId: string, total: number, version: s
       }
     })()
     return () => { active = false }
-  }, [presentationId, total, index, version, width])
+  }, [presentationId, positions.join(','), index, version, width]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { for (const url of cache.current.values()) URL.revokeObjectURL(url) }, [])
   return images
 }
@@ -103,7 +107,7 @@ export function useSlideImages(presentationId: string, total: number, version: s
  *
  * Either way it is one request for the same drawing.
  */
-export function useSlideDrawings(presentationId: string, total: number, version: string | number, index: number, width = 1600) {
+export function useSlideDrawings(presentationId: string, positions: number[], version: string | number, index: number, width = 1600) {
   const [drawings, setDrawings] = useState<Record<number, { markup?: string; url?: string }>>({})
   const known = useRef<Map<number, { markup?: string; url?: string }>>(new Map())
   const release = () => {
@@ -116,12 +120,12 @@ export function useSlideDrawings(presentationId: string, total: number, version:
   }, [presentationId, version, width])
   useEffect(() => {
     let active = true
-    const wanted = [index, index + 1, index - 1, index + 2].filter((position) => position >= 0 && position < total)
+    const wanted = [index, index + 1, index - 1, index + 2].filter((at) => at >= 0 && at < positions.length)
     void (async () => {
       for (const position of wanted) {
         if (known.current.has(position)) continue
         try {
-          const markup = await api.slidePreviewMarkup(presentationId, position + 1, width)
+          const markup = await api.slidePreviewMarkup(presentationId, positions[position], width)
           const drawing = markup.includes('<a href=')
             ? { markup }
             : { url: URL.createObjectURL(new Blob([markup], { type: 'image/svg+xml' })) }
@@ -135,7 +139,7 @@ export function useSlideDrawings(presentationId: string, total: number, version:
       }
     })()
     return () => { active = false }
-  }, [presentationId, total, index, version, width])
+  }, [presentationId, positions.join(','), index, version, width]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => release, [])
   return drawings
 }
@@ -198,8 +202,19 @@ export function PresentationView({ presentationId, title, slides, version, start
   const stage = useRef<HTMLDivElement>(null)
   const idleTimer = useRef(0)
   const total = slides.length
-  const drawings = useSlideDrawings(presentationId, total, version, index)
-  const thumbs = useSlideImages(presentationId, overview ? total : 0, version, 0, 320)
+  /**
+   * Which slide of the deck each slide of the show is.
+   *
+   * A show is not the deck: a slide marked 발표에서 건너뛰기 stays in the deck
+   * and is taken out of the show, so the fourth slide the room sees can be the
+   * fifth slide of the file. Everything that draws a slide asks the server for
+   * it by its number in the deck, so the show has to carry those numbers rather
+   * than count its own — counting its own drew the skipped slide, mislabelled
+   * every slide after it, and left the last slide of the deck unreachable.
+   */
+  const positions = useMemo(() => showPositions(slides), [slides])
+  const drawings = useSlideDrawings(presentationId, positions, version, index)
+  const thumbs = useSlideImages(presentationId, overview ? positions : noPositions, version, 0, 320)
 
   // A list handed to a room whole is read ahead of the speaker. A slide marked
   // !build gives up its points one at a time, and the arrow that would have
@@ -346,7 +361,7 @@ export function PresentationView({ presentationId, title, slides, version, start
     // Asked for even when every line is showing: the drawing with the last
     // point revealed is the whole slide, and handing back to the hook's copy
     // mid-talk is a flicker nobody needs to see.
-    api.slidePreviewMarkup(presentationId, index + 1, 1600, Math.max(1, revealed))
+    api.slidePreviewMarkup(presentationId, positions[index], 1600, Math.max(1, revealed))
       .then((markup) => { if (active) setBuilding({ index, reveal: revealed, markup }) })
       .catch(() => { if (active) setBuilding(null) })
     return () => { active = false }
@@ -369,8 +384,12 @@ export function PresentationView({ presentationId, title, slides, version, start
     const jumped = href.match(/^#slide-(\d+)$/)
     if (!jumped) return
     event.preventDefault()
-    const wanted = Number(jumped[1]) - 1
-    setIndex(Math.min(total - 1, Math.max(0, wanted)))
+    // The link names a slide of the deck. If that slide is being skipped there
+    // is nowhere to land on it, so the show goes to the next one it is giving.
+    const named = Number(jumped[1])
+    const at = positions.findIndex((position) => position >= named)
+    if (at === -1) return
+    setIndex(at)
     setBlackout('none')
   }
   return <div
@@ -445,7 +464,12 @@ export function PresenterScreen({ presentationId, slides, version }: {
   // Notes are read from a metre away, standing, in a dim room.
   const [notesScale, setNotesScale] = useState(() => remembered('ptium.presenter.notes', 100))
   const [showAll, setShowAll] = useState(false)
-  const images = useSlideImages(presentationId, state.total || slides.length, version, state.index, 900)
+  // The same deck numbers the presenting window is drawing from. This window
+  // holds no position of its own, so if it indexed a different list from the
+  // one on the projector the two would disagree about which slide is up — which
+  // is exactly what happened while this window was handed the whole deck.
+  const positions = useMemo(() => showPositions(slides), [slides])
+  const images = useSlideImages(presentationId, positions, version, state.index, 900)
 
   const post = usePresentChannel(presentationId, (message) => {
     if (message.type === 'state') setState(message)
