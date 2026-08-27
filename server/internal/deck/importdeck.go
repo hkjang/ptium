@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/pptx"
@@ -27,12 +28,17 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 // decoration too small to be the point of the slide — is simply not placed.
 func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
-	pictures, placed, tables, charts, plots, wordless := 0, 0, 0, 0, 0, 0
+	pictures, placed, tables, charts, plots := 0, 0, 0, 0, 0
+	// Which slides carried nothing to read, by their place in the deck. A count
+	// on its own could not be said without being misread: "%d장에는" is how a
+	// reader is told which slide, so one wordless slide at the fourth place
+	// announced itself as the first.
+	var wordless []int
 	slides, headers := withoutRunningHeaders(imported.Slides)
 	imported.Slides = withRolesThatFitWhatTheyHold(slides)
 	for index, slide := range imported.Slides {
 		if wordlessSlide(slide) {
-			wordless++
+			wordless = append(wordless, index+1)
 		}
 		if index > 0 {
 			builder.WriteString("\n")
@@ -118,13 +124,13 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 	// holds, and the import is not going to invent the words; but coming back to
 	// a deck of empty slides with no explanation reads as the import failing.
 	switch {
-	case wordless > 0 && wordless == len(imported.Slides):
+	case len(wordless) > 0 && len(wordless) == len(imported.Slides):
 		warnings = append(warnings, fmt.Sprintf(
 			"슬라이드 %d장 모두에 읽을 수 있는 글자가 없습니다. 슬라이드가 그림 한 장으로 된 파일이라 "+
-				"제목을 임시로 붙였습니다", wordless))
-	case wordless > 0:
+				"제목을 임시로 붙였습니다", len(wordless)))
+	case len(wordless) > 0:
 		warnings = append(warnings, fmt.Sprintf(
-			"%d장에는 읽을 수 있는 글자가 없어 제목을 임시로 붙였습니다", wordless))
+			"%s에는 읽을 수 있는 글자가 없어 제목을 임시로 붙였습니다", slidesNamed(wordless)))
 	}
 	if placed > 0 {
 		// What this step knows is how many pictures it carried out of the file
@@ -268,6 +274,25 @@ func withoutRunningHeaders(slides []pptx.ImportedSlide) ([]pptx.ImportedSlide, [
 		}
 	}
 	return result, headers
+}
+
+// slidesNamed says which slides something happened to, by their place in the
+// deck, so the reader can go and look at them.
+//
+// A count cannot be said here: "3장에는" is read as the third slide, not as
+// three of them, so a message meant to point at one slide pointed at another.
+// Past a handful the places stop being worth listing and the count is said in a
+// form that cannot be mistaken for one.
+func slidesNamed(positions []int) string {
+	const listed = 6
+	if len(positions) > listed {
+		return fmt.Sprintf("슬라이드 %d장", len(positions))
+	}
+	places := make([]string, 0, len(positions))
+	for _, at := range positions {
+		places = append(places, strconv.Itoa(at))
+	}
+	return strings.Join(places, "·") + "번 슬라이드"
 }
 
 // wordlessSlide is a slide that carried nothing to read: no title, no subtitle,
