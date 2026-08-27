@@ -25,6 +25,9 @@ const waited = (seconds: number) => seconds >= 3600 ? `${Math.floor(seconds / 36
 
 export function AdminQueuePage() {
   const [queue, setQueue] = useState<QueuedDeck[]>([])
+  // What the queue holds, which is not what this list carries: the list is a
+  // hundred rows at most.
+  const [totals, setTotals] = useState({ waiting: 0, failed: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [working, setWorking] = useState('')
@@ -33,12 +36,21 @@ export function AdminQueuePage() {
 
   const load = useCallback(async () => {
     setLoading(true); setError('')
-    try { setQueue(await api.generationQueue(24)) } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
+    try {
+      const answer = await api.generationQueue(24)
+      setQueue(answer.items)
+      setTotals({ waiting: answer.waiting, failed: answer.failed })
+    } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
   // A queue is a moving thing; a screen of it that does not move is a screenshot.
   useEffect(() => {
-    const timer = window.setInterval(() => { void api.generationQueue(24).then(setQueue).catch(() => {}) }, 15000)
+    const timer = window.setInterval(() => {
+      void api.generationQueue(24).then((answer) => {
+        setQueue(answer.items)
+        setTotals({ waiting: answer.waiting, failed: answer.failed })
+      }).catch(() => {})
+    }, 15000)
     return () => window.clearInterval(timer)
   }, [])
 
@@ -58,13 +70,19 @@ export function AdminQueuePage() {
   // Not "older than fifteen minutes": a deck being written whose worker is
   // still saying it is alive is fine however long it takes.
   const stuck = waiting.filter(troubled)
+  // The list is capped, so anything counted from its rows is counted from a
+  // part — and the screen has to say which numbers those are.
+  const truncated = totals.waiting + totals.failed > queue.length
   return <AppShell title="생성 큐" eyebrow="WHAT IS BEING WRITTEN"
     actions={<Button variant="secondary" onClick={() => void load()}><RefreshCw size={15} /> 새로고침</Button>}>
     <section className="error-stat-grid">
-      <article><span className="metric-icon amber"><Sparkles size={18} /></span><div><strong>{waiting.length}</strong><small>대기 · 작성 중</small></div></article>
-      <article><span className="metric-icon coral"><Clock size={18} /></span><div><strong>{stuck.length}</strong><small>맡은 워커가 조용하거나 15분 넘게 대기</small></div></article>
-      <article><span className="metric-icon red"><CircleSlash size={18} /></span><div><strong>{queue.filter((deck) => deck.status === 'failed').length}</strong><small>최근 24시간 실패</small></div></article>
+      <article><span className="metric-icon amber"><Sparkles size={18} /></span><div><strong>{totals.waiting.toLocaleString('ko-KR')}</strong><small>대기 · 작성 중</small></div></article>
+      <article><span className="metric-icon coral"><Clock size={18} /></span><div><strong>{stuck.length}</strong><small>맡은 워커가 조용하거나 15분 넘게 대기{truncated ? ' (아래 목록 안에서)' : ''}</small></div></article>
+      <article><span className="metric-icon red"><CircleSlash size={18} /></span><div><strong>{totals.failed.toLocaleString('ko-KR')}</strong><small>최근 24시간 실패</small></div></article>
     </section>
+    {truncated && <p className="muted-note">
+      가장 오래 기다린 {queue.length}건만 아래에 보입니다. 큐에는 모두 {(totals.waiting + totals.failed).toLocaleString('ko-KR')}건이 있습니다.
+    </p>}
     <section className="admin-panel">
       <div className="error-toolbar">
         <div><span className="muted-note">중단할 때 작성자에게 보일 이유</span></div>

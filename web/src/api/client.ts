@@ -1530,12 +1530,24 @@ export const api = {
   /** What is waiting, what is being written, and what failed recently. */
   async generationQueue(failedHours = 24) {
     const raw = await request<unknown>(`/admin/generations?failedHours=${failedHours}`)
-    return unwrapList<Record<string, unknown>>(raw, ['items', 'data', 'generations']).map((row) => ({
+    const items = unwrapList<Record<string, unknown>>(raw, ['items', 'data', 'generations']).map((row) => ({
       id: String(row.id ?? ''), title: String(row.title ?? ''),
       ownerEmail: String(row.ownerEmail ?? ''), status: String(row.status ?? ''),
       stage: String(row.stage ?? ''), errorMessage: String(row.errorMessage ?? ''),
       waitingSeconds: Number(row.waitingSeconds ?? 0), updatedAt: String(row.updatedAt ?? ''),
     }))
+    // How much there is, not how much fits. The list is a hundred rows at most,
+    // and a screen that counts its own rows told an operator with three hundred
+    // decks waiting that a hundred were.
+    // How much the queue holds, not how much fits: the list is a hundred rows at
+    // most, and a screen that counts its own rows told an operator with four
+    // hundred decks waiting that a hundred were.
+    const meta = (raw as { meta?: { waiting?: number; failed?: number } } | null)?.meta
+    return {
+      items,
+      waiting: Number(meta?.waiting ?? items.filter((one) => one.status !== 'failed').length),
+      failed: Number(meta?.failed ?? items.filter((one) => one.status === 'failed').length),
+    }
   },
   /** Push one back into the queue. */
   requeueGeneration: (id: string) =>

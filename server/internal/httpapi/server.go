@@ -424,9 +424,16 @@ func writeData(writer http.ResponseWriter, request *http.Request, status int, da
 }
 
 func writeList(writer http.ResponseWriter, request *http.Request, data any, total, limit, offset int) {
+	writeListMeta(writer, request, data, map[string]any{"total": total, "limit": limit, "offset": offset})
+}
+
+// writeListMeta is writeList for a list whose size is more than one number:
+// the generation queue is what is waiting and what failed, and both are larger
+// than the rows it hands over.
+func writeListMeta(writer http.ResponseWriter, request *http.Request, data any, meta map[string]any) {
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
-	_ = json.NewEncoder(writer).Encode(map[string]any{"data": data, "meta": map[string]any{"total": total, "limit": limit, "offset": offset}, "requestId": RequestID(request.Context())})
+	_ = json.NewEncoder(writer).Encode(map[string]any{"data": data, "meta": meta, "requestId": RequestID(request.Context())})
 }
 
 // configurationRefusals are the codes that describe how a deployment is set up

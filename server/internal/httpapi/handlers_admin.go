@@ -538,12 +538,26 @@ func (s *Server) adminGenerationQueue(writer http.ResponseWriter, request *http.
 			hours = min(value, 24*30)
 		}
 	}
-	queue, err := s.store.GenerationQueue(request.Context(), hours, 100)
+	const shown = 100
+	queue, err := s.store.GenerationQueue(request.Context(), hours, shown)
 	if err != nil {
 		s.internalError(writer, request, "admin_queue_read_failed", err)
 		return
 	}
-	writeData(writer, request, http.StatusOK, queue)
+	// How much there is, not how much fits: the screen counts what it is given,
+	// and it is given a hundred.
+	totals, err := s.store.GenerationQueueTotals(request.Context(), hours)
+	if err != nil {
+		s.internalError(writer, request, "admin_queue_read_failed", err)
+		return
+	}
+	// The rows stay the answer, the way every other list answers; how much there
+	// is goes beside them. Putting the size inside the answer would have made
+	// every caller that reads the queue as a list read an object instead.
+	writeListMeta(writer, request, queue, map[string]any{
+		"waiting": totals.Waiting, "failed": totals.Failed,
+		"total": totals.Waiting + totals.Failed, "limit": shown, "offset": 0,
+	})
 }
 
 // adminRequeueGeneration puts a deck back in the queue.

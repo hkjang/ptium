@@ -32,6 +32,13 @@ def report():
 sys.excepthook = stopped_early
 atexit.register(report)
 
+def api_meta(path):
+    """The whole envelope, for the lists whose size is beside the rows."""
+    request = urllib.request.Request(BASE + "/api/v1" + path, headers={"X-Ptium-Dev-Secret": SECRET})
+    with urllib.request.urlopen(request) as response:
+        return json.loads(response.read())
+
+
 def api(path, method="GET", body=None):
     data = json.dumps(body).encode() if body is not None else None
     headers = {"X-Ptium-Dev-Secret": SECRET}
@@ -241,6 +248,26 @@ with sync_playwright() as play:
     visit("/admin/errors", expect_text="오류")
     visit("/admin/audit", expect_text="감사 기록")
     visit("/admin/queue", expect_text="생성 큐")
+    # How much the queue holds, not how much its list carries. The list is a
+    # hundred rows at most, and the screen counted its own rows — a site with
+    # four hundred decks waiting read "100 대기 · 작성 중" on the very screen an
+    # operator opens to see how far behind it is.
+    page.wait_for_timeout(2500)
+    overview = api("/admin/overview")
+    queue = api_meta("/admin/generations?failedHours=24")
+    if "waiting" not in (queue.get("meta") or {}):
+        failures.append("the queue does not say how much it holds, only what fits on the screen")
+    else:
+        size = queue["meta"]
+        if size["waiting"] != overview["queuedGenerations"]:
+            failures.append(f"the overview counts {overview['queuedGenerations']} waiting "
+                            f"and the queue says {size['waiting']}")
+        metric = page.locator(".error-stat-grid article strong").first.inner_text().replace(",", "")
+        if metric.isdigit() and int(metric) != overview["queuedGenerations"]:
+            failures.append(f"the queue screen shows {metric} waiting where {overview['queuedGenerations']} are")
+        if len(queue.get("data") or []) < size["waiting"] + size["failed"]:
+            if page.locator(".muted-note").filter(has_text="가장 오래 기다린").count() == 0:
+                failures.append("the queue list is a part of the queue and the screen does not say so")
 
     # A list of the busiest few read as a full accounting: eight people against
     # four and a half thousand decks, adding to less than the headline said,

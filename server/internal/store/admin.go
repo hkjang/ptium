@@ -192,6 +192,31 @@ type QueuedDeck struct {
 // minutes; an operator reading that could do nothing with it, because a deck
 // belongs to its owner and an administrator could not see one. This is the list
 // behind that number.
+// QueueTotals is how much there is, whatever the list was able to carry.
+//
+// The screen used to count the rows it had been handed, and it is handed a
+// hundred: a site with three hundred decks waiting read "100 대기 · 작성 중"
+// on the very screen an operator opens to see how far behind it is, while the
+// overview beside it counted them all and said three hundred.
+type QueueTotals struct {
+	// Waiting is everything queued or being written, uncapped.
+	Waiting int `json:"waiting"`
+	// Failed is everything that failed inside the window asked for, uncapped.
+	Failed int `json:"failed"`
+}
+
+// GenerationQueueTotals counts what the queue holds, over the same conditions
+// the list is drawn from.
+func (s *Store) GenerationQueueTotals(ctx context.Context, includeFailedHours int) (QueueTotals, error) {
+	var totals QueueTotals
+	err := s.Pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM presentations WHERE deleted_at IS NULL AND status IN ('queued','generating')),
+		(SELECT count(*) FROM presentations WHERE deleted_at IS NULL AND status='failed'
+			AND $1 > 0 AND updated_at > now() - ($1 || ' hours')::interval)`,
+		includeFailedHours).Scan(&totals.Waiting, &totals.Failed)
+	return totals, err
+}
+
 func (s *Store) GenerationQueue(ctx context.Context, includeFailedHours int, limit int) ([]QueuedDeck, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 100
