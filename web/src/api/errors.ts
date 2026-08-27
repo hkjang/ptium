@@ -14,6 +14,48 @@
  */
 
 const byMessage: Record<string, string> = {
+  // A shared link, read by somebody outside the workspace. This is often the
+  // only part of the product they ever see.
+  'This link is no longer open. Ask whoever sent it for a new one':
+    '이 링크는 더 이상 열리지 않습니다. 보내 준 사람에게 새 링크를 요청해 주세요.',
+  'No deck is shared at this link': '이 링크로 공유된 덱이 없습니다.',
+  'This deck has no slides yet': '이 덱에는 아직 슬라이드가 없습니다.',
+  'that slide is not part of this deck': '그 슬라이드는 이 덱의 것이 아닙니다.',
+  'this deck has as many comments as it will hold': '이 덱에는 더 이상 의견을 남길 수 없습니다.',
+  'a share needs a short label and a sensible number of days':
+    '링크 이름은 짧게, 기간은 일 단위로 3650일까지 지정할 수 있습니다.',
+  // Messages a person meets in the workspace that had no rule written for
+  // them, so they arrived in English on a screen that is Korean throughout.
+  // The commonest by far is the first: on a site with no model configured,
+  // every attempt to write a deck ends here.
+  'This deployment has no AI provider configured':
+    '이 배포에는 AI 모델이 설정되어 있지 않습니다. 관리자에게 서비스 설정을 확인해 달라고 요청하세요.',
+  'The revision could not be bound to this template':
+    '고쳐 쓴 내용을 이 템플릿에 맞출 수 없었습니다. 슬라이드를 직접 고치거나 다른 표현을 지시해 주세요.',
+  'This file has no slides Ptium could read':
+    '이 파일에서 읽을 수 있는 슬라이드를 찾지 못했습니다.',
+  'The file has more slides than this deployment allows':
+    '이 파일은 이 배포가 허용하는 장수보다 깁니다.',
+  'The deck source is larger than this deployment accepts':
+    '덱 코드가 이 배포에서 허용하는 크기를 넘습니다.',
+  'Ptium reads .pptx presentations and .xlsx, .csv, .docx, .pdf and .md documents':
+    'pptx 발표 파일과 xlsx · csv · docx · pdf · md 문서를 읽을 수 있습니다.',
+  "This image's file is missing from the image storage volume. Upload it again.":
+    '이 이미지의 원본 파일이 저장소에 없습니다. 다시 올려 주세요.',
+  // Signing in.
+  'Too many sign-in attempts. Try again shortly.':
+    '로그인 시도가 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
+  'This deployment does not accept password sign-in':
+    '이 배포는 비밀번호 로그인을 받지 않습니다.',
+  'This account signs in through the identity provider and has no password':
+    '이 계정은 외부 인증으로 로그인하므로 비밀번호가 없습니다.',
+  'An API key cannot open a browser session':
+    'API 키로는 브라우저 세션을 열 수 없습니다.',
+  // Administration.
+  'This email address is already registered to another sign-in identity. Ask an administrator to remove the old account or sign in with the original identity.':
+    '이 이메일은 다른 로그인 정보에 이미 등록되어 있습니다. 관리자에게 예전 계정 삭제를 요청하거나, 원래 쓰던 로그인으로 들어와 주세요.',
+  'That deck finished before it could be stopped': '그 덱은 멈추기 전에 이미 끝났습니다.',
+  'That deck is not waiting or being written': '그 덱은 대기 중도 작성 중도 아닙니다.',
   // Sessions and permission.
   'Authentication is required': '로그인이 필요합니다.',
   'Administrator access is required': '관리자만 할 수 있는 작업입니다.',

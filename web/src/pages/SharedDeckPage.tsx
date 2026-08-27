@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
+import { errorText } from '../api/errors'
 
 /**
  * A deck someone was sent a link to.
@@ -13,6 +14,25 @@ import { ChevronLeft, ChevronRight, LoaderCircle } from 'lucide-react'
 interface SharedPage { id: string; title: string }
 interface SharedDeck { title: string; slideCount: number; slides?: SharedPage[]; titles: string[]; language?: string }
 interface SharedComment { id: string; slideId?: string; parentId?: string; author: string; body: string; createdAt: string; resolvedAt?: string }
+
+/**
+ * What the server refused, in the reader's words.
+ *
+ * The API answers in English — it is also read from a request log and by
+ * whoever writes against it — and the workspace turns that into Korean in
+ * api/errors.ts. This page fetches for itself rather than through the API
+ * client, so it was the one screen that never asked: a reader who clicked a
+ * link that had run out got "덱을 열 수 없습니다" over "This link is no longer
+ * open. Ask whoever sent it for a new one".
+ *
+ * It is also the page most often read by somebody who has never seen the rest
+ * of the product.
+ */
+function refusal(payload: { error?: { code?: string; message?: string } } | null) {
+  const said = payload?.error?.message || ''
+  if (!said) return ''
+  return errorText(String(payload?.error?.code || ''), said)
+}
 
 export function SharedDeckPage({ token }: { token: string }) {
   const [deck, setDeck] = useState<SharedDeck | null>(null)
@@ -74,7 +94,7 @@ export function SharedDeckPage({ token }: { token: string }) {
     fetch(`/api/v1/shared/${encodeURIComponent(token)}`)
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
-        if (!response.ok) throw new Error(payload?.error?.message || '이 링크로는 덱을 열 수 없습니다.')
+        if (!response.ok) throw new Error(refusal(payload) || '이 링크로는 덱을 열 수 없습니다.')
         return payload.data as SharedDeck
       })
       .then((data) => { if (active) setDeck(data) })
@@ -107,7 +127,7 @@ export function SharedDeckPage({ token }: { token: string }) {
         body: JSON.stringify({ slideId, author: author.trim(), body: said, parentId }),
       })
       const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.error?.message || '의견을 남기지 못했습니다.')
+      if (!response.ok) throw new Error(refusal(payload) || '의견을 남기지 못했습니다.')
       window.localStorage.setItem('ptium.reviewer', author.trim())
       setDraft(''); setAnswer(''); setAnswering('')
       await loadComments()
