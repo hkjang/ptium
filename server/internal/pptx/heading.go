@@ -44,6 +44,12 @@ var latinTail = map[string]bool{
 	"of": true, "for": true, "the": true, "a": true, "an": true, "and": true,
 	"to": true, "with": true, "in": true, "on": true, "by": true, "from": true,
 	"about": true, "into": true, "over": true, "as": true, "at": true, "or": true,
+	// A word that grades what comes next and was left holding nothing:
+	// "Onboarding for new engineers is taking far too" was the cover of a deck
+	// written from an ordinary English brief.
+	"too": true, "very": true, "so": true, "quite": true, "rather": true,
+	"far": true, "more": true, "less": true, "most": true, "least": true,
+	"much": true, "such": true,
 }
 
 // unfinishedHeadings reports a slide whose title is not a phrase.

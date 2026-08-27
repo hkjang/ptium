@@ -23,6 +23,21 @@ func TestAHeadingCutBeforeItsVerbIsReported(t *testing.T) {
 	}
 }
 
+// The same in English: a word whose job is to grade what comes next, left
+// holding nothing. "Onboarding for new engineers is taking far too" was the
+// cover of a deck written from an ordinary English brief, and nothing said so.
+func TestAnEnglishHeadingLeftOnAGradingWordIsReported(t *testing.T) {
+	for _, heading := range []string{
+		"Onboarding for new engineers is taking far too",
+		"The backlog is growing much",
+		"Migration risk is rather",
+	} {
+		if !unfinishedHeading(heading) {
+			t.Errorf("a heading left on a grading word was not reported: %q", heading)
+		}
+	}
+}
+
 // And a heading that simply ends in one of those syllables is left alone: 분야
 // and 시야 are words, not verbs somebody cut.
 func TestAnOrdinaryHeadingIsNotCalledCut(t *testing.T) {
@@ -37,6 +52,8 @@ func TestAnOrdinaryHeadingIsNotCalledCut(t *testing.T) {
 		"이행 순서", "기대 효과", "다음 단계",
 		"Reducing cloud spend",
 		"Make or buy decision for our data platform",
+		"No regrets moves", "Risks and mitigations", "Q & A",
+		"We need to cut our cloud spend significantly",
 	} {
 		if unfinishedHeading(heading) {
 			t.Errorf("an ordinary heading was called cut: %q", heading)
