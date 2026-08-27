@@ -135,6 +135,28 @@ func TestWhatWasDrawnIsSaidBesideWhatWasSaved(t *testing.T) {
 	}
 }
 
+// The sentence about what a table lost sits beside the line about tables.
+//
+// The import counted four tables and said so; three of them came out cut and
+// nothing said that. The measurement had it one screen away, but the sentence
+// somebody reads when their file lands is the import's own.
+func TestWhatATableLostIsSaidBesideTheTables(t *testing.T) {
+	t.Parallel()
+	said := sayAfterTablesRedrawn([]string{
+		"그림 22개를 이미지 라이브러리에 저장했습니다",
+		"표 4개를 이 덱의 디자인으로 다시 그렸습니다",
+		"여러 장에 반복되는 그림 2개는 로고로 보아 넣지 않았습니다",
+	}, "그 가운데 3곳은 칸에 다 들어가지 않아 뒷부분이 잘렸습니다")
+	if len(said) != 4 || said[2] != "그 가운데 3곳은 칸에 다 들어가지 않아 뒷부분이 잘렸습니다" {
+		t.Errorf("the sentence landed away from what it answers: %q", said)
+	}
+	// With no line about tables it is still said rather than dropped.
+	alone := sayAfterTablesRedrawn([]string{"그림 1개를 저장했습니다"}, "그 가운데 1곳이 잘렸습니다")
+	if len(alone) != 2 || alone[1] != "그 가운데 1곳이 잘렸습니다" {
+		t.Errorf("the sentence was lost: %q", alone)
+	}
+}
+
 // Whether this deployment has a model to send a deck to.
 //
 // A provider with no key used to read as "not connected". That is wrong where

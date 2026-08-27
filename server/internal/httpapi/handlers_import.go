@@ -190,6 +190,16 @@ func (s *Server) storeImportedSource(writer http.ResponseWriter, request *http.R
 		}
 	}
 
+	// A table redrawn into a design with narrower columns can lose the end of a
+	// line, and the compiler is the only thing that knows: the import counted
+	// four tables and said so, and three of them came out cut without a word.
+	// The measurement had it all along, one screen away — but the sentence the
+	// person reads when their file lands is this one.
+	if cut := tablesCutOnImport(manifest, compiled, presentation); cut > 0 {
+		warnings = sayAfterTablesRedrawn(warnings, fmt.Sprintf(
+			"그 가운데 %d곳은 칸에 다 들어가지 않아 뒷부분이 잘렸습니다 — 측정에서 어느 줄인지 볼 수 있습니다", cut))
+	}
+
 	technical := compiled.Warnings
 	if technical == nil {
 		technical = []string{}
@@ -361,3 +371,20 @@ func (s *Server) rewritePresentation(writer http.ResponseWriter, request *http.R
 }
 
 // aiProviderConfigured reports whether this deployment has a model to ask.
+
+// tablesCutOnImport counts the places the design could not draw all of what a
+// table carried. The import knows how many tables it redrew; only the compiled
+// deck knows which of them lost a line.
+func tablesCutOnImport(manifest pptx.Manifest, compiled generation.Deck, presentation model.Presentation) int {
+	built := deck.Build(model.Presentation{
+		ID: presentation.ID, Title: presentation.Title, Language: presentation.Language,
+		Slides: compiled.Slides,
+	}, manifest, "")
+	cut := 0
+	for _, finding := range pptx.InspectDeck(manifest, built) {
+		if finding.Kind == pptx.FindingTrimmed {
+			cut++
+		}
+	}
+	return cut
+}

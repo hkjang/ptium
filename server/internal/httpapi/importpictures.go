@@ -117,8 +117,19 @@ func imagesOnSlide(slide model.Slide) int {
 // sayAfterPicturesSaved puts a sentence that begins "그 가운데" next to the line
 // it is answering, rather than at the end of a list of unrelated news.
 func sayAfterPicturesSaved(said []string, sentence string) []string {
+	return sayAfterLineAbout(said, "이미지 라이브러리에 저장했습니다", sentence)
+}
+
+// sayAfterTablesRedrawn puts a sentence beside the line about tables, for the
+// same reason: "그 가운데 …" two sentences from what it answers is a sentence
+// about nothing.
+func sayAfterTablesRedrawn(said []string, sentence string) []string {
+	return sayAfterLineAbout(said, "다시 그렸습니다", sentence)
+}
+
+func sayAfterLineAbout(said []string, marker, sentence string) []string {
 	for index, line := range said {
-		if strings.Contains(line, "이미지 라이브러리에 저장했습니다") {
+		if strings.Contains(line, marker) {
 			with := make([]string, 0, len(said)+1)
 			with = append(with, said[:index+1]...)
 			with = append(with, sentence)
