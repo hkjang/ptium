@@ -6,9 +6,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"golang.org/x/sync/semaphore"
 
 	"github.com/hkjang/ptium/server/internal/model"
-	"time"
 )
 
 // Reading an uploaded template is what fills the pod, so only one is read at a
@@ -101,42 +103,53 @@ func TestTheUploadHandlerTakesASlot(t *testing.T) {
 	}
 }
 
-// Printing is bounded too, and for the same reason.
+// Building documents is bounded by what they cost, not by how many there are.
 //
-// Drawing a deck is the heaviest thing this server does per request: every
-// slide drawn, every picture decoded. Eight forty-slide decks carrying a
-// photograph on every page, printed at the same moment, killed a pod held to
-// the manifest's limit — none of the eight got a PDF, and neither did anyone
-// whose unrelated request was in flight. Queued three at a time, sixteen of
-// them all succeed without the pod passing half its limit.
-func TestPrintingIsBoundedAsWell(t *testing.T) {
-	slots := make(chan struct{}, concurrentPrints)
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/presentations/x/export?format=pdf", nil)
-	held := make([]func(), 0, concurrentPrints)
-	for range concurrentPrints {
-		release, ok := holdSlot(httptest.NewRecorder(), request, slots, time.Second, "printing_busy", "busy")
-		if !ok {
-			t.Fatal("a print was refused while slots were free")
-		}
-		held = append(held, release)
+// A PDF of a forty-slide deck with a photograph on every page costs about a
+// third of what the same deck costs packaged as .pptx, which is assembled whole
+// with every picture in it. Counting documents was the wrong bound: three PDFs
+// fit comfortably where three .pptx files took the pod past its limit and
+// killed it, and sixteen exports returned nothing at all.
+func TestDocumentsAreBoundedByWhatTheyCost(t *testing.T) {
+	server := &Server{building: semaphore.NewWeighted(documentBudget)}
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/presentations/x/export", nil)
+
+	// One .pptx takes the whole budget.
+	release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX)
+	if !ok {
+		t.Fatal("the first .pptx was refused")
 	}
-	// One more waits rather than drawing alongside them.
 	previous := printWait
 	printWait = 20 * time.Millisecond
 	t.Cleanup(func() { printWait = previous })
 	recorder := httptest.NewRecorder()
-	if _, ok := holdSlot(recorder, request, slots, printWait, "printing_busy", "busy"); ok {
-		t.Error("a fourth print drew while three were already drawing")
+	if _, ok := server.holdBudget(recorder, request, costOfPDF); ok {
+		t.Error("a PDF was drawn while a .pptx had the whole budget")
 	}
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Errorf("the caller was answered %d, want 503", recorder.Code)
 	}
+	release()
+
+	// Three PDFs fit where one .pptx did.
+	held := make([]func(), 0, documentBudget)
+	for range documentBudget {
+		release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF)
+		if !ok {
+			t.Fatal("a PDF was refused while the budget had room")
+		}
+		held = append(held, release)
+	}
+	if _, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF); ok {
+		t.Error("a fourth PDF drew past the budget")
+	}
 	for _, release := range held {
 		release()
 	}
-	// And once they finish, the next one goes straight through.
-	if _, ok := holdSlot(httptest.NewRecorder(), request, slots, time.Second, "printing_busy", "busy"); !ok {
-		t.Error("a print was refused after the slots came free")
+	if release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX); !ok {
+		t.Error("a .pptx was refused after the budget came free")
+	} else {
+		release()
 	}
 }
 

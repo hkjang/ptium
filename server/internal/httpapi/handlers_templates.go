@@ -851,6 +851,27 @@ func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Requ
 	return release, ok
 }
 
+// holdBudget waits for room in the document-building budget, so that work whose
+// cost is measured in hundreds of megabytes cannot all happen at once. What it
+// waits for is room for this kind of document, not a turn in a queue: a .pptx
+// costs three times what a PDF costs and takes the whole budget.
+func (s *Server) holdBudget(writer http.ResponseWriter, request *http.Request, cost int64) (func(), bool) {
+	if s.building == nil {
+		return func() {}, true
+	}
+	waiting, cancel := context.WithTimeout(request.Context(), printWait)
+	defer cancel()
+	if err := s.building.Acquire(waiting, cost); err != nil {
+		if request.Context().Err() != nil {
+			return func() {}, false
+		}
+		writeError(writer, request, http.StatusServiceUnavailable, "printing_busy",
+			"This deployment is already building as many documents as it can at once. Try again in a moment.", nil)
+		return func() {}, false
+	}
+	return func() { s.building.Release(cost) }, true
+}
+
 // holdSlot waits for one of a bounded set of slots, so that work whose cost is
 // measured in hundreds of megabytes cannot all happen at once. A caller that
 // waits too long is answered rather than left hanging.

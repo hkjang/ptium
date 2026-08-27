@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+
+	"golang.org/x/sync/semaphore"
 	"time"
 
 	"github.com/google/uuid"
@@ -98,12 +100,16 @@ type Server struct {
 	// 715 MiB, and four killed the process outright, taking every unrelated
 	// request in flight with it. Waiting two seconds is the better answer.
 	analysingTemplates chan struct{}
-	// printing bounds how many PDFs are drawn at once. Printing is the heaviest
-	// thing this server does per request — every slide drawn, every picture
-	// decoded — and eight forty-slide decks carrying a photograph on every page,
-	// printed together, killed a pod held to the manifest's limit. Everyone
-	// waiting on anything else died with it.
-	printing chan struct{}
+	// building is the memory budget for making a document, in units of one PDF.
+	// A PDF of a forty-slide deck with a photograph on every page costs about
+	// 150 MiB to draw; the same deck packaged as .pptx costs 362 MiB, because
+	// the package is assembled whole with every picture in it. Counting
+	// documents would be the wrong bound: three PDFs fit where three .pptx
+	// files killed the pod outright.
+	// Eight forty-slide decks carrying a photograph on every page, printed
+	// together, killed a pod held to the manifest's limit, and everyone waiting
+	// on anything else died with it.
+	building *semaphore.Weighted
 	// templateReadsTaken counts slots taken, so a test can prove the handler
 	// goes through the gate rather than only that the gate works when called
 	// directly.
@@ -132,8 +138,16 @@ type Server struct {
 // queue costs a couple of seconds each and the process stays up.
 const concurrentTemplateReads = 1
 
-// concurrentPrints is how many PDFs may be drawn at the same time.
-const concurrentPrints = 3
+// documentBudget is how much document-building may happen at once, and what
+// each kind costs against it. Measured in a pod held to the manifest's limit:
+// one .pptx of a photograph-heavy forty-slide deck peaks at 362 MiB and two at
+// 809 MiB, so three is where the pod dies; a PDF of the same deck is a third of
+// that, and sixteen of them queue happily three at a time.
+const (
+	documentBudget = 3
+	costOfPDF      = 1
+	costOfPPTX     = 3
+)
 
 func New(options Options) (*Server, error) {
 	if options.Store == nil || options.Settings == nil || options.Keys == nil || options.Worker == nil {
@@ -162,7 +176,7 @@ func New(options Options) (*Server, error) {
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		assetDir:             options.AssetDir,
 		analysingTemplates:   make(chan struct{}, concurrentTemplateReads),
-		printing:             make(chan struct{}, concurrentPrints),
+		building:             semaphore.NewWeighted(documentBudget),
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,

@@ -36,11 +36,11 @@ To reproduce the same bundle from source on a build host:
 ## Import on the target host
 
 ```powershell
-.\load-ptium-1.49.1.ps1 -Archive .\ptium-1.49.1.tar.gz
+.\load-ptium-1.50.0.ps1 -Archive .\ptium-1.50.0.tar.gz
 ```
 
 ```bash
-./load-ptium-1.49.1.sh ptium-1.49.1.tar.gz
+./load-ptium-1.50.0.sh ptium-1.50.0.tar.gz
 ```
 
 Both loaders verify the adjacent `.sha256` file and stop before import if it
@@ -48,9 +48,9 @@ does not match. Pass `-SkipChecksum` only when verification has already been
 enforced by the network-transfer process. Without a helper:
 
 ```bash
-sha256sum -c ptium-1.49.1.tar.gz.sha256
-gzip -dc ptium-1.49.1.tar.gz | docker load
-docker image inspect ptium-1.49.1:latest ptium:1.49.1 >/dev/null
+sha256sum -c ptium-1.50.0.tar.gz.sha256
+gzip -dc ptium-1.50.0.tar.gz | docker load
+docker image inspect ptium-1.50.0:latest ptium:1.50.0 >/dev/null
 ```
 
 ## Provide the database
@@ -114,8 +114,8 @@ Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
 every remaining placeholder:
 
 ```bash
-docker compose --env-file .env -f docker-compose.ptium-1.49.1.yml up -d
-docker compose --env-file .env -f docker-compose.ptium-1.49.1.yml ps
+docker compose --env-file .env -f docker-compose.ptium-1.50.0.yml up -d
+docker compose --env-file .env -f docker-compose.ptium-1.50.0.yml ps
 curl --fail http://localhost:8080/readyz
 ```
 
@@ -127,7 +127,7 @@ Ptium is then available at `http://<host>:8080`.
 kubectl create secret generic ptium \
   --from-literal=DATABASE_URL='postgres://ptium:...@postgres:5432/ptium?sslmode=require' \
   --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
-kubectl apply -f ptium-1.49.1.kubernetes.yaml
+kubectl apply -f ptium-1.50.0.kubernetes.yaml
 ```
 
 The manifest runs two replicas as a non-root user with a read-only root
@@ -161,11 +161,18 @@ and embeds a font. It is bounded — the font is embedded once per document and 
 picture used on twenty slides is embedded once — and the memory comes back
 afterwards, which the second row above was measured immediately after the first.
 
-Ptium draws **three documents at a time** and queues the rest. Eight of the decks
-in the first row, printed at the same moment, killed a pod held to 1Gi and took
-every unrelated request in flight down with it; queued, sixteen of them all
-return their PDF in thirty seconds without the pod passing half its limit. A
-print still waiting after 60 seconds is answered `503 printing_busy`.
+Ptium bounds document building by **what a document costs**, not by how many are
+in flight. A PDF of the deck in the first row costs one unit of a budget of
+three; the same deck packaged as `.pptx` costs all three, because the package is
+assembled whole with every picture in it — one peaks at 362 MiB where a PDF
+peaks at about a third of that.
+
+Unbounded, eight of those decks printed at the same moment killed a pod held to
+1Gi and took every unrelated request down with it, and sixteen exported as
+`.pptx` did the same. Bounded: sixteen PDFs all return in thirty-four seconds,
+and sixteen `.pptx` exports return fourteen with two answered `503
+printing_busy` — the pod peaks at 833 MiB and stays up. A document still waiting
+after 60 seconds is answered rather than left hanging.
 
 Analysing an uploaded template is the other peak: the package is held in memory while it is read, so leave
 headroom above `generation.max_template_mb` (32 MB by default; 64 MB is the most
@@ -248,7 +255,7 @@ browser. Leave it unset for a public client.
 
 Every fault the error centre records carries the build that saw it, so after an
 upgrade an open incident says whether it belongs to the version now running or
-to one this site has left. Records written before 1.49.1 carry no build, which
+to one this site has left. Records written before 1.50.0 carry no build, which
 reads as unknown rather than as an earlier release.
 
 Migrations are applied during start and are safe to run from several replicas at
