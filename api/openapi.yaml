@@ -5466,7 +5466,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.45.1
+            service.version: 1.46.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6196,7 +6196,7 @@ components:
             measurable, so a client should show an unrecognised kind rather than
             refuse the response.
           enum: [overflow, trimmed, outside, collision, contrast, orphan, density,
-                 notes, repeat, link, source, echo, unfinished, twiceTitled]
+                 notes, repeat, link, source, echo, unfinished, twiceTitled, stale]
         detail:
           type: string
           description: What is wrong, in numbers the author can act on.

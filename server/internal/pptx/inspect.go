@@ -58,6 +58,10 @@ const (
 	// the room reads and the one a deck written from somebody's own words gets
 	// wrong most easily.
 	FindingUnfinished = "unfinished"
+	// FindingStale is a plan dated before the day the deck is being read. A
+	// model writing a roadmap has no clock, and a first step two years behind
+	// the room is the kind of thing everybody in it notices at once.
+	FindingStale = "stale"
 	// FindingTwiceTitled is two slides carrying the same heading. A room reading
 	// "다음 단계" for the second time cannot tell whether it went back a slide,
 	// whether the deck repeated itself, or which of the two was the real one.
@@ -510,6 +514,11 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 		// A slide with something to argue and nothing prepared to say is half
 		// finished. A cover or a divider carries the room on its own.
 		for _, finding := range repeatedPoints(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
+		// A plan dated before the day the deck is read.
+		for _, finding := range stalePlans(slide) {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}

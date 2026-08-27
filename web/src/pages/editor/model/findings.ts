@@ -38,6 +38,7 @@ export function findingLabel(kind: string) {
     case 'source': return '숫자의 출처 없음'
     case 'unfinished': return '제목이 문장 중간에서 끊김'
     case 'twiceTitled': return '앞 장과 같은 제목'
+    case 'stale': return '이미 지난 날짜로 계획함'
   }
   return kind
 }
@@ -85,6 +86,8 @@ export function findingDetail(detail: string) {
     [/^slide (\d+) is headed "(.+)" as well$/,
       (m) => `${m[1]}번 슬라이드도 제목이 "${m[2]}"입니다. 같은 제목이 두 번 나오면 어느 쪽 이야기인지 알 수 없습니다`],
     [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
+    [/^this plans something for (\d+), which is already past: "(.+)"$/,
+      (m) => `"${m[2]}" — ${m[1]}년은 이미 지났습니다. 오늘 이후 날짜로 고치세요`],
     [/^(\d+) of this slide's (\d+) points were already made on slide (\d+)$/,
       (m) => `이 장의 요점 ${m[2]}개 중 ${m[1]}개를 ${m[3]}번 슬라이드에서 이미 말했습니다`],
     [/^table draws (\d+) of its (\d+) rows; the last (\d+) are on no slide$/,

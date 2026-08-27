@@ -44,6 +44,7 @@ var dimensionOf = map[string]string{
 	FindingLink:      DimensionReadability,
 	FindingNotes:     DimensionStructure,
 	FindingRepeat:    DimensionStructure,
+	FindingStale:     DimensionEvidence,
 	FindingEcho:      DimensionStructure,
 	FindingCollision: DimensionVisual,
 	FindingContrast:  DimensionAccessibility,
@@ -67,6 +68,10 @@ func weightOf(finding Finding) int {
 			return 10
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.
+			return 12
+		case FindingStale:
+			// A plan whose first step is behind the room reading it is noticed by
+			// everybody at once, and it costs the deck the rest of its argument.
 			return 12
 		case FindingUnfinished:
 			// The heading is the line the room reads before anything else.
