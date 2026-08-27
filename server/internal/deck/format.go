@@ -315,7 +315,7 @@ func formatBlock(block pptx.Block) string {
 		caption = ""
 	}
 	if caption != "" {
-		fmt.Fprintf(&builder, " %s", escapeSourceLine(caption))
+		fmt.Fprintf(&builder, " %s", blockCaption(caption))
 	}
 	builder.WriteString("\n")
 	if text := strings.TrimSpace(block.Text); text != "" {
@@ -389,6 +389,18 @@ func trimNumber(value float64) string {
 // escaping at all: "- - dash" reads back as a bullet whose text is "- dash". Only
 // a leading hash matters, because a title strips its whole run of them, and a
 // leading backslash, because that is the escape itself.
+// blockCaption is a component's caption as a source line carries it.
+//
+// A caption runs from the space after ::kind to the end of the line, and
+// nothing in between is a mark — so the guard that protects a line beginning
+// with # or \ has nothing to protect here, and the parser does not undo it.
+// It accumulated instead: a caption of "# 매출" came back "\# 매출", then
+// "\\# 매출", one more backslash every time the source was written out from
+// the slides.
+func blockCaption(text string) string {
+	return strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
+}
+
 func escapeSourceLine(text string) string {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\n", " "))
 	if text == "" {

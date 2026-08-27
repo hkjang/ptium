@@ -363,7 +363,11 @@ func chartSource(chart pptx.ImportedChart) string {
 	// This branch used to drop it, so an imported chart of revenue became a
 	// column of unlabelled numbers.
 	if label := strings.TrimSpace(series.Name); label != "" {
-		fmt.Fprintf(&builder, "::%s %s\n", name, escapeItemField(label))
+		// A component's caption runs to the end of its line, so nothing in it
+		// needs protecting — escapeItemField guards the fields of a
+		// pipe-separated row, and a name like "매출|비용" put through it left a
+		// backslash in the deck that nobody typed.
+		fmt.Fprintf(&builder, "::%s %s\n", name, blockCaption(label))
 	} else {
 		fmt.Fprintf(&builder, "::%s\n", name)
 	}

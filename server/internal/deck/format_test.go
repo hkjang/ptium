@@ -52,3 +52,59 @@ func presentationOf(content Content) model.Presentation {
 	raw, _ := json.Marshal(content)
 	return model.Presentation{Slides: []model.Slide{{Position: 1, Title: firstText(content.Fields[pptx.SlotTitle]), Content: raw}}}
 }
+
+// A component's caption runs from the space after ::kind to the end of the
+// line, and nothing in between is a mark.
+//
+// The one that was wrong: the caption was written through the guard that
+// protects a line beginning with # or \, and the parser never undoes it — so
+// the backslash stayed, and another arrived every time the source was written
+// out from the slides. A caption of "# 매출" was "\\\\\\\\# 매출" after four
+// rounds.
+func TestABlockCaptionSurvivesBeingWrittenOut(t *testing.T) {
+	for _, caption := range []string{"# 매출", "매출|비용", `경로\합계`, "매출 (억원)", "@표"} {
+		block := pptx.Block{Kind: pptx.BlockColumns, Caption: caption,
+			Items: []pptx.Item{{Label: "1분기", Value: "12"}, {Label: "2분기", Value: "15"}}}
+		parsed := ParseSource("# 한 장\n" + formatBlock(block))
+		got := ""
+		for _, slide := range parsed.Slides {
+			for _, found := range slide.Blocks {
+				got = found.Caption
+			}
+		}
+		if got != caption {
+			t.Fatalf("a caption of %q came back as %q", caption, got)
+		}
+	}
+}
+
+// And it must not drift over repeated writings, which is how the marks piled up.
+func TestABlockCaptionDoesNotDriftOverRounds(t *testing.T) {
+	for _, start := range []string{"# 매출", `\경로`, "매출|비용"} {
+		caption := start
+		for round := 0; round < 5; round++ {
+			parsed := ParseSource("# 한 장\n" + formatBlock(pptx.Block{
+				Kind: pptx.BlockColumns, Caption: caption,
+				Items: []pptx.Item{{Label: "1분기", Value: "12"}}}))
+			for _, slide := range parsed.Slides {
+				for _, found := range slide.Blocks {
+					caption = found.Caption
+				}
+			}
+			if caption != start {
+				t.Fatalf("a caption of %q became %q after %d writings", start, caption, round+1)
+			}
+		}
+	}
+}
+
+// A caption that runs onto another line would end the directive early, so it is
+// flattened rather than carried.
+func TestABlockCaptionIsFlattenedToOneLine(t *testing.T) {
+	written := formatBlock(pptx.Block{Kind: pptx.BlockColumns, Caption: "매출\n비용",
+		Items: []pptx.Item{{Label: "1분기", Value: "12"}}})
+	first := strings.SplitN(written, "\n", 2)[0]
+	if !strings.Contains(first, "매출 비용") {
+		t.Fatalf("a caption over two lines was written as %q", first)
+	}
+}
