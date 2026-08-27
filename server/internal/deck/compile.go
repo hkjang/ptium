@@ -345,9 +345,16 @@ func resolveSourceLayout(manifest pptx.Manifest, slide SourceSlide, index, total
 			}
 			// A model's choice is a suggestion. It stands unless it would cost the
 			// slide something a different layout would keep.
-			named := layoutFitScore(layout, slide, slideRole(slide, index, total))
+			//
+			// Both sides are scored the way the search scores them, penalty and
+			// all. Comparing raw fit threw away the one thing that search knows:
+			// a vertical-text layout holds more lines than any other, so on fit
+			// alone it wins — and a model that named one kept it, however badly
+			// the slide read. Measured on a real template, every deck of ordinary
+			// Korean bullets came back set sideways.
+			named := rankedFitScore(layout, slide, slideRole(slide, index, total))
 			if better, ok := bestFittingLayout(manifest, slide, slideRole(slide, index, total), previous); ok &&
-				better.ID != layout.ID && layoutFitScore(better, slide, slideRole(slide, index, total))-named >= 25 {
+				better.ID != layout.ID && rankedFitScore(better, slide, slideRole(slide, index, total))-named >= 25 {
 				return better, fmt.Sprintf("layout %q cannot hold this slide; used %q instead", layout.Name, better.Name)
 			}
 			return layout, ""
@@ -931,12 +938,7 @@ func bestFittingLayout(manifest pptx.Manifest, slide SourceSlide, role, previous
 		if structuralRole(layout.Role) || layout.Role == pptx.RoleBlank {
 			continue
 		}
-		score := layoutFitScore(layout, slide, role)
-		// A layout nobody would pick on purpose does not win on capacity. A
-		// vertical-text layout holds the most lines of any layout in an Office
-		// template, and a Korean bullet slide set vertically reads as a fault in
-		// the product rather than as a choice.
-		score -= float64(layout.PreferenceRank()) * 5
+		score := rankedFitScore(layout, slide, role)
 		// Two slides running on the same layout is a rhythm; five is a rut. The
 		// nudge is small enough that it never beats a real difference in fit.
 		if layout.ID == previous {
@@ -947,6 +949,17 @@ func bestFittingLayout(manifest pptx.Manifest, slide SourceSlide, role, previous
 		}
 	}
 	return best, found
+}
+
+// rankedFitScore is how well a layout holds a slide, less what it costs to
+// choose that layout at all.
+//
+// A layout nobody would pick on purpose does not win on capacity. A
+// vertical-text layout holds the most lines of any layout in an Office
+// template, and a Korean bullet slide set vertically reads as a fault in the
+// product rather than as a choice.
+func rankedFitScore(layout pptx.Layout, slide SourceSlide, role string) float64 {
+	return layoutFitScore(layout, slide, role) - float64(layout.PreferenceRank())*5
 }
 
 // layoutFitScore is how well one layout holds one slide. It counts what would be
