@@ -2488,6 +2488,34 @@ if token and key.get("id"):
                 failures.append(f"a widened key still cannot read templates: {response.status}")
     except urllib.error.HTTPError as error:
         failures.append(f"a widened key still cannot read templates: {error.code}")
+
+    # A key cannot carry more than its owner has. The catalogue marks the admin
+    # scopes, minting refuses them to an ordinary owner, and so does widening a
+    # key that already exists — the third door being the one somebody would try
+    # after the first two closed.
+    plain_owner = {"X-Ptium-Dev-Secret": SECRET,
+                   "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user",
+                   "Content-Type": "application/json"}
+    for_plain = data_of(call("GET", "/api-keys/scopes", expect=200, headers=plain_owner)) or []
+    checks += 1
+    admin_offered = [scope.get("id") for scope in for_plain if str(scope.get("id")).startswith("admin:")]
+    if admin_offered:
+        failures.append(f"an ordinary owner is offered the admin scopes {admin_offered}")
+    for wanted in (["admin:settings"], ["presentations:read", "admin:users"]):
+        status, body = call("POST", "/api-keys", {"name": f"escalation {RUN}", "scopes": wanted},
+                            expect=422, headers=plain_owner, note=f"an ordinary owner minting {wanted}")
+        if status not in (401, 403, 422):
+            failures.append(f"an ordinary owner minting {wanted} answered {status}")
+    ordinary = data_of(call("POST", "/api-keys", {"name": f"ordinary {RUN}", "scopes": ["presentations:read"]},
+                            expect=201, headers=plain_owner)) or {}
+    ordinary_key = (ordinary.get("apiKey") or ordinary)
+    if ordinary_key.get("id"):
+        status, _ = call("PATCH", f"/api-keys/{ordinary_key['id']}",
+                         {"scopes": ["presentations:read", "admin:settings"]},
+                         expect=422, headers=plain_owner, note="an ordinary owner widening to an admin scope")
+        if status not in (401, 403, 422):
+            failures.append(f"an ordinary owner widened a key to admin:settings ({status})")
+        call("DELETE", f"/api-keys/{ordinary_key['id']}", expect=(200, 204), headers=plain_owner)
     call("PATCH", f"/api-keys/{key['id']}", {"scopes": ["nope:everything"]}, expect=422)
     call("DELETE", f"/api-keys/{key['id']}", expect=[204, 200])
     # Deleting a key revokes it: the row stays so the audit trail still names
