@@ -157,7 +157,12 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 	_ = g.settings.Get(ctx, "ai.model", &modelName)
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
 	g = g.forRun(ctx, presentation.RequestedSlideCount)
-	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
+	// An empty key used to mean "no provider", which is the one thing it cannot
+	// mean on the deployments this product is built for: a model on a closed
+	// network is reached without a key at all. A site that had named its host
+	// and its model, and could see them on the admin screen, still got the
+	// offline writer — and the deck it got said nothing about that.
+	if strings.EqualFold(provider, "fallback") {
 		if rewrite {
 			// Rewriting is the one thing the offline writer cannot stand in for: it
 			// would replace the author's deck with a new one about the brief.
@@ -870,10 +875,6 @@ func (g *Generator) CheckProvider(ctx context.Context) ProviderCheck {
 		check.Detail = "이 배포는 오프라인 작성기로 덱을 씁니다. 제공자를 설정하지 않았습니다."
 		return check
 	}
-	if strings.TrimSpace(apiKey) == "" {
-		check.Detail = "API 키가 비어 있어 제공자에 요청하지 않습니다."
-		return check
-	}
 	endpoint, err := completionsEndpoint(baseURL)
 	if err != nil {
 		check.Detail = err.Error()
@@ -962,7 +963,12 @@ func (g *Generator) send(ctx context.Context, endpoint, modelName, apiKey, syste
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// A self-hosted model on a closed network has no key to send, and an
+	// Authorization header carrying "Bearer " and nothing else is a malformed
+	// credential rather than an absent one.
+	if key := strings.TrimSpace(apiKey); key != "" {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	response, err := g.client.Do(req)
 	if err != nil {

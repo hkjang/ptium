@@ -70,7 +70,7 @@ func (g *Generator) ReviseSlide(ctx context.Context, revision Revision) (string,
 	_ = g.settings.Get(ctx, "ai.base_url", &baseURL)
 	_ = g.settings.Get(ctx, "ai.model", &modelName)
 	_ = g.settings.Get(ctx, "ai.api_key", &apiKey)
-	if strings.EqualFold(provider, "fallback") || strings.TrimSpace(apiKey) == "" {
+	if strings.EqualFold(provider, "fallback") {
 		return "", ErrProviderUnavailable
 	}
 	if provider != "openai-compatible" && provider != "openai" {

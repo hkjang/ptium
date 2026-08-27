@@ -36,11 +36,11 @@ To reproduce the same bundle from source on a build host:
 ## Import on the target host
 
 ```powershell
-.\load-ptium-1.43.1.ps1 -Archive .\ptium-1.43.1.tar.gz
+.\load-ptium-1.44.0.ps1 -Archive .\ptium-1.44.0.tar.gz
 ```
 
 ```bash
-./load-ptium-1.43.1.sh ptium-1.43.1.tar.gz
+./load-ptium-1.44.0.sh ptium-1.44.0.tar.gz
 ```
 
 Both loaders verify the adjacent `.sha256` file and stop before import if it
@@ -48,9 +48,9 @@ does not match. Pass `-SkipChecksum` only when verification has already been
 enforced by the network-transfer process. Without a helper:
 
 ```bash
-sha256sum -c ptium-1.43.1.tar.gz.sha256
-gzip -dc ptium-1.43.1.tar.gz | docker load
-docker image inspect ptium-1.43.1:latest ptium:1.43.1 >/dev/null
+sha256sum -c ptium-1.44.0.tar.gz.sha256
+gzip -dc ptium-1.44.0.tar.gz | docker load
+docker image inspect ptium-1.44.0:latest ptium:1.44.0 >/dev/null
 ```
 
 ## Provide the database
@@ -114,8 +114,8 @@ Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
 every remaining placeholder:
 
 ```bash
-docker compose --env-file .env -f docker-compose.ptium-1.43.1.yml up -d
-docker compose --env-file .env -f docker-compose.ptium-1.43.1.yml ps
+docker compose --env-file .env -f docker-compose.ptium-1.44.0.yml up -d
+docker compose --env-file .env -f docker-compose.ptium-1.44.0.yml ps
 curl --fail http://localhost:8080/readyz
 ```
 
@@ -127,7 +127,7 @@ Ptium is then available at `http://<host>:8080`.
 kubectl create secret generic ptium \
   --from-literal=DATABASE_URL='postgres://ptium:...@postgres:5432/ptium?sslmode=require' \
   --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
-kubectl apply -f ptium-1.43.1.kubernetes.yaml
+kubectl apply -f ptium-1.44.0.kubernetes.yaml
 ```
 
 The manifest runs two replicas as a non-root user with a read-only root
@@ -159,6 +159,21 @@ prints in under a second and the memory comes back.
 Analysing an uploaded template is the other peak, and it is what the 768Mi is
 sized for: the package is held in memory while it is read, so leave headroom
 above `generation.max_template_mb` (32 MB by default).
+
+## Connecting a model
+
+Ptium writes decks with its built-in offline writer until an administrator names
+a model in the workspace settings: a provider (`openai-compatible` for anything
+speaking the OpenAI Chat Completions API), a base URL and a model name.
+
+The API key is optional. A model served on the same closed network — vLLM,
+Ollama, llama.cpp — usually wants no credential, and Ptium sends no
+`Authorization` header when the key is empty rather than treating the absence as
+"no model configured". Fill the key in only where the host asks for one.
+
+The admin settings screen names the engine each deck is actually written with,
+and **모델 연결 확인** asks the host whether it is there and how long it took to
+answer.
 
 ## Authentication
 
@@ -215,7 +230,7 @@ browser. Leave it unset for a public client.
 
 Every fault the error centre records carries the build that saw it, so after an
 upgrade an open incident says whether it belongs to the version now running or
-to one this site has left. Records written before 1.43.1 carry no build, which
+to one this site has left. Records written before 1.44.0 carry no build, which
 reads as unknown rather than as an earlier release.
 
 Migrations are applied during start and are safe to run from several replicas at

@@ -150,7 +150,5 @@ func modelConnectedTo(ctx context.Context, settings settingsReader) bool {
 	if strings.EqualFold(strings.TrimSpace(provider), "fallback") {
 		return false
 	}
-	key := ""
-	_ = settings.Get(ctx, "ai.api_key", &key)
-	return strings.TrimSpace(key) != ""
+	return true
 }

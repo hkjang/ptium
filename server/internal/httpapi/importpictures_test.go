@@ -136,6 +136,12 @@ func TestWhatWasDrawnIsSaidBesideWhatWasSaved(t *testing.T) {
 }
 
 // Whether this deployment has a model to send a deck to.
+//
+// A provider with no key used to read as "not connected". That is wrong where
+// this product runs: a model on a closed network is reached without a key, and
+// a site that had named its host and its model was told it had none. What makes
+// a deployment connected is the provider it chose, not a credential the host
+// may not want.
 func TestWhetherAModelIsConnected(t *testing.T) {
 	t.Parallel()
 	for name, deployment := range map[string]struct {
@@ -143,7 +149,7 @@ func TestWhetherAModelIsConnected(t *testing.T) {
 		connected bool
 	}{
 		"as it ships":              {map[string]any{"ai.provider": "fallback"}, false},
-		"a provider with no key":   {map[string]any{"ai.provider": "openai-compatible"}, false},
+		"a provider with no key":   {map[string]any{"ai.provider": "openai-compatible"}, true},
 		"a provider with a key":    {map[string]any{"ai.provider": "openai-compatible", "ai.api_key": "sk-test"}, true},
 		"fallback with a key left": {map[string]any{"ai.provider": "fallback", "ai.api_key": "sk-test"}, false},
 	} {
