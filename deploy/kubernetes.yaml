@@ -75,7 +75,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ptium
-          image: ptium:1.47.1
+          image: ptium:1.48.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -110,7 +110,13 @@ spec:
             limits:
               # Analyzing and rendering a template holds the package in memory,
               # so leave headroom above the configured upload limit.
-              memory: 768Mi
+              #
+              # Printing is what actually reaches for this. Four 40-slide decks
+              # carrying a 1376x768 photograph on every slide, printed at once,
+              # settle at 639Mi — 83% of 768Mi. They complete, and the memory
+              # comes back, but a site printing more than that at once has very
+              # little room, so the limit is 1Gi.
+              memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
