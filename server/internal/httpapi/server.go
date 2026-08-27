@@ -98,6 +98,12 @@ type Server struct {
 	// 715 MiB, and four killed the process outright, taking every unrelated
 	// request in flight with it. Waiting two seconds is the better answer.
 	analysingTemplates chan struct{}
+	// printing bounds how many PDFs are drawn at once. Printing is the heaviest
+	// thing this server does per request — every slide drawn, every picture
+	// decoded — and eight forty-slide decks carrying a photograph on every page,
+	// printed together, killed a pod held to the manifest's limit. Everyone
+	// waiting on anything else died with it.
+	printing chan struct{}
 	// templateReadsTaken counts slots taken, so a test can prove the handler
 	// goes through the gate rather than only that the gate works when called
 	// directly.
@@ -126,6 +132,9 @@ type Server struct {
 // queue costs a couple of seconds each and the process stays up.
 const concurrentTemplateReads = 1
 
+// concurrentPrints is how many PDFs may be drawn at the same time.
+const concurrentPrints = 3
+
 func New(options Options) (*Server, error) {
 	if options.Store == nil || options.Settings == nil || options.Keys == nil || options.Worker == nil {
 		return nil, errors.New("http API dependencies are incomplete")
@@ -153,6 +162,7 @@ func New(options Options) (*Server, error) {
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		assetDir:             options.AssetDir,
 		analysingTemplates:   make(chan struct{}, concurrentTemplateReads),
+		printing:             make(chan struct{}, concurrentPrints),
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,

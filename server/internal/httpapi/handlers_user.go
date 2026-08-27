@@ -548,7 +548,16 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 		// A handout is the deck with what the presenter meant to say under each
 		// slide, which is a different document from the deck itself.
 		options.WithNotes = request.URL.Query().Get("notes") == "true" || request.URL.Query().Get("notes") == "1"
+		// Drawing is where the memory goes, so the queue is here rather than at
+		// the front of the handler: reading the deck is cheap and can happen
+		// while somebody else is drawing.
+		release, allowed := holdSlot(writer, request, s.printing, printWait, "printing_busy",
+			"This deployment is already drawing as many documents as it can at once. Try again in a moment.")
+		if !allowed {
+			return
+		}
 		data, missing, err := export.PDFWithMissing(presentation, options)
+		release()
 		if errors.Is(err, export.ErrNothingToPrint) {
 			// The deck is fine and so is the server: every slide is marked
 			// skipped, and the handout would be empty paper.

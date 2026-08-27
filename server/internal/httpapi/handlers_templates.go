@@ -834,21 +834,32 @@ func (s *Server) templateUploadsAllowed(ctx context.Context) bool {
 // couple of seconds each; without it the fourth of them killed the process and
 // took every other request in flight with it.
 func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Request) (func(), bool) {
-	if s.analysingTemplates == nil {
+	release, ok := holdSlot(writer, request, s.analysingTemplates, templateReadWait, "templates_busy",
+		"This deployment is already reading as many templates as it can hold at once. Try again in a moment.")
+	if ok {
+		s.templateReadsTaken.Add(1)
+	}
+	return release, ok
+}
+
+// holdSlot waits for one of a bounded set of slots, so that work whose cost is
+// measured in hundreds of megabytes cannot all happen at once. A caller that
+// waits too long is answered rather than left hanging.
+func holdSlot(writer http.ResponseWriter, request *http.Request, slots chan struct{},
+	wait time.Duration, code, message string) (func(), bool) {
+	if slots == nil {
 		return func() {}, true
 	}
-	waiting, cancel := context.WithTimeout(request.Context(), templateReadWait)
+	waiting, cancel := context.WithTimeout(request.Context(), wait)
 	defer cancel()
 	select {
-	case s.analysingTemplates <- struct{}{}:
-		s.templateReadsTaken.Add(1)
-		return func() { <-s.analysingTemplates }, true
+	case slots <- struct{}{}:
+		return func() { <-slots }, true
 	case <-waiting.Done():
 		if request.Context().Err() != nil {
 			return func() {}, false
 		}
-		writeError(writer, request, http.StatusServiceUnavailable, "templates_busy",
-			"This deployment is already reading as many templates as it can hold at once. Try again in a moment.", nil)
+		writeError(writer, request, http.StatusServiceUnavailable, code, message, nil)
 		return func() {}, false
 	}
 }
@@ -857,3 +868,7 @@ func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Requ
 // template the settings allow takes a little over two seconds, so this is room
 // for a queue of a dozen rather than a promise about any one of them.
 var templateReadWait = 30 * time.Second
+
+// printWait is how long a print waits for its turn. A forty-slide deck with a
+// photograph on every page draws in a couple of seconds.
+var printWait = 60 * time.Second
