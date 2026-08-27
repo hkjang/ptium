@@ -241,6 +241,28 @@ with sync_playwright() as play:
     visit("/admin/errors", expect_text="오류")
     visit("/admin/audit", expect_text="감사 기록")
     visit("/admin/queue", expect_text="생성 큐")
+
+    # A list of the busiest few read as a full accounting: eight people against
+    # four and a half thousand decks, adding to less than the headline said,
+    # with nothing on the screen to say where the difference went. Every list
+    # that leaves something out has to say so.
+    visit("/admin/usage", expect_text="사용")
+    page.wait_for_timeout(3000)
+    usage = api("/admin/usage?days=14")
+    for key, other, total in [("owners", usage.get("ownersOther"), usage["generated"]),
+                              ("designs", usage.get("designsOther"), usage["generated"]),
+                              ("failures", usage.get("failuresOther"), usage["failed"])]:
+        if other is None:
+            failures.append(f"the usage screen's {key} list does not say what it leaves out")
+            continue
+        shown = sum(one["count"] for one in usage[key])
+        if shown + other != total:
+            failures.append(f"the usage screen's {key} list shows {shown} and {other} others, "
+                            f"which is not the {total} it counted")
+    unnamed = sum(1 for key in ("ownersOther", "designsOther", "failuresOther") if (usage.get(key) or 0) > 0)
+    rows = page.locator(".usage-list li.usage-rest").count()
+    if rows != unnamed:
+        failures.append(f"{unnamed} usage lists leave something out but {rows} rows say so")
     # What this deployment has handed out. Only a deck's owner could see their
     # own links, so nobody could answer what is readable outside.
     # These screens fetch after they render, so the heading appearing is not the

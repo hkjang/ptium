@@ -34,6 +34,12 @@
 .usage-list li strong{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .usage-list li small{font-size:11.5px;color:var(--muted)}
 .usage-track{display:block;height:8px;border-radius:5px;background:#eeecf7;overflow:hidden}
+/* Everything the list above does not name: part of the accounting, and not one
+   of the things counted, so it is set apart from them rather than read as
+   another row. */
+.usage-list li.usage-rest{border-top:1px solid var(--line);padding-top:9px;margin-top:2px}
+.usage-list li.usage-rest strong{color:var(--muted);font-weight:600}
+.usage-list li.usage-rest .usage-track i{background:var(--muted);opacity:.35}
 .usage-track>i{display:block;height:100%;background:var(--violet,#725bd6)}
 .usage-list li b{text-align:right;font-size:13px}
 

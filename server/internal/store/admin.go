@@ -610,6 +610,14 @@ type Usage struct {
 	// deck written before this deployment kept that has no duration, and a
 	// median drawn from nothing is a number nobody should read.
 	Timed int `json:"timed"`
+	// What the three lists above do not name. Each of them is the busiest few,
+	// and a list of the busiest few read as a full accounting: eight people
+	// shown against four and a half thousand decks, adding to less, with nothing
+	// saying where the rest went. A screen that shows a part of something has to
+	// say it is a part.
+	OwnersOther   int `json:"ownersOther"`
+	DesignsOther  int `json:"designsOther"`
+	FailuresOther int `json:"failuresOther"`
 }
 
 // ReadUsage counts what happened over the last days, one row per day.
@@ -686,7 +694,23 @@ func (s *Store) ReadUsage(ctx context.Context, days int) (Usage, error) {
 		days).Scan(&usage.Timed); err != nil {
 		return usage, err
 	}
+	// The lists are the busiest few over exactly the same window the totals are
+	// counted over, so what they leave out is the difference.
+	usage.OwnersOther = leftOutOf(usage.Generated, usage.Owners)
+	usage.DesignsOther = leftOutOf(usage.Generated, usage.Designs)
+	usage.FailuresOther = leftOutOf(usage.Failed, usage.Failures)
 	return usage, nil
+}
+
+// leftOutOf is how much of a total the listed few do not account for.
+func leftOutOf(total int, listed []UsageCount) int {
+	for _, one := range listed {
+		total -= one.Count
+	}
+	if total < 0 {
+		return 0
+	}
+	return total
 }
 
 func (s *Store) usageCounts(ctx context.Context, query string, days int) ([]UsageCount, error) {

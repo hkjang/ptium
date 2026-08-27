@@ -17,6 +17,7 @@ export type UsageDay = { day: string; generated: number; failed: number; medianS
 export type UsageCount = { name: string; count: number; detail?: string }
 export type Usage = {
   days: UsageDay[]; owners: UsageCount[]; designs: UsageCount[]; failures: UsageCount[]
+  ownersOther?: number; designsOther?: number; failuresOther?: number
   generated: number; failed: number; timed: number
 }
 
@@ -90,24 +91,41 @@ export function AdminUsagePage() {
           </div>
         </section>
         <div className="admin-overview-grid">
-          <UsageList title="누가 만들었나" icon={<Users size={17} />} counts={usage.owners} />
-          <UsageList title="어떤 디자인으로" icon={<LayoutTemplate size={17} />} counts={usage.designs} />
+          <UsageList title="누가 만들었나" icon={<Users size={17} />} counts={usage.owners} other={usage.ownersOther} />
+          <UsageList title="어떤 디자인으로" icon={<LayoutTemplate size={17} />} counts={usage.designs} other={usage.designsOther} />
         </div>
         {usage.failures.length > 0 &&
-          <UsageList title="실패한 이유" icon={<AlertTriangle size={17} />} counts={usage.failures} />}
+          <UsageList title="실패한 이유" icon={<AlertTriangle size={17} />} counts={usage.failures} other={usage.failuresOther} />}
       </>}
   </AppShell>
 }
 
-function UsageList({ title, icon, counts }: { title: string; icon: React.ReactNode; counts: UsageCount[] }) {
+/**
+ * One of the usage lists.
+ *
+ * Each list is the busiest few, and `other` is everything it does not name.
+ * Without that line the list read as a full accounting: eight people against
+ * four and a half thousand decks, adding to less than the headline said, with
+ * nothing on the screen to say where the difference went.
+ */
+function UsageList({ title, icon, counts, other = 0 }: {
+  title: string; icon: React.ReactNode; counts: UsageCount[]; other?: number
+}) {
   const most = Math.max(1, ...counts.map((one) => one.count))
   return <section className="admin-panel">
-    <div className="section-heading"><span>{icon}</span><div><h2>{title}</h2></div></div>
+    <div className="section-heading"><span>{icon}</span><div><h2>{title}</h2>
+      {other > 0 && <p>가장 많은 {counts.length}개입니다. 나머지는 아래에 함께 적었습니다.</p>}</div></div>
     {counts.length === 0 ? <p className="muted-note">없습니다.</p>
       : <ul className="usage-list">{counts.map((one) => <li key={`${one.name}-${one.detail ?? ''}`}>
         <div><strong>{one.name}</strong>{one.detail && <small>{one.detail}</small>}</div>
         <span className="usage-track"><i style={{ width: `${Math.round((one.count / most) * 100)}%` }} /></span>
         <b>{one.count.toLocaleString('ko-KR')}</b>
-      </li>)}</ul>}
+      </li>)}
+        {other > 0 && <li className="usage-rest">
+          <div><strong>그 밖의 전부</strong><small>이 목록에 이름이 없는 것들</small></div>
+          <span className="usage-track"><i style={{ width: `${Math.round((other / most) * 100)}%` }} /></span>
+          <b>{other.toLocaleString('ko-KR')}</b>
+        </li>}
+      </ul>}
   </section>
 }
