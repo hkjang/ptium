@@ -42,6 +42,16 @@ grep -q "image: ptium:$version" deploy/kubernetes.yaml || fail "deploy/kubernete
 grep -q "ptium-$version.tar.gz" docs/offline-deployment.md || fail "docs/offline-deployment.md still installs another version"
 [ -f "$notes" ] || fail "$notes is missing: a release says what changed."
 
+# And the bundle has to say which version it is. The env sample and the compose
+# file are copied out of the repository, and until they were stamped they named
+# whatever version was current when somebody last edited them.
+check_bundle_names_itself() {
+    grep -q "^PTIUM_VERSION=$version\$" "dist/ptium-$version.env.example" ||
+        fail "dist/ptium-$version.env.example does not set PTIUM_VERSION=$version"
+    grep -q "ptium-\${PTIUM_VERSION:-$version}:latest" "dist/docker-compose.ptium-$version.yml" ||
+        fail "dist/docker-compose.ptium-$version.yml does not default to $version"
+}
+
 # Nothing uncommitted, nothing already tagged, and the branch this project
 # releases from.
 [ -z "$(git status --porcelain)" ] || fail "the worktree has uncommitted changes."
@@ -65,6 +75,7 @@ assets=(
 for asset in "${assets[@]}"; do
     [ -s "$asset" ] || fail "$asset was not built."
 done
+check_bundle_names_itself
 
 if [ "$dry_run" = true ]; then
     echo "── dry run: everything is ready for $tag, nothing was pushed ──"

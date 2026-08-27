@@ -5,6 +5,8 @@ name: ptium
 # cluster before starting.
 services:
   ptium:
+    # The default is stamped with the release being built when this file is
+    # copied into the bundle.
     image: ptium-${PTIUM_VERSION:-1.4.0}:latest
     pull_policy: never
     restart: unless-stopped

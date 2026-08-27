@@ -37,8 +37,19 @@ docker save "$image" "$alias_image" | gzip -9 > "$archive"
 digest="$(sha256sum "$archive" | cut -d' ' -f1)"
 printf '%s  %s' "$digest" "$(basename "$archive")" > "$archive.sha256"
 
-cp "$repository_root/docker-compose.offline.yml" "$dist/docker-compose.ptium-$version.yml"
-cp "$repository_root/.env.offline.example" "$dist/ptium-$version.env.example"
+# The bundle says which version it is. Copied verbatim, these two carried
+# whatever version was current when somebody last edited them — the 1.47.0
+# bundle shipped an env sample reading PTIUM_VERSION=0.11.0 and a compose file
+# defaulting to 1.4.0. An operator following the install note to the letter
+# would have started a version they had not loaded, or nothing at all.
+sed "s|^PTIUM_VERSION=.*|PTIUM_VERSION=$version|" \
+    "$repository_root/.env.offline.example" > "$dist/ptium-$version.env.example"
+sed "s|ptium-\${PTIUM_VERSION:-[^}]*}|ptium-\${PTIUM_VERSION:-$version}|" \
+    "$repository_root/docker-compose.offline.yml" > "$dist/docker-compose.ptium-$version.yml"
+grep -q "^PTIUM_VERSION=$version\$" "$dist/ptium-$version.env.example" ||
+    { echo "the env sample does not name $version" >&2; exit 1; }
+grep -q "ptium-\${PTIUM_VERSION:-$version}:latest" "$dist/docker-compose.ptium-$version.yml" ||
+    { echo "the compose file does not default to $version" >&2; exit 1; }
 cp "$repository_root/deploy/kubernetes.yaml" "$dist/ptium-$version.kubernetes.yaml"
 cp "$repository_root/scripts/load-offline.ps1" "$dist/load-ptium-$version.ps1"
 cp "$repository_root/scripts/load-offline.sh" "$dist/load-ptium-$version.sh"
