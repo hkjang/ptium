@@ -52,12 +52,19 @@ func Format(presentation model.Presentation, manifest pptx.Manifest) string {
 		// Body slots in reading order, so the text comes back out in the order it
 		// appears on the slide.
 		layout, hasLayout := manifest.Layout(content.LayoutID)
+		// The pictures are written in the order the compiler will hand them back
+		// out, which is not the order their regions are read in. A slide holding
+		// one picture beside its prose wrote the prose region's picture first and
+		// the picture region's second; compiling that source put the first
+		// ::image line into the picture region, so a deck's own source applied
+		// back to it exchanged the two — measured on a real imported deck.
+		pictures := picturesInAssignmentOrder(layout, hasLayout, content)
 		for _, slot := range bodySlotOrder(layout, hasLayout, content) {
 			// A slot can hold a picture and the words that go with it. Writing the
 			// picture and moving on dropped the words — the same loss as a
 			// picture standing next to prose, one slot further in.
-			if picture, ok := content.Images[slot]; ok {
-				builder.WriteString(formatImage(picture))
+			if _, ok := content.Images[slot]; ok {
+				builder.WriteString(formatImage(pictures.next()))
 			}
 			if block, ok := content.Blocks[slot]; ok {
 				builder.WriteString(formatBlock(block))
@@ -209,11 +216,36 @@ func bodySlotOrder(layout pptx.Layout, hasLayout bool, content Content) []string
 	}
 	// A picture region is not a body region, so it is not in BodySlots; an image
 	// placed there still has to be written out.
+	//
+	// In the order the template puts them on the slide, and by name when the
+	// template cannot say. This walked the map itself, and a map walks in a
+	// different order every time: a slide holding two pictures wrote its two
+	// ::image lines either way round, so reading a deck's source twice gave two
+	// different documents, and applying a deck's own source back to it swapped
+	// the pictures between their regions. Measured on a real imported deck —
+	// image15 and image16 changing places on every second save.
+	leftover := make([]string, 0, len(content.Images))
 	for slot := range content.Images {
 		if !seen[slot] {
-			seen[slot] = true
-			order = append(order, slot)
+			leftover = append(leftover, slot)
 		}
+	}
+	sort.SliceStable(leftover, func(first, second int) bool {
+		a, aOK := slotPlacement(layout, hasLayout, leftover[first])
+		b, bOK := slotPlacement(layout, hasLayout, leftover[second])
+		if aOK && bOK {
+			if a.X != b.X {
+				return a.X < b.X
+			}
+			if a.Y != b.Y {
+				return a.Y < b.Y
+			}
+		}
+		return leftover[first] < leftover[second]
+	})
+	for _, slot := range leftover {
+		seen[slot] = true
+		order = append(order, slot)
 	}
 	return order
 }
@@ -431,4 +463,62 @@ func MatchesSlides(source string, presentation model.Presentation, manifest pptx
 	written := presentation
 	written.Slides = compiled.Slides
 	return Format(written, manifest) == Format(presentation, manifest)
+}
+
+// slotPlacement is where the template puts a slot, when the template is known.
+func slotPlacement(layout pptx.Layout, hasLayout bool, slot string) (pptx.Placeholder, bool) {
+	if !hasLayout {
+		return pptx.Placeholder{}, false
+	}
+	for _, placeholder := range layout.Placeholders {
+		if placeholder.Slot == slot {
+			return placeholder, true
+		}
+	}
+	return pptx.Placeholder{}, false
+}
+
+// pictureQueue hands out a slide's pictures in the order the compiler assigns
+// them to regions, so that writing them out and reading them back lands each
+// one where it started.
+type pictureQueue struct {
+	images []ContentImage
+	at     int
+}
+
+func (q *pictureQueue) next() ContentImage {
+	if q == nil || q.at >= len(q.images) {
+		return ContentImage{}
+	}
+	picture := q.images[q.at]
+	q.at++
+	return picture
+}
+
+// picturesInAssignmentOrder mirrors imageSlot: a picture region first, in the
+// order the template declares them, and whatever else holds a picture after.
+func picturesInAssignmentOrder(layout pptx.Layout, hasLayout bool, content Content) *pictureQueue {
+	queue := &pictureQueue{}
+	taken := map[string]bool{}
+	if hasLayout {
+		for _, placeholder := range layout.Placeholders {
+			if placeholder.Kind != "picture" {
+				continue
+			}
+			if picture, ok := content.Images[placeholder.Slot]; ok {
+				queue.images = append(queue.images, picture)
+				taken[placeholder.Slot] = true
+			}
+		}
+	}
+	for _, slot := range bodySlotOrder(layout, hasLayout, content) {
+		if taken[slot] {
+			continue
+		}
+		if picture, ok := content.Images[slot]; ok {
+			queue.images = append(queue.images, picture)
+			taken[slot] = true
+		}
+	}
+	return queue
 }
