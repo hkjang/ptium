@@ -168,8 +168,17 @@ func (g *Generator) generate(ctx context.Context, presentation model.Presentatio
 			// would replace the author's deck with a new one about the brief.
 			return Deck{}, errors.New("rewriting a deck needs an AI provider; ask an administrator to configure one")
 		}
-		return g.fromLibrary(ctx, presentation, profile, template,
-			g.fallbackDeck(ctx, presentation, profile, template)), nil
+		// A deployment with no model writes a frame, and says so. Everything else
+		// this product does tells the person what it did; this was the one place
+		// it wrote scaffolding and let them assume it was the answer.
+		written := g.fromLibrary(ctx, presentation, profile, template,
+			g.fallbackDeck(ctx, presentation, profile, template))
+		if phrases := localizedCopy(presentation.Language); phrases.NoModelNote != nil {
+			note := phrases.NoModelNote()
+			written.Notes = append([]string{note}, written.Notes...)
+			written.Warnings = append([]string{note}, written.Warnings...)
+		}
+		return written, nil
 	}
 	if provider != "openai-compatible" && provider != "openai" {
 		return Deck{}, fmt.Errorf("unsupported AI provider %q", provider)

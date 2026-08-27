@@ -310,6 +310,16 @@ type languageCopy struct {
 	// NoPlanNote says the deck was written without the narrative pass, which is
 	// what happens when a slow model runs out of clock on the first of the two.
 	NoPlanNote func(reason string) string
+	// NoModelNote says this deployment has no model connected, so what came back
+	// is a frame rather than a finished deck.
+	//
+	// There was a note for a model that tried and failed and none for a
+	// deployment that never had one — which is the ordinary state of a closed
+	// site. The deck it gets is scaffolding by design, its lines naming what
+	// belongs there ("6개월 안에 확인할 지표와 목표"), and the person who asked
+	// for it was told nothing at all: not that a model would have written it
+	// differently, not that those lines are theirs to replace.
+	NoModelNote func() string
 }
 
 func localizedCopy(language string) languageCopy {
@@ -378,6 +388,10 @@ func isSettingKey(value string) bool {
 }
 
 var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", DefaultAudience: "일반 청중",
+	NoModelNote: func() string {
+		return "이 배포에는 연결된 AI 모델이 없어 내장 작성기가 브리프로 뼈대를 썼습니다. " +
+			"각 줄은 그 자리에 무엇이 들어가야 하는지 가리키는 말이니 발표 전에 본인의 문장으로 바꿔 주세요."
+	},
 	ModelStoodDownNote: func(reason string) string {
 		return "AI 모델이 이 덱을 쓰지 못해 Ptium이 대신 썼습니다. " + reason +
 			" 다시 생성하면 모델이 다시 시도합니다."
@@ -395,6 +409,10 @@ var koreanCopy = languageCopy{Language: "ko", DefaultTopic: "제안 주제", Def
 	}}
 
 var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", DefaultAudience: "a general audience",
+	NoModelNote: func() string {
+		return "This deployment has no AI model connected, so the built-in writer laid out a frame from the brief. " +
+			"Each line names what belongs there; replace them with your own words before presenting."
+	},
 	ModelStoodDownNote: func(reason string) string {
 		return "The AI model could not write this deck, so Ptium wrote it. " + reason +
 			" Generating again puts the model back on it."
@@ -412,6 +430,10 @@ var englishCopy = languageCopy{Language: "en", DefaultTopic: "the proposal", Def
 	}}
 
 var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ", DefaultAudience: "一般の聴衆",
+	NoModelNote: func() string {
+		return "この配置にはAIモデルが接続されていないため、内蔵ライターがブリーフから骨組みを書きました。" +
+			"各行はそこに入るべき内容を示すものです。発表前にご自身の言葉に置き換えてください。"
+	},
 	ModelStoodDownNote: func(reason string) string {
 		return "AIモデルがこのデッキを作成できなかったため、Ptiumが作成しました。" + reason +
 			" もう一度生成するとモデルが再挑戦します。"
@@ -429,6 +451,10 @@ var japaneseCopy = languageCopy{Language: "ja", DefaultTopic: "提案テーマ",
 	}}
 
 var chineseCopy = languageCopy{Language: "zh", DefaultTopic: "提案主题", DefaultAudience: "一般听众",
+	NoModelNote: func() string {
+		return "此部署未连接 AI 模型，因此内置写作器根据简报搭出了框架。" +
+			"每一行标明该处应写什么，请在演示前替换为您自己的表述。"
+	},
 	ModelStoodDownNote: func(reason string) string {
 		return "AI 模型未能撰写本稿，改由 Ptium 撰写。" + reason + " 重新生成会再次交给模型。"
 	},
