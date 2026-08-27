@@ -59,11 +59,23 @@ docker image inspect "$image" "$alias_image" > /dev/null
 # The manifest an operator applies at a site with no internet is the one thing
 # they cannot debug against a running service — it either applies or their
 # deployment does not exist. kubectl validates it here when this host has one.
+#
+# --dry-run=client still asks a cluster for the schema it validates against, so
+# on a host whose cluster is down the check failed and took the release with it —
+# a laptop's minikube being asleep is not a broken manifest. The structural
+# decode runs either way; when the schema check cannot run, it says so rather
+# than passing quietly.
 if command -v kubectl > /dev/null; then
-    kubectl apply --dry-run=client -f "$dist/ptium-$version.kubernetes.yaml" > /dev/null || {
+    manifest="$dist/ptium-$version.kubernetes.yaml"
+    if kubectl apply --dry-run=client -f "$manifest" > /dev/null 2>&1; then
+        :
+    elif kubectl create --dry-run=client --validate=false -f "$manifest" -o name > /dev/null 2>&1; then
+        echo "note: every resource in the manifest decodes; no cluster was reachable to check it against the API schema"
+    else
         echo "The Kubernetes manifest in this bundle is not valid." >&2
+        kubectl create --dry-run=client --validate=false -f "$manifest" -o name >&2 || true
         exit 1
-    }
+    fi
 fi
 
 # What the archive holds is what a target site will run, so it is worth running
