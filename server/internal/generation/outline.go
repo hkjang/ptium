@@ -445,6 +445,11 @@ var joiningParticle = regexp.MustCompile(`([가-힣]{2,}|[A-Za-z0-9]{2,})(?:와|
 // outlinePrompt reads a prompt into the structure of a deck.
 func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 	prompt = strings.TrimSpace(prompt)
+	// The brief as it was typed. Everything below rewrites `prompt` — the count
+	// out, the request out, the audience out — and by the end there is no
+	// sentence left to read a subject from. Repairing a broken topic needs the
+	// sentence, so it is kept here.
+	brief := prompt
 	outline := promptOutline{}
 	if period := periodPattern.FindString(prompt); strings.TrimSpace(period) != "" {
 		outline.Period = strings.Join(strings.Fields(period), " ")
@@ -547,6 +552,25 @@ func outlinePrompt(prompt, title string, phrases languageCopy) promptOutline {
 		frame, chosen := frameChosenFor(subject)
 		outline.Topics = []promptTopic{{Name: topicPhrase(subject), Frame: frame, Chosen: chosen}}
 	}
+	// A brief written as prose says what it is about and then what about it —
+	// "데이터 거버넌스 체계를 세우려고 합니다" — and the splitting above cuts
+	// fragments out of those sentences: six ordinary prose briefs measured here
+	// produced covers reading "…크게 줄여야", "데이터 거버넌스 체계를 세우",
+	// "너무 오래 걸린다는 이야기가". Where a topic came out cut like that, the
+	// phrase the brief's own first sentence marks is what the deck is about.
+	for index, topic := range outline.Topics {
+		if !cutPhrase(topic.Name) {
+			continue
+		}
+		repaired := markedSubject(brief)
+		if repaired == "" || cutPhrase(repaired) {
+			continue
+		}
+		frame, chosen := frameChosenFor(repaired)
+		outline.Topics[index] = promptTopic{Name: repaired, Frame: frame, Asked: topic.Asked, Chosen: chosen}
+	}
+	outline.Topics = withoutRepeatedTopics(outline.Topics)
+
 	// A section somebody asked for by name is a section the deck has, whatever
 	// else the brief is about.
 	for _, name := range asked {
@@ -1346,7 +1370,12 @@ func (outline promptOutline) deckTitle(given, prompt string, joiner string) stri
 	// A title read out of the brief starts the cover, so it is capitalised even
 	// though the brief wrote it mid-sentence. A title the author typed is left
 	// exactly as they typed it.
-	if whole, shortened := titlePhrase(outline.Subject); whole != "" && !shortened {
+	// …and it has to be a phrase. A brief written as prose gives a subject that
+	// is most of a sentence, and cutting it to fit a cover leaves it stopped
+	// mid-verb: "우리 회사는 내년에 클라우드 비용을 크게 줄여야" was a cover. When
+	// the subject reads like that, the topics below have already been repaired
+	// from the brief's own sentence and are the better title.
+	if whole, shortened := titlePhrase(outline.Subject); whole != "" && !shortened && !cutPhrase(whole) {
 		return capitalized(whole)
 	}
 	names := make([]string, 0, len(outline.Topics))
@@ -1806,3 +1835,104 @@ func beforeStrandedStop(subject string) string {
 // sentenceEnd is a full stop that ends a sentence rather than sitting inside a
 // number or an abbreviation: it has to be followed by a space or nothing.
 var sentenceEnd = regexp.MustCompile(`[.。!?！？](?:\s|$)`)
+
+// cutPhrase reports whether a topic name stops in the middle of what it was
+// saying: a verb with its ending taken off, a connective, a case marker left
+// holding nothing, or a phrase that ran past the end of its own sentence.
+func cutPhrase(name string) bool {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return false
+	}
+	if strings.ContainsAny(trimmed, ".。") {
+		return true
+	}
+	words := strings.Fields(trimmed)
+	last := words[len(words)-1]
+	for _, ending := range []string{"어야", "여야", "아야", "해야", "하고", "하며", "하려", "면서"} {
+		if strings.HasSuffix(last, ending) {
+			return true
+		}
+	}
+	for _, stem := range []string{"세우", "세워", "줄이", "줄여", "늘리", "늘려", "높이", "높여",
+		"낮추", "낮춰", "바꾸", "바꿔", "맞추", "맞춰", "이루", "이뤄", "만들", "만드"} {
+		if last == stem {
+			return true
+		}
+	}
+	// A marker at the end with something in front of it: "…이야기가" is a phrase
+	// cut out of a sentence, "평가" is a word.
+	return len(words) > 1 && endsInCaseMarker(last)
+}
+
+// markedSubject is the phrase the brief's first sentence opens with, up to the
+// marker that says what part of the sentence it is.
+//
+// A brief written as prose names its subject first: "사내 데이터 품질 개선이
+// 필요한 이유는…", "데이터 거버넌스 체계를 세우려고…". Reading from the start to
+// the first marker is what a person does with that sentence.
+func markedSubject(brief string) string {
+	sentence := brief
+	if cut := strings.IndexAny(sentence, ".。\n"); cut > 0 {
+		sentence = sentence[:cut]
+	}
+	words := strings.Fields(sentence)
+	from := 0
+	for index, word := range words {
+		if !endsInCaseMarker(word) {
+			continue
+		}
+		phrase := cleanTopic(strings.Join(words[from:index+1], " "))
+		// A phrase that only says whose deck it is names nothing, and the
+		// sentence carries on to what it is actually about.
+		switch strings.TrimSpace(phrase) {
+		case "", "우리", "우리 회사", "저희", "저희 회사", "회사", "우리 팀", "저희 팀", "내부":
+			from = index + 1
+			continue
+		}
+		if utf8.RuneCountInString(phrase) < 2 || cutPhrase(phrase) {
+			from = index + 1
+			continue
+		}
+		return phrase
+	}
+	return ""
+}
+
+// endsInCaseMarker reports whether a word carries the marker that closes a noun
+// phrase. A one-syllable word is skipped: the marker would be the whole of it.
+func endsInCaseMarker(word string) bool {
+	trimmed := strings.Trim(word, " ,·")
+	if utf8.RuneCountInString(trimmed) < 2 {
+		return false
+	}
+	// A question ends in the same syllable and is not a phrase cut in half:
+	// "위험은 무엇인가" is a section heading somebody wrote on purpose.
+	for _, question := range []string{"인가", "는가", "은가", "까", "ㄴ가"} {
+		if strings.HasSuffix(trimmed, question) {
+			return false
+		}
+	}
+	for _, marker := range []string{"을", "를", "이", "가", "은", "는"} {
+		if strings.HasSuffix(trimmed, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// withoutRepeatedTopics drops a topic the list already holds, which repairing
+// can produce when two cut fragments came from the same sentence.
+func withoutRepeatedTopics(topics []promptTopic) []promptTopic {
+	seen := map[string]bool{}
+	kept := make([]promptTopic, 0, len(topics))
+	for _, topic := range topics {
+		key := withoutSpaces(topic.Name)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		kept = append(kept, topic)
+	}
+	return kept
+}
