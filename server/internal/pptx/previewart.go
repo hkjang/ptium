@@ -256,15 +256,18 @@ func artworkTransform(piece Artwork, x, y, width, height float64) string {
 // previewSlidePicture draws an image a deck placed, cropped into its frame the
 // same way the exported file crops it.
 func previewSlidePicture(placeholder Placeholder, picture Picture, scale float64, clipID string) string {
-	uri := mediaDataURI(pictureCacheName(picture), picture.Data, previewImagePixels)
-	if uri == "" {
-		return ""
-	}
 	x := float64(placeholder.X) * scale
 	y := float64(placeholder.Y) * scale
 	width := float64(placeholder.Width) * scale
 	height := float64(placeholder.Height) * scale
 	if width <= 0.5 || height <= 0.5 {
+		return ""
+	}
+	// The frame is already in the preview's own pixels, and the picture is
+	// cropped to fill it, so it is embedded at the size that frame draws it at.
+	uri := mediaDataURI(pictureCacheName(picture), picture.Data,
+		pictureBox{Width: width, Height: height, Cover: true}, previewImagePixels)
+	if uri == "" {
 		return ""
 	}
 	// preserveAspectRatio="…slice" is the SVG equivalent of a centre crop, so the

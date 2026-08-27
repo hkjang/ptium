@@ -266,6 +266,20 @@ with sync_playwright() as play:
             failures.append(f"presenting drew deck slides {drawn[:len(expected)]}, expected {expected}")
         if deck_slides not in drawn:
             failures.append(f"presenting never reached slide {deck_slides}, the last in the deck")
+
+        # The grid a speaker opens mid-talk to find a slide to jump to. It asked
+        # for the current slide's neighbours, so it drew three pictures and left
+        # the rest of the deck as empty grey boxes with a number on them.
+        page.keyboard.press("g")
+        page.wait_for_timeout(9000)
+        boxes = page.locator(".present-overview-grid button").count()
+        pictures = page.locator(".present-overview-grid button img").count()
+        if boxes < 2:
+            failures.append("the slide overview opened with nothing in it")
+        elif pictures < boxes:
+            failures.append(f"the slide overview drew {pictures} of {boxes} slides; the rest are empty boxes")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(1000)
         page.keyboard.press("Escape")
         page.wait_for_timeout(1200)
         # Put the slide back in the show so nothing after this reads a short deck.

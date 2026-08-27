@@ -585,7 +585,11 @@ func (e Element) imageSVG(x, y, width, height float64) string {
 	if e.Picture == nil || len(e.Picture.Data) == 0 {
 		return ""
 	}
-	uri := mediaDataURI(pictureCacheName(*e.Picture), e.Picture.Data, previewImagePixels)
+	// The box is already in the preview's own pixels, so the picture inside can
+	// be embedded at the size it is drawn at rather than at a fixed ceiling.
+	cover := strings.ToLower(e.Fit) != "contain"
+	uri := mediaDataURI(pictureCacheName(*e.Picture), e.Picture.Data,
+		pictureBox{Width: width, Height: height, Cover: cover}, previewImagePixels)
 	if uri == "" {
 		return ""
 	}

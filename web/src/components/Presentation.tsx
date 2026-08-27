@@ -65,7 +65,7 @@ export function usePresentChannel(presentationId: string, onMessage: (message: P
 /** No slides to draw: one array, so a closed overview does not refetch. */
 const noPositions: number[] = []
 
-export function useSlideImages(presentationId: string, positions: number[], version: string | number, index: number, width = 1600) {
+export function useSlideImages(presentationId: string, positions: number[], version: string | number, index: number, width = 1600, whole = false) {
   const [images, setImages] = useState<Record<number, string>>({})
   const cache = useRef<Map<string, string>>(new Map())
   useEffect(() => {
@@ -76,7 +76,14 @@ export function useSlideImages(presentationId: string, positions: number[], vers
   }, [presentationId, version, width])
   useEffect(() => {
     let active = true
-    const wanted = [index, index + 1, index - 1, index + 2].filter((at) => at >= 0 && at < positions.length)
+    // The neighbours are enough for the slide on the wall. The overview is the
+    // other case: it is the grid a speaker opens to find a slide to jump to, so
+    // every slide has to be in it — asking for the neighbours drew three
+    // pictures and left the rest of the deck as empty grey boxes with a number.
+    // Nearest first, because that is where the speaker is looking.
+    const wanted = whole
+      ? positions.map((_, at) => at).sort((a, b) => Math.abs(a - index) - Math.abs(b - index))
+      : [index, index + 1, index - 1, index + 2].filter((at) => at >= 0 && at < positions.length)
     void (async () => {
       for (const position of wanted) {
         const key = `${position}`
@@ -90,7 +97,7 @@ export function useSlideImages(presentationId: string, positions: number[], vers
       }
     })()
     return () => { active = false }
-  }, [presentationId, positions.join(','), index, version, width]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [presentationId, positions.join(','), index, version, width, whole]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { for (const url of cache.current.values()) URL.revokeObjectURL(url) }, [])
   return images
 }
@@ -214,7 +221,7 @@ export function PresentationView({ presentationId, title, slides, version, start
    */
   const positions = useMemo(() => showPositions(slides), [slides])
   const drawings = useSlideDrawings(presentationId, positions, version, index)
-  const thumbs = useSlideImages(presentationId, overview ? positions : noPositions, version, 0, 320)
+  const thumbs = useSlideImages(presentationId, overview ? positions : noPositions, version, index, 320, true)
 
   // A list handed to a room whole is read ahead of the speaker. A slide marked
   // !build gives up its points one at a time, and the arrow that would have

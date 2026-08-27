@@ -24,13 +24,72 @@ import (
 // photograph is routinely a megabyte — so each one is decoded, scaled to the
 // size the preview actually paints it at, and re-encoded.
 const (
-	// previewImagePixels bounds the longest edge of an embedded picture.
+	// previewImagePixels bounds the longest edge of an embedded picture when
+	// nothing says how large it will be painted. It is a ceiling, never a
+	// target: a picture is embedded at the size it is drawn at, and this is only
+	// what a full-bleed one on a full-size preview needs.
 	previewImagePixels = 1400
+	// pictureRetina embeds twice what a box measures, so a preview stays sharp
+	// on a screen that paints two device pixels per CSS pixel.
+	pictureRetina = 2
+	// pictureBucket rounds a budget up so that boxes of near-enough the same
+	// size share one cached encoding rather than each holding its own.
+	pictureBucket = 128
 	// previewJPEGQuality trades a little fidelity for a much smaller preview.
 	previewJPEGQuality = 76
 	// maximumMediaBytes refuses to decode an implausibly large image part.
 	maximumMediaBytes = 24 << 20
 )
+
+// pictureBox is the box a picture is painted into, in the preview's own CSS
+// pixels — the units the renderer emits coordinates in.
+//
+// It exists because the size of the drawing and the size of the picture inside
+// it are not the same question, and treating them as one made every thumbnail
+// cost what a full-size drawing costs. A 320px overview thumbnail of a slide
+// carrying a 2.4MB photograph was 968KB: the canvas honoured the width asked
+// for, and the photograph inside it was embedded at 1400px all the same.
+type pictureBox struct {
+	// Width and Height are the box in preview pixels. A zero box means nothing
+	// is known about how large this will be drawn, and the ceiling applies.
+	Width, Height float64
+	// Cover is true when the picture is cropped to fill the box rather than
+	// fitted inside it. A cropped picture is scaled up until it covers, so the
+	// part that shows is drawn from fewer of its own pixels than a fitted one —
+	// which is exactly the case a budget taken from the box alone gets wrong.
+	Cover bool
+}
+
+// budgetFor is the longest edge worth embedding for a picture of these bounds
+// drawn into this box.
+//
+// What has to stay sharp is the part that shows, which is the box. So the
+// budget is the picture's longest edge measured at the scale it will be drawn
+// at, doubled for a dense screen — and never more than the ceiling, so this can
+// only ever ask for less than before.
+func (b pictureBox) budgetFor(bounds image.Rectangle) int {
+	width, height := float64(bounds.Dx()), float64(bounds.Dy())
+	if b.Width <= 0 || b.Height <= 0 || width <= 0 || height <= 0 {
+		return previewImagePixels
+	}
+	// How far the picture is scaled to sit in the box: to cover it, the larger
+	// of the two ratios; to fit inside it, the smaller.
+	scale := math.Min(b.Width/width, b.Height/height)
+	if b.Cover {
+		scale = math.Max(b.Width/width, b.Height/height)
+	}
+	wanted := int(math.Ceil(math.Max(width, height) * scale * pictureRetina))
+	// Rounded up to a bucket, so a rail of thumbnails a few pixels apart shares
+	// one encoding of each picture instead of one apiece.
+	wanted = ((wanted + pictureBucket - 1) / pictureBucket) * pictureBucket
+	if wanted < pictureBucket {
+		wanted = pictureBucket
+	}
+	if wanted > previewImagePixels {
+		wanted = previewImagePixels
+	}
+	return wanted
+}
 
 // MediaResolver returns a data URI for a package part, or an empty string when
 // the part cannot be drawn.
@@ -51,7 +110,7 @@ func PackageMedia(pkg *Package, maxPixels int) MediaResolver {
 		if !ok || len(data) == 0 || len(data) > maximumMediaBytes {
 			return ""
 		}
-		return mediaDataURI(part, data, maxPixels)
+		return mediaDataURI(part, data, pictureBox{}, maxPixels)
 	}
 }
 
@@ -71,9 +130,20 @@ var mediaCache = struct {
 // this rather than tracking access order.
 const maximumMediaCacheBytes = 64 << 20
 
-func mediaDataURI(part string, data []byte, maxPixels int) string {
+// mediaDataURI encodes a picture for a preview, at the size it will be drawn.
+//
+// The box is what the renderer is about to paint into; ceiling is the most this
+// caller will ever embed, for the callers that know no box. The cache is keyed
+// on the box rather than on the budget the box works out to, because the budget
+// is only known once the picture has been decoded — and decoding it is the
+// thing the cache exists to avoid.
+func mediaDataURI(part string, data []byte, box pictureBox, ceiling int) string {
+	if ceiling <= 0 {
+		ceiling = previewImagePixels
+	}
 	digest := sha256.Sum256(data)
-	key := fmt.Sprintf("%s|%d", hex.EncodeToString(digest[:16]), maxPixels)
+	key := fmt.Sprintf("%s|%d|%d|%d|%t", hex.EncodeToString(digest[:16]), ceiling,
+		int(math.Ceil(box.Width)), int(math.Ceil(box.Height)), box.Cover)
 
 	mediaCache.Lock()
 	if entry, ok := mediaCache.entries[key]; ok {
@@ -82,7 +152,7 @@ func mediaDataURI(part string, data []byte, maxPixels int) string {
 	}
 	mediaCache.Unlock()
 
-	uri := encodeMedia(part, data, maxPixels)
+	uri := encodeMedia(part, data, box, ceiling)
 
 	mediaCache.Lock()
 	defer mediaCache.Unlock()
@@ -95,7 +165,7 @@ func mediaDataURI(part string, data []byte, maxPixels int) string {
 	return uri
 }
 
-func encodeMedia(part string, data []byte, maxPixels int) string {
+func encodeMedia(part string, data []byte, box pictureBox, ceiling int) string {
 	// SVG needs no decoding: a browser draws it directly, and it is usually the
 	// smallest form of a logo anyway.
 	if strings.HasSuffix(strings.ToLower(part), ".svg") {
@@ -106,6 +176,12 @@ func encodeMedia(part string, data []byte, maxPixels int) string {
 		// EMF, WMF and TIFF are common in older templates and cannot be decoded
 		// here. Drawing nothing is better than drawing a broken image.
 		return ""
+	}
+	// The budget needs the picture's own bounds, so it is worked out here rather
+	// than by the caller: how large this picture is drawn depends on both.
+	maxPixels := box.budgetFor(decoded.Bounds())
+	if maxPixels > ceiling {
+		maxPixels = ceiling
 	}
 	scaled := downscale(decoded, maxPixels)
 	// A JPEG cannot carry transparency, and a logo that loses its transparency
