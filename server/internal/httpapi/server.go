@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,9 +88,20 @@ type Server struct {
 	assetDir      string
 	// The last reading of the model host, so a dashboard being refreshed does
 	// not knock on somebody's host once per refresh.
-	providerCheckMu        sync.Mutex
-	providerCheck          generation.ProviderCheck
-	providerCheckAt        time.Time
+	providerCheckMu sync.Mutex
+	providerCheck   generation.ProviderCheck
+	providerCheckAt time.Time
+	// analysingTemplates bounds how many uploads are held in memory and read at
+	// once. A template is read whole — the package, and every picture in it —
+	// and the setting that caps its size goes to 64 MB. Measured in a pod held
+	// to the manifest's limit: one 60 MB template peaks at 441 MiB, two at
+	// 715 MiB, and four killed the process outright, taking every unrelated
+	// request in flight with it. Waiting two seconds is the better answer.
+	analysingTemplates chan struct{}
+	// templateReadsTaken counts slots taken, so a test can prove the handler
+	// goes through the gate rather than only that the gate works when called
+	// directly.
+	templateReadsTaken     atomic.Int64
 	adminRoles             []string
 	bootstrapAdminEmails   []string
 	bootstrapAdminSubjects []string
@@ -102,6 +114,17 @@ type Server struct {
 	loginLimiter           *loginLimiter
 	captureIncident        func(context.Context, model.Incident) error
 }
+
+// concurrentTemplateReads is how many uploaded templates may be held in memory
+// and read at the same time.
+//
+// One of the largest the settings allow — 64 MB — peaks at 441 MiB inside the
+// pod the manifest describes. Two of them fit in a process that has just
+// started and do not fit in one that has been working, because what the first
+// read allocated has not gone back to the operating system yet: eight uploads
+// at once killed a pod that was letting two through. Reading is quick, so the
+// queue costs a couple of seconds each and the process stays up.
+const concurrentTemplateReads = 1
 
 func New(options Options) (*Server, error) {
 	if options.Store == nil || options.Settings == nil || options.Keys == nil || options.Worker == nil {
@@ -129,6 +152,7 @@ func New(options Options) (*Server, error) {
 		generator:     options.Generator,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		assetDir:             options.AssetDir,
+		analysingTemplates:   make(chan struct{}, concurrentTemplateReads),
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,

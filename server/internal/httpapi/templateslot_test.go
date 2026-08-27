@@ -1,0 +1,101 @@
+package httpapi
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/hkjang/ptium/server/internal/model"
+	"time"
+)
+
+// Reading an uploaded template is what fills the pod, so only one is read at a
+// time.
+//
+// A template is held in memory whole — the package and every picture in it —
+// and the setting that caps its size goes to 64 MB. Measured in a pod held to
+// the manifest's limit, one of those peaks at 441 MiB. Four uploaded at the
+// same moment killed the process outright: every request in flight died with
+// it, and the four people who uploaded got nothing back. Queued one at a time,
+// eight of them all succeed and the pod never passes half its limit.
+func TestOnlyOneTemplateIsReadAtATime(t *testing.T) {
+	server := &Server{analysingTemplates: make(chan struct{}, concurrentTemplateReads)}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", nil)
+
+	release, ok := server.holdTemplateRead(httptest.NewRecorder(), request)
+	if !ok {
+		t.Fatal("the first upload was refused")
+	}
+	// A second one waits rather than reading alongside it.
+	waited := make(chan bool, 1)
+	go func() {
+		second, ok := server.holdTemplateRead(httptest.NewRecorder(), request)
+		if ok {
+			second()
+		}
+		waited <- ok
+	}()
+	select {
+	case <-waited:
+		t.Fatal("a second template was read while the first still held the slot")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	select {
+	case ok := <-waited:
+		if !ok {
+			t.Error("the waiting upload was refused after the slot came free")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("the waiting upload never got the slot")
+	}
+}
+
+// A queue that never moves is answered rather than left hanging.
+func TestAnUploadThatWaitsTooLongIsToldSo(t *testing.T) {
+	previous := templateReadWait
+	templateReadWait = 20 * time.Millisecond
+	t.Cleanup(func() { templateReadWait = previous })
+
+	server := &Server{analysingTemplates: make(chan struct{}, 1)}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", nil)
+	held, ok := server.holdTemplateRead(httptest.NewRecorder(), request)
+	if !ok {
+		t.Fatal("the first upload was refused")
+	}
+	defer held()
+
+	recorder := httptest.NewRecorder()
+	if _, ok := server.holdTemplateRead(recorder, request); ok {
+		t.Fatal("a second upload took a slot that was not free")
+	}
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Errorf("the caller was answered %d, want 503", recorder.Code)
+	}
+	if body := recorder.Body.String(); !strings.Contains(body, "templates_busy") {
+		t.Errorf("the answer does not say why: %s", body)
+	}
+}
+
+// And the handler takes the slot. Testing the gate on its own proves the gate;
+// it does not prove that an upload goes through it, which is the thing that
+// keeps the process alive.
+func TestTheUploadHandlerTakesASlot(t *testing.T) {
+	server := &Server{analysingTemplates: make(chan struct{}, concurrentTemplateReads)}
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", strings.NewReader("not a template"))
+	request.Header.Set("Content-Type", "multipart/form-data; boundary=nope")
+	request = request.WithContext(withUser(request.Context(), model.User{ID: "u", IsAdmin: true}))
+	recorder := httptest.NewRecorder()
+	server.createTemplate(recorder, request)
+	if server.templateReadsTaken.Load() != 1 {
+		t.Error("the upload handler did not go through the gate")
+	}
+	// And it gave the slot back, whatever it answered.
+	select {
+	case server.analysingTemplates <- struct{}{}:
+		<-server.analysingTemplates
+	default:
+		t.Error("the slot was never released")
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/deck"
@@ -78,6 +79,14 @@ func (s *Server) createTemplate(writer http.ResponseWriter, request *http.Reques
 		writeError(writer, request, http.StatusForbidden, "template_uploads_disabled", "Template uploads are disabled by the administrator", nil)
 		return
 	}
+	// Hold the upload before reading it, not after: the bytes are in memory from
+	// the moment the body is read, and it is the number of them at once that
+	// decides whether the process survives.
+	release, ok := s.holdTemplateRead(writer, request)
+	if !ok {
+		return
+	}
+	defer release()
 	limit := s.maximumTemplateBytes(request.Context())
 	data, meta, ok := s.readTemplateUpload(writer, request, limit)
 	if !ok {
@@ -795,6 +804,9 @@ func (s *Server) presentationTemplate(ctx context.Context, presentation model.Pr
 
 func (s *Server) maximumTemplateBytes(ctx context.Context) int64 {
 	megabytes := 32
+	if s.settings == nil {
+		return int64(megabytes) << 20
+	}
 	if s.settings.Get(ctx, "generation.max_template_mb", &megabytes) != nil ||
 		!settings.Numbers["generation.max_template_mb"].Holds(megabytes) {
 		megabytes = 32
@@ -808,8 +820,40 @@ func (s *Server) maximumTemplateBytes(ctx context.Context) int64 {
 
 func (s *Server) templateUploadsAllowed(ctx context.Context) bool {
 	allowed := true
+	if s.settings == nil {
+		return true
+	}
 	if s.settings.Get(ctx, "generation.allow_user_uploads", &allowed) != nil {
 		return true
 	}
 	return allowed
 }
+
+// holdTemplateRead takes one of the slots for reading a template, waiting for
+// one to come free. A site whose people all upload at the same moment waits a
+// couple of seconds each; without it the fourth of them killed the process and
+// took every other request in flight with it.
+func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Request) (func(), bool) {
+	if s.analysingTemplates == nil {
+		return func() {}, true
+	}
+	waiting, cancel := context.WithTimeout(request.Context(), templateReadWait)
+	defer cancel()
+	select {
+	case s.analysingTemplates <- struct{}{}:
+		s.templateReadsTaken.Add(1)
+		return func() { <-s.analysingTemplates }, true
+	case <-waiting.Done():
+		if request.Context().Err() != nil {
+			return func() {}, false
+		}
+		writeError(writer, request, http.StatusServiceUnavailable, "templates_busy",
+			"This deployment is already reading as many templates as it can hold at once. Try again in a moment.", nil)
+		return func() {}, false
+	}
+}
+
+// templateReadWait is how long an upload waits for a slot. Reading the largest
+// template the settings allow takes a little over two seconds, so this is room
+// for a queue of a dozen rather than a promise about any one of them.
+var templateReadWait = 30 * time.Second
