@@ -41,7 +41,7 @@ func (s *Server) createShare(writer http.ResponseWriter, request *http.Request) 
 	}
 	if utf8.RuneCountInString(input.Label) > 120 || input.Days < 0 || input.Days > 3650 {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
-			"a share needs a short label and a sensible number of days", nil)
+			"링크 이름은 짧게, 기간은 일 단위로 3650일까지 지정할 수 있습니다.", nil)
 		return
 	}
 	var expires *time.Time
@@ -123,7 +123,7 @@ func (s *Server) sharedPreview(writer http.ResponseWriter, request *http.Request
 	}
 	shown := shownSlides(presentation)
 	if len(shown) == 0 {
-		writeError(writer, request, http.StatusConflict, "presentation_has_no_slides", "This deck has no slides yet", nil)
+		writeError(writer, request, http.StatusConflict, "presentation_has_no_slides", "이 덱에는 아직 슬라이드가 없습니다.", nil)
 		return
 	}
 	data, manifest, err := s.presentationTemplate(request.Context(), presentation)
@@ -181,16 +181,23 @@ func slideIsSkipped(slide model.Slide) bool {
 	return marked.Skipped
 }
 
+// The messages on this path are the ones a person outside the workspace reads.
+//
+// They land on a page written in Korean — "덱을 열 수 없습니다" over the top, the
+// comment box beside it — and these four sentences came back in English, so a
+// reader who clicked a link that had run out met a Korean heading and an
+// English explanation. The page even carries a Korean line to fall back on, and
+// it never showed, because the server always had something to say.
 func (s *Server) presentationFromShare(writer http.ResponseWriter, request *http.Request) (model.Presentation, error) {
 	token := strings.TrimSpace(request.PathValue("token"))
 	presentation, err := s.store.PresentationByShare(request.Context(), token)
 	switch {
 	case errors.Is(err, store.ErrShareClosed):
 		writeError(writer, request, http.StatusGone, "share_closed",
-			"This link is no longer open. Ask whoever sent it for a new one", nil)
+			"이 링크는 더 이상 열리지 않습니다. 보내 준 사람에게 새 링크를 요청해 주세요.", nil)
 		return model.Presentation{}, err
 	case err != nil:
-		writeError(writer, request, http.StatusNotFound, "not_found", "No deck is shared at this link", nil)
+		writeError(writer, request, http.StatusNotFound, "not_found", "이 링크로 공유된 덱이 없습니다.", nil)
 		return model.Presentation{}, err
 	}
 	return presentation, nil
@@ -224,7 +231,7 @@ func (s *Server) addSharedComment(writer http.ResponseWriter, request *http.Requ
 	// write on another.
 	if strings.TrimSpace(input.SlideID) != "" && !slideBelongsTo(presentation, input.SlideID) {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
-			"that slide is not part of this deck", nil)
+			"그 슬라이드는 이 덱의 것이 아닙니다.", nil)
 		return
 	}
 	comment, err := s.store.AddComment(request.Context(), presentation.ID, store.CommentInput{
@@ -285,7 +292,7 @@ func (s *Server) addOwnerComment(writer http.ResponseWriter, request *http.Reque
 	}
 	if strings.TrimSpace(input.SlideID) != "" && !slideBelongsTo(presentation, input.SlideID) {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error",
-			"that slide is not part of this deck", nil)
+			"그 슬라이드는 이 덱의 것이 아닙니다.", nil)
 		return
 	}
 	author := strings.TrimSpace(input.Author)

@@ -39,7 +39,9 @@ type CommentInput struct {
 }
 
 // ErrTooManyComments says this deck has had all the comments it will take.
-var ErrTooManyComments = errors.New("this deck has as many comments as it will hold")
+// Said in Korean because a shared link hands it straight to a reader outside
+// the workspace, on a page that is Korean throughout.
+var ErrTooManyComments = errors.New("이 덱에는 더 이상 의견을 남길 수 없습니다.")
 
 // slide_id comes back as text: a uuid column scans into a driver type, and a
 // comment that lost the slide it was about is a comment about nothing.
