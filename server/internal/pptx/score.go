@@ -36,19 +36,26 @@ const (
 
 // dimensionOf maps a finding to the dimension it belongs to.
 var dimensionOf = map[string]string{
-	FindingOverflow:  DimensionReadability,
-	FindingOutside:   DimensionReadability,
-	FindingDensity:   DimensionReadability,
-	FindingOrphan:    DimensionReadability,
-	FindingTrimmed:   DimensionReadability,
-	FindingLink:      DimensionReadability,
-	FindingNotes:     DimensionStructure,
-	FindingRepeat:    DimensionStructure,
-	FindingStale:     DimensionEvidence,
-	FindingEcho:      DimensionStructure,
-	FindingCollision: DimensionVisual,
-	FindingContrast:  DimensionAccessibility,
-	FindingSource:    DimensionEvidence,
+	FindingOverflow: DimensionReadability,
+	FindingOutside:  DimensionReadability,
+	FindingDensity:  DimensionReadability,
+	FindingOrphan:   DimensionReadability,
+	FindingTrimmed:  DimensionReadability,
+	FindingLink:     DimensionReadability,
+	FindingNotes:    DimensionStructure,
+	FindingRepeat:   DimensionStructure,
+	// The two findings about a slide's heading were weighted as the costliest
+	// advisories this product has — the heading is the line the room reads
+	// before anything else — and then counted in no dimension at all, so a deck
+	// whose cover stopped mid-sentence scored 100 with the finding printed
+	// beside it. A weight nothing spends is not a weight.
+	FindingUnfinished:  DimensionStructure,
+	FindingTwiceTitled: DimensionStructure,
+	FindingStale:       DimensionEvidence,
+	FindingEcho:        DimensionStructure,
+	FindingCollision:   DimensionVisual,
+	FindingContrast:    DimensionAccessibility,
+	FindingSource:      DimensionEvidence,
 }
 
 // weightOf is what one finding costs. A defect is something drawn wrong and

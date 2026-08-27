@@ -22,7 +22,16 @@ import (
 // with nothing to modify, or a particle waiting for the rest of its clause.
 var unfinishedEnding = regexp.MustCompile(
 	`(?:하려고|으려고|려고|고자|하는데|하려|해서|어줘|해줘|줘|주세요|부탁해|부탁드립니다)$|` +
+		// "…크게 줄여야", "…먼저 정해야": the heading says something must happen
+		// and stops before saying it happens. Written out in full rather than as
+		// a bare 야, because 분야 and 시야 are ordinary words that end a heading
+		// perfectly well.
+		`(?:어야|여야|아야|해야|되어야|돼야)$|` +
 		`(?:^|\s)(?:하|되|만들|만드|작성|정리|준비)$|` +
+		// A verb the reader cut before its ending. Each of these is a whole word
+		// only when something was taken off it: "데이터 거버넌스 체계를 세우" was
+		// the cover of a deck, cut out of "…세우려고 합니다".
+		`(?:^|\s)(?:세우|세워|줄이|줄여|늘리|늘려|높이|높여|낮추|낮춰|바꾸|바꿔|맞추|맞춰|이루|이뤄)$|` +
 		`(?:^|\s)(?:위한|위해|통한|통해|대한|관한)$`)
 
 // strandedParticle is a heading whose last word is still holding the particle
