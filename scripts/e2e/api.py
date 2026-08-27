@@ -739,6 +739,50 @@ else:
         failures.append(f"one picture on five slides is stored {stored} times")
     call("DELETE", f"/presentations/{picture_deck['id']}", expect=204)
     call("DELETE", f"/assets/{logo.get('id')}", expect=204)
+# A deck's own source, applied back to it, changes nothing.
+#
+# It changed two of the twelve real decks measured against this product: a slide
+# holding a picture beside its prose exchanged the two on every save, because the
+# source was written in the order the slide reads and taken back in the order the
+# compiler fills regions. Nothing here noticed — every check asked what a deck
+# holds, and none asked whether writing it down and reading it back gives the
+# same deck.
+print("── a deck's own source, applied back ──")
+left = data_of(call("POST", "/assets", files={"file": (f"rt-left-{RUN}.png", png(rgb=(200, 60, 60)), "image/png")},
+                    expect=201)) or {}
+right = data_of(call("POST", "/assets", files={"file": (f"rt-right-{RUN}.png", png(rgb=(60, 60, 200)), "image/png")},
+                     expect=201)) or {}
+round_trip = data_of(call("POST", "/presentations", {"title": f"왕복 {RUN}", "prompt": "점검"}, expect=201))
+call("PUT", f"/presentations/{round_trip['id']}/source", {"source":
+     f"# 두 그림이 있는 장\n@content\n- 왼쪽에 붙는 그림과 오른쪽에 붙는 그림\n"
+     f"::image {left.get('name')} | 왼쪽\n::image {right.get('name')} | 오른쪽\n"
+     f"\n# 다음 장\n- 한 줄\n"}, expect=200)
+before_deck = data_of(call("GET", f"/presentations/{round_trip['id']}")) or {}
+written = data_of(call("GET", f"/presentations/{round_trip['id']}/source")) or {}
+source_text = written.get("source") if isinstance(written, dict) else written
+checks += 1
+if not str(source_text or "").strip():
+    failures.append("a deck's source came back empty")
+# Twice, because the order a slide's pictures are written in was decided by
+# walking a map: the same deck gave two different documents on two reads.
+second = data_of(call("GET", f"/presentations/{round_trip['id']}/source")) or {}
+checks += 1
+if (second.get("source") if isinstance(second, dict) else second) != source_text:
+    failures.append("reading the same deck's source twice gave two different documents")
+call("PUT", f"/presentations/{round_trip['id']}/source", {"source": source_text}, expect=200)
+after_deck = data_of(call("GET", f"/presentations/{round_trip['id']}")) or {}
+def slide_contents(deck):
+    return [json.dumps(slide.get("content"), ensure_ascii=False, sort_keys=True)
+            for slide in (deck.get("slides") or [])]
+checks += 1
+if slide_contents(before_deck) != slide_contents(after_deck):
+    moved = [n + 1 for n, (b, a) in enumerate(zip(slide_contents(before_deck), slide_contents(after_deck))) if b != a]
+    failures.append(f"applying a deck's own source changed it, on slide(s) {moved}")
+print(f"   source {len(str(source_text or '')):,} chars · {len(before_deck.get('slides') or [])} slides unchanged")
+call("DELETE", f"/presentations/{round_trip['id']}", expect=204)
+for asset in (left, right):
+    call("DELETE", f"/assets/{asset.get('id')}", expect=[204, 404])
+
 # A deck whose every slide is skipped has no page to print. That is the person's
 # to fix, so it is answered as such rather than as a server that broke.
 skipped_deck = data_of(call("POST", "/presentations", {"title": f"전부 건너뜀 {RUN}", "prompt": "점검"}, expect=201))
