@@ -381,7 +381,16 @@ func writeList(writer http.ResponseWriter, request *http.Request, data any, tota
 	_ = json.NewEncoder(writer).Encode(map[string]any{"data": data, "meta": map[string]any{"total": total, "limit": limit, "offset": offset}, "requestId": RequestID(request.Context())})
 }
 
+// configurationRefusals are the codes that describe how a deployment is set up
+// rather than something going wrong in it. The answer is correct, the caller is
+// told what to do, and an operator reading the error centre needs to see the
+// faults instead — not the same configuration repeated once per deck.
+var configurationRefusals = map[string]bool{"ai_unavailable": true}
+
 func writeError(writer http.ResponseWriter, request *http.Request, status int, code, message string, details any) {
+	if recorder, ok := writer.(*responseRecorder); ok && configurationRefusals[code] {
+		recorder.refusal = true
+	}
 	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.WriteHeader(status)

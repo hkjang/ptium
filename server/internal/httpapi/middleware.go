@@ -22,6 +22,11 @@ type responseRecorder struct {
 	http.ResponseWriter
 	status int
 	bytes  int
+	// refusal marks an answer the product meant to give. A deployment with no
+	// model configured answers 503 when somebody asks for another draft, and
+	// that is the deployment describing itself, not failing: recording it filled
+	// the error centre with the same configuration, one group per deck.
+	refusal bool
 }
 
 type incidentCaptureTracker struct {
@@ -72,7 +77,7 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 			}
 			s.logger.Info("http request", "request_id", requestID, "method", request.Method, "path", request.URL.Path,
 				"status", status, "bytes", recorder.bytes, "duration_ms", time.Since(started).Milliseconds())
-			if status >= 500 {
+			if status >= 500 && !recorder.refusal {
 				details, _ := json.Marshal(map[string]any{"method": request.Method, "path": request.URL.Path, "status": status})
 				s.capture(ctx, model.Incident{RequestID: requestID, Kind: "http", Severity: "error", Message: fmt.Sprintf("HTTP %d on %s %s", status, request.Method, request.URL.Path), Details: details})
 			}

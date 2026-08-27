@@ -518,7 +518,15 @@ func (s *Store) UpdateIncident(ctx context.Context, id, actorID, status string, 
 }
 
 var secretPattern = regexp.MustCompile(`(?i)(bearer\s+|api[_-]?key["'=:\s]+|password["'=:\s]+|secret["'=:\s]+)([^\s,"}]+)`)
-var changingTokenPattern = regexp.MustCompile(`\b[0-9a-f]{8,}\b|\b\d{4,}\b`)
+
+// An identifier changes on every request, and a fingerprint that keeps one is a
+// fingerprint that never groups: five decks refused for the same reason opened
+// five incidents, each headed by its own UUID. A UUID is matched whole because
+// its middle groups are four characters long and neither half of the rule
+// below reaches them.
+var changingTokenPattern = regexp.MustCompile(
+	`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b|` +
+		`\b[0-9a-f]{8,}\b|\b\d{4,}\b`)
 
 func redactSecrets(value string) string {
 	return secretPattern.ReplaceAllString(value, `${1}[REDACTED]`)
