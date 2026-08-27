@@ -289,6 +289,56 @@ with sync_playwright() as play:
         page.wait_for_timeout(2500)
     check("presenting past a skip")
 
+    # ── the presenter's timer ──
+    # The button says 타이머 일시정지 and until v1.55.2 did neither thing it
+    # says: it read the clock from the moment the talk started rather than the
+    # moment it was held, so it showed 00:00:00 for the whole pause — and the
+    # pause was counted anyway. Held at nine seconds for a six-second question,
+    # it came back at nineteen.
+    print("── the presenter's timer ──")
+
+    def clock_seconds(text):
+        hours, minutes, secs = (int(part) for part in text.strip().split(":"))
+        return hours * 3600 + minutes * 60 + secs
+
+    page.goto(f"{BASE}/presentations/{deck_id}/editor", wait_until="networkidle")
+    page.wait_for_selector(".canvas-area", timeout=20000)
+    page.wait_for_timeout(1500)
+    presenter = context.new_page()
+    presenter.goto(f"{BASE}/presentations/{deck_id}/presenter", wait_until="networkidle")
+    presenter.wait_for_timeout(1500)
+    page.bring_to_front()
+    page.get_by_role("button", name="발표", exact=False).first.click()
+    page.wait_for_timeout(1500)
+    presenter.bring_to_front()
+    clock = presenter.locator(".presenter-clock button").first
+    presenter.wait_for_timeout(8000)
+    running = clock_seconds(clock.inner_text())
+    if running < 5:
+        failures.append(f"the presenter clock read {running}s after eight seconds of presenting")
+    clock.click()                       # 일시정지
+    presenter.wait_for_timeout(1200)
+    held = clock_seconds(clock.inner_text())
+    if held < running - 1:
+        failures.append(f"pausing the timer at {running}s showed {held}s instead of holding it")
+    presenter.wait_for_timeout(6000)
+    if clock_seconds(clock.inner_text()) != held:
+        failures.append("a paused presenter timer kept moving")
+    clock.click()                       # 재개
+    presenter.wait_for_timeout(2500)
+    resumed = clock_seconds(clock.inner_text())
+    if resumed > held + 4:
+        failures.append(f"resuming a timer held at {held}s came back at {resumed}s: the pause was counted anyway")
+    presenter.get_by_role("button", name="초기화").click()
+    presenter.wait_for_timeout(1500)
+    if clock_seconds(presenter.locator(".presenter-clock button").first.inner_text()) > 3:
+        failures.append("resetting the presenter timer did not clear it")
+    presenter.close()
+    page.bring_to_front()
+    page.keyboard.press("Escape")
+    page.wait_for_timeout(1000)
+    check("presenter timer")
+
     print("── the recycle bin ──")
     page.goto(f"{BASE}/presentations", wait_until="networkidle")
     page.wait_for_timeout(2000)

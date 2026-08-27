@@ -205,6 +205,22 @@ function elapsed(from: number, now: number) {
   return `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}`
 }
 
+/**
+ * How long the talk has been running, in milliseconds.
+ *
+ * A held timer reads from the moment it was held, and a talk that stood still
+ * did not take that time — so resuming discounts it rather than finding it on
+ * the clock. Holding used to read from the moment the talk *started*, which
+ * showed 00:00:00 for the whole pause, and the pause was counted anyway: a
+ * timer stopped at nine seconds for a six-second question came back at
+ * nineteen. Neither is what the button says it does.
+ *
+ * heldAt is the moment the pause began, or null while the talk is running.
+ */
+export function talkElapsed(startedAt: number, offset: number, now: number, heldAt: number | null) {
+  return Math.max(0, (heldAt ?? now) - (startedAt + offset))
+}
+
 /** The audience screen: the slide, and nothing that is not the slide. */
 export function PresentationView({ presentationId, title, slides, version, startIndex = 0, onClose }: {
   presentationId: string
@@ -482,7 +498,11 @@ export function PresenterScreen({ presentationId, slides, version }: {
   const [state, setState] = useState<PresentState>({ index: 0, total: slides.length, blackout: 'none', startedAt: Date.now(), title: '' })
   const [now, setNow] = useState(Date.now())
   const [paused, setPaused] = useState(false)
+  // What is discounted from the talk's length: what a reset threw away, plus
+  // every stretch it was held for.
   const [offset, setOffset] = useState(0)
+  // The moment the talk was held at, which is what a held clock reads.
+  const [heldAt, setHeldAt] = useState(0)
   // A talk has a length somebody agreed to. Knowing the clock is not the same
   // as knowing whether you are behind, and the speaker cannot do that division
   // while talking.
@@ -504,7 +524,7 @@ export function PresenterScreen({ presentationId, slides, version }: {
   })
   useEffect(() => { post({ type: 'hello' }) }, [post])
   useEffect(() => {
-    const timer = window.setInterval(() => { if (!paused) setNow(Date.now()) }, 500)
+    const timer = window.setInterval(() => setNow(Date.now()), 500)
     return () => window.clearInterval(timer)
   }, [paused])
   useEffect(() => {
@@ -525,7 +545,7 @@ export function PresenterScreen({ presentationId, slides, version }: {
   const current = slides[state.index]
   const next = slides[state.index + 1]
   const total = state.total || slides.length
-  const spent = Math.max(0, (paused ? state.startedAt + offset : now) - (state.startedAt + offset))
+  const spent = talkElapsed(state.startedAt, offset, now, paused ? heldAt : null)
   // Behind or ahead against where the deck should be by now: a twenty-minute
   // talk of ten slides should be halfway through slide five at nine minutes.
   // It is the only arithmetic a speaker cannot do while speaking.
@@ -539,10 +559,23 @@ export function PresenterScreen({ presentationId, slides, version }: {
         <strong>{state.title || '프레젠테이션'}</strong>
       </div>
       <div className="presenter-clock">
-        <button type="button" onClick={() => setPaused((value) => !value)} title={paused ? '타이머 재개' : '타이머 일시정지'}>
-          {elapsed(state.startedAt + offset, paused ? state.startedAt + offset : now)}
+        <button type="button" onClick={() => {
+          if (paused) {
+            // The talk stood still, so that is not time the talk took.
+            setOffset((value) => value + (Date.now() - heldAt))
+            setPaused(false)
+            return
+          }
+          setHeldAt(Date.now())
+          setPaused(true)
+        }} title={paused ? '타이머 재개' : '타이머 일시정지'}>
+          {elapsed(0, spent)}
         </button>
-        <button type="button" className="ghost" onClick={() => setOffset(Date.now() - state.startedAt)} title="타이머 초기화">초기화</button>
+        <button type="button" className="ghost" onClick={() => {
+          // Held or running, a reset starts the clock again from here.
+          setOffset(Date.now() - state.startedAt)
+          setHeldAt(Date.now())
+        }} title="타이머 초기화">초기화</button>
         {pace !== null && <span className={`presenter-pace ${pacing(pace).tone}`} title={`목표 ${target}분 · ${state.index + 1}/${total}장`}>
           {pacing(pace).text}
         </span>}
