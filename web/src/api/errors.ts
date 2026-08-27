@@ -99,6 +99,12 @@ const byCode: Record<string, string> = {
   invalid_json: '요청 본문을 읽지 못했습니다.',
   invalid_id: '주소의 id 형식이 올바르지 않습니다.',
   invalid_upload: '업로드한 파일을 읽지 못했습니다.',
+  // The server names the limit in its message and carries the number in
+  // details; a person who has just waited for a 60 MB upload deserves to be
+  // told what the limit is rather than that reading stopped.
+  template_too_large: '파일이 이 배포에서 허용하는 크기를 넘습니다.',
+  templates_busy: '지금 다른 템플릿을 읽고 있습니다. 잠시 후 다시 시도해 주세요.',
+  printing_busy: '지금 다른 문서를 그리고 있습니다. 잠시 후 다시 시도해 주세요.',
   invalid_source: '보낸 텍스트가 UTF-8이 아닙니다.',
   validation_error: '입력한 값이 올바르지 않습니다.',
   database_unavailable: '데이터베이스가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.',

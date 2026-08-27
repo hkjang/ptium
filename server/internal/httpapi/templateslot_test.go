@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -136,5 +137,35 @@ func TestPrintingIsBoundedAsWell(t *testing.T) {
 	// And once they finish, the next one goes straight through.
 	if _, ok := holdSlot(httptest.NewRecorder(), request, slots, time.Second, "printing_busy", "busy"); !ok {
 		t.Error("a print was refused after the slots came free")
+	}
+}
+
+// An upload that is too big is told the limit, not that reading stopped.
+//
+// The reader enforcing the limit trips before the check that writes a clear
+// answer ever runs, so a person uploading a 60 MB deck to a deployment that
+// accepts 32 got "The upload could not be read", with "http: request body too
+// large" tucked into a details field. Both doors — a template and an imported
+// deck — went through the same reader and gave the same non-answer.
+func TestAnOversizeUploadIsToldTheLimit(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", nil)
+	if !refusedForSize(recorder, request, &http.MaxBytesError{Limit: 33554432}, 32<<20) {
+		t.Fatal("an over-size upload was not recognised as one")
+	}
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("answered %d, want 413", recorder.Code)
+	}
+	body := recorder.Body.String()
+	if !strings.Contains(body, "32 MiB") {
+		t.Errorf("the answer does not name the limit: %s", body)
+	}
+	if !strings.Contains(body, "limitBytes") {
+		t.Errorf("the answer does not carry the limit as a number: %s", body)
+	}
+	// Anything else keeps its own answer.
+	other := httptest.NewRecorder()
+	if refusedForSize(other, request, errors.New("connection reset"), 32<<20) {
+		t.Error("an unrelated failure was reported as an over-size upload")
 	}
 }

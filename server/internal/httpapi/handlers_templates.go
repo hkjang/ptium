@@ -188,6 +188,9 @@ func (s *Server) readUpload(writer http.ResponseWriter, request *http.Request, l
 	var data []byte
 	if strings.HasPrefix(request.Header.Get("Content-Type"), "multipart/form-data") {
 		if err := request.ParseMultipartForm(8 << 20); err != nil {
+			if refusedForSize(writer, request, err, limit) {
+				return nil, meta, false
+			}
 			writeError(writer, request, http.StatusBadRequest, "invalid_upload", "The upload could not be read", map[string]any{"reason": err.Error()})
 			return nil, meta, false
 		}
@@ -212,6 +215,9 @@ func (s *Server) readUpload(writer http.ResponseWriter, request *http.Request, l
 		}
 		data, err = io.ReadAll(io.LimitReader(file, limit+1))
 		if err != nil {
+			if refusedForSize(writer, request, err, limit) {
+				return nil, meta, false
+			}
 			writeError(writer, request, http.StatusBadRequest, "invalid_upload", "The upload could not be read", nil)
 			return nil, meta, false
 		}
@@ -219,6 +225,9 @@ func (s *Server) readUpload(writer http.ResponseWriter, request *http.Request, l
 		var err error
 		data, err = io.ReadAll(io.LimitReader(request.Body, limit+1))
 		if err != nil {
+			if refusedForSize(writer, request, err, limit) {
+				return nil, meta, false
+			}
 			writeError(writer, request, http.StatusBadRequest, "invalid_upload", "The upload could not be read", nil)
 			return nil, meta, false
 		}
@@ -872,3 +881,23 @@ var templateReadWait = 30 * time.Second
 // printWait is how long a print waits for its turn. A forty-slide deck with a
 // photograph on every page draws in a couple of seconds.
 var printWait = 60 * time.Second
+
+// refusedForSize answers an upload that is over the deployment's limit with the
+// limit, rather than with the fact that reading stopped.
+//
+// The reader that enforces the limit trips before the check further down ever
+// runs, so the clear answer that check writes — "the template must not exceed
+// 32 MiB" — was unreachable for a file that was genuinely too big. What a
+// person uploading a 60 MB deck to a 32 MB deployment actually got was "The
+// upload could not be read", with "http: request body too large" tucked into a
+// details field.
+func refusedForSize(writer http.ResponseWriter, request *http.Request, err error, limit int64) bool {
+	var tooBig *http.MaxBytesError
+	if !errors.As(err, &tooBig) {
+		return false
+	}
+	writeError(writer, request, http.StatusRequestEntityTooLarge, "template_too_large",
+		fmt.Sprintf("The upload must not exceed %d MiB", limit>>20),
+		map[string]any{"limitBytes": limit})
+	return true
+}
