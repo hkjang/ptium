@@ -480,6 +480,36 @@ if not [w for w in (noted.get("warnings") or []) if "unknown directive" in w]:
     failures.append("a word that only begins like a directive was read as one")
 call("DELETE", f"/presentations/{glued['id']}", expect=204)
 
+# This deployment's cap on deck length is applied at the front door, and used to
+# be applied silently: a request for more slides than are allowed came back 201
+# with a shorter deck and no reason. The same cap on an imported file and on
+# applied source both announce themselves.
+print("── a deck shorter than what was asked for ──")
+kept = {}
+for row in (data_of(call("GET", "/admin/settings", expect=200)) or []):
+    if row.get("key") in ("generation.max_slides", "generation.default_slide_count"):
+        kept[row["key"]] = row.get("value")
+call("PATCH", "/admin/settings", {"settings": {"generation.default_slide_count": 3}}, expect=200)
+call("PATCH", "/admin/settings", {"settings": {"generation.max_slides": 5}}, expect=200)
+capped = data_of(call("POST", "/presentations", {"title": "자름 점검", "prompt": "점검", "slideCount": 10}, expect=(201, 202)))
+if capped:
+    if (capped.get("requestedSlideCount") or 0) > 5:
+        failures.append(f"the deployment allows 5 slides and made a deck of {capped.get('requestedSlideCount')}")
+    told = data_of(call("GET", f"/presentations/{capped['id']}", expect=200)) or {}
+    notes = told.get("generationNotes") or told.get("notes") or []
+    if not any("10" in str(note) and "5" in str(note) for note in notes):
+        failures.append(f"a deck cut from 10 slides to 5 says {notes}")
+    inside = data_of(call("POST", "/presentations", {"title": "자름 점검 2", "prompt": "점검", "slideCount": 4}, expect=(201, 202)))
+    if inside:
+        quiet = data_of(call("GET", f"/presentations/{inside['id']}", expect=200)) or {}
+        if quiet.get("generationNotes"):
+            failures.append(f"a deck inside the cap was told {quiet['generationNotes']}")
+        call("DELETE", f"/presentations/{inside['id']}", expect=(200, 204))
+    call("DELETE", f"/presentations/{capped['id']}", expect=(200, 204))
+for key in ("generation.max_slides", "generation.default_slide_count"):
+    if kept.get(key) is not None:
+        call("PATCH", "/admin/settings", {"settings": {key: kept[key]}}, expect=200)
+
 print("── inspect, preview, export ──")
 
 # The path may name the format and the query may override it. The default used

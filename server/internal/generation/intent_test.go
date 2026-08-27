@@ -73,3 +73,36 @@ func TestApplySlideCountPrefersTheExplicitRequest(t *testing.T) {
 		t.Fatalf("a nonsensical default must still produce a slide: %d", got)
 	}
 }
+
+// The length the request asked for, before this deployment's cap.
+//
+// The cap was applied at the front door with nothing said: a request for ten
+// slides where five are allowed came back with a five-slide deck and no reason.
+// The caller can only say so if it can tell what was asked for.
+func TestWhatTheRequestAskedForBeforeTheCap(t *testing.T) {
+	spoken := Intent{SlideCount: 12}
+	if got := spoken.SlideCountAsked(0, 3); got != 12 {
+		t.Errorf("a brief asking for 12 was read as %d", got)
+	}
+	if got := spoken.SlideCountAsked(7, 3); got != 7 {
+		t.Errorf("an explicit 7 over a brief's 12 was read as %d", got)
+	}
+	if got := (Intent{}).SlideCountAsked(0, 3); got != 3 {
+		t.Errorf("a request that said nothing was read as %d, want the default 3", got)
+	}
+}
+
+// And the answer is still capped, whatever was asked.
+func TestTheCapStillHolds(t *testing.T) {
+	spoken := Intent{SlideCount: 12}
+	if got := spoken.ApplySlideCount(0, 3, 5); got != 5 {
+		t.Errorf("a brief asking for 12 where 5 are allowed made %d", got)
+	}
+	if got := spoken.ApplySlideCount(0, 3, 50); got != 12 {
+		t.Errorf("a brief asking for 12 where 50 are allowed made %d", got)
+	}
+	// Nothing was cut, so nothing has to be said.
+	if asked, made := (Intent{}).SlideCountAsked(4, 3), (Intent{}).ApplySlideCount(4, 3, 5); asked != made {
+		t.Errorf("a request inside the cap asked %d and made %d", asked, made)
+	}
+}

@@ -40,13 +40,24 @@ func ParseIntent(prompt string) Intent {
 // ApplySlideCount resolves the deck length from, in order: what the caller
 // explicitly asked for, what the prompt says, and the deployment default.
 func (intent Intent) ApplySlideCount(explicit, fallback, maximum int) int {
+	return clampCount(intent.SlideCountAsked(explicit, fallback), maximum)
+}
+
+// SlideCountAsked is the length the request asked for, before any cap this
+// deployment puts on it.
+//
+// It exists so the caller can tell whether the answer is the number that was
+// asked for. A deployment capped at five slides gave a request for ten a deck
+// of five, and said nothing: the same cap on an imported file and on applied
+// source both announce themselves, and only the front door was quiet.
+func (intent Intent) SlideCountAsked(explicit, fallback int) int {
 	switch {
 	case explicit > 0:
-		return clampCount(explicit, maximum)
+		return explicit
 	case intent.SlideCount > 0:
-		return clampCount(intent.SlideCount, maximum)
+		return intent.SlideCount
 	default:
-		return clampCount(fallback, maximum)
+		return fallback
 	}
 }
 

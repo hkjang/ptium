@@ -164,7 +164,7 @@ func (s *Server) createAndGeneratePresentation(writer http.ResponseWriter, reque
 	}
 	storeInput := s.defaultPresentationInput(request.Context())
 	mergePresentationInput(&storeInput, input)
-	applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
+	_, cut := applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
 	if message := validatePresentationInput(storeInput, s.maximumSlides(request.Context())); message != "" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", message, nil)
 		return
@@ -179,6 +179,7 @@ func (s *Server) createAndGeneratePresentation(writer http.ResponseWriter, reque
 		s.internalError(writer, request, "presentation_create_failed", err)
 		return
 	}
+	s.saySlidesWereCapped(request.Context(), queued.ID, user.ID, cut, storeInput)
 	s.store.Audit(request.Context(), &user.ID, "presentation.create_and_generate", "presentation", queued.ID, nil)
 	s.worker.Notify()
 	writeData(writer, request, http.StatusAccepted, queued)
@@ -187,7 +188,7 @@ func (s *Server) createAndGeneratePresentation(writer http.ResponseWriter, reque
 func (s *Server) createPresentationFromInput(writer http.ResponseWriter, request *http.Request, input presentationRequest) (model.Presentation, bool) {
 	storeInput := s.defaultPresentationInput(request.Context())
 	mergePresentationInput(&storeInput, input)
-	applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
+	_, cut := applyPromptIntent(&storeInput, input, s.maximumSlides(request.Context()))
 	if message := validatePresentationInput(storeInput, s.maximumSlides(request.Context())); message != "" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", message, nil)
 		return model.Presentation{}, false
@@ -202,8 +203,41 @@ func (s *Server) createPresentationFromInput(writer http.ResponseWriter, request
 		s.internalError(writer, request, "presentation_create_failed", err)
 		return model.Presentation{}, false
 	}
+	s.saySlidesWereCapped(request.Context(), created.ID, user.ID, cut, storeInput)
 	s.store.Audit(request.Context(), &user.ID, "presentation.create", "presentation", created.ID, nil)
 	return created, true
+}
+
+// saySlidesWereCapped tells the author when the deck is shorter than what they
+// asked for.
+//
+// This deployment's cap is applied silently at the front door: a request for
+// ten slides where five are allowed came back 201 with a five-slide deck and
+// nothing to say why. The same cap on an imported file and on applied source
+// both announce themselves, and the author of a new deck was the one person not
+// told. It is written where the other two write it, so the editor shows it
+// beside everything else that was decided for them.
+func (s *Server) saySlidesWereCapped(ctx context.Context, id, ownerID string, asked int, input store.PresentationInput) {
+	if asked <= 0 || asked <= input.SlideCount || id == "" {
+		return
+	}
+	_ = s.store.SetGenerationNotes(ctx, id, ownerID, []string{cappedSlidesNote(asked, input.SlideCount, input.Language)})
+}
+
+// cappedSlidesNote says it in the language the deck is being written in.
+func cappedSlidesNote(asked, allowed int, language string) string {
+	switch {
+	case strings.HasPrefix(strings.ToLower(language), "ja"):
+		return fmt.Sprintf("%d 枚を希望されましたが、この配備は 1 つのデッキにつき %d 枚までのため %d 枚で作成しました。",
+			asked, allowed, allowed)
+	case strings.HasPrefix(strings.ToLower(language), "zh"):
+		return fmt.Sprintf("您要求 %d 页，但本部署每个演示文稿最多 %d 页，因此按 %d 页生成。", asked, allowed, allowed)
+	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
+		return fmt.Sprintf("%d장을 요청하셨지만 이 배포는 한 덱에 %d장까지 허용하므로 %d장으로 만들었습니다.",
+			asked, allowed, allowed)
+	}
+	return fmt.Sprintf("You asked for %d slides. This deployment allows %d to a deck, so it was made with %d.",
+		asked, allowed, allowed)
 }
 
 func (s *Server) getPresentation(writer http.ResponseWriter, request *http.Request) {
@@ -637,7 +671,7 @@ func (s *Server) defaultPresentationInput(ctx context.Context) store.Presentatio
 // person never touched, so a request that omits requestedSlideCount takes the
 // number from the prompt and only then falls back to the deployment default. An
 // explicit value always wins — it is the caller overriding their own prose.
-func applyPromptIntent(target *store.PresentationInput, input presentationRequest, maximum int) generation.Intent {
+func applyPromptIntent(target *store.PresentationInput, input presentationRequest, maximum int) (generation.Intent, int) {
 	intent := generation.ParseIntent(target.Prompt)
 	explicit := 0
 	if input.RequestedSlideCount != nil {
@@ -646,7 +680,13 @@ func applyPromptIntent(target *store.PresentationInput, input presentationReques
 	if input.SlideCount != nil {
 		explicit = *input.SlideCount
 	}
+	// What was asked for, so the caller can say when the answer is not it.
+	asked := intent.SlideCountAsked(explicit, target.SlideCount)
 	target.SlideCount = intent.ApplySlideCount(explicit, target.SlideCount, maximum)
+	cut := 0
+	if asked > target.SlideCount {
+		cut = asked
+	}
 	// A deck is named after what it is about. A client that sends the first line
 	// of the prompt, or its own placeholder, has not named it.
 	target.Title = generation.TitleFor(target.Prompt, target.Title, target.Language)
@@ -656,7 +696,7 @@ func applyPromptIntent(target *store.PresentationInput, input presentationReques
 	if input.Audience == nil && intent.Audience != "" {
 		target.Audience = intent.Audience
 	}
-	return intent
+	return intent, cut
 }
 
 func mergePresentationInput(target *store.PresentationInput, input presentationRequest) {
