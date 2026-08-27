@@ -551,7 +551,8 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 		// Drawing is where the memory goes, so the queue is here rather than at
 		// the front of the handler: reading the deck is cheap and can happen
 		// while somebody else is drawing.
-		release, allowed := s.holdBudget(writer, request, costOfPDF)
+		release, allowed := s.holdBudget(writer, request, costOfPDF, printWait, "printing_busy",
+			"This deployment is already building as many documents as it can at once. Try again in a moment.")
 		if !allowed {
 			return
 		}
@@ -594,7 +595,8 @@ func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Re
 	// picture in it, before a byte is sent. Sixteen forty-slide decks carrying a
 	// photograph on every page, exported at once, took the pod to its limit
 	// exactly and killed it — the gate on printing did not cover this door.
-	release, allowed := s.holdBudget(writer, request, costOfPPTX)
+	release, allowed := s.holdBudget(writer, request, costOfPPTX, printWait, "printing_busy",
+		"This deployment is already building as many documents as it can at once. Try again in a moment.")
 	if !allowed {
 		return
 	}

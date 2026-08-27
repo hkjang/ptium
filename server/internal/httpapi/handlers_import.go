@@ -35,6 +35,16 @@ import (
 // importPresentation reads an uploaded .pptx into a new deck.
 func (s *Server) importPresentation(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
+	// An import reads a whole package and compiles a deck out of it, which cost
+	// 255 MiB for one 60 MB file measured in a pod held to the manifest's limit.
+	// Six at once killed it: this door read the same files a template upload
+	// does and nothing bounded it.
+	release, ok := s.holdBudget(writer, request, costOfImport, templateReadWait, "import_busy",
+		"This deployment is already reading as much as it can hold at once. Try again in a moment.")
+	if !ok {
+		return
+	}
+	defer release()
 	limit := s.maximumTemplateBytes(request.Context())
 	data, meta, ok := s.readImportUpload(writer, request, limit)
 	if !ok {

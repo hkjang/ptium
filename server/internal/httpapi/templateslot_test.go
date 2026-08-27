@@ -23,7 +23,7 @@ import (
 // it, and the four people who uploaded got nothing back. Queued one at a time,
 // eight of them all succeed and the pod never passes half its limit.
 func TestOnlyOneTemplateIsReadAtATime(t *testing.T) {
-	server := &Server{analysingTemplates: make(chan struct{}, concurrentTemplateReads)}
+	server := &Server{building: semaphore.NewWeighted(heavyBudget)}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", nil)
 
 	release, ok := server.holdTemplateRead(httptest.NewRecorder(), request)
@@ -61,7 +61,7 @@ func TestAnUploadThatWaitsTooLongIsToldSo(t *testing.T) {
 	templateReadWait = 20 * time.Millisecond
 	t.Cleanup(func() { templateReadWait = previous })
 
-	server := &Server{analysingTemplates: make(chan struct{}, 1)}
+	server := &Server{building: semaphore.NewWeighted(heavyBudget)}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", nil)
 	held, ok := server.holdTemplateRead(httptest.NewRecorder(), request)
 	if !ok {
@@ -85,7 +85,7 @@ func TestAnUploadThatWaitsTooLongIsToldSo(t *testing.T) {
 // it does not prove that an upload goes through it, which is the thing that
 // keeps the process alive.
 func TestTheUploadHandlerTakesASlot(t *testing.T) {
-	server := &Server{analysingTemplates: make(chan struct{}, concurrentTemplateReads)}
+	server := &Server{building: semaphore.NewWeighted(heavyBudget)}
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/templates", strings.NewReader("not a template"))
 	request.Header.Set("Content-Type", "multipart/form-data; boundary=nope")
 	request = request.WithContext(withUser(request.Context(), model.User{ID: "u", IsAdmin: true}))
@@ -94,12 +94,9 @@ func TestTheUploadHandlerTakesASlot(t *testing.T) {
 	if server.templateReadsTaken.Load() != 1 {
 		t.Error("the upload handler did not go through the gate")
 	}
-	// And it gave the slot back, whatever it answered.
-	select {
-	case server.analysingTemplates <- struct{}{}:
-		<-server.analysingTemplates
-	default:
-		t.Error("the slot was never released")
+	// And it gave the room back, whatever it answered.
+	if !server.building.TryAcquire(heavyBudget) {
+		t.Error("the budget was never released")
 	}
 }
 
@@ -111,11 +108,11 @@ func TestTheUploadHandlerTakesASlot(t *testing.T) {
 // fit comfortably where three .pptx files took the pod past its limit and
 // killed it, and sixteen exports returned nothing at all.
 func TestDocumentsAreBoundedByWhatTheyCost(t *testing.T) {
-	server := &Server{building: semaphore.NewWeighted(documentBudget)}
+	server := &Server{building: semaphore.NewWeighted(heavyBudget)}
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/presentations/x/export", nil)
 
 	// One .pptx takes the whole budget.
-	release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX)
+	release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX, printWait, "printing_busy", "busy")
 	if !ok {
 		t.Fatal("the first .pptx was refused")
 	}
@@ -123,7 +120,7 @@ func TestDocumentsAreBoundedByWhatTheyCost(t *testing.T) {
 	printWait = 20 * time.Millisecond
 	t.Cleanup(func() { printWait = previous })
 	recorder := httptest.NewRecorder()
-	if _, ok := server.holdBudget(recorder, request, costOfPDF); ok {
+	if _, ok := server.holdBudget(recorder, request, costOfPDF, printWait, "printing_busy", "busy"); ok {
 		t.Error("a PDF was drawn while a .pptx had the whole budget")
 	}
 	if recorder.Code != http.StatusServiceUnavailable {
@@ -132,21 +129,21 @@ func TestDocumentsAreBoundedByWhatTheyCost(t *testing.T) {
 	release()
 
 	// Three PDFs fit where one .pptx did.
-	held := make([]func(), 0, documentBudget)
-	for range documentBudget {
-		release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF)
+	held := make([]func(), 0, heavyBudget)
+	for range heavyBudget {
+		release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF, printWait, "printing_busy", "busy")
 		if !ok {
 			t.Fatal("a PDF was refused while the budget had room")
 		}
 		held = append(held, release)
 	}
-	if _, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF); ok {
+	if _, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPDF, printWait, "printing_busy", "busy"); ok {
 		t.Error("a fourth PDF drew past the budget")
 	}
 	for _, release := range held {
 		release()
 	}
-	if release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX); !ok {
+	if release, ok := server.holdBudget(httptest.NewRecorder(), request, costOfPPTX, printWait, "printing_busy", "busy"); !ok {
 		t.Error("a .pptx was refused after the budget came free")
 	} else {
 		release()

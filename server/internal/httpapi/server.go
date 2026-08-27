@@ -93,13 +93,6 @@ type Server struct {
 	providerCheckMu sync.Mutex
 	providerCheck   generation.ProviderCheck
 	providerCheckAt time.Time
-	// analysingTemplates bounds how many uploads are held in memory and read at
-	// once. A template is read whole — the package, and every picture in it —
-	// and the setting that caps its size goes to 64 MB. Measured in a pod held
-	// to the manifest's limit: one 60 MB template peaks at 441 MiB, two at
-	// 715 MiB, and four killed the process outright, taking every unrelated
-	// request in flight with it. Waiting two seconds is the better answer.
-	analysingTemplates chan struct{}
 	// building is the memory budget for making a document, in units of one PDF.
 	// A PDF of a forty-slide deck with a photograph on every page costs about
 	// 150 MiB to draw; the same deck packaged as .pptx costs 362 MiB, because
@@ -136,7 +129,6 @@ type Server struct {
 // read allocated has not gone back to the operating system yet: eight uploads
 // at once killed a pod that was letting two through. Reading is quick, so the
 // queue costs a couple of seconds each and the process stays up.
-const concurrentTemplateReads = 1
 
 // documentBudget is how much document-building may happen at once, and what
 // each kind costs against it. Measured in a pod held to the manifest's limit:
@@ -144,9 +136,17 @@ const concurrentTemplateReads = 1
 // 809 MiB, so three is where the pod dies; a PDF of the same deck is a third of
 // that, and sixteen of them queue happily three at a time.
 const (
-	documentBudget = 3
-	costOfPDF      = 1
-	costOfPPTX     = 3
+	// heavyBudget is measured in units of about 150 MiB, which is what drawing
+	// one PDF of a forty-slide deck with a photograph on every page costs. Three
+	// of them together fit the pod the manifest describes.
+	heavyBudget = 3
+	// What each kind of work costs against it, from the peaks measured in a pod
+	// held to that limit: a PDF 150 MiB, an import of a 60 MB deck 220 MiB, the
+	// same deck packaged as .pptx 362 MiB, reading a 60 MB template 441 MiB.
+	costOfPDF          = 1
+	costOfImport       = 2
+	costOfPPTX         = 3
+	costOfTemplateRead = 3
 )
 
 func New(options Options) (*Server, error) {
@@ -175,8 +175,7 @@ func New(options Options) (*Server, error) {
 		generator:     options.Generator,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
 		assetDir:             options.AssetDir,
-		analysingTemplates:   make(chan struct{}, concurrentTemplateReads),
-		building:             semaphore.NewWeighted(documentBudget),
+		building:             semaphore.NewWeighted(heavyBudget),
 		version:              strings.TrimSpace(options.Version),
 		bootstrapAdminEmails: options.BootstrapAdminEmails, bootstrapAdminSubjects: options.BootstrapAdminSubjects,
 		corsOrigins: options.CORSAllowedOrigins, logger: options.Logger, mcpHandler: options.MCPHandler,

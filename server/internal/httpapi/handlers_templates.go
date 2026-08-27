@@ -842,9 +842,12 @@ func (s *Server) templateUploadsAllowed(ctx context.Context) bool {
 // one to come free. A site whose people all upload at the same moment waits a
 // couple of seconds each; without it the fourth of them killed the process and
 // took every other request in flight with it.
+// holdTemplateRead takes room for reading a whole uploaded package. It is the
+// most expensive thing this server does: 441 MiB for one at the largest size
+// the settings accept, so it takes the whole budget.
 func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Request) (func(), bool) {
-	release, ok := holdSlot(writer, request, s.analysingTemplates, templateReadWait, "templates_busy",
-		"This deployment is already reading as many templates as it can hold at once. Try again in a moment.")
+	release, ok := s.holdBudget(writer, request, costOfTemplateRead, templateReadWait, "templates_busy",
+		"This deployment is already reading as much as it can hold at once. Try again in a moment.")
 	if ok {
 		s.templateReadsTaken.Add(1)
 	}
@@ -855,43 +858,24 @@ func (s *Server) holdTemplateRead(writer http.ResponseWriter, request *http.Requ
 // cost is measured in hundreds of megabytes cannot all happen at once. What it
 // waits for is room for this kind of document, not a turn in a queue: a .pptx
 // costs three times what a PDF costs and takes the whole budget.
-func (s *Server) holdBudget(writer http.ResponseWriter, request *http.Request, cost int64) (func(), bool) {
+func (s *Server) holdBudget(writer http.ResponseWriter, request *http.Request, cost int64,
+	wait time.Duration, code, message string) (func(), bool) {
 	if s.building == nil {
 		return func() {}, true
 	}
-	waiting, cancel := context.WithTimeout(request.Context(), printWait)
+	waiting, cancel := context.WithTimeout(request.Context(), wait)
 	defer cancel()
 	if err := s.building.Acquire(waiting, cost); err != nil {
 		if request.Context().Err() != nil {
 			return func() {}, false
 		}
-		writeError(writer, request, http.StatusServiceUnavailable, "printing_busy",
-			"This deployment is already building as many documents as it can at once. Try again in a moment.", nil)
-		return func() {}, false
-	}
-	return func() { s.building.Release(cost) }, true
-}
-
-// holdSlot waits for one of a bounded set of slots, so that work whose cost is
-// measured in hundreds of megabytes cannot all happen at once. A caller that
-// waits too long is answered rather than left hanging.
-func holdSlot(writer http.ResponseWriter, request *http.Request, slots chan struct{},
-	wait time.Duration, code, message string) (func(), bool) {
-	if slots == nil {
-		return func() {}, true
-	}
-	waiting, cancel := context.WithTimeout(request.Context(), wait)
-	defer cancel()
-	select {
-	case slots <- struct{}{}:
-		return func() { <-slots }, true
-	case <-waiting.Done():
-		if request.Context().Err() != nil {
-			return func() {}, false
-		}
+		// The answer names the door the caller knocked on. One budget covers
+		// four kinds of heavy work, and telling somebody uploading a template
+		// that documents are being built is an answer about somebody else.
 		writeError(writer, request, http.StatusServiceUnavailable, code, message, nil)
 		return func() {}, false
 	}
+	return func() { s.building.Release(cost) }, true
 }
 
 // templateReadWait is how long an upload waits for a slot. Reading the largest
