@@ -356,7 +356,17 @@ func chartSource(chart pptx.ImportedChart) string {
 	case pptx.BlockShare:
 		name = "share"
 	}
-	fmt.Fprintf(&builder, "::%s\n", name)
+	// What the numbers are, which is the series' own name. A chart of one series
+	// carries it nowhere else — the categories say when, the points say how much,
+	// and only this says of what. Every other shape a chart comes back as keeps
+	// it: two series become a table's row labels, a line chart names each line.
+	// This branch used to drop it, so an imported chart of revenue became a
+	// column of unlabelled numbers.
+	if label := strings.TrimSpace(series.Name); label != "" {
+		fmt.Fprintf(&builder, "::%s %s\n", name, escapeItemField(label))
+	} else {
+		fmt.Fprintf(&builder, "::%s\n", name)
+	}
 	written := 0
 	for index, point := range series.Points {
 		label := ""

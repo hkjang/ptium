@@ -55,7 +55,13 @@ func (d Design) chartPart(frame Frame, block Block) *ChartPart {
 			part.Kind = chartBar
 		}
 		part.FormatCode = format
+		// What the numbers are. The source writes it as the component's caption
+		// and a stored block may carry it as a heading; either is the series'
+		// name, and "값" is only what to say when the deck never said.
 		name := strings.TrimSpace(block.Heading)
+		if name == "" {
+			name = strings.TrimSpace(block.Caption)
+		}
 		if name == "" {
 			name = "값"
 		}

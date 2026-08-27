@@ -225,3 +225,50 @@ func TestAlternativeTextFollowsTheDeckLanguage(t *testing.T) {
 		t.Errorf("the chart is described in the wrong language:\n%s", slide)
 	}
 }
+
+// The exported chart names its series with what the deck said the numbers are.
+//
+// The one that was wrong: the name was read from the block's heading, which
+// nothing in the product ever set — the source writes a component's label as
+// its caption — so every single-series chart went out named "값" however
+// carefully the author had named it.
+func TestAnExportedChartNamesItsSeriesFromTheDeck(t *testing.T) {
+	parts := renderedParts(t, chartDeck(Block{
+		Kind:    BlockColumns,
+		Caption: "매출",
+		Items:   []Item{{Label: "1분기", Value: "12"}, {Label: "2분기", Value: "15.5"}},
+	}))
+	found := ""
+	for name, content := range parts {
+		if strings.HasPrefix(name, "ppt/charts/") && strings.HasSuffix(name, ".xml") {
+			found += content
+		}
+	}
+	if found == "" {
+		t.Fatal("the export carries no chart at all")
+	}
+	if !strings.Contains(found, "매출") {
+		t.Fatal("the exported chart does not name its series with what the deck called the numbers")
+	}
+	if strings.Contains(found, "<c:v>값</c:v>") {
+		t.Fatal(`the exported chart named its series "값" although the deck said what the numbers are`)
+	}
+}
+
+// A deck that never said what the numbers are still has to name the series
+// something, and "값" is what to say when nothing was said.
+func TestAnUnnamedChartStillNamesItsSeries(t *testing.T) {
+	parts := renderedParts(t, chartDeck(Block{
+		Kind:  BlockColumns,
+		Items: []Item{{Label: "1분기", Value: "12"}, {Label: "2분기", Value: "15.5"}},
+	}))
+	found := ""
+	for name, content := range parts {
+		if strings.HasPrefix(name, "ppt/charts/") && strings.HasSuffix(name, ".xml") {
+			found += content
+		}
+	}
+	if !strings.Contains(found, "값") {
+		t.Fatal("a chart the deck never named lost its series name entirely")
+	}
+}

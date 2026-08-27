@@ -142,3 +142,58 @@ func TestImportedCitationsAreWrittenAsSources(t *testing.T) {
 		t.Errorf("the citation is still a point:\n%s", source)
 	}
 }
+
+// A chart of one series says what its numbers are in one place only: the
+// series' own name. The categories say when, the points say how much, and
+// nothing else says of what.
+//
+// The one that was wrong: every other shape an imported chart comes back as
+// kept that name — two series become a table's row labels, a line chart names
+// each line — and the single-series branch dropped it, so a PowerPoint chart of
+// revenue arrived as a column of unlabelled numbers.
+func TestAnImportedChartKeepsWhatItsNumbersAre(t *testing.T) {
+	one := pptx.ImportedChart{
+		Kind:       pptx.BlockColumns,
+		Categories: []string{"1분기", "2분기", "3분기"},
+		Series:     []pptx.Series{{Name: "매출", Points: []float64{12, 15.5, 19.2}}},
+	}
+	source := chartSource(one)
+	if !strings.Contains(source, "::columns 매출") {
+		t.Fatalf("a chart of one series came back as %q, which does not say what the numbers are", source)
+	}
+	for _, want := range []string{"1분기 | 12", "3분기 | 19.2"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("the numbers did not survive: %q", source)
+		}
+	}
+}
+
+// A series with no name of its own must not invent one.
+func TestAnUnnamedSeriesIsLeftUnnamed(t *testing.T) {
+	source := chartSource(pptx.ImportedChart{
+		Kind:       pptx.BlockColumns,
+		Categories: []string{"가", "나"},
+		Series:     []pptx.Series{{Points: []float64{1, 2}}},
+	})
+	if !strings.HasPrefix(strings.TrimSpace(source), "::columns\n") {
+		t.Fatalf("an unnamed series came back as %q", source)
+	}
+}
+
+// Two series already kept their names as a table's row labels; that must stay
+// true now the one-series branch keeps its own.
+func TestTwoSeriesStillComeBackAsATable(t *testing.T) {
+	source := chartSource(pptx.ImportedChart{
+		Kind:       pptx.BlockColumns,
+		Categories: []string{"1분기", "2분기"},
+		Series: []pptx.Series{
+			{Name: "매출", Points: []float64{12, 15.5}},
+			{Name: "비용", Points: []float64{8, 9.5}},
+		},
+	})
+	for _, want := range []string{"::table", "매출 | 12", "비용 | 8"} {
+		if !strings.Contains(source, want) {
+			t.Fatalf("two series came back as %q", source)
+		}
+	}
+}
