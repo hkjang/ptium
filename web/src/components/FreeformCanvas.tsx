@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api/client'
 import { markupFor } from '../pages/editor/model/markup'
+import { imagesOnClipboard } from '../pages/editor/pasteimage'
 import type { CanvasRegion, SlideBlock, SlideElement, SlotFrame, SlotStyle } from '../types'
 import { SlidePreview } from './SlidePreview'
 
@@ -369,21 +370,20 @@ export function FreeformCanvas({
     Array.from(list || []).filter((file) => file.type.startsWith('image/'))
 
   // Ctrl+V is answered here rather than in the key handler, because a key
-  // handler that prevents the default never learns what was on the clipboard —
-  // and a screenshot is on the clipboard far more often than a copied shape.
+  // handler that prevents the default never learns what was on the clipboard.
+  //
+  // A copied shape is this canvas's own business and only pastes while the
+  // canvas is being worked in. A picture is the whole editor's business — it
+  // belongs on the slide whichever view is open and whether or not anything has
+  // been clicked yet — so this handler recognises one and steps aside rather
+  // than racing the page for it.
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
+      if (imagesOnClipboard(event.clipboardData).length > 0) return
       const target = event.target as HTMLElement | null
-      // A paste into a text box is text, even when the clipboard also holds an
-      // image: the person is typing.
+      // A paste into a text box is text: the person is typing.
       if (target?.matches?.('input, textarea, [contenteditable="true"]')) return
       if (!editorRoot.current?.contains(document.activeElement)) return
-      const files = imageFiles(event.clipboardData?.files)
-      if (files.length > 0 && onImageFiles) {
-        event.preventDefault()
-        onImageFiles(files)
-        return
-      }
       if (clipboard.current.length > 0) {
         event.preventDefault()
         paste()

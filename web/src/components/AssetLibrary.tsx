@@ -216,7 +216,7 @@ export function AssetLibrary({ onInsert, onPlace, notify, compact = true }: {
           ? filtering
             ? <EmptyState title="찾는 이미지가 없습니다" description="검색어나 태그를 지우고 다시 보세요."
                 action={<Button variant="secondary" size="small" onClick={() => { setSearch(''); setTag(''); setFavoritesOnly(false) }}>필터 지우기</Button>} />
-            : <EmptyState title="이미지가 없습니다" description="캔버스에 붙여넣거나 끌어다 놓으면 여기에 쌓이고, 코드에서는 ::image 이름 으로 불러 씁니다." />
+            : <EmptyState title="이미지가 없습니다" description="캡처한 이미지를 Ctrl+V로 붙여넣거나 파일을 끌어다 놓으면 여기에 쌓이고, 코드에서는 ::image 이름 으로 불러 씁니다." />
           : <ul className="asset-grid">
             {assets.map((asset) => (
               <li key={asset.id} className={asset.favorite ? 'favorite' : ''}>

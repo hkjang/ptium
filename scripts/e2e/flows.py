@@ -128,6 +128,65 @@ with sync_playwright() as play:
     page.screenshot(path=f"{OUT}/flow-source.png")
     check("source tab")
 
+    # ── a captured screenshot, pasted ──
+    # The gesture everybody arrives with: capture a screen, come back to the
+    # browser, Ctrl+V. Until v1.53.0 the editor only answered it while the
+    # canvas already held focus, so the ordinary sequence — nothing clicked
+    # yet — pasted nothing and said nothing about why, and the same keys were
+    # dead in 코드 and 템플릿 미리보기.
+    print("── pasting a captured image ──")
+    # A 4x4 PNG, small enough to keep in the sweep and real enough to upload.
+    PASTED_PNG = ("iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFklEQVR4nGP8z8Dwn4GKgIma"
+                  "hg0PAwEAqXsD/9E4KFQAAAAASUVORK5CYII=")
+    PASTE = """
+    ([encoded, alsoText]) => {
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))
+      const carried = new DataTransfer()
+      carried.items.add(new File([bytes], 'image.png', {type: 'image/png'}))
+      if (alsoText) carried.setData('text/plain', '붙여넣는 글')
+      const event = new ClipboardEvent('paste', {clipboardData: carried, bubbles: true, cancelable: true})
+      ;(document.activeElement || document.body).dispatchEvent(event)
+    }
+    """
+
+    def pasted_images():
+        # A slide's floating objects live inside its content blob, which is
+        # where the editor reads them from too.
+        found = 0
+        for slide in api(f"/presentations/{deck_id}")["slides"]:
+            content = slide.get("content") or {}
+            if isinstance(content, str):
+                content = json.loads(content)
+            found += len([e for e in (content.get("elements") or []) if e.get("kind") == "image"])
+        return found
+
+    def paste_lands(what, also_text=False, expect=True):
+        before = pasted_images()
+        page.evaluate(PASTE, [PASTED_PNG, also_text])
+        page.wait_for_timeout(4000)
+        landed = pasted_images() > before
+        if landed != expect:
+            failures.append(f"{what}: the slide went from {before} images to {pasted_images()}, "
+                            f"expected {'one more' if expect else 'no change'}")
+
+    page.get_by_role("button", name="편집", exact=True).first.click()
+    page.wait_for_timeout(1500)
+    page.evaluate("document.activeElement && document.activeElement.blur()")
+    paste_lands("a screenshot pasted with nothing clicked")
+    check("pasted image")
+
+    page.get_by_role("button", name="코드", exact=True).first.click()
+    page.wait_for_timeout(2500)
+    page.locator(".source-editor textarea").first.click()
+    paste_lands("a screenshot pasted while the source editor holds the caret")
+    # A paste that is also text is the text box's own business.
+    page.get_by_role("button", name="코드", exact=True).first.click()
+    page.wait_for_timeout(2000)
+    page.locator(".source-editor textarea").first.click()
+    paste_lands("a copied paragraph pasted into the source editor", also_text=True, expect=False)
+    page.get_by_role("button", name="편집", exact=True).first.click()
+    page.wait_for_timeout(1500)
+
     print("── saving a slide and putting it back ──")
     page.get_by_role("button", name="편집", exact=True).first.click()
     page.wait_for_timeout(1500)

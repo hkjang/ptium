@@ -31,6 +31,7 @@ import {
 import { appliedMessage, findingDetail, findingLabel, revisionReason, scoreDimensionLabel, trimmedCounts, warningText } from './editor/model/findings'
 import { replaceInDeck } from './editor/model/search'
 import { versionToSend } from './editor/model/saving'
+import { dialogIsOpen, imagesOnClipboard, pasteBelongsToSlide } from './editor/pasteimage'
 import { CommandDialog, type CommandPlan } from './editor/CommandDialog'
 import { FindDialog } from './editor/FindDialog'
 import { QualityDialog } from './editor/QualityDialog'
@@ -1089,6 +1090,29 @@ export function EditorPage({ id }: { id: string }) {
       showToast(`이미지 ${placed.length}장을 배치했습니다.`)
     } catch (err) { showToast(displayError(err), 'error') }
   }
+
+  /**
+   * Ctrl+V, anywhere in the editor.
+   *
+   * The gesture people arrive with is the one every other deck tool answers:
+   * capture a screen, come back to the browser, paste. It is listened for on the
+   * window rather than on the canvas so that it works before anything has been
+   * clicked and in every view — a screenshot pasted while the code is open still
+   * belongs on the slide, and the editor switches back to 편집 to show where it
+   * landed.
+   */
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (!pasteBelongsToSlide(event.clipboardData, {
+        target: event.target as Element | null,
+        dialogOpen: dialogIsOpen(document),
+      })) return
+      event.preventDefault()
+      void importImages(imagesOnClipboard(event.clipboardData))
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  })
 
   /** One image as a floating object, sized from its own pixels. */
   const imageElement = (asset: Asset, at: { x: number; y: number } | undefined, zIndex: number): SlideElement => {

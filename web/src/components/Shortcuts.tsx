@@ -65,7 +65,7 @@ export const editorShortcuts: ShortcutGroup[] = [
   {
     title: '이미지',
     items: [
-      { keys: [modifier, 'V'], label: '복사한 이미지를 캔버스에 붙여넣기' },
+      { keys: [modifier, 'V'], label: '캡처한 이미지를 현재 슬라이드에 붙여넣기 (편집·코드·미리보기 어디서나)' },
       { keys: ['끌어다 놓기'], label: '이미지 파일을 캔버스에 놓아 올리기' },
     ],
   },
