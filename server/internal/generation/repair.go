@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,7 +45,10 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 	if len(worst) == 0 {
 		return result
 	}
-	repaired, attempted, declined := 0, 0, 0
+	repaired, attempted := 0, 0
+	// Which slides the model was asked about and gave nothing better for. They
+	// are the author's now, and the note that says so has to say which.
+	var declined []int
 	for _, candidate := range worst {
 		if attempted >= maximumRepairs || attempted >= g.repairs {
 			break
@@ -52,8 +56,12 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 		if attempted > 0 && time.Now().After(deadline) {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("%d more slide(s) do not fit, and there was no time left to rewrite them", len(worst)-attempted))
+			remaining := make([]int, 0, len(worst)-attempted)
+			for _, left := range worst[attempted:] {
+				remaining = append(remaining, left.position)
+			}
 			result.Notes = append(result.Notes,
-				noTimeLeftNote(len(worst)-attempted, request.Presentation.Language))
+				noTimeLeftNote(remaining, request.Presentation.Language))
 			break
 		}
 		if ctx.Err() != nil {
@@ -93,7 +101,7 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 		if lost := structureLost(result.Slides[position-1], proposal); lost != "" {
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("slide %d was left as written: the rewrite %s", position, lost))
-			declined++
+			declined = append(declined, position)
 			continue
 		}
 		before := candidate.count
@@ -103,7 +111,7 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 			// churn the author's deck for nothing.
 			result.Warnings = append(result.Warnings,
 				fmt.Sprintf("slide %d was left as written: %s", position, strings.Join(candidate.details, "; ")))
-			declined++
+			declined = append(declined, position)
 			continue
 		}
 		result.Slides[position-1] = proposal
@@ -113,7 +121,8 @@ func (g *Generator) repairDeck(ctx context.Context, request writingRequest, resu
 	// A slide the model was asked about and gave nothing better for is the
 	// author's now, and they should be told rather than left to discover it by
 	// pressing the same button.
-	if declined > 0 {
+	if len(declined) > 0 {
+		sort.Ints(declined)
 		result.Notes = append(result.Notes, leftAsWrittenNote(declined, request.Presentation.Language))
 	}
 	if repaired > 0 {
@@ -380,30 +389,108 @@ func slideArgumentChanged(before, after model.Slide) bool {
 // better, and the difference matters to whoever opens the deck next: pressing
 // "AI로 고치기" on a slide the model has already declined is a minute spent
 // learning what the generation already knew.
-func leftAsWrittenNote(count int, language string) string {
+func leftAsWrittenNote(positions []int, language string) string {
+	which := slidesSaid(positions, language)
 	switch {
 	case strings.HasPrefix(strings.ToLower(language), "ja"):
-		return fmt.Sprintf("%d 枚はモデルに書き直させても良くならなかったため、そのままにしました。手で直すか、別の言い回しを指示してください。", count)
+		return fmt.Sprintf("%sはモデルに書き直させても良くならなかったため、そのままにしました。手で直すか、別の言い回しを指示してください。", which)
 	case strings.HasPrefix(strings.ToLower(language), "zh"):
-		return fmt.Sprintf("有 %d 页请模型重写后并没有变好，因此保持原样。请手动修改或换一种说法。", count)
+		return fmt.Sprintf("%s请模型重写后并没有变好，因此保持原样。请手动修改或换一种说法。", which)
 	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
-		return fmt.Sprintf("%d장은 모델에게 다시 쓰게 했지만 나아지지 않아 그대로 두었습니다. 손으로 고치거나 다른 표현을 지시해 주세요.", count)
+		return fmt.Sprintf("%s%s 모델에게 다시 쓰게 했지만 나아지지 않아 그대로 두었습니다. 손으로 고치거나 다른 표현을 지시해 주세요.",
+			which, koreanTopic(which))
 	}
-	return fmt.Sprintf("%d slide(s) were sent back to the model and came back no better, so they were left as written. "+
-		"Fix them by hand, or say what to change.", count)
+	if len(positions) == 1 {
+		return fmt.Sprintf("%s was sent back to the model and came back no better, so it was left as written. "+
+			"Fix it by hand, or say what to change.", which)
+	}
+	return fmt.Sprintf("%s were sent back to the model and came back no better, so they were left as written. "+
+		"Fix them by hand, or say what to change.", which)
+}
+
+// koreanTopic is 은 or 는 for what comes before it.
+//
+// Which one depends on the last syllable: 는 after a vowel, 은 after a final
+// consonant. The phrase before it is not fixed — "4번 슬라이드" ends in a vowel
+// and "슬라이드 9장" in a consonant — so the particle cannot be written into the
+// sentence, and writing it there gave "슬라이드는" as "슬라이드은".
+func koreanTopic(phrase string) string {
+	runes := []rune(strings.TrimSpace(phrase))
+	if len(runes) == 0 {
+		return "은"
+	}
+	last := runes[len(runes)-1]
+	if last >= 0xAC00 && last <= 0xD7A3 {
+		if (last-0xAC00)%28 == 0 {
+			return "는"
+		}
+		return "은"
+	}
+	// A number is read aloud, and four of the ten readings end in a vowel.
+	switch last {
+	case '2', '4', '5', '9':
+		return "는"
+	}
+	return "은"
+}
+
+// slidesSaid names the slides something happened to, in the deck's own
+// language, so the author can go and look at them.
+//
+// It says which rather than how many for two reasons. A note about slides an
+// author now has to fix by hand is only useful if it says which ones. And in
+// Korean a bare count could not be said at all: "3장은" is read as the third
+// slide, not as three of them, so a note about three slides pointed at one.
+//
+// Past a handful the places stop being worth listing, and the count is said in
+// a form that cannot be mistaken for a place.
+func slidesSaid(positions []int, language string) string {
+	const listed = 6
+	korean := strings.HasPrefix(strings.ToLower(language), "ko") || strings.TrimSpace(language) == ""
+	japanese := strings.HasPrefix(strings.ToLower(language), "ja")
+	chinese := strings.HasPrefix(strings.ToLower(language), "zh")
+	if len(positions) > listed || len(positions) == 0 {
+		switch {
+		case japanese:
+			return fmt.Sprintf("%d 枚", len(positions))
+		case chinese:
+			return fmt.Sprintf("有 %d 页", len(positions))
+		case korean:
+			return fmt.Sprintf("슬라이드 %d장", len(positions))
+		}
+		return fmt.Sprintf("%d slides", len(positions))
+	}
+	places := make([]string, 0, len(positions))
+	for _, at := range positions {
+		places = append(places, strconv.Itoa(at))
+	}
+	switch {
+	case japanese:
+		return strings.Join(places, "·") + " 枚目"
+	case chinese:
+		return "第 " + strings.Join(places, "·") + " 页"
+	case korean:
+		return strings.Join(places, "·") + "번 슬라이드"
+	}
+	if len(places) == 1 {
+		return "Slide " + places[0]
+	}
+	return "Slides " + strings.Join(places[:len(places)-1], ", ") + " and " + places[len(places)-1]
 }
 
 // noTimeLeftNote says the deck was handed over before every slide had been
 // measured against the template — which is the author's to finish, with the
 // workspace's own "fix it" on the slides the panel lists.
-func noTimeLeftNote(count int, language string) string {
+func noTimeLeftNote(positions []int, language string) string {
+	which := slidesSaid(positions, language)
 	switch {
 	case strings.HasPrefix(strings.ToLower(language), "ja"):
-		return fmt.Sprintf("残り %d 枚は書き直す時間がありませんでした。編集画面の測定結果から直せます。", count)
+		return fmt.Sprintf("残り %sは書き直す時間がありませんでした。編集画面の測定結果から直せます。", which)
 	case strings.HasPrefix(strings.ToLower(language), "zh"):
-		return fmt.Sprintf("还有 %d 页没有时间重写。可在编辑器的检查结果中修复。", count)
+		return fmt.Sprintf("%s没有时间重写。可在编辑器的检查结果中修复。", which)
 	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
-		return fmt.Sprintf("%d장은 다시 쓸 시간이 없었습니다. 편집기의 검사 결과에서 고칠 수 있습니다.", count)
+		return fmt.Sprintf("%s%s 다시 쓸 시간이 없었습니다. 편집기의 검사 결과에서 고칠 수 있습니다.",
+			which, koreanTopic(which))
 	}
-	return fmt.Sprintf("%d more slide(s) had no time left to be rewritten. The editor's measurements will fix them.", count)
+	return fmt.Sprintf("%s had no time left to be rewritten. The editor's measurements will fix them.", which)
 }

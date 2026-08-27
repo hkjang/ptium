@@ -261,7 +261,10 @@ func (w *deckWriter) document() (Document, error) {
 	}
 	if w.dropped > 0 {
 		w.warnings = append(w.warnings,
-			fmt.Sprintf("문서가 길어 %d장은 가져오지 않았습니다. 나눠서 올리면 전부 가져옵니다", w.dropped))
+			// "슬라이드" before the count, because "%d장은" on its own is read as
+			// which slide rather than how many — and what was left behind here is
+			// the tail of a long document, so a count is the honest thing to say.
+			fmt.Sprintf("문서가 길어 슬라이드 %d장은 가져오지 않았습니다. 나눠서 올리면 전부 가져옵니다", w.dropped))
 	}
 	return Document{Title: w.title, Source: w.builder.String(), Warnings: w.warnings}, nil
 }

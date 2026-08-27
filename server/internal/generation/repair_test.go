@@ -247,3 +247,100 @@ func TestASlideTheModelWouldNotImproveIsReported(t *testing.T) {
 		t.Fatalf("expected two slides, got %d", len(deck.Slides))
 	}
 }
+
+// A note about slides the author now has to fix by hand is only useful if it
+// says which ones.
+//
+// And in Korean a count could not be said here at all: "3장은" is read as the
+// third slide, not as three of them — so a note about three slides pointed the
+// author at one, and they opened it to find nothing wrong.
+func TestTheNotesSayWhichSlidesWereLeftToTheAuthor(t *testing.T) {
+	for _, language := range []string{"ko", "", "ja", "zh", "en"} {
+		note := leftAsWrittenNote([]int{2, 5, 6}, language)
+		for _, place := range []string{"2", "5", "6"} {
+			if !strings.Contains(note, place) {
+				t.Errorf("[%s] the note does not say slide %s: %q", language, place, note)
+			}
+		}
+		if strings.Contains(note, "3장은") {
+			t.Errorf("[%s] a count was said where a place is read: %q", language, note)
+		}
+	}
+}
+
+func TestOneSlideIsNamedByItsPlace(t *testing.T) {
+	if got := slidesSaid([]int{4}, "ko"); got != "4번 슬라이드" {
+		t.Errorf("one slide was said as %q", got)
+	}
+	if got := slidesSaid([]int{4}, "en"); got != "Slide 4" {
+		t.Errorf("one slide was said as %q", got)
+	}
+	if got := slidesSaid([]int{2, 5}, "en"); got != "Slides 2 and 5" {
+		t.Errorf("two slides were said as %q", got)
+	}
+	if got := slidesSaid([]int{2, 5, 6}, "en"); got != "Slides 2, 5 and 6" {
+		t.Errorf("three slides were said as %q", got)
+	}
+}
+
+// Past a handful the places stop being worth listing, and the count is said in
+// a form that cannot be mistaken for a place.
+func TestManySlidesAreCountedInAFormThatCannotBeAPlace(t *testing.T) {
+	many := []int{1, 2, 3, 4, 5, 6, 7}
+	if got := slidesSaid(many, "ko"); got != "슬라이드 7장" {
+		t.Errorf("seven slides were said as %q", got)
+	}
+	if strings.HasPrefix(slidesSaid(many, "ko"), "7장") {
+		t.Errorf("the count leads the phrase, where it is read as a place: %q", slidesSaid(many, "ko"))
+	}
+	if got := slidesSaid(many, "en"); got != "7 slides" {
+		t.Errorf("seven slides were said as %q", got)
+	}
+}
+
+// The whole note reads as a sentence in each language, not as a phrase dropped
+// into a gap.
+func TestTheNotesReadAsSentences(t *testing.T) {
+	for language, want := range map[string]string{
+		"ko": "4번 슬라이드는 다시 쓸 시간이 없었습니다",
+		"en": "Slide 4 had no time left to be rewritten",
+	} {
+		if got := noTimeLeftNote([]int{4}, language); !strings.HasPrefix(got, want) {
+			t.Errorf("[%s] the note reads %q", language, got)
+		}
+	}
+}
+
+// 는 after a vowel, 은 after a final consonant. The phrase before it is not
+// fixed — "4번 슬라이드" ends in a vowel and "슬라이드 9장" in a consonant — so
+// writing the particle into the sentence gave "슬라이드은".
+func TestTheKoreanParticleFollowsWhatComesBeforeIt(t *testing.T) {
+	for phrase, want := range map[string]string{
+		"4번 슬라이드":   "는",
+		"슬라이드 9장":   "은",
+		"2·5·6번 슬라이드": "는",
+		"":           "은",
+	} {
+		if got := koreanTopic(phrase); got != want {
+			t.Errorf("%q took %q, want %q", phrase, got, want)
+		}
+	}
+	if note := noTimeLeftNote([]int{4}, "ko"); strings.Contains(note, "슬라이드은") {
+		t.Errorf("the note reads %q", note)
+	}
+	if note := noTimeLeftNote([]int{1, 2, 3, 4, 5, 6, 7}, "ko"); strings.Contains(note, "장는") {
+		t.Errorf("the note reads %q", note)
+	}
+}
+
+// One slide is one slide in English too.
+func TestOneSlideReadsAsOneInEnglish(t *testing.T) {
+	one := leftAsWrittenNote([]int{4}, "en")
+	if !strings.Contains(one, "was sent back") || !strings.Contains(one, "it was left") {
+		t.Errorf("one slide reads %q", one)
+	}
+	many := leftAsWrittenNote([]int{2, 5}, "en")
+	if !strings.Contains(many, "were sent back") || !strings.Contains(many, "they were left") {
+		t.Errorf("two slides read %q", many)
+	}
+}
