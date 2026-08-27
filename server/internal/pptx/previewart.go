@@ -255,7 +255,7 @@ func artworkTransform(piece Artwork, x, y, width, height float64) string {
 
 // previewSlidePicture draws an image a deck placed, cropped into its frame the
 // same way the exported file crops it.
-func previewSlidePicture(placeholder Placeholder, picture Picture, scale float64, clipID string) string {
+func previewSlidePicture(placeholder Placeholder, picture Picture, scale float64, clipID string, density int) string {
 	x := float64(placeholder.X) * scale
 	y := float64(placeholder.Y) * scale
 	width := float64(placeholder.Width) * scale
@@ -266,7 +266,7 @@ func previewSlidePicture(placeholder Placeholder, picture Picture, scale float64
 	// The frame is already in the preview's own pixels, and the picture is
 	// cropped to fill it, so it is embedded at the size that frame draws it at.
 	uri := mediaDataURI(pictureCacheName(picture), picture.Data,
-		pictureBox{Width: width, Height: height, Cover: true}, previewImagePixels)
+		pictureBox{Width: width, Height: height, Cover: true, Density: density}, previewImagePixels)
 	if uri == "" {
 		return ""
 	}

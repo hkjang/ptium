@@ -30,8 +30,13 @@ const (
 	// what a full-bleed one on a full-size preview needs.
 	previewImagePixels = 1400
 	// pictureRetina embeds twice what a box measures, so a preview stays sharp
-	// on a screen that paints two device pixels per CSS pixel.
+	// on a screen that paints two device pixels per CSS pixel. It is the right
+	// number for a screen and the wrong one for a page: see PictureDensity.
 	pictureRetina = 2
+	// PrintPictureDensity is what a picture drawn into a PDF deserves. The PDF
+	// is drawn in points, and a point is a 72nd of an inch, so four pixels to
+	// the point is a shade under 300dpi — what a printed page can resolve.
+	PrintPictureDensity = 4
 	// pictureBucket rounds a budget up so that boxes of near-enough the same
 	// size share one cached encoding rather than each holding its own.
 	pictureBucket = 128
@@ -58,6 +63,12 @@ type pictureBox struct {
 	// part that shows is drawn from fewer of its own pixels than a fitted one —
 	// which is exactly the case a budget taken from the box alone gets wrong.
 	Cover bool
+	// Density is how many of the picture's own pixels each drawn unit deserves.
+	// Zero reads as a screen's two. A page asks for more, because a drawn unit
+	// there is a point rather than a pixel and a printer resolves far more of
+	// them — embedding a screen's worth in an exported PDF loses detail nobody
+	// asked to lose.
+	Density int
 }
 
 // budgetFor is the longest edge worth embedding for a picture of these bounds
@@ -78,7 +89,11 @@ func (b pictureBox) budgetFor(bounds image.Rectangle) int {
 	if b.Cover {
 		scale = math.Max(b.Width/width, b.Height/height)
 	}
-	wanted := int(math.Ceil(math.Max(width, height) * scale * pictureRetina))
+	density := b.Density
+	if density <= 0 {
+		density = pictureRetina
+	}
+	wanted := int(math.Ceil(math.Max(width, height) * scale * float64(density)))
 	// Rounded up to a bucket, so a rail of thumbnails a few pixels apart shares
 	// one encoding of each picture instead of one apiece.
 	wanted = ((wanted + pictureBucket - 1) / pictureBucket) * pictureBucket
@@ -142,8 +157,8 @@ func mediaDataURI(part string, data []byte, box pictureBox, ceiling int) string 
 		ceiling = previewImagePixels
 	}
 	digest := sha256.Sum256(data)
-	key := fmt.Sprintf("%s|%d|%d|%d|%t", hex.EncodeToString(digest[:16]), ceiling,
-		int(math.Ceil(box.Width)), int(math.Ceil(box.Height)), box.Cover)
+	key := fmt.Sprintf("%s|%d|%d|%d|%t|%d", hex.EncodeToString(digest[:16]), ceiling,
+		int(math.Ceil(box.Width)), int(math.Ceil(box.Height)), box.Cover, box.Density)
 
 	mediaCache.Lock()
 	if entry, ok := mediaCache.entries[key]; ok {

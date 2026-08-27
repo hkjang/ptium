@@ -95,3 +95,48 @@ func TestEncodingShrinksWithTheBox(t *testing.T) {
 		t.Fatalf("a thumbnail came to %d bytes against a full drawing's %d: it must cost a fraction, not the same", len(thumbnail), len(full))
 	}
 }
+
+// A page is not a screen. The PDF is drawn in points and printed at far more
+// dots than a point, so embedding a screen's worth of pixels in an exported
+// file loses detail nobody asked to lose — which is exactly what happened when
+// the budget first landed: the picture in an exported PDF went from 1400x933 to
+// 1024x683 without anything saying so.
+func TestAPageAsksForMoreThanAScreen(t *testing.T) {
+	bounds := image.Rect(0, 0, 2400, 1600)
+	box := pictureBox{Width: 480, Height: 324, Cover: true}
+	screen := box.budgetFor(bounds)
+	box.Density = PrintPictureDensity
+	page := box.budgetFor(bounds)
+	if page <= screen {
+		t.Fatalf("a page asked for %d pixels and a screen for %d: the page needs more", page, screen)
+	}
+	// A full-bleed picture on a printed page is worth every pixel of the ceiling,
+	// which is what it had before the budget existed.
+	full := pictureBox{Width: 960, Height: 540, Cover: true, Density: PrintPictureDensity}
+	if got := full.budgetFor(bounds); got != previewImagePixels {
+		t.Fatalf("a full-bleed picture on a page asked for %d pixels, want the %d ceiling", got, previewImagePixels)
+	}
+}
+
+// The cache is keyed on the box, and the density is part of what the box asks
+// for: without it an export at print density handed its encoding to the next
+// screen preview of the same box, and the thumbnail silently cost what the page
+// cost. Measured that way round too — the 960px preview went back to 968KB.
+func TestTheCacheKeepsAPageAndAScreenApart(t *testing.T) {
+	data := photograph(2400, 1600)
+	box := pictureBox{Width: 480, Height: 324, Cover: true}
+	page := box
+	page.Density = PrintPictureDensity
+	forPage := mediaDataURI("apart.jpg", data, page, previewImagePixels)
+	forScreen := mediaDataURI("apart.jpg", data, box, previewImagePixels)
+	if forPage == forScreen {
+		t.Fatal("a page and a screen were handed the same encoding of the same picture")
+	}
+	if len(forScreen) >= len(forPage) {
+		t.Fatalf("the screen's encoding is %d bytes against the page's %d: it must be the smaller", len(forScreen), len(forPage))
+	}
+	// And the other way round: asking again does not hand back the wrong one.
+	if again := mediaDataURI("apart.jpg", data, page, previewImagePixels); again != forPage {
+		t.Fatal("asking for the page again handed back a different encoding")
+	}
+}

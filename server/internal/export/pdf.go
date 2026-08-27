@@ -87,8 +87,12 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 			}
 		}
 		slide.Number = index + 1
+		// A page is not a screen: it is drawn in points and printed at far more
+		// dots than a point, so a picture is embedded for the paper rather than
+		// for a monitor.
 		drawing := pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{
-			Width: int(width), Media: options.Media, Language: presentation.Language})
+			Width: int(width), Media: options.Media, Language: presentation.Language,
+			PictureDensity: pptx.PrintPictureDensity})
 		page := document.AddPage()
 		if !options.WithNotes {
 			if err := pdf.DrawSVG(page, drawing); err != nil {

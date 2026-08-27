@@ -481,6 +481,18 @@ if not [w for w in (noted.get("warnings") or []) if "unknown directive" in w]:
 call("DELETE", f"/presentations/{glued['id']}", expect=204)
 
 print("── inspect, preview, export ──")
+
+# The path may name the format and the query may override it. The default used
+# to be written between the two, so the branch that read .pdf could never run —
+# /export.pdf was not even routed, and would have handed back a pptx if it had
+# been. Both suffixes name what they say now.
+for suffix, want in [("/export.pptx", b"PK"), ("/export.pdf", b"%PDF"), ("/export", b"PK")]:
+    status, body = call("GET", f"/presentations/{deck_id}{suffix}", raw=True, expect=200)
+    if status == 200 and not (body or b"").startswith(want):
+        failures.append(f"{suffix} returned {(body or b'')[:4]!r}, expected a file starting {want!r}")
+status, _ = call("GET", f"/presentations/{deck_id}/export?format=svg", expect=422,
+                 note="an export format the product does not have")
+
 inspected = data_of(call("GET", f"/presentations/{deck_id}/inspect", expect=200))
 print("   slides:", (inspected or {}).get("slides"), "defects:", (inspected or {}).get("defects"),
       "advisories:", (inspected or {}).get("advisories"))

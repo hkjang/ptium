@@ -5,7 +5,12 @@ import (
 	"compress/zlib"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"io"
+	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -298,4 +303,80 @@ func TestThePDFSaysWhatItCouldNotDraw(t *testing.T) {
 	if none := printed("# 물류센터 자동화\n- 도입 승인 요청\n", "ko"); len(none) > 0 {
 		t.Errorf("a Korean deck reported %q", string(none))
 	}
+}
+
+// A picture in an exported PDF is for paper, not for a monitor.
+//
+// The one that was wrong: when previews started embedding a picture at the size
+// they draw it at, the PDF was drawn through the same renderer and quietly took
+// a screen's budget with it. The picture in an exported deck went from 1400x933
+// to 1024x683 — a quarter of its detail — and nothing said so. The guard is on
+// the exported file rather than on the arithmetic, because the arithmetic was
+// right and the export was the caller that forgot to say what it was for.
+func TestAPictureInAnExportedPDFIsDrawnForPaper(t *testing.T) {
+	data, err := pptx.BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := pptx.AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	photo := testPhotograph(2400, 1600)
+	images := func(string) (pptx.Picture, bool) {
+		return pptx.Picture{Data: photo, ContentType: "image/jpeg", Width: 2400, Height: 1600}, true
+	}
+	source := ""
+	for _, name := range []string{"일", "이", "삼", "사", "오", "육"} {
+		source += "# " + name + "번 장\n- 요점\n::image 사진\n\n"
+	}
+	compiled := deck.Compile(deck.ParseSource(source), manifest, deck.CompileOptions{
+		Language: "ko",
+		ResolveImage: func(reference string) (deck.ContentImage, bool) {
+			return deck.ContentImage{AssetID: "photo", Name: reference}, true
+		},
+	})
+	presentation := model.Presentation{Title: "사진", Language: "ko", Slides: compiled.Slides}
+	file, err := PDF(presentation, Options{TemplateData: data, Manifest: manifest, Images: images})
+	if err != nil {
+		t.Fatalf("pdf: %v", err)
+	}
+	widths := regexp.MustCompile(`/Subtype\s*/Image[\s\S]*?/Width\s+(\d+)`).FindAllSubmatch(file, -1)
+	if len(widths) == 0 {
+		t.Fatal("the exported PDF carries no picture at all")
+	}
+	widest := 0
+	for _, found := range widths {
+		if value, _ := strconv.Atoi(string(found[1])); value > widest {
+			widest = value
+		}
+	}
+	// A full-bleed photograph on a printed page is worth every pixel the
+	// renderer is willing to embed. A screen's budget would land near a
+	// thousand, which is what the regression looked like.
+	if widest < 1200 {
+		t.Fatalf("the widest picture in the exported PDF is %dpx; a printed page is owed more than a screen", widest)
+	}
+}
+
+// A photograph, in the sense that matters: large, and not compressible to
+// nothing.
+func testPhotograph(width, height int) []byte {
+	picture := image.NewRGBA(image.Rect(0, 0, width, height))
+	source := rand.New(rand.NewSource(11))
+	for y := 0; y < height; y += 4 {
+		for x := 0; x < width; x += 4 {
+			shade := color.RGBA{uint8(source.Intn(256)), uint8(source.Intn(256)), uint8(source.Intn(256)), 255}
+			for dy := 0; dy < 4 && y+dy < height; dy++ {
+				for dx := 0; dx < 4 && x+dx < width; dx++ {
+					picture.Set(x+dx, y+dy, shade)
+				}
+			}
+		}
+	}
+	var buffer bytes.Buffer
+	if err := jpeg.Encode(&buffer, picture, &jpeg.Options{Quality: 88}); err != nil {
+		panic(err)
+	}
+	return buffer.Bytes()
 }

@@ -22,6 +22,11 @@ type PreviewOptions struct {
 	// rather than copying from the slide — the source line at its foot. Empty
 	// reads as Korean, which is what the rest of the renderer assumes.
 	Language string
+	// PictureDensity is how many of a picture's own pixels each drawn unit is
+	// worth embedding. Zero reads as a screen's two; an export to a page sets
+	// more, because a drawn unit there is a point and a printer resolves far
+	// more of them than a screen does.
+	PictureDensity int
 	// Bare drops the template's background and artwork, drawing only what the
 	// slide itself puts on the page. The canvas uses it to lift one region off a
 	// slide as a transparent sprite it can drag, so what moves under the pointer
@@ -108,7 +113,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 		placeholder = slide.Place(placeholder)
 		// An image occupies its slot the same way it does in the exported file.
 		if picture, ok := slide.Pictures[placeholder.Slot]; ok && len(picture.Data) > 0 {
-			builder.WriteString(previewSlidePicture(placeholder, picture, scale, gradients.clipID()))
+			builder.WriteString(previewSlidePicture(placeholder, picture, scale, gradients.clipID(), options.PictureDensity))
 			continue
 		}
 		if block, ok := slide.Blocks[placeholder.Slot]; ok && placeholder.AcceptsText() {
@@ -140,7 +145,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 		if element.Kind == "text" && strings.TrimSpace(element.Text) == "" {
 			continue
 		}
-		builder.WriteString(element.SVG(scale))
+		builder.WriteString(element.SVG(scale, options.PictureDensity))
 	}
 	builder.WriteString(previewSourceNote(slideSourceNote(layout, slide, options.Language), manifest.Theme, scale))
 	builder.WriteString(previewSlideNumber(layout, slide, manifest.Theme, scale))

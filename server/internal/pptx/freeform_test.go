@@ -18,7 +18,7 @@ func TestFreeformElementRendersEditableDrawingMLAndSVG(t *testing.T) {
 			t.Fatalf("DrawingML is missing %q:\n%s", wanted, drawing)
 		}
 	}
-	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.0001) + `</svg>`
+	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.0001, 0) + `</svg>`
 	if !strings.Contains(svg, `rotate(12.000`) || !strings.Contains(svg, `핵심 &amp; 내용`) {
 		t.Fatalf("SVG did not preserve the transform or text: %s", svg)
 	}
@@ -48,7 +48,7 @@ func TestFreeformTableExportsAsNativePowerPointTable(t *testing.T) {
 			t.Fatalf("native table DrawingML is missing %q:\n%s", wanted, drawing)
 		}
 	}
-	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.0001) + `</svg>`
+	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.0001, 0) + `</svg>`
 	if !strings.Contains(svg, `<rect`) || !strings.Contains(svg, `핵심 &amp; 검증`) {
 		t.Fatalf("table preview did not render cells: %s", svg)
 	}
@@ -66,7 +66,7 @@ func TestFreeformLineExportsArrowheadsAndDash(t *testing.T) {
 			t.Fatalf("line DrawingML is missing %q: %s", wanted, drawing)
 		}
 	}
-	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.001) + `</svg>`
+	svg := `<svg xmlns="http://www.w3.org/2000/svg">` + element.SVG(.001, 0) + `</svg>`
 	if !strings.Contains(svg, `marker-start=`) || !strings.Contains(svg, `marker-end=`) || !strings.Contains(svg, `stroke-dasharray="8 4 2 4"`) {
 		t.Fatalf("line SVG is missing its markers or dash: %s", svg)
 	}

@@ -506,15 +506,19 @@ func (s *Server) generatePresentation(writer http.ResponseWriter, request *http.
 }
 
 func (s *Server) exportPresentation(writer http.ResponseWriter, request *http.Request) {
+	// The path may name the format, and the query may override it. The default
+	// was written between the two, so the branch reading .pdf could never run
+	// and /export.pdf would have handed back a pptx — the suffix is read first
+	// now, and the default last, which is the order that makes both true.
 	format := strings.ToLower(request.URL.Query().Get("format"))
 	if format == "" && strings.HasSuffix(request.URL.Path, ".pptx") {
 		format = "pptx"
 	}
-	if format == "" {
-		format = "pptx"
-	}
 	if format == "" && strings.HasSuffix(request.URL.Path, ".pdf") {
 		format = "pdf"
+	}
+	if format == "" {
+		format = "pptx"
 	}
 	if format != "pptx" && format != "pdf" {
 		writeError(writer, request, http.StatusUnprocessableEntity, "unsupported_export_format", "Only pptx and pdf export are supported", map[string]any{"supported": []string{"pptx", "pdf"}})

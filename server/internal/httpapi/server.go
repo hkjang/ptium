@@ -250,6 +250,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/presentations/{id}/inspect", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.inspectPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/export.pptx", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
+	api.Handle("GET /api/v1/presentations/{id}/export.pdf", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.exportPresentation))))
 	api.Handle("GET /api/v1/presentations/{id}/preview.svg", requireUUIDPath(requireScope("presentations:read", http.HandlerFunc(s.presentationPreview))))
 	// Links that open this deck for someone without an account.
 	api.Handle("POST /api/v1/presentations/{id}/shares", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.createShare))))

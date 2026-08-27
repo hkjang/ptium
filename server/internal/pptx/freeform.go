@@ -325,7 +325,7 @@ func (e Element) textBodyXML(links *linkTable) string {
 }
 
 // SVG draws the browser preview equivalent of drawingML.
-func (e Element) SVG(scale float64) string {
+func (e Element) SVG(scale float64, density int) string {
 	x := float64(e.Frame.X) * scale
 	y := float64(e.Frame.Y) * scale
 	width := float64(e.Frame.Width) * scale
@@ -346,7 +346,7 @@ func (e Element) SVG(scale float64) string {
 	if e.Kind == "table" {
 		body.WriteString(e.tableSVG(x, y, width, height, scale))
 	} else if e.Kind == "image" {
-		body.WriteString(e.imageSVG(x, y, width, height))
+		body.WriteString(e.imageSVG(x, y, width, height, density))
 	} else {
 		body.WriteString(e.geometrySVG(x, y, width, height, scale))
 		if e.Kind == "text" || strings.TrimSpace(e.Text) != "" {
@@ -581,7 +581,7 @@ func (e Element) textSVG(x, y, width, height, scale float64) string {
 	return builder.String()
 }
 
-func (e Element) imageSVG(x, y, width, height float64) string {
+func (e Element) imageSVG(x, y, width, height float64, density int) string {
 	if e.Picture == nil || len(e.Picture.Data) == 0 {
 		return ""
 	}
@@ -589,7 +589,7 @@ func (e Element) imageSVG(x, y, width, height float64) string {
 	// be embedded at the size it is drawn at rather than at a fixed ceiling.
 	cover := strings.ToLower(e.Fit) != "contain"
 	uri := mediaDataURI(pictureCacheName(*e.Picture), e.Picture.Data,
-		pictureBox{Width: width, Height: height, Cover: cover}, previewImagePixels)
+		pictureBox{Width: width, Height: height, Cover: cover, Density: density}, previewImagePixels)
 	if uri == "" {
 		return ""
 	}
