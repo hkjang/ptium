@@ -59,9 +59,14 @@ func (operations MCPOperations) CreatePresentation(ctx context.Context, user mod
 		storeInput.TemplateID = &trimmed
 	}
 	// A prompt that names its own length is honoured before any default, the same
-	// way the REST API treats it.
+	// way the REST API treats it. Which of the two it was matters if the length
+	// then turns out to be more than this deployment allows: the refusal used to
+	// name slideCount either way, sending a caller that never passed slideCount
+	// to look for it in its own arguments.
+	fromBrief := false
 	if storeInput.SlideCount == 0 {
 		storeInput.SlideCount = generation.ParseIntent(storeInput.Prompt).SlideCount
+		fromBrief = storeInput.SlideCount > 0
 	}
 	if operations.Settings != nil {
 		if storeInput.SlideCount == 0 {
@@ -82,7 +87,8 @@ func (operations MCPOperations) CreatePresentation(ctx context.Context, user mod
 		maximum := 50
 		_ = operations.Settings.Get(ctx, "generation.max_slides", &maximum)
 		if storeInput.SlideCount > maximum {
-			return model.Presentation{}, mcp.NewServiceError(mcp.ServiceErrorInvalidArgument, "slideCount exceeds the configured generation limit")
+			return model.Presentation{}, mcp.NewServiceError(mcp.ServiceErrorInvalidArgument,
+				tooManySlidesAsked(storeInput.SlideCount, maximum, fromBrief))
 		}
 	}
 	if storeInput.SlideCount == 0 {
@@ -165,4 +171,18 @@ func mapMCPError(err error) error {
 		return mcp.NewServiceError(mcp.ServiceErrorNotFound, "Presentation not found")
 	}
 	return err
+}
+
+// tooManySlidesAsked says how many were asked for, how many this deployment
+// allows, and where the number came from.
+//
+// "slideCount exceeds the configured generation limit" named a parameter the
+// caller may never have passed — the length can be read out of the brief — and
+// gave neither number, so an agent could not tell what to ask for instead.
+func tooManySlidesAsked(asked, allowed int, fromBrief bool) string {
+	if fromBrief {
+		return fmt.Sprintf("the prompt asks for %d slides and this deployment allows %d to a deck: "+
+			"ask for %d or fewer in the prompt, or pass slideCount", asked, allowed, allowed)
+	}
+	return fmt.Sprintf("slideCount is %d and this deployment allows %d to a deck", asked, allowed)
 }

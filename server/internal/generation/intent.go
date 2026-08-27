@@ -6,8 +6,20 @@ import (
 	"strings"
 )
 
-// maximumIntentSlides bounds what counts as a plausible deck length in a prompt.
-const maximumIntentSlides = 50
+// maximumIntentSlides bounds what counts as a deck length written in a prompt.
+//
+// It is not the deployment's limit, and setting it to the same number made a
+// cliff at exactly that limit: "50장짜리 자료를 만들어 줘" gave fifty slides and
+// "51장짜리" gave the default ten, with nothing said. A count one over what a
+// site allows is still a request — it is just one the site cannot grant, and
+// the cap already clamps it and says so.
+//
+// What the bound is really for is telling a deck length from a number that is
+// about something else. Every pattern requires a slide word beside the number,
+// so what is left to guard against is "이 100페이지 보고서를 요약해 줘" — a
+// source document, not a deck. Two digits next to 장 or 페이지 is a deck length
+// somebody meant; three is far more often the thing being summarised.
+const maximumIntentSlides = 99
 
 // Intent is what the prompt itself asks for, as opposed to what the form
 // controls happen to be set to.

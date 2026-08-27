@@ -106,3 +106,56 @@ func TestTheCapStillHolds(t *testing.T) {
 		t.Errorf("a request inside the cap asked %d and made %d", asked, made)
 	}
 }
+
+// A count one over what a site allows is still a request.
+//
+// The one that was wrong: the bound on what counts as a stated deck length was
+// the same number as the deployment's own limit, so there was a cliff at
+// exactly that limit — "50장짜리 자료를 만들어 줘" gave fifty slides and
+// "51장짜리" gave the default ten, with nothing said. The cap already clamps an
+// over-large request and says so; swallowing the number first is what stopped
+// it being said.
+func TestACountJustOverTheLimitIsStillARequest(t *testing.T) {
+	for _, prompt := range []string{
+		"이 주제로 51장짜리 자료를 만들어 줘",
+		"이 주제로 99장짜리 자료를 만들어 줘",
+		"make me a 60 slide deck",
+	} {
+		if got := ParseIntent(prompt).SlideCount; got == 0 {
+			t.Errorf("%q was read as saying nothing about the deck's length", prompt)
+		}
+	}
+	if got := ParseIntent("이 주제로 51장짜리 자료를 만들어 줘").SlideCount; got != 51 {
+		t.Errorf("a brief asking for 51 was read as %d", got)
+	}
+}
+
+// What the bound is really for: a number about something other than the deck.
+// Every pattern needs a slide word beside the number, so what is left is a
+// source document being described rather than a deck being asked for.
+func TestANumberAboutSomethingElseIsNotADeckLength(t *testing.T) {
+	for _, prompt := range []string{
+		"이 100페이지 보고서를 요약해 줘",
+		"이 주제로 5000장짜리 자료를 만들어 줘",
+		"summarise this 250 page report",
+	} {
+		if got := ParseIntent(prompt).SlideCount; got != 0 {
+			t.Errorf("%q was read as asking for %d slides", prompt, got)
+		}
+	}
+}
+
+// And the ordinary lengths still read as they did.
+func TestOrdinaryLengthsAreUnchanged(t *testing.T) {
+	for prompt, want := range map[string]int{
+		"3장만 만들어줘":                 3,
+		"이 주제로 8장짜리 자료를 만들어 줘":    8,
+		"이 주제로 50장짜리 자료를 만들어 줘":   50,
+		"a deck of 12":              12,
+		"슬라이드는 5장으로":               5,
+	} {
+		if got := ParseIntent(prompt).SlideCount; got != want {
+			t.Errorf("%q was read as %d, want %d", prompt, got, want)
+		}
+	}
+}

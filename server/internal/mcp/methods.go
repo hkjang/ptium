@@ -118,7 +118,11 @@ func toolDefinitions() []toolDefinition {
 		{
 			Name:  "ptium.list_presentations",
 			Title: "List Ptium presentations",
-			Description: "List presentations visible to the authenticated Ptium user, newest first. " +
+			// "newest first" reads as creation order, and the list is ordered by
+			// last change — a deck made last week and edited today sits above one
+			// made an hour ago. That is the useful order for a list of somebody's
+			// own work; it is just not what "newest" says.
+			Description: "List presentations visible to the authenticated Ptium user, most recently changed first. " +
 				"Pass q to narrow the list to decks whose title or brief contains that text — an " +
 				"account can hold thousands, and paging through them to find one is not finding it.",
 			InputSchema: objectSchema(map[string]any{
@@ -181,7 +185,11 @@ func toolDefinitions() []toolDefinition {
 		{
 			Name:        "ptium.list_templates",
 			Title:       "List Ptium presentation templates",
-			Description: "List the PowerPoint templates available to the user, with their layouts, so a deck can be created against a specific design.",
+			// It says how many layouts each design carries, not what they are:
+			// the answer has layoutCount and no layouts, and a caller told
+			// otherwise looks for something that is not there. What creating
+			// against a particular design actually needs is the id, which is.
+			Description: "List the PowerPoint templates available to the user. Each carries an id to pass as templateId when creating a deck, and layoutCount — how many layouts the design has, not what they are.",
 			InputSchema: objectSchema(map[string]any{
 				"limit":  map[string]any{"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
 				"offset": map[string]any{"type": "integer", "minimum": 0, "default": 0},

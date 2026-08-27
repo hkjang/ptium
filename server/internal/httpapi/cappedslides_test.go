@@ -47,3 +47,30 @@ func TestAnEnglishDeckIsToldInEnglish(t *testing.T) {
 		t.Fatalf("a Korean deck was told %q", note)
 	}
 }
+
+// The MCP refusal says how many were asked for, how many are allowed, and where
+// the number came from.
+//
+// "slideCount exceeds the configured generation limit" named a parameter the
+// caller may never have passed — the length can be read out of the brief — and
+// gave neither number, so an agent could not tell what to ask for instead.
+func TestTheMCPRefusalSaysWhereTheNumberCameFrom(t *testing.T) {
+	fromBrief := tooManySlidesAsked(60, 50, true)
+	for _, want := range []string{"60", "50", "prompt"} {
+		if !strings.Contains(fromBrief, want) {
+			t.Errorf("a length read from the brief was refused with %q, missing %q", fromBrief, want)
+		}
+	}
+	if strings.HasPrefix(fromBrief, "slideCount") {
+		t.Errorf("a length read from the brief blamed slideCount: %q", fromBrief)
+	}
+	passed := tooManySlidesAsked(30, 5, false)
+	for _, want := range []string{"30", "5", "slideCount"} {
+		if !strings.Contains(passed, want) {
+			t.Errorf("a passed slideCount was refused with %q, missing %q", passed, want)
+		}
+	}
+	if strings.Contains(passed, "prompt") {
+		t.Errorf("a passed slideCount was blamed on the prompt: %q", passed)
+	}
+}
