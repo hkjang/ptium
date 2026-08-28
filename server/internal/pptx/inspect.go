@@ -452,7 +452,63 @@ func sameStem(first, second string) bool {
 	if len(shorter) < 2 {
 		return false
 	}
-	return strings.HasPrefix(string(longer), string(shorter))
+	if strings.HasPrefix(string(longer), string(shorter)) {
+		return true
+	}
+	// Korean puts an ending on both sides far more often than it leaves one
+	// bare: a restatement writes 오출고율은 where the first line wrote
+	// 오출고율이, and 도입으로 where it wrote 도입하면. Matching only a word
+	// against its own bare stem missed every one of those, and a rule written
+	// to find a point made twice scored two lines saying the same thing at 0.60
+	// where it asks for 0.65.
+	//
+	// So a shared opening counts when what is left on each side is an ending
+	// this language actually uses. That is what keeps 자동화 apart from 자동차:
+	// the syllables they differ by are not endings, they are the words.
+	shared := sharedOpening(first, second)
+	if len([]rune(shared)) < 2 {
+		return false
+	}
+	return isKoreanEnding(strings.TrimPrefix(first, shared)) &&
+		isKoreanEnding(strings.TrimPrefix(second, shared))
+}
+
+// sharedOpening is the longest run of syllables two words begin with.
+func sharedOpening(first, second string) string {
+	left, right := []rune(first), []rune(second)
+	shared := 0
+	for shared < len(left) && shared < len(right) && left[shared] == right[shared] {
+		shared++
+	}
+	return string(left[:shared])
+}
+
+// koreanEndings are what a word carries after its stem: the particles a noun
+// takes and the endings a verb or adjective takes. A word ends where these
+// begin, which is what lets two forms of one word be read as one word.
+var koreanEndings = map[string]bool{
+	"": true,
+	// particles
+	"은": true, "는": true, "이": true, "가": true, "을": true, "를": true,
+	"의": true, "에": true, "도": true, "만": true, "와": true, "과": true,
+	"로": true, "으로": true, "에서": true, "에게": true, "한테": true,
+	"부터": true, "까지": true, "보다": true, "처럼": true, "이나": true,
+	"나": true, "라도": true, "마다": true, "조차": true, "뿐": true,
+	"밖에": true, "께": true, "께서": true, "이라": true, "라": true,
+	"에는": true, "에도": true, "으로는": true, "로는": true, "이며": true, "며": true,
+	// what a verb or adjective ends with
+	"다": true, "한다": true, "된다": true, "합니다": true, "됩니다": true,
+	"입니다": true, "습니다": true, "했다": true, "했습니다": true, "됐다": true,
+	"하는": true, "되는": true, "하고": true, "되고": true, "하면": true,
+	"되면": true, "하여": true, "해서": true, "해야": true, "하기": true,
+	"되어": true, "된": true, "한": true, "할": true, "될": true, "하며": true,
+	"이다": true, "였다": true, "라는": true, "이라는": true,
+}
+
+// isKoreanEnding reports whether what is left of a word after its shared
+// opening is an ending rather than more of the word.
+func isKoreanEnding(rest string) bool {
+	return koreanEndings[rest]
 }
 
 // repeatedSlides reports a slide that says what an earlier slide already said.

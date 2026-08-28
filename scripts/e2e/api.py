@@ -858,6 +858,21 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── the same point made twice, in two forms of the same words ──")
+# Korean puts an ending on both sides far more often than it leaves one bare,
+# and a word was only ever matched against its own bare stem.
+twice_deck = data_of(call("POST", "/presentations", {"title": f"반복 {RUN}", "prompt": "반복", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{twice_deck['id']}/source", {"source":
+    "# 도입 효과\n- 자동화를 도입하면 오출고율이 크게 낮아집니다\n"
+    "- 오출고율은 자동화 도입으로 크게 낮아집니다\n\n"
+    "# 분기 실적\n- 매출은 전년 대비 12% 늘었습니다\n- 비용은 전년 대비 8% 줄었습니다\n"}, expect=200)
+twice_found = [one.get("slide") for one in (data_of(call("GET", f"/presentations/{twice_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+               if one.get("kind") == "repeat"]
+checks += 1
+if twice_found != [1]:
+    failures.append(f"the same point written twice is reported on slides {twice_found}, want only the slide that says it twice")
+call("DELETE", f"/presentations/{twice_deck['id']}", expect=204)
+
 print("── a roadmap written as steps is read as a plan ──")
 # A step and its date are one line to anybody looking at the slide, and were
 # walked as the two strings they are stored as.

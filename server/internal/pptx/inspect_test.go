@@ -831,3 +831,51 @@ func TestAPictureWithNoWordsIsAskedAbout(t *testing.T) {
 		t.Errorf("a freely placed picture with no words was asked about %d times, want 1", freeAsked)
 	}
 }
+
+// A restatement keeps its words and changes their endings, which is what this
+// rule was written to find — and it compared a word only against its own bare
+// stem. Korean puts an ending on both sides far more often than it leaves one
+// bare, so two lines saying the same thing scored 0.60 where the rule asks for
+// 0.65 and went unreported.
+func TestTwoFormsOfOneWordAreOneWord(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"비용은", "비용이"}, {"오출고율이", "오출고율은"}, {"도입하면", "도입으로"},
+		{"자동화를", "자동화"}, {"매출은", "매출까지"}, {"작업의", "작업은"},
+		{"수작업으로", "수작업입니다"}, {"저하", "저하됩니다"},
+	} {
+		if !sameStem(pair[0], pair[1]) {
+			t.Errorf("%q and %q are one word with two endings and were read as two", pair[0], pair[1])
+		}
+	}
+	// What keeps this honest: the syllables these differ by are not endings,
+	// they are the words themselves.
+	for _, pair := range [][2]string{
+		{"자동화", "자동차"}, {"사업부", "사업장"}, {"정보", "정산"}, {"계획", "계약"},
+		{"매출", "매입"}, {"물류", "물량"}, {"설계", "설비"}, {"인건비", "인건물"},
+	} {
+		if sameStem(pair[0], pair[1]) {
+			t.Errorf("%q and %q are different words and were read as one", pair[0], pair[1])
+		}
+	}
+}
+
+// And the rule now reports what it was written for.
+func TestThePointMadeTwiceIsReported(t *testing.T) {
+	slide := Slide{Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "도입 효과"}},
+		SlotBody: {
+			{Text: "자동화를 도입하면 오출고율이 크게 낮아집니다"},
+			{Text: "오출고율은 자동화 도입으로 크게 낮아집니다"},
+			{Text: "설비 투자 규모는 연간 8억 원입니다"},
+		}}}
+	var said []string
+	for _, finding := range repeatedPoints(slide) {
+		said = append(said, finding.Detail)
+	}
+	if len(said) != 1 {
+		t.Fatalf("the same point written twice was reported %d times: %v", len(said), said)
+	}
+	if !strings.Contains(said[0], "오출고율") {
+		t.Errorf("the finding does not name the lines: %q", said[0])
+	}
+}
