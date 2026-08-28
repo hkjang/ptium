@@ -371,12 +371,12 @@ func Render(template *Package, manifest Manifest, deck Deck) ([]byte, error) {
 		// Pictures become package parts and slide relationships before the slide
 		// itself is written, because the shape refers to them by relationship id.
 		pictures := addSlidePictures(pkg, slidePart, index+1, slide, layout)
-		markup, charts, links := slideXML(layout, slide, language, design, pictures)
+		markup, charts, links := slideXML(layout, slide, language, design, pictures, len(deck.Slides))
 		pkg.SetText(slidePart, markup)
 		chartParts := addSlideCharts(pkg, slidePart, &chartIndex, charts)
 		pkg.SetText(RelationshipsPath(slidePart), slideRelationshipsXML(slidePart, layout.Part, notesPart, pictures, chartParts, links))
 		if notesPart != "" {
-			notesMarkup, notesLinks := notesSlideXML(notesWithSources(slide, language), language)
+			notesMarkup, notesLinks := notesSlideXML(notesWithSources(slide, language), language, len(deck.Slides))
 			pkg.SetText(notesPart, notesMarkup)
 			pkg.SetText(RelationshipsPath(notesPart), notesRelationshipsXML(notesPart, notesMasterPart, slidePart, notesLinks))
 		}
@@ -632,10 +632,10 @@ func freeformPictureXML(shapeID int, element Element, placed placedPicture) stri
 // order their relationship ids were handed out. The parts themselves are
 // written by the caller, which is the one holding the package.
 func slideXML(layout Layout, slide Slide, language string, design Design,
-	pictures []placedPicture) (string, []*ChartPart, []slideLink) {
+	pictures []placedPicture, slides int) (string, []*ChartPart, []slideLink) {
 	var shapes, components, freeform strings.Builder
 	var charts []*ChartPart
-	links := &linkTable{}
+	links := &linkTable{slides: slides}
 	// A chart is a relationship of the slide, and the picture relationships came
 	// first.
 	chartRelationship := func(chart *ChartPart) string {
@@ -1512,12 +1512,12 @@ func notesWithSources(slide Slide, language string) string {
 // notesSlideXML writes the speaker's own page, and says which links it carries:
 // a link written in the notes is a link a presenter clicks while presenting from
 // PowerPoint, and the address has to survive the trip to be one.
-func notesSlideXML(notes, language string) (string, []slideLink) {
+func notesSlideXML(notes, language string, slides int) (string, []slideLink) {
 	var paragraphs []Paragraph
 	for _, line := range strings.Split(strings.ReplaceAll(notes, "\r\n", "\n"), "\n") {
 		paragraphs = append(paragraphs, Paragraph{Text: line})
 	}
-	links := &linkTable{}
+	links := &linkTable{slides: slides}
 	return xmlDeclaration + `<p:notes ` + presentationNamespaces + `><p:cSld><p:spTree>` + emptyGroupHeader +
 		`<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>` +
 		`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>` +

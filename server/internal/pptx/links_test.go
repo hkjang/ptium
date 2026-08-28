@@ -435,3 +435,67 @@ func TestAComponentsWordsAreAllWalked(t *testing.T) {
 		}
 	}
 }
+
+// A deck of three slides linking to its ninth wrote a relationship at
+// ppt/slides/slide9.xml — a part that is not in the package it wrote. Nothing
+// can follow that, and a reader is entitled to call the file broken. Slides get
+// cut after the links to them are written, and nothing said so.
+func TestAJumpToASlideTheDeckDoesNotHaveIsNotWritten(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	slide := func(title, body string) Slide {
+		return Slide{LayoutID: layout.ID, Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: title}}, SlotBody: {{Text: body}}}}
+	}
+	deck := Deck{Language: "ko", Slides: []Slide{
+		slide("첫 장", "뒤쪽 [9장 참고](#9) 과 있는 장 [2장](#2)"),
+		slide("둘째 장", "내용"),
+		slide("셋째 장", "내용"),
+	}}
+	built, err := RenderBytes(data, deck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := Open(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rels, ok := pkg.Text("ppt/slides/_rels/slide1.xml.rels")
+	if !ok {
+		t.Fatal("the first slide has no relationships")
+	}
+	if strings.Contains(rels, "slide9.xml") {
+		t.Error("the package names a slide part it does not contain")
+	}
+	if !strings.Contains(rels, "slide2.xml") {
+		t.Error("a jump the deck can follow was dropped with the one it cannot")
+	}
+	// The words are the author's either way.
+	first, _ := pkg.Text("ppt/slides/slide1.xml")
+	for _, word := range []string{"9장 참고", "2장"} {
+		if !strings.Contains(first, word) {
+			t.Errorf("the words %q are not on the slide", word)
+		}
+	}
+
+	// And the author is told, rather than finding out from a reader.
+	said := ""
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingLink && finding.Slide == 1 {
+			said = finding.Detail
+		}
+	}
+	if !strings.Contains(said, "9장 참고") || !strings.Contains(said, "3") {
+		t.Errorf("the dangling jump was not reported clearly: %q", said)
+	}
+}

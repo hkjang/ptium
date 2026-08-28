@@ -555,6 +555,14 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		// And a jump to a slide this deck does not have. It reads as a link when
+		// it is written and it points at nothing: a deck of three slides linking
+		// to its ninth — because slides were cut after the link was written, or
+		// because the number was a guess — has a link nobody can follow.
+		for _, finding := range danglingJumps(slide, len(deck.Slides)) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
@@ -683,6 +691,48 @@ func unbriefedFigures(slide Slide, brief BriefFigures) []string {
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// danglingJumps reports a link that jumps to a slide the deck does not have.
+//
+// Unlike a target the deck refuses outright, this one is written correctly and
+// is drawn as a link — it just points past the end of the deck. Slides get cut
+// after the links to them are written, and nothing said so.
+func danglingJumps(slide Slide, slides int) []Finding {
+	var findings []Finding
+	report := func(slot, text string) {
+		for _, run := range SplitRuns(text) {
+			number, ok := SlideJump(run.Href)
+			if !ok || (number >= 1 && number <= slides) {
+				continue
+			}
+			findings = append(findings, Finding{Slot: slot, Kind: FindingLink, Advisory: true,
+				Detail: fmt.Sprintf("%q jumps to a slide this deck of %d does not have, so the words draw without a link",
+					run.Text, slides)})
+		}
+	}
+	slots := make([]string, 0, len(slide.Fields))
+	for slot := range slide.Fields {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		for _, paragraph := range slide.Fields[slot] {
+			report(slot, paragraph.Text)
+		}
+	}
+	blocks := make([]string, 0, len(slide.Blocks))
+	for slot := range slide.Blocks {
+		blocks = append(blocks, slot)
+	}
+	sort.Strings(blocks)
+	for _, slot := range blocks {
+		for _, text := range blockWords(slide.Blocks[slot]) {
+			report(slot, text)
+		}
+	}
+	report("notes", slide.Notes)
+	return findings
 }
 
 // refusedLinks reports a line written as a link that is not one.

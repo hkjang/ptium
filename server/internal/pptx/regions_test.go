@@ -75,7 +75,7 @@ func TestMovedRegionMovesEverywhereItIsDrawn(t *testing.T) {
 
 	// The exported slide and the preview have to agree with that, or the canvas
 	// shows one thing and PowerPoint another.
-	xml, _, _ := slideXML(layout, slide, "ko", NewDesign(manifest), nil)
+	xml, _, _ := slideXML(layout, slide, "ko", NewDesign(manifest), nil, 1)
 	if !strings.Contains(xml, `<a:off x="600000" y="3800000"/>`) {
 		t.Fatalf("the exported shape is not where the region was moved to:\n%s", xml)
 	}
@@ -159,7 +159,7 @@ func TestRegionStyleOverridesTheTemplate(t *testing.T) {
 		t.Fatalf("a larger size fits fewer characters: %d", placed.MaxChars)
 	}
 
-	xml, _, _ := slideXML(layout, slide, "ko", NewDesign(manifest), nil)
+	xml, _, _ := slideXML(layout, slide, "ko", NewDesign(manifest), nil, 1)
 	for _, want := range []string{`algn="ctr"`, `sz="4800"`, `b="1"`, `val="FF0055"`} {
 		if !strings.Contains(xml, want) {
 			t.Fatalf("the exported slide is missing %s:\n%s", want, xml)
@@ -172,7 +172,7 @@ func TestRegionStyleOverridesTheTemplate(t *testing.T) {
 
 	// A region nobody restyled still inherits everything from the template.
 	plain := Slide{LayoutID: "content", Fields: map[string][]Paragraph{SlotTitle: {{Text: "그대로"}}}}
-	if plainXML, _, _ := slideXML(layout, plain, "ko", NewDesign(manifest), nil); strings.Contains(plainXML, "algn=") ||
+	if plainXML, _, _ := slideXML(layout, plain, "ko", NewDesign(manifest), nil, 1); strings.Contains(plainXML, "algn=") ||
 		strings.Contains(plainXML, "sz=") || strings.Contains(plainXML, "solidFill") {
 		t.Fatalf("an untouched region states nothing of its own:\n%s", plainXML)
 	}

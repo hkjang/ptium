@@ -30,7 +30,7 @@ func TestFreeformElementRendersEditableDrawingMLAndSVG(t *testing.T) {
 func TestSlideXMLLayersFreeformAfterTemplateContent(t *testing.T) {
 	layout := Layout{ID: "content", Placeholders: []Placeholder{{Slot: SlotTitle, Kind: "text", Type: "title", Name: "Title", Width: 1000, Height: 500}}}
 	slide := Slide{Fields: map[string][]Paragraph{SlotTitle: {{Text: "Template title"}}}, Elements: []Element{{ID: "overlay", Kind: "text", Frame: Frame{X: 10, Y: 10, Width: 100, Height: 50}, Text: "Overlay"}}}
-	markup, _, _ := slideXML(layout, slide, "ko-KR", Design{}, nil)
+	markup, _, _ := slideXML(layout, slide, "ko-KR", Design{}, nil, 1)
 	if strings.Index(markup, "Template title") >= strings.Index(markup, "Overlay") {
 		t.Fatalf("freeform objects must be layered after template content: %s", markup)
 	}

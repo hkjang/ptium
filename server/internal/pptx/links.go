@@ -252,6 +252,10 @@ func HasLink(text string) bool {
 type linkTable struct {
 	links []slideLink
 	byID  map[string]string
+	// slides is how many slides the deck has, so a jump to one it does not have
+	// is refused rather than written. A relationship naming a part that is not
+	// in the package is not a link anybody can follow — it is a broken file.
+	slides int
 }
 
 type slideLink struct {
@@ -270,6 +274,14 @@ func (table *linkTable) id(target string) string {
 	if table == nil {
 		return ""
 	}
+	if number, ok := SlideJump(target); ok && !table.holdsSlide(number) {
+		// A deck of three slides linked to its ninth wrote a relationship at
+		// ppt/slides/slide9.xml, which is not in the package it wrote. Nothing
+		// can follow that, and a reader is entitled to call the file broken. The
+		// words are drawn without it, the way every other target this deck
+		// cannot follow is drawn.
+		return ""
+	}
 	if id, ok := table.byID[target]; ok {
 		return id
 	}
@@ -285,6 +297,14 @@ func (table *linkTable) id(target string) string {
 	table.byID[target] = link.ID
 	table.links = append(table.links, link)
 	return link.ID
+}
+
+// holdsSlide says whether the deck has the slide a jump names. A table that was
+// never told how many slides there are answers yes, which is what every caller
+// outside a deck build wants: a link is judged there by what it says, not by
+// what is around it.
+func (table *linkTable) holdsSlide(number int) bool {
+	return table.slides <= 0 || (number >= 1 && number <= table.slides)
 }
 
 // asDrawn is the slide as it reaches the wall: the link markup taken out of

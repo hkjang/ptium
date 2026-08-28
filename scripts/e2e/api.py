@@ -700,6 +700,30 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a jump to a slide the deck does not have ──")
+# A deck of two slides linking to its ninth wrote a relationship at
+# ppt/slides/slide9.xml, a part that is not in the package it wrote.
+jump_deck = data_of(call("POST", "/presentations", {"title": f"점프 {RUN}", "prompt": "점프", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{jump_deck['id']}/source", {"source":
+    "# 첫 장\n- 뒤쪽 [9장 참고](#9) 과 있는 장 [2장](#2)\n\n# 둘째 장\n- 내용\n"}, expect=200)
+_, jumped = call("GET", f"/presentations/{jump_deck['id']}/export.pptx", raw=True, expect=200)
+with zipfile.ZipFile(io.BytesIO(jumped or b"")) as bundle:
+    inside = set(bundle.namelist())
+    dangling = []
+    for entry in [name for name in inside if name.endswith(".rels")]:
+        for target in re.findall(r'Type="[^"]*/slide"[^>]*Target="([^"]+)"', bundle.read(entry).decode("utf-8", "replace")):
+            if "ppt/slides/" + target.split("/")[-1] not in inside:
+                dangling.append((entry, target))
+checks += 1
+if dangling:
+    failures.append(f"the exported package names slide parts it does not contain: {dangling}")
+jump_found = [one for one in (data_of(call("GET", f"/presentations/{jump_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+              if one.get("kind") == "link"]
+checks += 1
+if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
+    failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
+call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
+
 print("── a chart is asked where its numbers came from ──")
 # The same figures asked about in a point, a table and a KPI row went unasked
 # as a bar chart, which is the thing a room quotes.
