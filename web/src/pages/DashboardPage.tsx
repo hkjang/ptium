@@ -14,17 +14,33 @@ export function DashboardPage() {
   const { user } = useAuth()
   const { productName } = useBrand()
   const [items, setItems] = useState<Presentation[]>([])
+  const [counted, setCounted] = useState({ total: 0, slides: 0, ready: 0 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  /**
+   * Three cards and three numbers, in two requests.
+   *
+   * This page used to fetch every deck the account has, a hundred at a time, and
+   * work the numbers out in the browser: 2,656 decks meant twenty-seven requests
+   * and about four seconds before the front page settled, and it grew with every
+   * deck anybody made. The server counts them in one query and the cards need
+   * three decks.
+   */
   const load = useCallback(async () => {
     setLoading(true); setError('')
-    try { setItems(await api.presentations()) } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
+    try {
+      const [page, summary] = await Promise.all([
+        api.presentationPage({ limit: 3 }),
+        api.workspaceSummary(),
+      ])
+      setItems(page.items)
+      setCounted(summary)
+    } catch (err) { setError(displayError(err)) } finally { setLoading(false) }
   }, [])
   useEffect(() => { void load() }, [load])
 
   const firstName = (user?.name || user?.email?.split('@')[0] || '사용자').split(' ')[0]
-  const ready = items.filter((item) => item.status === 'ready').length
-  const slides = items.reduce((total, item) => total + (item.slideCount || item.slides?.length || 0), 0)
+  const { ready, slides } = counted
 
   return (
     <AppShell>
@@ -47,7 +63,7 @@ export function DashboardPage() {
       </section>
 
       <section className="dashboard-lower-grid">
-        <article className="usage-card"><div className="card-eyebrow"><Clock3 size={15} /> 워크스페이스 현황</div><div className="usage-content"><div><strong>{items.length}</strong><span>전체 프레젠테이션</span></div><div><strong>{slides}</strong><span>저장된 슬라이드</span></div><div><strong>{ready}</strong><span>내보내기 준비 완료</span></div></div></article>
+        <article className="usage-card"><div className="card-eyebrow"><Clock3 size={15} /> 워크스페이스 현황</div><div className="usage-content"><div><strong>{counted.total}</strong><span>전체 프레젠테이션</span></div><div><strong>{slides}</strong><span>저장된 슬라이드</span></div><div><strong>{ready}</strong><span>내보내기 준비 완료</span></div></div></article>
         <article className="tip-card"><span className="tip-icon"><Sparkles size={18} /></span><div><span className="eyebrow">PTIUM TIP</span><h3>더 좋은 결과를 위한 한 문장</h3><p>청중, 발표 목적, 원하는 분위기를 함께 적으면 훨씬 정확한 자료가 만들어져요.</p><Link to="/create">프롬프트 작성해 보기 <ArrowRight size={14} /></Link><Link to="/guide">사용 가이드 읽기 <ArrowRight size={14} /></Link></div></article>
       </section>
     </AppShell>

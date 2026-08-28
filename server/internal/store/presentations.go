@@ -102,6 +102,36 @@ func (s *Store) ListDeletedPresentations(ctx context.Context, ownerID string, ad
 	return s.listPresentations(ctx, ownerID, admin, true, "", limit, offset)
 }
 
+// WorkspaceSummary is the three numbers the front page shows about an account:
+// how many decks it holds, how many slides those decks hold, and how many are
+// written and ready to hand over.
+type WorkspaceSummary struct {
+	Total  int `json:"total"`
+	Slides int `json:"slides"`
+	Ready  int `json:"ready"`
+}
+
+// ReadWorkspaceSummary counts an account's decks without sending them.
+//
+// The front page worked these out by fetching every deck the account has, a
+// hundred at a time: an account with 2,656 of them made twenty-seven requests
+// and downloaded the lot to show three numbers and the three most recent cards.
+// The database can count them in one.
+func (s *Store) ReadWorkspaceSummary(ctx context.Context, ownerID string, admin bool) (WorkspaceSummary, error) {
+	var summary WorkspaceSummary
+	where := "WHERE owner_id=$1 AND deleted_at IS NULL"
+	args := []any{ownerID}
+	if admin && ownerID == "" {
+		where = "WHERE deleted_at IS NULL"
+		args = nil
+	}
+	err := s.Pool.QueryRow(ctx, `SELECT count(*)::int,
+		COALESCE(sum((SELECT count(*) FROM slides s WHERE s.presentation_id=p.id)),0)::int,
+		count(*) FILTER (WHERE status='completed')::int
+		FROM presentations p `+where, args...).Scan(&summary.Total, &summary.Slides, &summary.Ready)
+	return summary, err
+}
+
 func (s *Store) listPresentations(ctx context.Context, ownerID string, admin, deleted bool,
 	search string, limit, offset int) ([]model.Presentation, int, error) {
 	limit, offset = clampPage(limit, offset)

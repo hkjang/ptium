@@ -2475,6 +2475,57 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/presentations/summary:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: workspaceSummary
+      summary: How many decks this account holds, and how much is in them
+      description: >
+        Three numbers about the caller's own decks: how many there are, how many
+        slides they hold between them, and how many are written and ready to
+        hand over. Counted by the database rather than by sending the decks —
+        the front page shows exactly these three and used to fetch every deck it
+        had to work them out.
+
+
+        Decks in the recycle bin are not counted.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: The account's own decks, counted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                        description: Decks this account holds, not counting the recycle bin.
+                      slides:
+                        type: integer
+                        description: Slides across those decks.
+                      ready:
+                        type: integer
+                        description: Decks that are written and can be exported.
+                    example:
+                      total: 2656
+                      slides: 15407
+                      ready: 2326
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/presentations/{id}/source:
     parameters:
       - $ref: '#/components/parameters/PresentationID'
@@ -5622,7 +5673,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.68.2
+            service.version: 1.69.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 

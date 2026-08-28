@@ -218,6 +218,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/profile", requireScope("profile:read", http.HandlerFunc(s.getProfile)))
 	api.Handle("PUT /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))
 	api.Handle("PATCH /api/v1/profile", requireScope("profile:write", http.HandlerFunc(s.putProfile)))
+	api.Handle("GET /api/v1/presentations/summary", requireScope("presentations:read", http.HandlerFunc(s.workspaceSummary)))
 	api.Handle("GET /api/v1/presentations", requireScope("presentations:read", http.HandlerFunc(s.listPresentations)))
 	api.Handle("POST /api/v1/presentations", requireScope("presentations:write", http.HandlerFunc(s.createPresentation)))
 	api.Handle("POST /api/v1/presentations/generate", requireScope("presentations:write", http.HandlerFunc(s.createAndGeneratePresentation)))

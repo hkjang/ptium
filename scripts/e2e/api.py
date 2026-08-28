@@ -858,6 +858,22 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── the front page counts without fetching everything ──")
+# The front page worked its three numbers out by fetching every deck the account
+# has, a hundred at a time.
+summary_deck = data_of(call("POST", "/presentations", {"title": f"요약 {RUN}", "prompt": "요약", "slideCount": 1}, expect=201)) or {}
+call("PUT", f"/presentations/{summary_deck['id']}/source", {"source": "# 한 장\n- 내용\n\n# 두 장\n- 내용\n"}, expect=200)
+summary_now = data_of(call("GET", "/presentations/summary", expect=200)) or {}
+summary_page = call("GET", "/presentations?limit=1&offset=0", expect=200)
+summary_total = ((summary_page[1] or {}).get("meta") or {}).get("total") if isinstance(summary_page, tuple) else None
+checks += 1
+if not all(key in summary_now for key in ("total", "slides", "ready")):
+    failures.append(f"the summary does not answer the three numbers the front page shows: {summary_now}")
+checks += 1
+if summary_total is not None and summary_now.get("total") != summary_total:
+    failures.append(f"the summary counts {summary_now.get('total')} decks and the list says {summary_total}")
+call("DELETE", f"/presentations/{summary_deck['id']}", expect=204)
+
 print("── a run of guesses is written down once ──")
 # The console recorded who signed in and nobody failing to. Writing down each
 # attempt is not the answer: the limiter is in-process so that a failed sign-in

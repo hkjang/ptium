@@ -121,6 +121,21 @@ type slideRequest struct {
 	LayoutID     string          `json:"layoutId"`
 }
 
+// workspaceSummary answers the three numbers the front page shows.
+//
+// It showed them by fetching every deck the account has, a hundred at a time.
+// The comment beside the list handler already says what that costs at six
+// hundred decks; at 2,656 it was twenty-seven requests before the page settled.
+func (s *Server) workspaceSummary(writer http.ResponseWriter, request *http.Request) {
+	user, _ := UserFromContext(request.Context())
+	summary, err := s.store.ReadWorkspaceSummary(request.Context(), user.ID, false)
+	if err != nil {
+		s.internalError(writer, request, "presentations_summary_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, summary)
+}
+
 func (s *Server) listPresentations(writer http.ResponseWriter, request *http.Request) {
 	user, _ := UserFromContext(request.Context())
 	limit, offset := pagination(request)

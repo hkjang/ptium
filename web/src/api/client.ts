@@ -910,6 +910,22 @@ export const api = {
    * server, which is the difference between a front page that opens and one
    * that downloads a megabyte first.
    */
+  /**
+   * The three numbers the front page shows about an account.
+   *
+   * It worked them out by fetching every deck, a hundred at a time: an account
+   * with 2,656 of them made twenty-seven requests and downloaded the lot to
+   * show three numbers and three cards. The database counts them in one.
+   */
+  async workspaceSummary(): Promise<{ total: number; slides: number; ready: number }> {
+    const raw = await request<unknown>('/presentations/summary')
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      total: Number(data.total) || 0,
+      slides: Number(data.slides) || 0,
+      ready: Number(data.ready) || 0,
+    }
+  },
   async presentationPage({ deleted = false, q = '', limit = 60, offset = 0 } = {}) {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
     if (deleted) params.set('deleted', 'true')
