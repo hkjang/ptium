@@ -287,7 +287,7 @@ p:sldLayout preserve=1 showMasterSp=0 type=title
               a:buNone
               a:defRPr sz=2000
                 a:solidFill
-                  a:srgbClr val=AEAEAF
+                  a:srgbClr val=6B6B6C
           a:p
             a:r
               a:rPr lang=ko-KR

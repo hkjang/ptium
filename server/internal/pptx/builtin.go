@@ -815,7 +815,12 @@ func panelInk(palette BuiltinPalette) string {
 // browser preview and PowerPoint draw the same picture.
 func (f layoutFamily) motifCover(palette BuiltinPalette, area Frame) string {
 	accent := palette.Accents[0]
-	subtitleInk := mixColor(palette.Ink, palette.Surface, 0.42)
+	// The cover's one-line summary is prose somebody reads, not decoration, so
+	// it fades toward the surface only as far as it can while staying legible.
+	// Mixed by hand it landed at 2.2:1 on thirty-one of the designs this
+	// product ships — below even the threshold large text is allowed — while
+	// every ink the design itself derives has kept a floor all along.
+	subtitleInk := fadeInk(palette.Ink, palette.Surface, 0.42, 4.5)
 	ink := palette.Ink
 	art := ""
 	titleTop, titleWidth := slideHeight*44/100, area.Width
@@ -881,7 +886,7 @@ func (f layoutFamily) motifCover(palette BuiltinPalette, area Frame) string {
 		art = shapeWash(8, "Wash", 0, 0, slideWidth, slideHeight, accent, deep, 45) +
 			shapeOutline(9, "Wash Ring", "ellipse", slideWidth-slideWidth*26/100, -slideHeight*18/100,
 				slideWidth*34/100, slideWidth*34/100, ink, 12700, 30)
-		subtitleInk = mixColor(ink, middle, 0.30)
+		subtitleInk = fadeInk(ink, middle, 0.30, 4.5)
 		titleTop = slideHeight * 46 / 100
 	}
 	return art +
@@ -927,7 +932,12 @@ func (f layoutFamily) motifEcho(id int, palette BuiltinPalette, area Frame) stri
 // and the first thing an audience sees, so it is where the families differ
 // most: the same palette on two covers should not look like the same template.
 func (f layoutFamily) coverShapes(palette BuiltinPalette, area Frame) string {
-	subtitleInk := mixColor(palette.Ink, palette.Surface, 0.42)
+	// The cover's one-line summary is prose somebody reads, not decoration, so
+	// it fades toward the surface only as far as it can while staying legible.
+	// Mixed by hand it landed at 2.2:1 on thirty-one of the designs this
+	// product ships — below even the threshold large text is allowed — while
+	// every ink the design itself derives has kept a floor all along.
+	subtitleInk := fadeInk(palette.Ink, palette.Surface, 0.42, 4.5)
 	switch f.Cover {
 	case coverPanel:
 		// A full-height panel down the left, with the title standing on it. A
