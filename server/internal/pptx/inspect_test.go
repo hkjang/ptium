@@ -708,3 +708,69 @@ func TestAComparisonMatrixIsNotReportedAsTrimmed(t *testing.T) {
 		t.Fatalf("a matrix that draws every row was reported as trimmed: %+v", findings)
 	}
 }
+
+// The same figures asked about in a point, a table and a KPI row went unasked
+// as a bar chart — and a chart is the thing a room quotes. They were invisible
+// because they had been understood: parsed into numbers to plot, they carry no
+// unit for the pattern over text to find.
+func TestAChartsOwnNumbersAreAskedWhereTheyCameFrom(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	chart := func(items ...Item) Deck {
+		return Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID,
+			Fields: map[string][]Paragraph{SlotTitle: {{Text: "처리량 추이"}}},
+			Blocks: map[string]Block{SlotBody: {Kind: BlockColumns, Caption: "처리량", Items: items}}}}}
+	}
+	number := func(value float64) *float64 { return &value }
+	deck := chart(
+		Item{Label: "1분기", Value: "1240", Number: number(1240)},
+		Item{Label: "2분기", Value: "1520", Number: number(1520)})
+
+	said := ""
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingSource {
+			said = finding.Detail
+		}
+	}
+	for _, want := range []string{"1분기 1240", "2분기 1520"} {
+		if !strings.Contains(said, want) {
+			t.Errorf("a charted figure was not asked about: %q", said)
+		}
+	}
+
+	// Saying where they came from answers the question.
+	sourced := deck
+	sourced.Slides[0].Sources = []Citation{{Title: "물류본부 2026 집계"}}
+	for _, finding := range InspectDeck(manifest, sourced) {
+		if finding.Kind == FindingSource {
+			t.Errorf("a chart that cites its source is still asked: %s", finding.Detail)
+		}
+	}
+
+	// A number the brief itself gave is the author's own, as it is everywhere else.
+	briefed := chart(
+		Item{Label: "1분기", Value: "1240", Number: number(1240)},
+		Item{Label: "2분기", Value: "1520", Number: number(1520)})
+	briefed.Brief = "처리량을 1240에서 1520으로 올리는 계획"
+	for _, finding := range InspectDeck(manifest, briefed) {
+		if finding.Kind == FindingSource {
+			t.Errorf("the author was asked to cite their own request: %s", finding.Detail)
+		}
+	}
+
+	// And a value written out with its unit is asked about once, as the text it
+	// is, rather than twice.
+	written := Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID,
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "실적"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockKPI, Items: []Item{
+			{Label: "처리량", Value: "1,800건", Number: number(1800)}}}}}}}
+	asked := []string{}
+	for _, finding := range InspectDeck(manifest, written) {
+		if finding.Kind == FindingSource {
+			asked = append(asked, finding.Detail)
+		}
+	}
+	if len(asked) != 1 || !strings.Contains(asked[0], "1,800건") || strings.Contains(asked[0], "처리량 1800") {
+		t.Errorf("a written-out value is asked about as something other than its own words: %v", asked)
+	}
+}

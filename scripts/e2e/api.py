@@ -700,6 +700,23 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a chart is asked where its numbers came from ──")
+# The same figures asked about in a point, a table and a KPI row went unasked
+# as a bar chart, which is the thing a room quotes.
+chart_deck = data_of(call("POST", "/presentations", {"title": f"차트 {RUN}", "prompt": "차트", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{chart_deck['id']}/source", {"source":
+    "# 처리량 추이\n::columns 처리량\n- 1분기 | 1240\n- 2분기 | 1520\n::\n\n"
+    "# 출처를 밝힌 장\n::columns 처리량\n- 1분기 | 1240\n::\n!source 물류본부 2026 집계\n"}, expect=200)
+chart_found = [one for one in (data_of(call("GET", f"/presentations/{chart_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+               if one.get("kind") == "source"]
+checks += 1
+if len(chart_found) != 1 or "1240" not in chart_found[0].get("detail", ""):
+    failures.append(f"a chart's numbers are not asked where they came from: {chart_found}")
+checks += 1
+if any(one.get("slide") == 2 for one in chart_found):
+    failures.append("a chart that cites its source is still asked for one")
+call("DELETE", f"/presentations/{chart_deck['id']}", expect=204)
+
 print("── a refused link, wherever it is written ──")
 # The same mistake in the same deck got two answers: reported in a point, and
 # silent in a cell of a table, where it draws its markup on the wall all the same.

@@ -594,45 +594,51 @@ var aDate = regexp.MustCompile(`(19|20)\d{2}\s*(년|年|년도)?|\d[\d,.]*\s*(�
 var statedFigure = regexp.MustCompile(`\d[\d,]*(\.\d+)?\s?(%|억|만|천|원|달러|명|건|개|배|퍼센트|` +
 	`억원|만원|亿|億|円|元|USD|KRW|EUR|JPY|[kmb]n?\b)|\d{1,3}(,\d{3})+`)
 
-// statesFigures reports whether a slide puts numbers in front of a room.
-//
-// A figure inside a component is the strongest case — a KPI card or a chart is
-// nothing but figures — and a figure in the prose counts too. What does not
-// count is a slide with no numbers at all: asking it for a source would train
-// people to ignore the question.
-func statesFigures(slide Slide) bool {
-	for _, block := range slide.Blocks {
-		switch block.Kind {
-		case BlockKPI, BlockHero, BlockColumns, BlockBars, BlockLine, BlockShare, BlockMeter:
-			if block.hasPlottableValues() || len(block.Items) > 0 {
-				return true
-			}
-		}
-		for _, item := range block.Items {
-			if statesFigure(item.Value + " " + item.Label) {
-				return true
-			}
-		}
-		for _, row := range block.Rows {
-			if statesFigure(strings.Join(row, " ")) {
-				return true
-			}
-		}
-	}
-	for _, paragraphs := range slide.Fields {
-		for _, paragraph := range paragraphs {
-			if statesFigure(paragraph.Text) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // statesFigure reports whether one piece of text puts a number in front of a
 // room, with dates read as dates.
 func statesFigure(text string) bool {
 	return len(StatedFigures(text)) > 0
+}
+
+// plottedFigure is one number a chart draws, named the way it is drawn: the
+// bar's own label and the figure on it.
+type plottedFigure struct {
+	name  string
+	value float64
+}
+
+// plottedFigures is what a component plots, for a question asked of numbers
+// rather than of text. Only the shapes that are nothing but figures — a chart,
+// a KPI row, a share bar — are read this way; a card carrying a number in its
+// words is already read as words.
+func plottedFigures(block Block) []plottedFigure {
+	switch block.Kind {
+	case BlockKPI, BlockHero, BlockColumns, BlockBars, BlockLine, BlockShare, BlockMeter:
+	default:
+		return nil
+	}
+	var figures []plottedFigure
+	for _, item := range block.Items {
+		value := item.number()
+		if value == 0 || statesFigure(item.Value) {
+			// A value written out with its unit — "1,240억" — is already asked
+			// about as the text its author wrote. Only the bare number a chart
+			// plots is left, and it is what this walk is for.
+			continue
+		}
+		name := strings.TrimSpace(item.Label + " " + trimFloat(value))
+		if unit := strings.TrimSpace(block.Unit); unit != "" {
+			name += unit
+		}
+		figures = append(figures, plottedFigure{name: name, value: value})
+	}
+	return figures
+}
+
+// trimFloat writes a plotted number the way it was written: 1800 rather than
+// 1800.000000, and 15.5 kept whole.
+func trimFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 // unbriefedFigures lists the figures a slide states that the brief did not.
@@ -655,6 +661,19 @@ func unbriefedFigures(slide Slide, brief BriefFigures) []string {
 		}
 		for _, row := range block.Rows {
 			consider(strings.Join(row, " "))
+		}
+		// A chart's own numbers, which this never saw. The same figures asked
+		// about in a point, a table and a KPI row went unasked as a bar chart —
+		// and a chart is the thing a room quotes. They were invisible because
+		// they had been understood: parsed into numbers to plot, they carry no
+		// unit for the pattern over text to find, so the better this product
+		// read a chart the less it asked about it.
+		for _, figure := range plottedFigures(block) {
+			if seen[figure.name] || brief.holds(figure.value) {
+				continue
+			}
+			seen[figure.name] = true
+			missing = append(missing, figure.name)
 		}
 	}
 	for _, paragraphs := range slide.Fields {
