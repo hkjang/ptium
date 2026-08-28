@@ -77,7 +77,7 @@ Example create call:
       "title": "2027 Product Strategy",
       "prompt": "Create an executive decision deck for regional leaders.",
       "language": "en",
-      "theme": "aurora",
+      "theme": "midnight-wash",
       "slideCount": 10
     }
   }

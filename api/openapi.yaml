@@ -5591,7 +5591,7 @@ components:
         bio: Builds concise executive narratives.
         preferences:
           preferredLanguage: ko
-          preferredTheme: aurora
+          preferredTheme: midnight-wash
 
     ProfileEnvelope:
       type: object
@@ -5620,9 +5620,9 @@ components:
             branding.seeded_brand_color: '#7C3AED'
             generation.default_slide_count: 10
             generation.max_slides: 50
-            generation.default_theme: aurora
+            generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.67.1
+            service.version: 1.67.2
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -5789,7 +5789,7 @@ components:
           type: string
           minLength: 1
           maxLength: 80
-          description: Omission uses the administrator-configured generation default (initially `aurora`).
+          description: Omission uses the administrator-configured generation default (initially `slate-classic`).
         language:
           type: string
           minLength: 1
@@ -5813,7 +5813,7 @@ components:
       example:
         title: 2027 Product Strategy
         prompt: Create an executive decision deck for regional leaders.
-        theme: aurora
+        theme: midnight-wash
         language: en
         audience: Regional leadership
         tone: concise
@@ -7477,7 +7477,7 @@ components:
       examples:
         - section: generation
           settings:
-            default_theme: aurora
+            default_theme: slate-classic
             default_lang: ko
         - settings:
             - key: ai.api_key
@@ -7961,7 +7961,7 @@ components:
         theme:
           type: string
           maxLength: 64
-          description: Omission uses the administrator-configured generation theme (initially `aurora`).
+          description: Omission uses the administrator-configured generation theme (initially `slate-classic`).
         language:
           type: string
           maxLength: 32

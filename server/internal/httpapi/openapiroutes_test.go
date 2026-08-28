@@ -146,3 +146,50 @@ func unique(values []string) []string {
 func placeholders(route string) string {
 	return strings.TrimSuffix(regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(route, "{}"), "/")
 }
+
+// The API description told integrators the deployment's initial theme is
+// `aurora`, in two places, and showed it as the value in four examples. A
+// deployment has seeded `slate-classic` since the library grew from five themes
+// to fifty designs — `aurora` still resolves, as a name kept working from an
+// earlier version, but it is not what anybody's deployment holds.
+//
+// A wrong default in a description is a wrong deck for whoever trusts it.
+//
+// Skipped when the spec is not beside the server.
+func TestTheSpecNamesTheDefaultsADeploymentActuallyHas(t *testing.T) {
+	spec, err := os.ReadFile(filepath.Join("..", "..", "..", "api", "openapi.yaml"))
+	if err != nil {
+		t.Skip("the API description is not beside the server here")
+	}
+	seeded, err := os.ReadFile(filepath.Join("..", "db", "migrations.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// What a fresh deployment is seeded with, read from the seed itself.
+	defaults := map[string]string{}
+	for _, found := range regexp.MustCompile(`"(generation\.[a-z_]+)":\s*{`+"`"+`"([^"]+)"`+"`").
+		FindAllStringSubmatch(string(seeded), -1) {
+		defaults[found[1]] = found[2]
+	}
+	if defaults["generation.default_theme"] == "" {
+		t.Fatal("the seeded default theme could not be read")
+	}
+
+	// Every "initially `x`" the description promises is one of them.
+	for _, found := range regexp.MustCompile("initially `([^`]+)`").
+		FindAllStringSubmatch(string(spec), -1) {
+		promised := found[1]
+		matched := false
+		for _, seededValue := range defaults {
+			if promised == seededValue {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Errorf("the description says a deployment starts with %q, and none of its seeded defaults is that: %v",
+				promised, defaults)
+		}
+	}
+}
