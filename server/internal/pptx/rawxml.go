@@ -364,6 +364,12 @@ type rawParagraph struct {
 			Size      int           `xml:"sz,attr"`
 			Bold      string        `xml:"b,attr"`
 			Italic    string        `xml:"i,attr"`
+			// A rule through a line means the author cancelled it, and this deck
+			// has no mark to carry that. Read it anyway: the words come across
+			// looking live, and the person who wrote them has to be told which
+			// ones to strike again.
+			Strike    string        `xml:"strike,attr"`
+			Underline string        `xml:"u,attr"`
 			SolidFill *rawSolidFill `xml:"solidFill"`
 			Latin     struct {
 				Typeface string `xml:"typeface,attr"`

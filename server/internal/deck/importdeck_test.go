@@ -197,3 +197,44 @@ func TestTwoSeriesStillComeBackAsATable(t *testing.T) {
 		}
 	}
 }
+
+// A deck is redrawn in the design it lands in, so its colours and sizes are the
+// new design's and nothing is lost by that. A rule through a line is different:
+// it says the line no longer holds. Nothing here can carry that mark, so the
+// words arrive looking as live as the rest — and the author has to be told,
+// or a cancelled row reads as a current one.
+func TestALineTheAuthorStruckThroughIsReported(t *testing.T) {
+	deck := pptx.ImportedDeck{Slides: []pptx.ImportedSlide{{
+		Title: "이행 계획",
+		Bullets: []pptx.ImportedLine{
+			{Text: "표준 스키마 확정"},
+			{Text: "옛 시스템 3월 종료", Struck: true},
+			{Text: "파이프라인 이관"},
+		},
+	}}}
+	source, warnings := SourceFromImport(deck)
+	said := strings.Join(warnings, " | ")
+	if !strings.Contains(said, "취소선") {
+		t.Fatalf("a struck line was carried across in silence: %q", said)
+	}
+	if !strings.Contains(said, "1개") {
+		t.Errorf("the count was said as %q", said)
+	}
+	// The words themselves still come across: the line is the author's.
+	if !strings.Contains(source, "옛 시스템 3월 종료") {
+		t.Error("the struck line's own words did not survive")
+	}
+}
+
+// Nothing struck, nothing said.
+func TestADeckWithNothingStruckIsToldNothing(t *testing.T) {
+	deck := pptx.ImportedDeck{Slides: []pptx.ImportedSlide{{
+		Title: "이행 계획", Bullets: []pptx.ImportedLine{{Text: "표준 스키마 확정"}},
+	}}}
+	_, warnings := SourceFromImport(deck)
+	for _, warning := range warnings {
+		if strings.Contains(warning, "취소선") {
+			t.Errorf("a deck with nothing struck was told %q", warning)
+		}
+	}
+}

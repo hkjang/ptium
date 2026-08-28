@@ -28,7 +28,7 @@ func SourceFromImport(imported pptx.ImportedDeck) (string, []string) {
 // decoration too small to be the point of the slide — is simply not placed.
 func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.ImportedPicture) (string, bool)) (string, []string) {
 	var builder strings.Builder
-	pictures, placed, tables, charts, plots := 0, 0, 0, 0, 0
+	pictures, placed, tables, charts, plots, struck := 0, 0, 0, 0, 0, 0
 	// Which slides carried nothing to read, by their place in the deck. A count
 	// on its own could not be said without being misread: "%d장에는" is how a
 	// reader is told which slide, so one wordless slide at the fourth place
@@ -55,6 +55,9 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			fmt.Fprintf(&builder, "> %s\n", escapeSourceLine(lead))
 		}
 		for _, bullet := range slide.Bullets {
+			if bullet.Struck {
+				struck++
+			}
 			fmt.Fprintf(&builder, "%s- %s\n", strings.Repeat("  ", bullet.Level), escapeSourceLine(bullet.Text))
 		}
 		// A table comes back as a table: the same grid, drawn by the design it
@@ -131,6 +134,18 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 	case len(wordless) > 0:
 		warnings = append(warnings, fmt.Sprintf(
 			"%s에는 읽을 수 있는 글자가 없어 제목을 임시로 붙였습니다", slidesNamed(wordless)))
+	}
+	if struck > 0 {
+		// A deck is redrawn in the design it lands in, so its colours and sizes
+		// are the new design's and nothing is lost by that. A rule through a
+		// line is different: it says the line no longer holds, and there is no
+		// mark here to carry it. The words arrive looking as live as the rest,
+		// so the lines they were on are named rather than left to be found.
+		// "개" for the count: it cannot be read as which line, the way a bare
+		// number before 줄 can, and the particle after it does not change.
+		warnings = append(warnings, fmt.Sprintf(
+			"취소선이 그어져 있던 줄 %d개는 그 표시를 가져오지 못했습니다. 취소된 내용이라면 지우거나 다시 표시해 주세요.",
+			struck))
 	}
 	if placed > 0 {
 		// What this step knows is how many pictures it carried out of the file

@@ -28,6 +28,9 @@ import (
 type ImportedLine struct {
 	Text  string
 	Level int
+	// Struck is a line the author had drawn a rule through: it says the line no
+	// longer holds, and nothing in this deck's markup can carry that.
+	Struck bool
 }
 
 // ImportedSlide is one slide as text.
@@ -60,6 +63,13 @@ type ImportedSlide struct {
 	// OtherCharts counts the plots whose form Ptium does not draw: a pie, a
 	// scatter, a doughnut of a doughnut. They are reported, not invented.
 	OtherCharts int
+	// Struck counts the lines the author had drawn a rule through. A deck is
+	// redrawn in the design it lands in, so its colours and sizes are the new
+	// design's — but a rule through a line is not styling, it is the author
+	// saying that line no longer holds. There is no mark to carry it, and the
+	// words arrive looking as live as the rest, so the count is reported and
+	// the author is told which lines to strike again.
+	Struck int
 }
 
 // ImportedChart is a plot carried over from a slide, as its numbers.
@@ -220,6 +230,13 @@ func markedUpRun(text, bold, italic, target string) string {
 		core = "*" + core + "*"
 	}
 	return lead + core + tail
+}
+
+// isStruck reads the strike attribute, which names the rule rather than
+// answering yes: "sngStrike", "dblStrike", and "noStrike" for none.
+func isStruck(value string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	return trimmed != "" && trimmed != "nostrike" && trimmed != "0" && trimmed != "false"
 }
 
 // isOff reads an attribute that is present and says no.
@@ -565,7 +582,11 @@ func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine 
 	lines := make([]ImportedLine, 0, len(shape.TxBody.Para))
 	for _, paragraph := range shape.TxBody.Para {
 		var builder strings.Builder
+		struck := false
 		for _, run := range paragraph.Runs {
+			if isStruck(run.RPr.Strike) && strings.TrimSpace(run.Text) != "" {
+				struck = true
+			}
 			builder.WriteString(markedUpRun(run.Text, run.RPr.Bold, run.RPr.Italic, runLinkTarget(run.RPr.HlinkClick, link)))
 		}
 		text := strings.TrimSpace(builder.String())
@@ -580,7 +601,7 @@ func shapeParagraphsWithLinks(shape rawShape, link linkResolver) []ImportedLine 
 		if level < 0 || level > 4 {
 			level = 0
 		}
-		lines = append(lines, ImportedLine{Text: text, Level: level})
+		lines = append(lines, ImportedLine{Text: text, Level: level, Struck: struck})
 	}
 	return lines
 }
