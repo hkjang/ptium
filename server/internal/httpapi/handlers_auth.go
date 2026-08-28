@@ -186,7 +186,15 @@ func (s *Server) passwordLogin(writer http.ResponseWriter, request *http.Request
 
 	user, err := s.store.AuthenticateLocalUser(request.Context(), username, input.Password)
 	if err != nil {
-		s.loginLimiter.fail(clientAddress(request))
+		if s.loginLimiter.fail(clientAddress(request)) {
+			// The console records who signed in and never recorded anybody
+			// failing to, so a run of guesses against an administrator's account
+			// showed up nowhere an administrator looks. This is the one row that
+			// run is worth: the point where it went into backoff, with the
+			// account being guessed at and nothing that could be a password.
+			s.store.Audit(request.Context(), nil, "auth.login_blocked", "user", username,
+				map[string]any{"username": username})
+		}
 		if errors.Is(err, store.ErrInvalidCredentials) || errors.Is(err, store.ErrNotFound) {
 			s.logger.Warn("password sign-in rejected", "request_id", RequestID(request.Context()), "username", username)
 			writeError(writer, request, http.StatusUnauthorized, "invalid_credentials", "The username or password is incorrect", nil)

@@ -858,6 +858,24 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── a run of guesses is written down once ──")
+# The console recorded who signed in and nobody failing to. Writing down each
+# attempt is not the answer: the limiter is in-process so that a failed sign-in
+# is not a database write.
+guess_before = [one for one in (data_of(call("GET", "/admin/audit?limit=100", expect=200)) or [])
+                if one.get("action") == "auth.login_blocked"]
+for guess in range(9):
+    call("POST", "/auth/login", {"username": f"nobody-{RUN}@example.invalid", "password": f"wrong-{guess}"},
+         expect=[401, 429], headers={})
+guess_after = [one for one in (data_of(call("GET", "/admin/audit?limit=100", expect=200)) or [])
+               if one.get("action") == "auth.login_blocked"]
+checks += 1
+if len(guess_after) - len(guess_before) != 1:
+    failures.append(f"nine guesses wrote {len(guess_after) - len(guess_before)} rows, want exactly one")
+checks += 1
+if any("wrong-" in json.dumps(one) for one in guess_after):
+    failures.append("the audit log holds what was typed as a password")
+
 print("── opening and closing a link is written down ──")
 # A share link hands the deck to whoever holds it, with no account and no
 # sign-in. Creating an API key was written down and this was not.

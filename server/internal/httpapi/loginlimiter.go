@@ -61,10 +61,18 @@ func (limiter *loginLimiter) retryAfter(client string) time.Duration {
 	return 0
 }
 
-// fail records a rejected attempt and extends the client's backoff.
-func (limiter *loginLimiter) fail(client string) {
+// fail records a rejected attempt and extends the client's backoff. It reports
+// whether this attempt is the one that crossed into backoff — the moment a run
+// of guesses stops looking like somebody mistyping and starts looking like
+// somebody trying.
+//
+// That crossing is worth writing down where an administrator reads; each
+// attempt is not. Recording every one would do exactly what this limiter exists
+// to avoid, and would let anybody who can reach the sign-in page fill the audit
+// table without an account.
+func (limiter *loginLimiter) fail(client string) bool {
 	if limiter == nil || client == "" {
-		return
+		return false
 	}
 	limiter.mutex.Lock()
 	defer limiter.mutex.Unlock()
@@ -77,13 +85,15 @@ func (limiter *loginLimiter) fail(client string) {
 	entry.failures++
 	entry.lastSeen = now
 	if entry.failures <= limiter.threshold {
-		return
+		return false
 	}
 	delay := limiter.base << min(entry.failures-limiter.threshold-1, 10)
 	if delay > limiter.ceiling || delay <= 0 {
 		delay = limiter.ceiling
 	}
+	crossed := entry.failures == limiter.threshold+1
 	entry.blocked = now.Add(delay)
+	return crossed
 }
 
 // succeed clears a client's history after a valid sign-in.
