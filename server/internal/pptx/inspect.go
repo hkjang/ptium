@@ -582,7 +582,9 @@ func repeatedSlides(deck Deck) []Finding {
 			// "…요청 — 기대 효과" — and a slide of bullets beside a slide of a
 			// comparison was called an echo of it because both were headed with
 			// the deck's own subject.
-
+			if said.heading {
+				continue
+			}
 			sentence := said.text
 			if words := contentWords(sentence); len(words) >= 4 {
 				lines[index] = append(lines[index], words)

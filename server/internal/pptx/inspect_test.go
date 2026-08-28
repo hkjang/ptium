@@ -919,10 +919,19 @@ func TestSlidesSharingOnlyTheirSubjectAreNotAnEcho(t *testing.T) {
 		return Slide{Fields: map[string][]Paragraph{
 			SlotTitle: {{Text: title}}, SlotBody: paragraphs}}
 	}
+	// The deck this came from: the heading names the deck's subject, and so does
+	// one entry of the comparison, because that entry is the proposal. Two lines
+	// of four, which is what this rule calls an echo.
+	compared := Slide{
+		Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: "12억 원을 이사회에 요청 — 선택지 비교"}}},
+		Blocks: map[string]Block{"body2": {Kind: BlockComparison, Items: []Item{
+			{Label: "현행 유지", Value: "추가 비용 없음 · 문제는 누적"},
+			{Label: "투자 12억 원을 이사회에 요청", Value: "초기 투자 필요 · 구조 개선"},
+		}}}}
 	named := Deck{Language: "ko", Slides: []Slide{
 		heading("12억 원을 이사회에 요청", "투입은 인력과 라이선스와 이관 비용입니다", "회수는 절감액과 회수 시점으로 봅니다"),
-		heading("12억 원을 이사회에 요청 — 선택지 비교", "현행을 유지하면 문제가 그대로 누적됩니다", "투자하면 구조가 바뀌고 위험이 줄어듭니다"),
-		heading("12억 원을 이사회에 요청 — 기대 효과", "여섯 달 안에 확인할 지표를 정합니다", "열두 달 목표와 판단 기준을 함께 둡니다"),
+		compared,
 	}}
 	if found := repeatedSlides(named); len(found) > 0 {
 		t.Errorf("slides sharing only the deck's subject were called an echo: %s", found[0].Detail)
