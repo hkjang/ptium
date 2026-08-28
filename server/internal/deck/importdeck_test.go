@@ -217,12 +217,31 @@ func TestALineTheAuthorStruckThroughIsReported(t *testing.T) {
 	if !strings.Contains(said, "취소선") {
 		t.Fatalf("a struck line was carried across in silence: %q", said)
 	}
-	if !strings.Contains(said, "1개") {
+	if !strings.Contains(said, "1곳") {
 		t.Errorf("the count was said as %q", said)
 	}
 	// The words themselves still come across: the line is the author's.
 	if !strings.Contains(source, "옛 시스템 3월 종료") {
 		t.Error("the struck line's own words did not survive")
+	}
+}
+
+// A rule can be drawn through a cell of a table as easily as through a point,
+// and a table is carried as words in a grid — so walking the points sees
+// nothing and the cancelled row arrives reading as a current one.
+func TestAStruckTableCellIsReportedToo(t *testing.T) {
+	deck := pptx.ImportedDeck{Slides: []pptx.ImportedSlide{{
+		Title:  "이행 계획",
+		Struck: 2,
+		Tables: [][][]string{{
+			{"구분", "일정", "비고"},
+			{"옛 항목", "3월", "취소됨"},
+		}},
+	}}}
+	_, warnings := SourceFromImport(deck)
+	said := strings.Join(warnings, " | ")
+	if !strings.Contains(said, "취소선") || !strings.Contains(said, "2곳") {
+		t.Errorf("a struck cell was carried across in silence: %q", said)
 	}
 }
 

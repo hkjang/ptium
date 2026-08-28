@@ -981,7 +981,7 @@ func (d Design) tablePart(frame Frame, block Block, drawnRows int) *TablePart {
 	headerHeight, rowHeight := d.tableRhythm(frame, len(trimmed))
 	bodySize, drawn := d.tableCells(frame, columns, trimmed, rowHeight)
 	return &TablePart{
-		Frame: frame, Columns: columns, Rows: drawn, Aligns: aligns,
+		Frame: frame, Columns: columns, Rows: markedCells(trimmed, drawn), Aligns: aligns,
 		HeaderHeight: headerHeight, RowHeight: rowHeight,
 		HeaderSize: d.Small, BodySize: bodySize, Font: d.Minor,
 		HeaderInk: d.InkMuted, LabelInk: d.InkPrimary, ValueInk: d.InkSecondary,
@@ -1079,6 +1079,30 @@ func (d Design) tableCells(frame Frame, columns []string, rows [][]string, rowHe
 		drawn = append(drawn, cut)
 	}
 	return size, drawn
+}
+
+// markedCells puts the author's marks back on the cells the table drew.
+//
+// The preview draws words rather than markup — it has no runs to draw them
+// with — so tableCells hands back plain text. The exported file can carry more
+// than words: a cell written **1억 2천** is bold in PowerPoint and a cell
+// written [근거](https://…) is a link someone can follow. So a cell the design
+// drew whole is written from what the author typed, and a cell it had to cut
+// keeps only its words: half a link is not a link.
+func markedCells(source, drawn [][]string) [][]string {
+	marked := make([][]string, len(drawn))
+	for row := range drawn {
+		marked[row] = append([]string{}, drawn[row]...)
+		if row >= len(source) {
+			continue
+		}
+		for index, value := range marked[row] {
+			if index < len(source[row]) && PlainText(source[row][index]) == value {
+				marked[row][index] = source[row][index]
+			}
+		}
+	}
+	return marked
 }
 
 // A table is a shape a reader takes in at a glance. Past these it is a

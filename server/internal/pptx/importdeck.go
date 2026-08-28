@@ -63,12 +63,14 @@ type ImportedSlide struct {
 	// OtherCharts counts the plots whose form Ptium does not draw: a pie, a
 	// scatter, a doughnut of a doughnut. They are reported, not invented.
 	OtherCharts int
-	// Struck counts the lines the author had drawn a rule through. A deck is
+	// Struck counts the table cells the author had drawn a rule through. A deck is
 	// redrawn in the design it lands in, so its colours and sizes are the new
 	// design's — but a rule through a line is not styling, it is the author
 	// saying that line no longer holds. There is no mark to carry it, and the
 	// words arrive looking as live as the rest, so the count is reported and
-	// the author is told which lines to strike again.
+	// the author is told to strike them again. A cell is counted here rather
+	// than beside the points because a table's cells are carried as words in a
+	// grid, with nowhere on them to hang a mark of their own.
 	Struck int
 }
 
@@ -195,7 +197,7 @@ func readSlide(pkg *Package, part string, order []string) (ImportedSlide, bool) 
 	// A picture and a table are read from the part itself: the shape parser does
 	// not descend into a graphic frame.
 	slide.Charts, slide.OtherCharts = readCharts(pkg, part)
-	slide.Tables = readTables(content)
+	slide.Tables, slide.Struck = readTables(content, slideLinks(pkg, part, order))
 	slide.Pictures = readPictures(pkg, part, parsed.CSld.SpTree, slideArea(pkg))
 	slide.Notes = withoutRepeatedCitations(readNotes(pkg, part, order), slide.Sources)
 	return slide, true
@@ -677,12 +679,13 @@ func readPictures(pkg *Package, slidePart string, tree rawShapeTree, slideArea i
 	return pictures
 }
 
-// readTables reads every table on a slide as rows of cell text.
+// readTables reads every table on a slide as rows of cell text, and says how
+// many of those cells had a rule drawn through them.
 //
 // A picture cannot be carried into another design, but a table is words in a
 // grid and Ptium draws one from exactly that — so a table comes across as a
 // table and is redrawn in the design it lands in.
-func readTables(content string) [][][]string {
+func readTables(content string, link linkResolver) ([][][]string, int) {
 	var parsed struct {
 		CSld struct {
 			SpTree struct {
@@ -703,9 +706,10 @@ func readTables(content string) [][][]string {
 		} `xml:"cSld"`
 	}
 	if err := xml.Unmarshal([]byte(content), &parsed); err != nil {
-		return nil
+		return nil, 0
 	}
 	var tables [][][]string
+	struck := 0
 	for _, frame := range parsed.CSld.SpTree.Frames {
 		table := frame.Graphic.Data.Table
 		if table == nil {
@@ -715,7 +719,11 @@ func readTables(content string) [][][]string {
 		for _, row := range table.Rows {
 			cells := make([]string, 0, len(row.Cells))
 			for _, cell := range row.Cells {
-				cells = append(cells, cellText(cell.TxBody))
+				text, ruled := cellText(cell.TxBody, link)
+				if ruled {
+					struck++
+				}
+				cells = append(cells, text)
 			}
 			if len(cells) > 0 {
 				rows = append(rows, cells)
@@ -725,25 +733,37 @@ func readTables(content string) [][][]string {
 			tables = append(tables, rows)
 		}
 	}
-	return tables
+	return tables, struck
 }
 
-// cellText is one cell's words, joined.
-func cellText(body *rawTxBody) string {
+// cellText is one cell's words, joined, keeping any address they link to.
+//
+// A cell was read as its words alone, so the address behind "근거 문서" was
+// gone — the one part of a link nobody can type again from looking at the
+// slide. The emphasis is deliberately not carried: a table's header row and
+// label column are bold in almost every deck because the table style made them
+// so, and carrying that across marks every heading **like this** in a design
+// that already sets its own. What the drawing owns stays with the drawing; what
+// the author knows and the slide cannot show comes with the words.
+func cellText(body *rawTxBody, link linkResolver) (string, bool) {
 	if body == nil {
-		return ""
+		return "", false
 	}
+	struck := false
 	var parts []string
 	for _, paragraph := range body.Para {
 		var builder strings.Builder
 		for _, run := range paragraph.Runs {
-			builder.WriteString(run.Text)
+			if isStruck(run.RPr.Strike) && strings.TrimSpace(run.Text) != "" {
+				struck = true
+			}
+			builder.WriteString(markedUpRun(run.Text, "", "", runLinkTarget(run.RPr.HlinkClick, link)))
 		}
 		if text := strings.TrimSpace(builder.String()); text != "" {
 			parts = append(parts, text)
 		}
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, " "), struck
 }
 
 // readNotes reads the speaker notes attached to a slide, without the copy of the

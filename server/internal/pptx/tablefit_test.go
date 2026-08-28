@@ -170,3 +170,62 @@ func TestAKPIFigureIsCutRatherThanPaintedAcrossTheNextTile(t *testing.T) {
 		}
 	}
 }
+
+// A table cell was written as one piece of text, so a word the author marked
+// bold and an address the author wrote as a link were drawn as the characters
+// they are typed with: the exported file's header read **1분기** and
+// [근거](https://…) while the preview drew the words alone. The author checks
+// the preview, sees a clean table, and sends a file with the markup on the wall.
+func TestATableCellDrawsItsMarksRatherThanPrintingThem(t *testing.T) {
+	_, design, _ := testDesign(t, "plum-rail")
+	frame := Frame{X: 914400, Y: 914400, Width: 6 * 914400, Height: 3 * 914400}
+	block := Block{Kind: BlockTable,
+		Columns: []string{"구분", "**1분기**", "[근거](https://example.invalid/e)"},
+		Rows: [][]string{
+			{"인프라", "1억 2천", "[계약서](https://example.invalid/contract)"},
+			{"인건비", "**3억**", "정상"},
+		}}
+	part := design.tablePart(frame, block, 0)
+	if part == nil {
+		t.Fatal("the table drew nothing")
+	}
+	links := &linkTable{}
+	markup := part.drawingML(7, "", links)
+	for _, mark := range []string{"**", "](", "https://example.invalid"} {
+		if strings.Contains(markup, "<a:t>"+mark) || strings.Contains(markup, mark+"</a:t>") {
+			t.Errorf("the exported table prints %q where a reader can see it", mark)
+		}
+	}
+	if strings.Count(markup, "hlinkClick") != 2 {
+		t.Errorf("the two addresses written in cells became %d links, want 2",
+			strings.Count(markup, "hlinkClick"))
+	}
+	for _, word := range []string{"1분기", "근거", "계약서", "3억", "인프라"} {
+		if !strings.Contains(markup, "<a:t>"+word+"</a:t>") {
+			t.Errorf("the cell %q is not in the exported table", word)
+		}
+	}
+	// What is read aloud is the words, never the marks.
+	if said := describeTable(part, block, "ko"); strings.Contains(said, "**") || strings.Contains(said, "](") {
+		t.Errorf("the table is read aloud as %q", said)
+	}
+}
+
+// A cell the design had to cut keeps only its words: half a link is not a link,
+// and a cut that lands inside the address would export characters no reader can
+// follow.
+func TestACutTableCellKeepsItsWordsAndNotHalfALink(t *testing.T) {
+	_, design, _ := testDesign(t, "plum-rail")
+	frame := Frame{X: 914400, Y: 914400, Width: 2 * 914400, Height: 914400}
+	long := "[" + strings.Repeat("근거가 되는 아주 긴 문서 이름 ", 12) + "](https://example.invalid/very/long)"
+	block := Block{Kind: BlockTable, Columns: []string{"구분", "비고"},
+		Rows: [][]string{{"인프라", long}, {"인건비", "정상"}}}
+	part := design.tablePart(frame, block, 0)
+	if part == nil {
+		t.Fatal("the table drew nothing")
+	}
+	markup := part.drawingML(7, "", &linkTable{})
+	if strings.Contains(markup, "https://example.invalid") {
+		t.Error("a cut cell exported the address as text on the slide")
+	}
+}

@@ -96,7 +96,7 @@ func TestRenderBlockProducesWellFormedDrawingML(t *testing.T) {
 		if len(component.Primitives) == 0 {
 			t.Fatalf("%s produced nothing", block.Kind)
 		}
-		markup, nextID := component.DrawingML(2, "")
+		markup, nextID := component.DrawingML(2, "", nil)
 		if nextID <= 2 {
 			t.Fatalf("%s did not consume shape ids", block.Kind)
 		}

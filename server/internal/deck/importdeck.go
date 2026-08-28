@@ -54,6 +54,9 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		if lead := strings.TrimSpace(slide.Lead); lead != "" {
 			fmt.Fprintf(&builder, "> %s\n", escapeSourceLine(lead))
 		}
+		// A cell with a rule through it is counted where it was read: a table is
+		// carried as words in a grid, and walking the points never sees it.
+		struck += slide.Struck
 		for _, bullet := range slide.Bullets {
 			if bullet.Struck {
 				struck++
@@ -141,10 +144,10 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 		// line is different: it says the line no longer holds, and there is no
 		// mark here to carry it. The words arrive looking as live as the rest,
 		// so the lines they were on are named rather than left to be found.
-		// "개" for the count: it cannot be read as which line, the way a bare
-		// number before 줄 can, and the particle after it does not change.
+		// "자리 %d곳" rather than "줄 %d개": the rule may have been through a
+		// point or through a cell of a table, and 줄 is only one of the two.
 		warnings = append(warnings, fmt.Sprintf(
-			"취소선이 그어져 있던 줄 %d개는 그 표시를 가져오지 못했습니다. 취소된 내용이라면 지우거나 다시 표시해 주세요.",
+			"취소선이 그어져 있던 자리 %d곳은 그 표시를 가져오지 못했습니다. 취소된 내용이라면 지우거나 다시 표시해 주세요.",
 			struck))
 	}
 	if placed > 0 {

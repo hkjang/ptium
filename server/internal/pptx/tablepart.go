@@ -15,7 +15,7 @@ import (
 // rule under the header, hairlines between rows, labels left and figures right.
 
 // drawingML writes the table as a graphic frame.
-func (t *TablePart) drawingML(shapeID int, description string) string {
+func (t *TablePart) drawingML(shapeID int, description string, links *linkTable) string {
 	if t == nil || len(t.Columns) == 0 || len(t.Rows) == 0 {
 		return ""
 	}
@@ -54,7 +54,7 @@ func (t *TablePart) drawingML(shapeID int, description string) string {
 	var body strings.Builder
 	body.WriteString(`<a:tr h="` + strconv.Itoa(headerHeight) + `">`)
 	for index, heading := range t.Columns {
-		body.WriteString(t.cellXML(heading, index, true))
+		body.WriteString(t.cellXML(heading, index, true, links))
 	}
 	body.WriteString(`</a:tr>`)
 	for _, row := range t.Rows {
@@ -64,7 +64,7 @@ func (t *TablePart) drawingML(shapeID int, description string) string {
 			if index < len(row) {
 				value = row[index]
 			}
-			body.WriteString(t.cellXML(value, index, false))
+			body.WriteString(t.cellXML(value, index, false, links))
 		}
 		body.WriteString(`</a:tr>`)
 	}
@@ -82,7 +82,14 @@ func (t *TablePart) drawingML(shapeID int, description string) string {
 
 // cellXML writes one cell in the design's own type, with the rule under it that
 // the drawn table paints.
-func (t *TablePart) cellXML(value string, column int, header bool) string {
+//
+// A cell is written as runs rather than as one piece of text, for the same
+// reason every other line on the slide is: a word marked bold in a cell is
+// bold, and an address written in one is a link someone can follow. Written as
+// one piece it was neither — the preview drew the words alone while the
+// exported file printed **1분기** and [근거](https://…) in the header, so the
+// markup only ever appeared where the author had stopped looking.
+func (t *TablePart) cellXML(value string, column int, header bool, links *linkTable) string {
 	align := "l"
 	if column < len(t.Aligns) && t.Aligns[column] != "" {
 		align = t.Aligns[column]
@@ -106,9 +113,10 @@ func (t *TablePart) cellXML(value string, column int, header bool) string {
 	// default would draw four sides around every cell.
 	lines := `<a:lnB w="` + strconv.Itoa(width) + `" cap="flat" cmpd="sng" algn="ctr">` +
 		`<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(rule, "#")) + `"/></a:solidFill></a:lnB>`
-	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="` + align + `"/>` +
-		`<a:r><a:rPr lang="ko-KR" sz="` + strconv.Itoa(size) + `"` + bold + `>` +
+	properties := `<a:rPr lang="ko-KR" sz="` + strconv.Itoa(size) + `"` + bold + `>` +
 		`<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(colour, "#")) + `"/></a:solidFill>` +
-		font + `</a:rPr><a:t>` + escapeText(value) + `</a:t></a:r></a:p></a:txBody>` +
+		font + `</a:rPr>`
+	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="` + align + `"/>` +
+		runsXML(value, properties, links) + `</a:p></a:txBody>` +
 		`<a:tcPr marL="0" marR="91440" marT="45720" marB="45720" anchor="ctr">` + lines + `<a:noFill/></a:tcPr></a:tc>`
 }

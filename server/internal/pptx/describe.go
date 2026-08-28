@@ -137,6 +137,18 @@ func describeLanguage(language string) string {
 
 // describeTable is the alternative text for a table, which says its shape as
 // well as its contents: "표 3열 4행" is what a reader needs before the cells.
+// plainCells is a table's cells as words, with any markup taken out.
+func plainCells(rows [][]string) [][]string {
+	plain := make([][]string, len(rows))
+	for index, row := range rows {
+		plain[index] = make([]string, len(row))
+		for cell, value := range row {
+			plain[index][cell] = PlainText(value)
+		}
+	}
+	return plain
+}
+
 func describeTable(part *TablePart, block Block, language string) string {
 	if part == nil {
 		return ""
@@ -145,7 +157,10 @@ func describeTable(part *TablePart, block Block, language string) string {
 	// the bottom of its region, and describing the rows that did not make it
 	// tells someone who cannot see the slide about content nobody else has.
 	drawn := block
-	drawn.Columns, drawn.Rows = part.Columns, part.Rows
+	// The cells carry the author's marks so the exported table can draw them.
+	// What is read aloud is the words: a screen reader saying "별표 별표 1분기"
+	// is the markup on the wall again, in the one place nobody can see it.
+	drawn.Columns, drawn.Rows = plainCells([][]string{part.Columns})[0], plainCells(part.Rows)
 	description := describeBlock(drawn, language)
 	shape := tableShape(len(part.Columns), len(part.Rows)+1, describeLanguage(language))
 	if shape == "" {

@@ -242,7 +242,7 @@ func textOf(primitives []Primitive) string {
 // DrawingML wraps a component in a group whose child coordinate space matches
 // its own, so children keep absolute coordinates while the whole component
 // stays selectable and movable as one object in PowerPoint.
-func (c Component) DrawingML(startID int, chartRelationshipID string) (string, int) {
+func (c Component) DrawingML(startID int, chartRelationshipID string, links *linkTable) (string, int) {
 	if len(c.Primitives) == 0 {
 		return "", startID
 	}
@@ -284,7 +284,7 @@ func (c Component) DrawingML(startID int, chartRelationshipID string) (string, i
 	}
 	if c.Table != nil {
 		id++
-		group += c.Table.drawingML(id, c.Description)
+		group += c.Table.drawingML(id, c.Description, links)
 	}
 	if chart {
 		id++

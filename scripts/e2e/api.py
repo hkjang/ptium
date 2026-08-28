@@ -597,7 +597,7 @@ if ThirdPartyReader is not None:
     call("PUT", f"/presentations/{spec_deck['id']}/source", {"source":
         "# 표지가 되는 장\n@cover\n> 한 줄 리드\n\n"
         "# 분기 매출\n::columns 매출\n- 1분기 | 12\n- 2분기 | 15.5\n::\n\n"
-        "# 분기별 비용\n::table 비용\n- 구분 | 1분기\n- 인프라 | 1억 2천\n::\n\n"
+        "# 분기별 비용\n::table 비용\n- 구분 | **1분기** | 비고\n- 인프라 | 1억 2천 | [계약서](https://example.invalid/contract)\n::\n\n"
         "# 링크가 있는 장\n- 자세한 내용은 [회사 안내](https://example.invalid/guide) 참고\n"}, expect=200)
     _, exported = call("GET", f"/presentations/{spec_deck['id']}/export.pptx", raw=True, expect=200)
     try:
@@ -632,8 +632,21 @@ if ThirdPartyReader is not None:
                         failures.append("the exported chart's numbers are not the deck's")
                 if getattr(shape, "has_table", False) and shape.has_table:
                     tables += 1
-                    if [cell.text for cell in shape.table.rows[0].cells] != ["구분", "1분기"]:
+                    if [cell.text for cell in shape.table.rows[0].cells] != ["구분", "1분기", "비고"]:
                         failures.append("the exported table's first row is not the deck's")
+                    # A cell was written as one piece of text, so a cell's marks
+                    # were exported as the characters they are typed with: the
+                    # file's header read **1분기** while the preview drew the
+                    # word alone, and the address behind a cell was gone.
+                    cells = [cell.text for row in shape.table.rows for cell in row.cells]
+                    printed = [cell for cell in cells if "**" in cell or "](" in cell]
+                    if printed:
+                        failures.append(f"the exported table prints its markup where a reader sees it: {printed}")
+                    linked = [run.hyperlink.address for row in shape.table.rows for cell in row.cells
+                              for para in cell.text_frame.paragraphs for run in para.runs
+                              if run.hyperlink is not None and run.hyperlink.address]
+                    if linked != ["https://example.invalid/contract"]:
+                        failures.append(f"the address written in a table cell reads as {linked}")
                 if shape.has_text_frame:
                     for paragraph in shape.text_frame.paragraphs:
                         for run in paragraph.runs:

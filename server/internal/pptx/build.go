@@ -682,7 +682,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design,
 				if component.Table != nil {
 					component.Description = describeTable(component.Table, block, language)
 				}
-				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart))
+				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart), links)
 				components.WriteString(markup)
 				shapeID = next
 				continue
