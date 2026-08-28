@@ -510,6 +510,75 @@ for key in ("generation.max_slides", "generation.default_slide_count"):
     if kept.get(key) is not None:
         call("PATCH", "/admin/settings", {"settings": {key: kept[key]}}, expect=200)
 
+# ── the exported file, read by somebody else ──
+# Everything else here reads the export with our own code, which cannot tell us
+# whether PowerPoint will make sense of it. python-pptx is an independent OOXML
+# reader: what it can see is roughly what a person opening the file sees, and
+# what it cannot see is not there for them either.
+#
+# The properties below are the ones that go silently wrong. A title drawn as a
+# text box instead of a title placeholder leaves the outline view and the screen
+# reader blank. A chart flattened to a picture cannot be edited or read aloud. A
+# link written as blue text is not a link.
+print("── the exported file, read by somebody else ──")
+try:
+    from pptx import Presentation as ThirdPartyReader
+except ImportError:
+    print("   python-pptx is not installed here, so the export was not read back independently")
+    ThirdPartyReader = None
+if ThirdPartyReader is not None:
+    spec_deck = data_of(call("POST", "/presentations", {"title": f"규격 {RUN}", "prompt": "규격", "slideCount": 5}, expect=201)) or {}
+    call("PUT", f"/presentations/{spec_deck['id']}/source", {"source":
+        "# 표지가 되는 장\n@cover\n> 한 줄 리드\n\n"
+        "# 분기 매출\n::columns 매출\n- 1분기 | 12\n- 2분기 | 15.5\n::\n\n"
+        "# 분기별 비용\n::table 비용\n- 구분 | 1분기\n- 인프라 | 1억 2천\n::\n\n"
+        "# 링크가 있는 장\n- 자세한 내용은 [회사 안내](https://example.invalid/guide) 참고\n"}, expect=200)
+    _, exported = call("GET", f"/presentations/{spec_deck['id']}/export.pptx", raw=True, expect=200)
+    try:
+        show = ThirdPartyReader(io.BytesIO(exported or b""))
+    except Exception as error:
+        show = None
+        failures.append(f"an independent OOXML reader could not open the exported file: {error}")
+    if show is not None:
+        checks += 1
+        if len(show.slides) != 4:
+            failures.append(f"the deck has 4 slides and the exported file reads as {len(show.slides)}")
+        # shapes.title resolves from the placeholder index, so it answers even for
+        # a title emitted as an ordinary body placeholder. The type is what the
+        # outline view and a screen reader go by, so the type is what is checked.
+        untitled = []
+        for index, slide in enumerate(show.slides, start=1):
+            kinds = {str(shape.placeholder_format.type) for shape in slide.shapes if shape.is_placeholder}
+            if not any(kind.startswith("TITLE") or kind.startswith("CENTER_TITLE") for kind in kinds):
+                untitled.append((index, sorted(kinds)))
+        checks += 1
+        if untitled:
+            failures.append(f"these slides carry no title placeholder, so the outline view is blank for them: {untitled}")
+        charts, tables, links = 0, 0, 0
+        for slide in show.slides:
+            for shape in slide.shapes:
+                if shape.has_chart:
+                    charts += 1
+                    plot = shape.chart.plots[0]
+                    if [str(one) for one in plot.categories] != ["1분기", "2분기"]:
+                        failures.append(f"the exported chart's categories read as {[str(one) for one in plot.categories]}")
+                    if [list(series.values) for series in plot.series] != [[12.0, 15.5]]:
+                        failures.append("the exported chart's numbers are not the deck's")
+                if getattr(shape, "has_table", False) and shape.has_table:
+                    tables += 1
+                    if [cell.text for cell in shape.table.rows[0].cells] != ["구분", "1분기"]:
+                        failures.append("the exported table's first row is not the deck's")
+                if shape.has_text_frame:
+                    for paragraph in shape.text_frame.paragraphs:
+                        for run in paragraph.runs:
+                            if run.hyperlink is not None and run.hyperlink.address:
+                                links += 1
+        for what, found in (("chart", charts), ("table", tables), ("hyperlink", links)):
+            checks += 1
+            if found == 0:
+                failures.append(f"the deck has a {what} and the exported file carries none a reader can find")
+    call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
+
 print("── inspect, preview, export ──")
 
 # The path may name the format and the query may override it. The default used
