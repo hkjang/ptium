@@ -521,6 +521,16 @@ for key in ("generation.max_slides", "generation.default_slide_count"):
 # reader blank. A chart flattened to a picture cannot be edited or read aloud. A
 # link written as blue text is not a link.
 print("── the exported file, read by somebody else ──")
+# The PDF gets the same treatment. The product reads its own PDFs back in its
+# own tests, which cannot say whether anyone else's reader agrees: a file can
+# render perfectly and still be unsearchable, unselectable and silent to a
+# screen reader — drop the /ToUnicode map and it looks exactly the same on
+# screen. pypdf is the independent judge.
+try:
+    from pypdf import PdfReader as ThirdPartyPDF
+except ImportError:
+    print("   pypdf is not installed here, so the PDF was not read back independently")
+    ThirdPartyPDF = None
 try:
     from pptx import Presentation as ThirdPartyReader
 except ImportError:
@@ -577,6 +587,28 @@ if ThirdPartyReader is not None:
             checks += 1
             if found == 0:
                 failures.append(f"the deck has a {what} and the exported file carries none a reader can find")
+    if ThirdPartyPDF is not None:
+        _, printed = call("GET", f"/presentations/{spec_deck['id']}/export.pdf", raw=True, expect=200)
+        try:
+            paper = ThirdPartyPDF(io.BytesIO(printed or b""))
+        except Exception as error:
+            paper = None
+            failures.append(f"an independent PDF reader could not open the exported file: {error}")
+        if paper is not None:
+            checks += 1
+            if len(paper.pages) != 4:
+                failures.append(f"the deck has 4 slides and the PDF has {len(paper.pages)} pages")
+            checks += 1
+            wide = float(paper.pages[0].mediabox.width) / 72
+            if not 13 < wide < 13.7:
+                failures.append(f"the PDF's pages are {wide:.2f}in wide, not a 16:9 slide")
+            lifted = "\n".join((page.extract_text() or "") for page in paper.pages)
+            # Titles, a chart's own numbers, a table's cells and a link's words:
+            # if any of these will not come out, the file cannot be searched.
+            for wanted in ("표지가 되는 장", "분기 매출", "매출", "1분기", "인프라", "1억 2천", "회사 안내"):
+                checks += 1
+                if wanted not in lifted:
+                    failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
 print("── inspect, preview, export ──")
