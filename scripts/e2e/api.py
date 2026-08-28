@@ -858,6 +858,29 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── the user screen narrows on the server ──")
+# The screen used to ask for every account and sift them in the browser.
+user_counts = data_of(call("GET", "/admin/users/counts", expect=200)) or {}
+user_all = call("GET", "/admin/users?limit=1", expect=200)
+user_total = ((user_all[1] or {}).get("meta") or {}).get("total") if isinstance(user_all, tuple) else None
+checks += 1
+if user_total is not None and user_counts.get("total") != user_total:
+    failures.append(f"the counts say {user_counts.get('total')} accounts and the list says {user_total}")
+checks += 1
+if user_counts.get("admins", 0) + 0 > user_counts.get("total", 0):
+    failures.append("more administrators than accounts")
+# Narrowing by role and by state is the server's answer, not the browser's.
+user_admins = call("GET", "/admin/users?limit=1&role=admin", expect=200)
+user_admin_total = ((user_admins[1] or {}).get("meta") or {}).get("total") if isinstance(user_admins, tuple) else None
+checks += 1
+if user_admin_total != user_counts.get("admins"):
+    failures.append(f"role=admin lists {user_admin_total} where the counts say {user_counts.get('admins')}")
+user_active = call("GET", "/admin/users?limit=1&status=active", expect=200)
+user_active_total = ((user_active[1] or {}).get("meta") or {}).get("total") if isinstance(user_active, tuple) else None
+checks += 1
+if user_active_total != user_counts.get("active"):
+    failures.append(f"status=active lists {user_active_total} where the counts say {user_counts.get('active')}")
+
 print("── the front page counts without fetching everything ──")
 # The front page worked its three numbers out by fetching every deck the account
 # has, a hundred at a time.

@@ -4752,6 +4752,54 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/admin/users/counts:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: adminUserCounts
+      summary: How many accounts there are, by role and by state
+      description: >
+        Four numbers over every account in the deployment: how many there are,
+        how many are administrators, how many can sign in and how many are
+        suspended. Counted by the database rather than by sending the accounts —
+        the user screen shows exactly these four and used to fetch every account
+        to work them out.
+
+
+        They count every account, not the page or the filter being shown.
+      tags: [Administration]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:users]
+      responses:
+        '200':
+          description: The accounts, counted.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      admins: { type: integer }
+                      active: { type: integer }
+                      suspended: { type: integer }
+                    example:
+                      total: 1116
+                      admins: 3
+                      active: 1114
+                      suspended: 2
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/admin/users:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -4770,6 +4818,24 @@ paths:
             `search` or `q` names this filter; both are read.
           schema:
             type: string
+        - name: role
+          in: query
+          required: false
+          description: >
+            Narrow to administrators or to everybody else. Anything else is
+            ignored and every role is listed.
+          schema:
+            type: string
+            enum: [admin, user]
+        - name: status
+          in: query
+          required: false
+          description: >
+            Narrow to accounts that can sign in or to accounts that are
+            suspended. Anything else is ignored and both are listed.
+          schema:
+            type: string
+            enum: [active, suspended]
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Offset'
       responses:
@@ -5673,7 +5739,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.69.0
+            service.version: 1.69.1
         requestId:
           $ref: '#/components/schemas/RequestID'
 

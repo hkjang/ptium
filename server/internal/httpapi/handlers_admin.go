@@ -384,12 +384,33 @@ func (s *Server) adminUsage(writer http.ResponseWriter, request *http.Request) {
 
 func (s *Server) adminListUsers(writer http.ResponseWriter, request *http.Request) {
 	limit, offset := pagination(request)
-	items, total, err := s.store.ListUsers(request.Context(), searchTerm(request), limit, offset)
+	// The screen narrows by name, by role and by whether an account is
+	// suspended. It used to ask for every account and sift them in the browser,
+	// which is twelve requests and a thousand rows at a thousand accounts.
+	filter := store.UserFilter{Search: searchTerm(request)}
+	if role := request.URL.Query().Get("role"); role == "admin" || role == "user" {
+		filter.Role = role
+	}
+	if status := request.URL.Query().Get("status"); status == "active" || status == "suspended" {
+		filter.Status = status
+	}
+	items, total, err := s.store.ListUsers(request.Context(), filter, limit, offset)
 	if err != nil {
 		s.internalError(writer, request, "admin_users_read_failed", err)
 		return
 	}
 	writeList(writer, request, items, total, limit, offset)
+}
+
+// adminUserCounts answers the four numbers above the list, counted over every
+// account rather than over the page being shown.
+func (s *Server) adminUserCounts(writer http.ResponseWriter, request *http.Request) {
+	counts, err := s.store.ReadUserCounts(request.Context())
+	if err != nil {
+		s.internalError(writer, request, "admin_user_counts_failed", err)
+		return
+	}
+	writeData(writer, request, http.StatusOK, counts)
 }
 
 type adminUserUpdate struct {

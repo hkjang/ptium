@@ -430,18 +430,75 @@ func (s *Store) PutSettings(ctx context.Context, actorID string, writes []Settin
 	return result, nil
 }
 
-func (s *Store) ListUsers(ctx context.Context, search string, limit, offset int) ([]model.User, int, error) {
+// UserFilter narrows a listing of accounts to the ones an administrator is
+// looking at: a name or address, a role, an account state.
+//
+// The screen used to ask for every account and sift them in the browser. At a
+// thousand accounts that was twelve requests and a thousand rows in the page
+// before anybody had typed anything, and it grows with every account a
+// deployment adds.
+type UserFilter struct {
+	Search string
+	// Role is "admin" or "user"; empty means either.
+	Role string
+	// Status is "active" or "suspended"; empty means either.
+	Status string
+}
+
+// where builds the filter's clause over the users table, aliased or not.
+func (f UserFilter) where(alias string) (string, []any) {
+	if alias != "" {
+		alias += "."
+	}
+	clause := `($1='' OR ` + alias + `email ILIKE $2` + likeEscape + ` OR ` + alias + `name ILIKE $2` + likeEscape + `)`
+	switch f.Role {
+	case "admin":
+		clause += ` AND ` + alias + `is_admin`
+	case "user":
+		clause += ` AND NOT ` + alias + `is_admin`
+	}
+	switch f.Status {
+	case "suspended":
+		clause += ` AND ` + alias + `disabled`
+	case "active":
+		clause += ` AND NOT ` + alias + `disabled`
+	}
+	return clause, []any{f.Search, likePattern(f.Search)}
+}
+
+// UserCounts is what the four cards above the list say, over every account
+// rather than over the page being shown.
+type UserCounts struct {
+	Total     int `json:"total"`
+	Admins    int `json:"admins"`
+	Active    int `json:"active"`
+	Suspended int `json:"suspended"`
+}
+
+// ReadUserCounts counts the accounts without sending them.
+func (s *Store) ReadUserCounts(ctx context.Context) (UserCounts, error) {
+	var counts UserCounts
+	err := s.Pool.QueryRow(ctx, `SELECT count(*)::int,
+		count(*) FILTER (WHERE is_admin)::int,
+		count(*) FILTER (WHERE NOT disabled)::int,
+		count(*) FILTER (WHERE disabled)::int FROM users`).
+		Scan(&counts.Total, &counts.Admins, &counts.Active, &counts.Suspended)
+	return counts, err
+}
+
+func (s *Store) ListUsers(ctx context.Context, filter UserFilter, limit, offset int) ([]model.User, int, error) {
 	limit, offset = clampPage(limit, offset)
-	pattern := likePattern(search)
+	countWhere, args := filter.where("")
 	var total int
-	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE $1='' OR email ILIKE $2`+likeEscape+` OR name ILIKE $2`+likeEscape+``, search, pattern).Scan(&total); err != nil {
+	if err := s.Pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE `+countWhere, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
+	listWhere, listArgs := filter.where("u")
 	rows, err := s.Pool.Query(ctx, `SELECT u.id::text,COALESCE(u.subject,''),u.email,u.name,u.roles,u.is_admin,u.disabled,
 		COALESCE(u.last_login,u.created_at),u.created_at,u.updated_at,(u.password_hash IS NOT NULL),u.password_updated_at,
 		COALESCE(p.presentation_count,0)
 		FROM users u LEFT JOIN (SELECT owner_id,count(*)::int AS presentation_count FROM presentations WHERE deleted_at IS NULL GROUP BY owner_id) p ON p.owner_id=u.id
-		WHERE $1='' OR u.email ILIKE $2`+likeEscape+` OR u.name ILIKE $2`+likeEscape+` ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, search, pattern, limit, offset)
+		WHERE `+listWhere+` ORDER BY u.created_at DESC LIMIT $3 OFFSET $4`, append(listArgs, limit, offset)...)
 	if err != nil {
 		return nil, 0, err
 	}

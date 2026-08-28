@@ -1500,8 +1500,36 @@ export const api = {
     })
     return normalizeAdminSettingsPayload(raw)
   },
-  async adminUsers() {
-    return (await requestAllPages<AdminUser & Record<string, unknown>>('/admin/users', ['users', 'items', 'data'])).map((user) => normalizeUser(user) as AdminUser)
+  /**
+   * One page of accounts, narrowed by the server.
+   *
+   * The screen used to ask for every account and sift them in the browser: a
+   * thousand accounts meant twelve requests and a thousand rows in the page
+   * before anybody had typed anything, and it grew with every account added.
+   */
+  async adminUserPage({ q = '', role = '', status = '', limit = 50, offset = 0 } = {}) {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+    if (q.trim()) params.set('q', q.trim())
+    if (role === 'admin' || role === 'user') params.set('role', role)
+    if (status === 'active' || status === 'suspended') params.set('status', status)
+    const raw = await request<unknown>(`/admin/users?${params.toString()}`)
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+    const meta = record.meta && typeof record.meta === 'object' ? record.meta as Record<string, unknown> : {}
+    const items = unwrapList<AdminUser & Record<string, unknown>>(raw, ['users', 'items', 'data'])
+      .map((user) => normalizeUser(user) as AdminUser)
+    const total = Number(meta.total)
+    return { items, total: Number.isFinite(total) ? total : items.length }
+  },
+  /** The four numbers above the list, over every account rather than the page. */
+  async adminUserCounts(): Promise<{ total: number; admins: number; active: number; suspended: number }> {
+    const raw = await request<unknown>('/admin/users/counts')
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      total: Number(data.total) || 0,
+      admins: Number(data.admins) || 0,
+      active: Number(data.active) || 0,
+      suspended: Number(data.suspended) || 0,
+    }
   },
   async updateAdminUser(id: string, input: Record<string, unknown>) {
     const raw = await request<unknown>(`/admin/users/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) })

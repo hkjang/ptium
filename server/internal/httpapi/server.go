@@ -339,6 +339,7 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/admin/settings/changes", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminSettingChanges)))
 	api.Handle("POST /api/v1/admin/settings/changes/{id}/revert", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminRevertSettingChange)))
 	api.Handle("PUT /api/v1/admin/settings/{key}", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminPutSetting)))
+	api.Handle("GET /api/v1/admin/users/counts", s.requireAdmin("admin:users", http.HandlerFunc(s.adminUserCounts)))
 	api.Handle("GET /api/v1/admin/users", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListUsers)))
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
 	api.Handle("GET /api/v1/admin/errors", s.requireAdmin("admin:errors", http.HandlerFunc(s.adminListErrors)))
