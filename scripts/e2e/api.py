@@ -598,7 +598,8 @@ if ThirdPartyReader is not None:
         "# 표지가 되는 장\n@cover\n> 한 줄 리드\n\n"
         "# 분기 매출\n::columns 매출\n- 1분기 | 12\n- 2분기 | 15.5\n::\n\n"
         "# 분기별 비용\n::table 비용\n- 구분 | **1분기** | 비고\n- 인프라 | 1억 2천 | [계약서](https://example.invalid/contract)\n::\n\n"
-        "# 링크가 있는 장\n- 자세한 내용은 [회사 안내](https://example.invalid/guide) 참고\n"}, expect=200)
+        "# 링크가 있는 장\n- 자세한 내용은 [회사 안내](https://example.invalid/guide) 참고\n"
+        "- 본체 크기는 1200*800*750 입니다\n"}, expect=200)
     _, exported = call("GET", f"/presentations/{spec_deck['id']}/export.pptx", raw=True, expect=200)
     try:
         show = ThirdPartyReader(io.BytesIO(exported or b""))
@@ -620,6 +621,13 @@ if ThirdPartyReader is not None:
         checks += 1
         if untitled:
             failures.append(f"these slides carry no title placeholder, so the outline view is blank for them: {untitled}")
+        # "1200*800*750" is how a size is written; read as emphasis it drew
+        # 1200800750, which is not markup on the wall but a different number.
+        checks += 1
+        drawn = " ".join(shape.text_frame.text for slide in show.slides
+                         for shape in slide.shapes if shape.has_text_frame)
+        if "1200*800*750" not in drawn:
+            failures.append("a size written 1200*800*750 was not drawn as the author typed it")
         charts, tables, links = 0, 0, 0
         for slide in show.slides:
             for shape in slide.shapes:

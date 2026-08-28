@@ -3,6 +3,8 @@ package pptx
 import (
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // A link written in a slide's text. The text is what the deck stores, drawn as
@@ -120,7 +122,11 @@ func splitRuns(text string, carried TextRun) []TextRun {
 			}
 		}
 		if text[index] == '*' {
-			marked, inner, width, ok := readEmphasis(text[index:])
+			before := rune(0)
+			if index > 0 {
+				before, _ = utf8.DecodeLastRuneInString(text[:index])
+			}
+			marked, inner, width, ok := readEmphasis(text[index:], before)
 			if ok {
 				flush()
 				within := carried
@@ -146,10 +152,23 @@ const (
 	emphasisItalic = "*"
 )
 
-// readEmphasis reads **굵게** or *기울임* from the front of text. A star with no
-// partner is a star: an author writing "3 * 4" or a footnote marker gets what
-// they typed.
-func readEmphasis(text string) (mark, inner string, width int, ok bool) {
+// readEmphasis reads **굵게** or *기울임* from the front of text, given the
+// character the mark is standing against. A star with no partner is a star: an
+// author writing "3 * 4" or a footnote marker gets what they typed.
+func readEmphasis(text string, against rune) (mark, inner string, width int, ok bool) {
+	// A mark pressed against a letter or a digit is not a mark. "1200*800*750"
+	// is how a size is written in a Korean deck — 가로*세로*높이 — and reading it
+	// as emphasis drew 1200800750 on the slide. That is worse than markup on the
+	// wall: markup anyone catches at a glance, and a number quietly changed into
+	// a different number nobody does.
+	//
+	// Only the opening side is tested. Korean hangs its particles straight off
+	// the closing mark — **중요**합니다 — and a rule that wanted air on both
+	// sides would refuse the emphasis half this product's decks are written
+	// with.
+	if unicode.IsLetter(against) || unicode.IsDigit(against) {
+		return "", "", 0, false
+	}
 	mark = emphasisItalic
 	if strings.HasPrefix(text, emphasisBold) {
 		mark = emphasisBold

@@ -323,3 +323,52 @@ func TestThePreviewNamesTheSlideAJumpGoesTo(t *testing.T) {
 		t.Errorf("the preview draws the markup: %s", svg)
 	}
 }
+
+// "1200*800*750" is how a size is written in a Korean deck — 가로*세로*높이 — and
+// the marks were read as emphasis, so the slide drew 1200800750. Markup printed
+// on the wall is caught by anyone who looks; a number quietly turned into a
+// different number is caught by nobody.
+func TestAStarPressedAgainstAWordIsNotAMark(t *testing.T) {
+	for _, typed := range []string{
+		"본체는 1200*800*750 입니다",
+		"규격(가로*세로*높이)",
+		"12*34*56",
+		"수량 3*단가 5*계수 2",
+	} {
+		if drawn := PlainText(typed); drawn != typed {
+			t.Errorf("the author typed %q and the slide draws %q", typed, drawn)
+		}
+		for _, run := range SplitRuns(typed) {
+			if run.Bold || run.Italic {
+				t.Errorf("%q was read as emphasis on %q", typed, run.Text)
+			}
+		}
+	}
+}
+
+// And the emphasis this product is actually written with still reads as
+// emphasis — including the Korean particle that hangs straight off the closing
+// mark, which is why only the opening side is tested.
+func TestTheEmphasisPeopleWriteStillReads(t *testing.T) {
+	cases := map[string]string{
+		"이 항목은 **중요**합니다":  "중요",
+		"**중요**한 사항":       "중요",
+		"(**필수**) 항목":      "필수",
+		"비고: *검토 필요*":      "검토 필요",
+		"**굵게** 그리고 *기울임*": "굵게",
+	}
+	for typed, marked := range cases {
+		found := false
+		for _, run := range SplitRuns(typed) {
+			if (run.Bold || run.Italic) && run.Text == marked {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%q no longer marks %q", typed, marked)
+		}
+		if strings.Contains(PlainText(typed), "*") {
+			t.Errorf("%q draws its marks: %q", typed, PlainText(typed))
+		}
+	}
+}
