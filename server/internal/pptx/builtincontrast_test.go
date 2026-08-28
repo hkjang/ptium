@@ -25,3 +25,39 @@ func TestEveryShippedCoverSubtitleIsLegible(t *testing.T) {
 		}
 	}
 }
+
+// The inks a design derives are drawn on the panels it raises out of the
+// surface — a KPI tile, a card, a banded row — and they were measured only
+// against the surface. On a dark design a KPI label stood at 9.1:1 against the
+// surface and 3.6:1 on the tile it is actually written on.
+//
+// They also kept the floor for large text while being set at 12pt, which is
+// not large text: across the fifty designs this ships, a six-slide deck drew
+// 440 words below the contrast their size calls for.
+func TestTheInksADesignDerivesAreLegibleWhereTheyAreDrawn(t *testing.T) {
+	for _, palette := range builtinPalettes {
+		surface, ink := palette.Surface, palette.Ink
+		raised := mixColor(surface, ink, ifElse(relativeLuminance(surface) < 0.4, 0.10, 0.045))
+		secondary := fadeInkAgainst(ink, surface, raised, 0.28, 4.5)
+		muted := fadeInkAgainst(ink, surface, raised, 0.48, 4.5)
+		for _, one := range []struct {
+			name string
+			ink  string
+		}{{"secondary", secondary}, {"muted", muted}} {
+			for _, behind := range []struct {
+				what  string
+				color string
+			}{{"the surface", surface}, {"a raised panel", raised}} {
+				if ratio := contrastRatio(one.ink, behind.color); ratio < 4.5 {
+					t.Errorf("%s: %s ink %s on %s (%s) is %.2f:1, below 4.5:1",
+						palette.Key, one.name, one.ink, behind.color, behind.what, ratio)
+				}
+			}
+		}
+		// Quieter than the ink it stands beside, which is what these registers
+		// are for: legible, not loud.
+		if contrastRatio(muted, surface) >= contrastRatio(ink, surface) {
+			t.Errorf("%s: the muted ink is no quieter than the primary one", palette.Key)
+		}
+	}
+}

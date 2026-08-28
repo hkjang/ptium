@@ -2272,7 +2272,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "집행률"
@@ -2461,7 +2461,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "채널 구성"

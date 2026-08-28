@@ -389,7 +389,7 @@ c:chartSpace
             a:pPr
               a:defRPr sz=1200
                 a:solidFill
-                  a:srgbClr val=B9B5BE
+                  a:srgbClr val=D5D1DB
                 a:latin typeface=Aptos
             a:endParaRPr lang=ko-KR
         c:crossAx val=222222222
@@ -419,7 +419,7 @@ c:chartSpace
           a:pPr
             a:defRPr sz=1200
               a:solidFill
-                a:srgbClr val=B9B5BE
+                a:srgbClr val=D5D1DB
               a:latin typeface=Aptos
           a:endParaRPr lang=ko-KR
     c:plotVisOnly val=1
@@ -435,7 +435,7 @@ c:chartSpace
       a:pPr
         a:defRPr sz=1200
           a:solidFill
-            a:srgbClr val=B9B5BE
+            a:srgbClr val=D5D1DB
           a:latin typeface=Aptos
       a:endParaRPr lang=ko-KR
   c:externalData r:id=rId1
@@ -2058,7 +2058,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=B9B5BE
+                    a:srgbClr val=D5D1DB
                   a:latin typeface=Aptos
                 a:t
                   "연간 비용"
@@ -2089,7 +2089,7 @@ p:sld
                       a:r
                         a:rPr b=1 lang=ko-KR sz=1200
                           a:solidFill
-                            a:srgbClr val=B9B5BE
+                            a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
                         a:t
                           "항목"
@@ -2107,7 +2107,7 @@ p:sld
                       a:r
                         a:rPr b=1 lang=ko-KR sz=1200
                           a:solidFill
-                            a:srgbClr val=B9B5BE
+                            a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
                         a:t
                           "2026"
@@ -2125,7 +2125,7 @@ p:sld
                       a:r
                         a:rPr b=1 lang=ko-KR sz=1200
                           a:solidFill
-                            a:srgbClr val=B9B5BE
+                            a:srgbClr val=D5D1DB
                           a:latin typeface=Aptos
                         a:t
                           "2027"
@@ -2335,7 +2335,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=B9B5BE
+                    a:srgbClr val=D5D1DB
                   a:latin typeface=Aptos
                 a:t
                   "월별 처리량"

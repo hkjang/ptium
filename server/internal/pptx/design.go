@@ -66,16 +66,24 @@ func NewDesign(manifest Manifest) Design {
 	}
 	dark := relativeLuminance(surface) < 0.4
 
+	raised := mixColor(surface, ink, ifElse(dark, 0.10, 0.045))
 	design := Design{
 		Surface:       surface,
-		SurfaceRaised: mixColor(surface, ink, ifElse(dark, 0.10, 0.045)),
+		SurfaceRaised: raised,
 		Line:          mixColor(surface, ink, ifElse(dark, 0.24, 0.14)),
 		InkPrimary:    ink,
 		// Secondary and muted ink fade toward the surface only as far as they
 		// can while staying readable. A fixed mix looks right on a light theme
 		// and disappears on a dark one.
-		InkSecondary: fadeInk(ink, surface, 0.28, 4.5),
-		InkMuted:     fadeInk(ink, surface, 0.48, 3.0),
+		//
+		// Both are measured against the raised panel rather than the surface,
+		// because both are drawn on one: a KPI label, a table's banded row, a
+		// card's caption. And both keep the floor for text of the size they are
+		// set at — these labels are 12pt, which is not the large text that is
+		// allowed 3:1. Muted stays far quieter than the primary ink; on every
+		// design this ships, the gap is more than tenfold.
+		InkSecondary: fadeInkAgainst(ink, surface, raised, 0.28, 4.5),
+		InkMuted:     fadeInkAgainst(ink, surface, raised, 0.48, 4.5),
 		Accent:       theme.Color("accent1"),
 		DeEmphasis:   fadeInk(ink, surface, 0.62, 1.6),
 		Display:      4400,
@@ -255,9 +263,24 @@ func statusColors(theme Theme, dark bool) (positive, negative string) {
 // fadeInk mixes ink toward the surface by at most amount, backing off until the
 // result clears a contrast floor.
 func fadeInk(ink, surface string, amount, minimumContrast float64) string {
+	return fadeInkAgainst(ink, surface, surface, amount, minimumContrast)
+}
+
+// fadeInkAgainst is fadeInk for text that is drawn somewhere other than the
+// surface it is faded toward.
+//
+// A card, a tile, a banded row: the drawing raises a panel out of the surface
+// and writes on that. An ink faded until it cleared the floor against the
+// surface was then drawn on the panel, which sits closer to the ink — so it
+// arrived below the floor it was chosen to meet. On a dark design a KPI label
+// measured 9.1:1 against the surface and 3.6:1 on the card it is actually on.
+//
+// A raised panel is always nearer the ink than the surface is, so an ink that
+// clears the floor against the panel clears it against the surface too.
+func fadeInkAgainst(ink, surface, against string, amount, minimumContrast float64) string {
 	for step := amount; step > 0.02; step -= 0.04 {
 		candidate := mixColor(ink, surface, step)
-		if contrastRatio(candidate, surface) >= minimumContrast {
+		if contrastRatio(candidate, against) >= minimumContrast {
 			return candidate
 		}
 	}

@@ -1574,7 +1574,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "핵심 지표"
@@ -1641,7 +1641,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "매출"
@@ -1734,7 +1734,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "신규 고객"
@@ -1947,7 +1947,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "범위 확정"
@@ -2045,7 +2045,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "이관"
@@ -2143,7 +2143,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=929292
+                    a:srgbClr val=717273
                   a:latin typeface=Aptos
                 a:t
                   "점검"
