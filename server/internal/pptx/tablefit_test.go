@@ -247,7 +247,7 @@ func TestATableCellsLinkIsDrawnAsALink(t *testing.T) {
 		t.Fatalf("the table drew %d rows, want 2", drawn)
 	}
 	component := Component{Primitives: primitives}
-	svg := component.SVG(1.0/9525, "0563C1")
+	svg := component.SVG(1.0/9525, "0563C1", 0)
 	if !strings.Contains(svg, `<a href="https://example.invalid/contract"`) {
 		t.Error("the cell's link is not a link in the drawing, so the printed page has nothing to click")
 	}

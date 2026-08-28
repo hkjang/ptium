@@ -25,15 +25,20 @@ interface SharedComment { id: string; slideId?: string; parentId?: string; autho
  * number, and the jump goes to the one that has it; a jump that names a skipped
  * slide goes to the next one the link is showing, which is what presenting
  * does.
+ *
+ * Zero means nowhere: a jump past the end of the deck names no slide, and
+ * carrying the reader to the last one would tell them this is the slide they
+ * were sent to. Presenting stays put, the exported file writes no link and the
+ * printed page no annotation — this is the same answer in the fourth place.
  */
 export function sharedJumpTarget(deck: { slideCount: number; slides?: SharedPage[] }, named: number) {
   const positions = (deck.slides || []).map((slide) => slide.position).filter((one): one is number => typeof one === 'number')
   if (positions.length !== deck.slideCount) {
     // A page served from a cache, talking to a server that did not send them.
-    return Math.min(deck.slideCount, Math.max(1, named))
+    return named >= 1 && named <= deck.slideCount ? named : 0
   }
   const at = positions.findIndex((position) => position >= named)
-  if (at === -1) return deck.slideCount
+  if (at === -1) return 0
   return at + 1
 }
 
@@ -203,7 +208,8 @@ export function SharedDeckPage({ token }: { token: string }) {
                 const jumped = link?.getAttribute('href')?.match(/^#slide-(\d+)$/)
                 if (!jumped) return
                 event.preventDefault()
-                setPosition(sharedJumpTarget(deck, Number(jumped[1])))
+                const goes = sharedJumpTarget(deck, Number(jumped[1]))
+                if (goes > 0) setPosition(goes)
               }}
               dangerouslySetInnerHTML={{ __html: drawn[position]!.markup! }}
             />

@@ -22,6 +22,13 @@ type PreviewOptions struct {
 	// rather than copying from the slide — the source line at its foot. Empty
 	// reads as Korean, which is what the rest of the renderer assumes.
 	Language string
+	// Slides is how many slides the deck has, so a jump to one it does not have
+	// is drawn as the words it is rather than as a link. The exported file and
+	// the printed page both refuse such a jump; drawing it underlined and in the
+	// link colour was the one surface still promising something to click. Zero
+	// reads as "not told", and every jump is drawn as a link — which is what a
+	// caller previewing a layout on its own wants.
+	Slides int
 	// PictureDensity is how many of a picture's own pixels each drawn unit is
 	// worth embedding. Zero reads as a screen's two; an export to a page sets
 	// more, because a drawn unit there is a point and a printer resolves far
@@ -101,6 +108,24 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 
 // previewSlideBody draws what the slide itself puts on the page: its regions in
 // the layout's order, then the freeform objects above them.
+// drawableRuns is a line's runs as the drawing can honour them: a jump to a
+// slide the deck does not have carries no link, so it is drawn as the words
+// somebody typed. The file and the paper already refuse it, and a drawing that
+// underlines it in the link colour is promising a reader something to click
+// that goes nowhere.
+func drawableRuns(text string, slides int) []TextRun {
+	runs := SplitRuns(text)
+	if slides <= 0 {
+		return runs
+	}
+	for index, run := range runs {
+		if number, ok := SlideJump(run.Href); ok && (number < 1 || number > slides) {
+			runs[index].Href = ""
+		}
+	}
+	return runs
+}
+
 // previewLinkColor is the colour a link is drawn in: the template's own, which
 // is what the exported file uses for it too.
 func previewLinkColor(theme Theme) string {
@@ -131,7 +156,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 				if slide.StandsAlone(layout, placeholder.Slot) {
 					centreInFrame(&component, frame)
 				}
-				builder.WriteString(component.SVG(scale, previewLinkColor(manifest.Theme)))
+				builder.WriteString(component.SVG(scale, previewLinkColor(manifest.Theme), options.Slides))
 				continue
 			}
 		}
@@ -147,7 +172,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 			builder.WriteString(previewEmptySlot(placeholder, manifest.Theme, scale))
 			continue
 		}
-		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale, options.Reveal))
+		builder.WriteString(previewText(placeholder, paragraphs, manifest.Theme, scale, options.Reveal, options.Slides))
 	}
 	for _, element := range slide.Elements {
 		// An empty text box is nothing, in the preview as in the file.
@@ -243,7 +268,7 @@ func held(placeholder Placeholder, reveal int) int {
 	return reveal
 }
 
-func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, scale float64, reveal int) string {
+func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, scale float64, reveal, slides int) string {
 	size := placeholder.FontSize
 	if size <= 0 {
 		size = 1800
@@ -325,7 +350,7 @@ func previewText(placeholder Placeholder, paragraphs []Paragraph, theme Theme, s
 		if available < 1 {
 			available = 1
 		}
-		runs := SplitLinks(strings.TrimSpace(paragraph.Text))
+		runs := drawableRuns(strings.TrimSpace(paragraph.Text), slides)
 		for index, wrapped := range wrapLines(prefix+PlainText(strings.TrimSpace(paragraph.Text)), available) {
 			offset := indent
 			// A bullet's continuation lines hang under its text rather than under its

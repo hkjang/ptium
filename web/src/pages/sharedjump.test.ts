@@ -27,12 +27,15 @@ describe('a jump inside a shared link', () => {
     expect(sharedJumpTarget(deck, 2)).toBe(2)
   })
 
-  it('stays inside the deck when the jump points past the end', () => {
-    expect(sharedJumpTarget(deck, 99)).toBe(4)
+  it('goes nowhere when the jump points past the end of the deck', () => {
+    // Carrying the reader to the last slide would tell them this is the slide
+    // they were sent to. The file writes no link there and the paper no
+    // annotation; this is the same answer.
+    expect(sharedJumpTarget(deck, 99)).toBe(0)
   })
 
   it('falls back to the number when a cached page has no positions', () => {
     expect(sharedJumpTarget({ slideCount: 4, slides: [] }, 3)).toBe(3)
-    expect(sharedJumpTarget({ slideCount: 4 }, 9)).toBe(4)
+    expect(sharedJumpTarget({ slideCount: 4 }, 9)).toBe(0)
   })
 })

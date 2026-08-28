@@ -117,7 +117,7 @@ func TestRenderBlockProducesWellFormedDrawingML(t *testing.T) {
 					block.Kind, primitive.Kind, primitive.Frame, frame)
 			}
 		}
-		svg := component.SVG(1.0/9525, "0563C1")
+		svg := component.SVG(1.0/9525, "0563C1", 0)
 		if strings.TrimSpace(svg) == "" {
 			t.Fatalf("%s rendered no SVG", block.Kind)
 		}

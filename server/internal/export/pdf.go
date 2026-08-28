@@ -95,7 +95,7 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 		// for a monitor.
 		drawing := onPrintedPages(pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{
 			Width: int(width), Media: options.Media, Language: presentation.Language,
-			PictureDensity: pptx.PrintPictureDensity}), printed)
+			Slides: len(built.Slides), PictureDensity: pptx.PrintPictureDensity}), printed)
 		page := document.AddPage()
 		if !options.WithNotes {
 			if err := pdf.DrawSVG(page, drawing); err != nil {

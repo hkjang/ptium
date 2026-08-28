@@ -81,6 +81,11 @@ func PreviewSlideSVG(presentation model.Presentation, manifest pptx.Manifest, po
 	if strings.TrimSpace(options.Language) == "" {
 		options.Language = presentation.Language
 	}
+	// How many slides the deck has, so a jump to one it does not have is drawn
+	// as the words it is. Every screen that shows a slide comes through here.
+	if options.Slides == 0 {
+		options.Slides = len(presentation.Slides)
+	}
 	return pptx.PreviewSVG(manifest, layout, slide, options), nil
 }
 

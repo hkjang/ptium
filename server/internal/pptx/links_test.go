@@ -499,3 +499,44 @@ func TestAJumpToASlideTheDeckDoesNotHaveIsNotWritten(t *testing.T) {
 		t.Errorf("the dangling jump was not reported clearly: %q", said)
 	}
 }
+
+// The exported file writes no relationship for a jump the deck does not have,
+// and the printed page no annotation. The drawing was the one surface still
+// promising something to click: underlined, in the link colour, going nowhere.
+func TestADanglingJumpIsDrawnAsTheWordsItIs(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	slide := Slide{LayoutID: layout.ID, Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "안내"}},
+		SlotBody:  {{Text: "있는 장 [3장](#3) 과 없는 장 [9장 참고](#9)"}},
+	}}
+	drawn := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 960, Slides: 3})
+	if !strings.Contains(drawn, `href="#slide-3"`) {
+		t.Error("a jump the deck can follow is no longer drawn as a link")
+	}
+	if strings.Contains(drawn, `href="#slide-9"`) {
+		t.Error("a jump past the end of the deck is drawn as something to click")
+	}
+	// The words are the author's either way.
+	for _, word := range []string{"3장", "9장 참고"} {
+		if !strings.Contains(drawn, word) {
+			t.Errorf("the words %q are not drawn", word)
+		}
+	}
+
+	// A caller that never said how big the deck is — previewing a layout on its
+	// own — draws every jump as a link, as it always did.
+	if alone := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 960}); !strings.Contains(alone, `href="#slide-9"`) {
+		t.Error("a preview that was not told the deck's size stopped drawing jumps")
+	}
+}

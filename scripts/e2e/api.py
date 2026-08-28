@@ -700,6 +700,22 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a jump the deck cannot follow is drawn as words ──")
+# The exported file writes no relationship for it and the printed page no
+# annotation; the drawing was the surface still promising something to click.
+drawn_deck = data_of(call("POST", "/presentations", {"title": f"그린점프 {RUN}", "prompt": "점프", "slideCount": 3}, expect=201)) or {}
+call("PUT", f"/presentations/{drawn_deck['id']}/source", {"source":
+    "# 첫 장\n- 있는 장 [3장](#3) 과 없는 장 [9장 참고](#9)\n\n# 둘째 장\n- 2\n\n# 셋째 장\n- 3\n"}, expect=200)
+_, drawn_svg = call("GET", f"/presentations/{drawn_deck['id']}/preview.svg?slide=1", raw=True, expect=200)
+drawn_text = (drawn_svg or b"").decode("utf-8", "replace")
+checks += 1
+if 'href="#slide-9"' in drawn_text:
+    failures.append("a jump past the end of the deck is drawn as something to click")
+checks += 1
+if 'href="#slide-3"' not in drawn_text or "9장 참고" not in re.sub(r"<[^>]+>", "", drawn_text):
+    failures.append("a jump the deck can follow, or the words of one it cannot, went missing from the drawing")
+call("DELETE", f"/presentations/{drawn_deck['id']}", expect=204)
+
 print("── a jump on paper names the page it is printed on ──")
 # The handout leaves out the slides being skipped, so the deck's third slide is
 # not the third page; the jump was handed to the paper as the number alone.

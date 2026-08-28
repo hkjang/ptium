@@ -485,19 +485,19 @@ func solidColor(value string, opacityPercent int) string {
 
 // SVG emits the same component for the browser preview. Coordinates are scaled
 // from EMU to CSS pixels by the caller's scale factor.
-func (c Component) SVG(scale float64, linkColor string) string {
+func (c Component) SVG(scale float64, linkColor string, slides int) string {
 	var builder strings.Builder
 	for _, primitive := range c.Primitives {
-		builder.WriteString(primitive.svg(scale, linkColor))
+		builder.WriteString(primitive.svg(scale, linkColor, slides))
 	}
 	return builder.String()
 }
 
-func (p Primitive) svg(scale float64, linkColor string) string {
+func (p Primitive) svg(scale float64, linkColor string, slides int) string {
 	position := func(value int) float64 { return float64(value) * scale }
 	switch p.Kind {
 	case shapeText:
-		return p.textSVG(scale, linkColor)
+		return p.textSVG(scale, linkColor, slides)
 	case shapePolyline:
 		if len(p.Points) < 2 {
 			return ""
@@ -549,7 +549,7 @@ func (p Primitive) svg(scale float64, linkColor string) string {
 // table looked like ordinary words in the preview and printed as a dead one —
 // the same address being a live link in the exported .pptx and nothing at all
 // in the PDF of the same deck.
-func (p Primitive) textSVG(scale float64, linkColor string) string {
+func (p Primitive) textSVG(scale float64, linkColor string, slides int) string {
 	fontSize := float64(p.FontSize) / 100 * float64(EMUPerPoint) * scale
 	if fontSize < 4 {
 		fontSize = 4
@@ -579,7 +579,7 @@ func (p Primitive) textSVG(scale float64, linkColor string) string {
 	for _, paragraph := range p.Lines {
 		// The marks are not drawn, so the line is wrapped by the words it puts on
 		// the slide rather than by the characters it is stored as.
-		runs := SplitRuns(paragraph.Text)
+		runs := drawableRuns(paragraph.Text, slides)
 		pieces := wrapLines(PlainText(paragraph.Text), lineEm)
 		if len(pieces) == 0 {
 			pieces = []string{""}
