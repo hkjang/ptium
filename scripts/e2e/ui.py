@@ -313,8 +313,15 @@ with sync_playwright() as play:
     waits_for("/admin/usage", "사용 현황", ".usage-bar", "the usage screen draws no days")
     waits_for("/admin/designs", "디자인", ".error-row", "the designs screen lists nothing at all")
     if waits_for("/admin/tidy", "정리할 것", ".tidy-list li", "the tidy screen counts nothing"):
-        if "지우지 않습니다" not in page.locator("main").first.inner_text():
+        tidy_said = page.locator("main").first.inner_text()
+        if "지우지 않습니다" not in tidy_said:
             failures.append("the tidy screen does not say that it deletes nothing")
+        # The two that grow with every day the deployment is used. On a
+        # deployment a week old each was larger than everything else this screen
+        # counts, and neither appeared on it.
+        for grows in ("판본", "감사 기록"):
+            if grows not in tidy_said:
+                failures.append(f"the tidy screen does not count what grows: {grows}")
     visit("/nonexistent-page", expect_text="404")
     visit(f"/presentations/{deck}/editor", wait=3000)
 

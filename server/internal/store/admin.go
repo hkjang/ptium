@@ -800,6 +800,18 @@ func (s *Store) ReadTidyPreview(ctx context.Context) (TidyPreview, error) {
 		{"unusedImagesOverAMonth", `SELECT count(*), COALESCE(sum(a.size_bytes),0)::bigint, COALESCE(min(a.created_at)::date::text,'')
 			FROM assets a WHERE a.created_at < now()-interval '30 days'
 			AND NOT EXISTS (SELECT 1 FROM asset_usage u WHERE u.asset_id = a.id)`},
+		// The two that grow with every day the deployment is used rather than
+		// with anything anybody forgot to tidy. Nothing else on this screen was
+		// larger than either of them on a deployment a week old, and neither
+		// appeared: an operator deciding how long to keep things was deciding
+		// without the two biggest numbers.
+		//
+		// Their size is asked of the database rather than summed from a column,
+		// because what a row costs is the row, its indexes and its toasted text.
+		{"deckRevisions", `SELECT count(*), pg_total_relation_size('presentation_revisions')::bigint,
+			COALESCE(min(created_at)::date::text,'') FROM presentation_revisions`},
+		{"auditHistory", `SELECT count(*), pg_total_relation_size('audit_logs')::bigint,
+			COALESCE(min(created_at)::date::text,'') FROM audit_logs`},
 	} {
 		item := TidyItem{Kind: ask.kind}
 		if err := s.Pool.QueryRow(ctx, ask.query).Scan(&item.Count, &item.Bytes, &item.Oldest); err != nil {

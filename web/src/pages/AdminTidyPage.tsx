@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Archive, FileWarning, ImageOff, Link2Off, PencilLine, RefreshCw, Trash2 } from 'lucide-react'
+import { Archive, FileWarning, History, ImageOff, Link2Off, PencilLine, RefreshCw, ScrollText, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
 import { Button, ErrorState, LoadingState } from '../components/UI'
@@ -28,6 +28,13 @@ const said: Record<string, { title: string; note: string; icon: React.ReactNode 
     note: '오늘 올려 아직 넣지 않은 이미지도 여기 포함됩니다. 지울 대상으로 보기 전에 아래 항목을 보세요.' },
   unusedImagesOverAMonth: { title: '한 달 넘게 쓰이지 않은 이미지', icon: <Archive size={17} />,
     note: '올린 지 30일이 지나도록 어느 덱에도 들어가지 않은 이미지입니다.' },
+  // These two grow with every day the deployment is used rather than with
+  // anything anybody forgot to tidy, and on a deployment a week old each was
+  // larger than everything above them.
+  deckRevisions: { title: '덱을 고칠 때마다 쌓인 판본', icon: <History size={17} />,
+    note: '되돌리기가 딛고 있는 기록입니다. 덱을 고칠 때마다 한 판본씩 늘어납니다. 지우면 그만큼 되돌릴 수 없습니다.' },
+  auditHistory: { title: '감사 기록', icon: <ScrollText size={17} />,
+    note: '누가 무엇을 했는지 남긴 기록입니다. 쓸수록 늘어납니다. 얼마나 오래 보관할지는 이 배포가 정할 일입니다.' },
 }
 
 /** A size said the way an operator reads it. */
