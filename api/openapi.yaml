@@ -341,6 +341,36 @@ paths:
         '204':
           description: The session cookie has been expired.
 
+  /auth/me:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: currentUserCompat
+      summary: Who the caller is signed in as
+      description: >
+        Answers the signed-in account — id, email, name and role — for a caller
+        carrying a session cookie, a bearer token or an API key. It is kept for
+        clients written against an early version of this API, which is why it
+        sits outside `/api/v1`; nothing new should reach for it.
+      tags: [Authentication]
+      responses:
+        '200':
+          description: The account this request is made as.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /api/v1/auth/session:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -1880,7 +1910,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/UnprocessableEntity'
 
   /api/v1/presentations/{id}/shares/{shareId}:
     parameters:
@@ -2171,7 +2201,7 @@ paths:
         '410':
           description: The link is no longer open.
         '422':
-          $ref: '#/components/responses/ValidationError'
+          $ref: '#/components/responses/UnprocessableEntity'
         '429':
           description: This deck holds as many remarks as it will take.
 
@@ -2579,6 +2609,20 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+    post:
+      operationId: writePresentationSourcePost
+      summary: Write the deck from source (same as PUT)
+      description: >
+        The same operation as `PUT`, under the method a form or an older
+        client reaches for. It replaces the deck's slides with what the
+        source compiles to, exactly as `PUT` does, and takes and answers the
+        same body.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:write]
+      requestBody:
+        $ref: '#/paths/~1api~1v1~1presentations~1{id}~1source/put/requestBody'
+      responses:
+        $ref: '#/paths/~1api~1v1~1presentations~1{id}~1source/put/responses'
   /api/v1/presentations/{id}/source/preview.svg:
     parameters:
       - $ref: '#/components/parameters/PresentationID'
@@ -2752,6 +2796,93 @@ paths:
           $ref: '#/components/responses/Conflict'
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/export.pptx:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: exportPresentationPptx
+      summary: Export as PowerPoint, named by the path
+      description: >
+        The same operation as `GET /api/v1/presentations/{id}/export` with
+        `format=pptx`, with the format in the path instead of a query. It is
+        what a browser download and a command line fetch reach for, because the
+        file arrives named as what it is.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      responses:
+        '200':
+          description: PowerPoint presentation.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+            Content-Disposition:
+              description: Attachment filename derived from the presentation title.
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/presentations/{id}/export.pdf:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/PresentationID'
+    get:
+      operationId: exportPresentationPdf
+      summary: Print to PDF, named by the path
+      description: >
+        The same operation as `GET /api/v1/presentations/{id}/export` with
+        `format=pdf`, with the format in the path instead of a query. Takes the
+        same `notes` query to print each slide with its speaker notes under it.
+        A deck whose every slide is skipped is answered
+        `409 presentation_has_no_printable_slides`.
+      tags: [Presentations]
+      x-ptium-api-key-scopes: [presentations:read]
+      parameters:
+        - name: notes
+          in: query
+          required: false
+          description: Print each slide with the speaker notes under it.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: PDF file.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+            Content-Disposition:
+              description: Attachment filename derived from the presentation title.
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -3513,6 +3644,31 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+    delete:
+      operationId: revokeAPIKeyByDelete
+      summary: Revoke a key (same as POST .../revoke)
+      description: >
+        Revokes the key, which is what deleting one means here: the record
+        stays so that what the key did is still attributable, and the key
+        itself stops working immediately. The same operation as
+        `POST /api/v1/api-keys/{id}/revoke`, under the method a caller
+        reaches for first.
+      tags: [API keys]
+      x-ptium-api-key-scopes: [api_keys:manage]
+      responses:
+        '204':
+          description: The key no longer works.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/api-keys/{id}/revoke:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5466,7 +5622,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: aurora
             generation.default_lang: ko
-            service.version: 1.66.3
+            service.version: 1.67.0
         requestId:
           $ref: '#/components/schemas/RequestID'
 
