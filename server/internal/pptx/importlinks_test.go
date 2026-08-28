@@ -160,3 +160,67 @@ func TestAnImportedCitationIsACitation(t *testing.T) {
 		t.Errorf("a link in the notes lost its address: %q", slide.Notes)
 	}
 }
+
+// Emphasis brought in from a PowerPoint file has to come back out as emphasis.
+//
+// The one that was wrong: a run's own text usually carries the space that
+// separates it from the next one — "이 부분은 굵게 " — and the importer wrapped
+// that space inside the marks. The reader refuses a mark that closes on a
+// space, by the rule every markdown reader applies, so nothing turned them back
+// into runs: the slide drew "**이 부분은 굵게 ***이 부분은 기울임 *" as
+// characters, and the exported file carried no bold at all.
+func TestEmphasisComesBackAsEmphasis(t *testing.T) {
+	written := markedUpRun("이 부분은 굵게 ", "1", "", "") +
+		markedUpRun("이 부분은 기울임 ", "", "1", "") +
+		markedUpRun("이 부분은 그냥", "", "", "")
+	if strings.Contains(written, "굵게 **") {
+		t.Fatalf("the closing mark sits after a space: %q", written)
+	}
+	runs := SplitRuns(written)
+	var bold, italic, plain []string
+	for _, run := range runs {
+		switch {
+		case run.Bold:
+			bold = append(bold, run.Text)
+		case run.Italic:
+			italic = append(italic, run.Text)
+		default:
+			plain = append(plain, run.Text)
+		}
+	}
+	if len(bold) != 1 || !strings.Contains(bold[0], "굵게") {
+		t.Errorf("the bold run came back as %q from %q", bold, written)
+	}
+	if len(italic) != 1 || !strings.Contains(italic[0], "기울임") {
+		t.Errorf("the italic run came back as %q from %q", italic, written)
+	}
+	// And no mark is left standing as a character anybody would read.
+	for _, run := range runs {
+		if strings.Contains(run.Text, "*") {
+			t.Errorf("a mark is drawn as a character: %q", run.Text)
+		}
+	}
+	if strings.Join(append(append(bold, italic...), plain...), "") == "" {
+		t.Error("the words themselves did not survive")
+	}
+}
+
+// The spaces that separated the runs are still there: emphasis must not glue
+// the words together.
+func TestTheSpacesBetweenRunsSurvive(t *testing.T) {
+	written := markedUpRun("앞 ", "1", "", "") + markedUpRun("뒤", "", "", "")
+	whole := ""
+	for _, run := range SplitRuns(written) {
+		whole += run.Text
+	}
+	if whole != "앞 뒤" {
+		t.Fatalf("the words came back as %q, want %q", whole, "앞 뒤")
+	}
+}
+
+// A run that is only a space is not something to mark up.
+func TestASpaceIsNotEmphasised(t *testing.T) {
+	if got := markedUpRun("   ", "1", "1", ""); got != "   " {
+		t.Fatalf("a run of spaces was marked up as %q", got)
+	}
+}

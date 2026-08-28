@@ -204,13 +204,22 @@ func markedUpRun(text, bold, italic, target string) string {
 		text = "[" + text + "](" + target + ")"
 		return text
 	}
+	// A run's own text usually carries the space that separates it from the next
+	// one — "이 부분은 굵게 " — and a mark that closes on a space is not
+	// emphasis, by the same rule the reader applies. Wrapping the space inside
+	// the marks made the reader refuse them, so an imported deck drew
+	// "**이 부분은 굵게 **" on the slide and lost the bold: asterisks on the wall
+	// and in the exported file. The spaces stay outside.
+	lead := text[:len(text)-len(strings.TrimLeft(text, " \t"))]
+	tail := text[len(strings.TrimRight(text, " \t")):]
+	core := strings.TrimRight(strings.TrimLeft(text, " \t"), " \t")
 	if isOn(bold) {
-		text = "**" + text + "**"
+		core = "**" + core + "**"
 	}
 	if isOn(italic) {
-		text = "*" + text + "*"
+		core = "*" + core + "*"
 	}
-	return text
+	return lead + core + tail
 }
 
 // isOff reads an attribute that is present and says no.
