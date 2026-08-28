@@ -372,3 +372,66 @@ func TestTheEmphasisPeopleWriteStillReads(t *testing.T) {
 		}
 	}
 }
+
+// The same mistake in the same deck got two answers: written in a point it was
+// reported, and written in a cell of a table it drew [계약서](www.example.com)
+// on the wall in silence. A component's words are on the slide too.
+func TestARefusedLinkInAComponentIsReportedToo(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	deck := Deck{Slides: []Slide{{LayoutID: layout.ID,
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "근거"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockTable,
+			Columns: []string{"항목", "근거"},
+			Rows: [][]string{
+				{"인프라", "[계약서](www.example.com)"},
+				{"인건비", "[승인서](https://example.com/ok)"},
+				{"기타", "각주 [1] 참조"},
+			}}},
+	}}}
+	var reported []Finding
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingLink {
+			reported = append(reported, finding)
+		}
+	}
+	if len(reported) != 1 {
+		t.Fatalf("expected one refused link from the table, got %d: %#v", len(reported), reported)
+	}
+	if !strings.Contains(reported[0].Detail, "www.example.com") || !reported[0].Advisory {
+		t.Errorf("the finding does not say what was refused: %#v", reported[0])
+	}
+	if reported[0].Slide != 1 || reported[0].Slot != SlotBody {
+		t.Errorf("the finding does not say where it is: %#v", reported[0])
+	}
+}
+
+// Every shape a component takes carries words somebody typed, so the walk is
+// over the words rather than over the shapes it happens to know about.
+func TestAComponentsWordsAreAllWalked(t *testing.T) {
+	block := Block{Kind: BlockKPI, Heading: "제목", Caption: "설명", Attribute: "출처",
+		Text: "한 문장", Labels: []string{"라벨"}, Columns: []string{"열"},
+		Rows:   [][]string{{"칸"}},
+		Items:  []Item{{Label: "이름", Value: "값", Delta: "+3%", Detail: "자세히", Bullets: []string{"점"}}},
+		Series: []Series{{Name: "계열"}}}
+	found := map[string]bool{}
+	for _, word := range blockWords(block) {
+		found[word] = true
+	}
+	for _, want := range []string{"제목", "설명", "출처", "한 문장", "라벨", "열", "칸",
+		"이름", "값", "+3%", "자세히", "점", "계열"} {
+		if !found[want] {
+			t.Errorf("a reader sees %q on the slide and the walk does not", want)
+		}
+	}
+}

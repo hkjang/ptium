@@ -688,6 +688,20 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a refused link, wherever it is written ──")
+# The same mistake in the same deck got two answers: reported in a point, and
+# silent in a cell of a table, where it draws its markup on the wall all the same.
+refused_deck = data_of(call("POST", "/presentations", {"title": f"링크 {RUN}", "prompt": "링크", "slideCount": 3}, expect=201)) or {}
+call("PUT", f"/presentations/{refused_deck['id']}/source", {"source":
+    "# 줄에 쓴 것\n- 자세한 내용은 [회사 안내](www.example.com) 참고\n\n"
+    "# 표에 쓴 것\n::table\n- 항목 | 근거\n- 인프라 | [계약서](www.example.invalid/c)\n::\n"}, expect=200)
+refused_found = [one for one in (data_of(call("GET", f"/presentations/{refused_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+                 if one.get("kind") == "link"]
+checks += 1
+if len(refused_found) != 2:
+    failures.append(f"a refused link is reported in a point and not in a table cell: {refused_found}")
+call("DELETE", f"/presentations/{refused_deck['id']}", expect=204)
+
 print("── inspect, preview, export ──")
 
 # The path may name the format and the query may override it. The default used

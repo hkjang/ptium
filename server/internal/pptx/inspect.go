@@ -689,7 +689,50 @@ func refusedLinks(slide Slide) []Finding {
 			}
 		}
 	}
+	// A component's own words are drawn on the same slide by the same rules, and
+	// this walked only the paragraphs. So the same mistake in the same deck got
+	// two answers: written in a point it was reported, and written in a cell of
+	// a table it drew [계약서](www.example.com) on the wall in silence.
+	blocks := make([]string, 0, len(slide.Blocks))
+	for slot := range slide.Blocks {
+		blocks = append(blocks, slot)
+	}
+	sort.Strings(blocks)
+	for _, slot := range blocks {
+		for _, text := range blockWords(slide.Blocks[slot]) {
+			for _, target := range RefusedLinks(text) {
+				findings = append(findings, Finding{Slot: slot, Kind: FindingLink, Advisory: true,
+					Detail: fmt.Sprintf("%q is not a link the deck can follow, so the component draws its markup; "+
+						"a link is https://…, mailto:… or #3 for another slide", target)})
+			}
+		}
+	}
 	return findings
+}
+
+// blockWords is every word a component draws that an author typed: what a
+// reader sees on the slide, in one list, whatever shape the component is.
+func blockWords(block Block) []string {
+	words := []string{block.Heading, block.Text, block.Caption, block.Attribute}
+	words = append(words, block.Labels...)
+	words = append(words, block.Columns...)
+	for _, row := range block.Rows {
+		words = append(words, row...)
+	}
+	for _, item := range block.Items {
+		words = append(words, item.Label, item.Value, item.Delta, item.Detail)
+		words = append(words, item.Bullets...)
+	}
+	for _, series := range block.Series {
+		words = append(words, series.Name)
+	}
+	kept := words[:0]
+	for _, word := range words {
+		if strings.TrimSpace(word) != "" {
+			kept = append(kept, word)
+		}
+	}
+	return kept
 }
 
 // shortenedText reports a line the fitter had to cut.
