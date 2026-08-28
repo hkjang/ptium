@@ -11,9 +11,31 @@ import { errorText } from '../api/errors'
  * without an account here was to export the file and send it, after which the
  * deck in the inbox and the deck in Ptium drift apart.
  */
-interface SharedPage { id: string; title: string }
+interface SharedPage { id: string; title: string; position?: number }
 interface SharedDeck { title: string; slideCount: number; slides?: SharedPage[]; titles: string[]; language?: string }
 interface SharedComment { id: string; slideId?: string; parentId?: string; author: string; body: string; createdAt: string; resolvedAt?: string }
+
+/**
+ * Which of this link's slides a jump lands on.
+ *
+ * A link written [3장](#3) names the deck's third slide. A shared link leaves
+ * out the slides the author is skipping, so its third place is not the deck's
+ * third slide — sent the number alone, a reviewer clicking it landed a slide
+ * further on for every skipped slide before it. The slides carry their own deck
+ * number, and the jump goes to the one that has it; a jump that names a skipped
+ * slide goes to the next one the link is showing, which is what presenting
+ * does.
+ */
+export function sharedJumpTarget(deck: { slideCount: number; slides?: SharedPage[] }, named: number) {
+  const positions = (deck.slides || []).map((slide) => slide.position).filter((one): one is number => typeof one === 'number')
+  if (positions.length !== deck.slideCount) {
+    // A page served from a cache, talking to a server that did not send them.
+    return Math.min(deck.slideCount, Math.max(1, named))
+  }
+  const at = positions.findIndex((position) => position >= named)
+  if (at === -1) return deck.slideCount
+  return at + 1
+}
 
 /**
  * What the server refused, in the reader's words.
@@ -181,7 +203,7 @@ export function SharedDeckPage({ token }: { token: string }) {
                 const jumped = link?.getAttribute('href')?.match(/^#slide-(\d+)$/)
                 if (!jumped) return
                 event.preventDefault()
-                setPosition(Math.min(deck.slideCount, Math.max(1, Number(jumped[1]))))
+                setPosition(sharedJumpTarget(deck, Number(jumped[1])))
               }}
               dangerouslySetInnerHTML={{ __html: drawn[position]!.markup! }}
             />

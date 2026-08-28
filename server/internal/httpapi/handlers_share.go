@@ -91,11 +91,17 @@ type sharedDeck struct {
 	Language string   `json:"language,omitempty"`
 }
 
-// sharedPage is one slide as a link sees it: what it is called, and the id a
-// comment attaches itself to.
+// sharedPage is one slide as a link sees it: what it is called, the id a
+// comment attaches itself to, and which slide of the deck it is.
 type sharedPage struct {
 	ID    string `json:"id"`
 	Title string `json:"title"`
+	// Position is this slide's number in the deck, which is not its place in
+	// the link when a slide is being skipped. A link written [3장](#3) names the
+	// deck's third slide, and the page showing four of five slides has to know
+	// which of its own it is: sent the number alone, a reviewer clicking it
+	// landed a slide further on every time.
+	Position int `json:"position"`
 }
 
 func (s *Server) sharedPresentation(writer http.ResponseWriter, request *http.Request) {
@@ -108,7 +114,7 @@ func (s *Server) sharedPresentation(writer http.ResponseWriter, request *http.Re
 	pages := make([]sharedPage, 0, len(shown))
 	for _, slide := range shown {
 		titles = append(titles, slide.Title)
-		pages = append(pages, sharedPage{ID: slide.ID, Title: slide.Title})
+		pages = append(pages, sharedPage{ID: slide.ID, Title: slide.Title, Position: slide.Position})
 	}
 	writeData(writer, request, http.StatusOK, sharedDeck{
 		Title: presentation.Title, SlideCount: len(shown),

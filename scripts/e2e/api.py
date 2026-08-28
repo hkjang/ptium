@@ -700,6 +700,22 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a shared link says which slide of the deck each page is ──")
+# A shared link leaves out the slides the author is skipping, so its third place
+# is not the deck's third slide; a jump written [3장](#3) has to land on the one
+# the deck numbers 3.
+shared_deck = data_of(call("POST", "/presentations", {"title": f"공유점프 {RUN}", "prompt": "공유", "slideCount": 3}, expect=201)) or {}
+call("PUT", f"/presentations/{shared_deck['id']}/source", {"source":
+    "# 첫 장\n- 세 번째 장 [3장 참고](#3)\n\n# 둘째 장\n!skip\n- 뺀 장\n\n"
+    "# 셋째 장\n- 여기가 3장\n\n# 넷째 장\n- 여기는 4장\n"}, expect=200)
+shared_link = data_of(call("POST", f"/presentations/{shared_deck['id']}/shares", {"label": "검토", "days": 7}, expect=201)) or {}
+shared_token = (shared_link.get("url") or "").rstrip("/").split("/")[-1]
+shared_seen = data_of(call("GET", f"/shared/{shared_token}", expect=200, headers={})) or {}
+checks += 1
+if [one.get("position") for one in shared_seen.get("slides") or []] != [1, 3, 4]:
+    failures.append(f"a shared link does not say which slide of the deck each page is: {shared_seen.get('slides')}")
+call("DELETE", f"/presentations/{shared_deck['id']}", expect=204)
+
 print("── a jump to a slide the deck does not have ──")
 # A deck of two slides linking to its ninth wrote a relationship at
 # ppt/slides/slide9.xml, a part that is not in the package it wrote.
