@@ -101,6 +101,15 @@ func PreviewSVG(manifest Manifest, layout Layout, slide Slide, options PreviewOp
 
 // previewSlideBody draws what the slide itself puts on the page: its regions in
 // the layout's order, then the freeform objects above them.
+// previewLinkColor is the colour a link is drawn in: the template's own, which
+// is what the exported file uses for it too.
+func previewLinkColor(theme Theme) string {
+	if color := theme.Color("hlink"); color != "" {
+		return color
+	}
+	return theme.Color("tx1")
+}
+
 func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Design,
 	scale float64, options PreviewOptions, gradients *gradientRegistry) string {
 	var builder strings.Builder
@@ -122,7 +131,7 @@ func previewSlideBody(manifest Manifest, layout Layout, slide Slide, design Desi
 				if slide.StandsAlone(layout, placeholder.Slot) {
 					centreInFrame(&component, frame)
 				}
-				builder.WriteString(component.SVG(scale))
+				builder.WriteString(component.SVG(scale, previewLinkColor(manifest.Theme)))
 				continue
 			}
 		}

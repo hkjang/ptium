@@ -675,6 +675,18 @@ if ThirdPartyReader is not None:
             checks += 1
             if len(paper.pages) != 4:
                 failures.append(f"the deck has 4 slides and the PDF has {len(paper.pages)} pages")
+            # A link written in a cell was live in the .pptx and dead in the PDF
+            # of the same deck: the drawing carried the words alone.
+            checks += 1
+            clickable = []
+            for page in paper.pages:
+                for annotation in page.get("/Annots") or []:
+                    entry = annotation.get_object()
+                    action = entry.get("/A")
+                    if entry.get("/Subtype") == "/Link" and action:
+                        clickable.append(str(action.get("/URI")))
+            if "https://example.invalid/contract" not in clickable:
+                failures.append(f"a link written in a table cell is not clickable in the PDF: {clickable}")
             checks += 1
             wide = float(paper.pages[0].mediabox.width) / 72
             if not 13 < wide < 13.7:

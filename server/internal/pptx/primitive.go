@@ -485,19 +485,19 @@ func solidColor(value string, opacityPercent int) string {
 
 // SVG emits the same component for the browser preview. Coordinates are scaled
 // from EMU to CSS pixels by the caller's scale factor.
-func (c Component) SVG(scale float64) string {
+func (c Component) SVG(scale float64, linkColor string) string {
 	var builder strings.Builder
 	for _, primitive := range c.Primitives {
-		builder.WriteString(primitive.svg(scale))
+		builder.WriteString(primitive.svg(scale, linkColor))
 	}
 	return builder.String()
 }
 
-func (p Primitive) svg(scale float64) string {
+func (p Primitive) svg(scale float64, linkColor string) string {
 	position := func(value int) float64 { return float64(value) * scale }
 	switch p.Kind {
 	case shapeText:
-		return p.textSVG(scale)
+		return p.textSVG(scale, linkColor)
 	case shapePolyline:
 		if len(p.Points) < 2 {
 			return ""
@@ -540,7 +540,16 @@ func (p Primitive) svg(scale float64) string {
 		radius, fill, stroke, svgOpacity(p.Opacity))
 }
 
-func (p Primitive) textSVG(scale float64) string {
+// textSVG draws a component's own words.
+//
+// The words are drawn as the runs they are made of, the same as every other
+// line on the slide: a link is in the template's link colour and underlined,
+// and it carries the <a href> that the printed page turns into something a
+// reader can click. Drawn as one piece of text, a link written in a cell of a
+// table looked like ordinary words in the preview and printed as a dead one —
+// the same address being a live link in the exported .pptx and nothing at all
+// in the PDF of the same deck.
+func (p Primitive) textSVG(scale float64, linkColor string) string {
 	fontSize := float64(p.FontSize) / 100 * float64(EMUPerPoint) * scale
 	if fontSize < 4 {
 		fontSize = 4
@@ -562,13 +571,22 @@ func (p Primitive) textSVG(scale float64) string {
 	if !p.Wrap || lineEm < 1 {
 		lineEm = 1e6
 	}
-	wrapped := make([]string, 0, len(p.Lines))
+	type drawnLine struct {
+		text string
+		runs []TextRun
+	}
+	wrapped := make([]drawnLine, 0, len(p.Lines))
 	for _, paragraph := range p.Lines {
-		pieces := wrapLines(paragraph.Text, lineEm)
+		// The marks are not drawn, so the line is wrapped by the words it puts on
+		// the slide rather than by the characters it is stored as.
+		runs := SplitRuns(paragraph.Text)
+		pieces := wrapLines(PlainText(paragraph.Text), lineEm)
 		if len(pieces) == 0 {
 			pieces = []string{""}
 		}
-		wrapped = append(wrapped, pieces...)
+		for _, piece := range pieces {
+			wrapped = append(wrapped, drawnLine{text: piece, runs: runs})
+		}
 	}
 	block := float64(len(wrapped)) * lineHeight
 	top := float64(p.Frame.Y) * scale
@@ -585,8 +603,12 @@ func (p Primitive) textSVG(scale float64) string {
 	var builder strings.Builder
 	fmt.Fprintf(&builder, `<text x="%.1f" y="%.1f" fill="#%s" font-size="%.2f" font-weight="%s" text-anchor="%s" font-family="%s, `+previewFallbacks+`" xml:space="preserve">`,
 		x, top+fontSize*0.82, colorOrGrey(p.Color), fontSize, weight, anchor, escapeAttribute(fallbackFamily(p.Font)))
-	for index, value := range wrapped {
-		fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x, top+fontSize*0.82+float64(index)*lineHeight, escapeText(value))
+	if linkColor == "" {
+		linkColor = colorOrGrey(p.Color)
+	}
+	for index, line := range wrapped {
+		fmt.Fprintf(&builder, `<tspan x="%.1f" y="%.1f">%s</tspan>`, x, top+fontSize*0.82+float64(index)*lineHeight,
+			markedUpLine(line.text, line.runs, linkColor))
 	}
 	builder.WriteString(`</text>`)
 	return builder.String()

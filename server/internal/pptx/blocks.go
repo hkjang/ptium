@@ -1131,7 +1131,10 @@ func (d Design) layoutTable(frame Frame, block Block) ([]Primitive, int) {
 	cells := frame.Columns(len(columns), d.Unit)
 	headerHeight, rowHeight := d.tableRhythm(frame, len(rows))
 	bodySize, drawnRows := d.tableCells(frame, columns, rows, rowHeight)
-	rows = drawnRows
+	// The drawing carries the marks too: the preview draws a cell's link in the
+	// link colour and underlined, and the printed page turns it into one a
+	// reader can follow.
+	rows = markedCells(rows, drawnRows)
 	const hairlineHeight = 9525
 	headerSize := d.Small
 	heads := make([]string, len(cells))
@@ -1145,7 +1148,13 @@ func (d Design) layoutTable(frame Frame, block Block) ([]Primitive, int) {
 		// A heading is one line and is not wrapped, so a long one is painted
 		// across the table and off the slide. A document's table whose header
 		// cell held a paragraph drew two metres past the region it was given.
-		heads[index] = cutToWidth(heads[index], headerSize, cell.Width)
+		// A heading drawn whole keeps what the author marked; one that had to be
+		// cut keeps only its words.
+		if cut := cutToWidth(heads[index], headerSize, cell.Width); cut == heads[index] {
+			heads[index] = columns[index]
+		} else {
+			heads[index] = cut
+		}
 		align := "l"
 		if index > 0 {
 			align = "r"

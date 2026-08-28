@@ -229,3 +229,36 @@ func TestACutTableCellKeepsItsWordsAndNotHalfALink(t *testing.T) {
 		t.Error("a cut cell exported the address as text on the slide")
 	}
 }
+
+// A link written in a cell was a live link in the exported .pptx and nothing at
+// all in the PDF of the same deck, because the drawing carried the words alone:
+// no link colour, no underline, and nothing for the printed page to turn into
+// something a reader can click.
+func TestATableCellsLinkIsDrawnAsALink(t *testing.T) {
+	_, design, _ := testDesign(t, "plum-rail")
+	frame := Frame{X: 914400, Y: 914400, Width: 6 * 914400, Height: 3 * 914400}
+	block := Block{Kind: BlockTable, Columns: []string{"항목", "근거"},
+		Rows: [][]string{
+			{"인프라", "[계약서](https://example.invalid/contract)"},
+			{"인건비", "정상"},
+		}}
+	primitives, drawn := design.layoutTable(frame, block)
+	if drawn != 2 {
+		t.Fatalf("the table drew %d rows, want 2", drawn)
+	}
+	component := Component{Primitives: primitives}
+	svg := component.SVG(1.0/9525, "0563C1")
+	if !strings.Contains(svg, `<a href="https://example.invalid/contract"`) {
+		t.Error("the cell's link is not a link in the drawing, so the printed page has nothing to click")
+	}
+	if !strings.Contains(svg, "underline") {
+		t.Error("the cell's link is not drawn as one, so a reader cannot see it is a link")
+	}
+	// The words are drawn, the markup is not.
+	if strings.Contains(svg, "](") || strings.Contains(svg, "[계약서]") {
+		t.Errorf("the drawing prints the markup: %s", svg)
+	}
+	if !strings.Contains(svg, "계약서") || !strings.Contains(svg, "정상") {
+		t.Error("a cell's own words did not survive")
+	}
+}
