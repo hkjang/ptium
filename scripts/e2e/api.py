@@ -858,6 +858,47 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── what is cut is said, and what fits is drawn whole ──")
+# Everything a component can drop has to be reported, and everything it can
+# hold has to arrive: a cell that wraps inside its row is not trimmed, and an
+# address with nowhere to break is not cut in half.
+cut_cases = {
+    "table rows": "# 비용\n::table\n- 구분 | 값\n" + "".join(f"- 항목{n} | {n}00\n" for n in range(1, 13)) + "::\n",
+    "table columns": "# 비용\n::table\n- 구분 | 1분기 | 2분기 | 3분기 | 4분기 | 상반기 | 비고\n- 설비 | 1 | 2 | 3 | 4 | 5 | 계약\n- 인건비 | 1 | 2 | 3 | 4 | 5 | 유지\n::\n",
+    "steps entries": "# 순서\n::steps\n" + "".join(f"- 단계{n} | {n}월까지\n" for n in range(1, 10)) + "::\n",
+}
+for what, cut_source in cut_cases.items():
+    cut_one = data_of(call("POST", "/presentations", {"title": f"잘림 {RUN}", "prompt": "잘림", "slideCount": 1}, expect=201)) or {}
+    call("PUT", f"/presentations/{cut_one['id']}/source", {"source": cut_source}, expect=200)
+    checks += 1
+    if not [one for one in (data_of(call("GET", f"/presentations/{cut_one['id']}/inspect", expect=200)) or {}).get("findings", [])
+            if one.get("kind") == "trimmed"]:
+        failures.append(f"a component dropped {what} and said nothing")
+    call("DELETE", f"/presentations/{cut_one['id']}", expect=204)
+
+# And the other way: a long cell and an address that cannot be broken both
+# arrive whole, so nothing is reported and nothing is lost.
+long_cell = "아주 긴 설명을 한 칸에 넣습니다 " * 10
+long_link = "https://intranet.example.invalid/reports/2026/logistics/automation/quarterly.pdf"
+whole_one = data_of(call("POST", "/presentations", {"title": f"온전 {RUN}", "prompt": "온전", "slideCount": 1}, expect=201)) or {}
+call("PUT", f"/presentations/{whole_one['id']}/source", {"source":
+    f"# 비용\n::table\n- 구분 | 설명\n- 설비 | {long_cell}\n- 링크 | {long_link}\n::\n"}, expect=200)
+_, whole_file = call("GET", f"/presentations/{whole_one['id']}/export.pptx", raw=True, expect=200)
+with zipfile.ZipFile(io.BytesIO(whole_file or b"")) as bundle:
+    whole_markup = "".join(bundle.read(name).decode("utf-8", "replace") for name in bundle.namelist()
+                           if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
+checks += 1
+if long_link not in whole_markup:
+    failures.append("an address with nowhere to break did not reach the slide whole")
+checks += 1
+if long_cell.strip() not in whole_markup:
+    failures.append("a long cell that fits its row did not reach the slide whole")
+checks += 1
+if [one for one in (data_of(call("GET", f"/presentations/{whole_one['id']}/inspect", expect=200)) or {}).get("findings", [])
+        if one.get("kind") == "trimmed"]:
+    failures.append("nothing was dropped and the deck was told something had been")
+call("DELETE", f"/presentations/{whole_one['id']}", expect=204)
+
 print("── a heading cut on a connective ──")
 # "비용을 줄이고" is one clause of two. 보고, 참고, 사고, 창고 and 광고 all end a
 # heading perfectly well and every one of them ends in 고.
