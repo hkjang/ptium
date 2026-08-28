@@ -774,3 +774,60 @@ func TestAChartsOwnNumbersAreAskedWhereTheyCameFrom(t *testing.T) {
 		t.Errorf("a written-out value is asked about as something other than its own words: %v", asked)
 	}
 }
+
+// A picture is written into the file with its caption as alternative text, and
+// with nothing at all when there is no caption: a reader who cannot see the
+// slide is told "Picture Placeholder 2". Every other thing this product draws
+// says what it is, and the one thing a person has to write themselves was the
+// one nobody was asked for.
+func TestAPictureWithNoWordsIsAskedAbout(t *testing.T) {
+	_, _, manifest := buildTemplate(t, "plum-rail")
+	content, _ := manifest.Layout(manifest.DefaultLayout)
+	picture := func(caption string) Slide {
+		return Slide{LayoutID: content.ID,
+			Fields:   map[string][]Paragraph{SlotTitle: {{Text: "현장 사진"}}},
+			Pictures: map[string]Picture{SlotBody: {Data: []byte{1, 2, 3}, ContentType: "image/png", Caption: caption}}}
+	}
+	deck := Deck{Language: "ko", Slides: []Slide{
+		picture(""),
+		picture("자동 분류기가 상자를 옮기는 모습"),
+	}}
+	var asked []int
+	for _, finding := range InspectDeck(manifest, deck) {
+		if finding.Kind == FindingUndescribed {
+			if !finding.Advisory {
+				t.Error("a picture nobody described is drawn correctly; it is not a defect")
+			}
+			asked = append(asked, finding.Slide)
+		}
+	}
+	if len(asked) != 1 || asked[0] != 1 {
+		t.Fatalf("the pictures asked about were %v, want only the one with no words", asked)
+	}
+
+	// And it costs the deck something on the axis it belongs to, which is the
+	// difference between a measurement and a remark.
+	score := ScoreDeck(InspectDeck(manifest, deck), len(deck.Slides))
+	for _, dimension := range score.Dimensions {
+		if dimension.Key != DimensionAccessibility {
+			continue
+		}
+		if dimension.Score >= 100 || dimension.Counted != 1 {
+			t.Errorf("a picture nobody can read cost the accessibility score nothing: %#v", dimension)
+		}
+	}
+
+	// A picture placed freely on the canvas is a picture too.
+	free := Deck{Language: "ko", Slides: []Slide{{LayoutID: content.ID,
+		Fields:   map[string][]Paragraph{SlotTitle: {{Text: "현장 사진"}}},
+		Elements: []Element{{Kind: "image", ID: "a"}, {Kind: "image", ID: "b", Caption: "설명이 있는 그림"}}}}}
+	freeAsked := 0
+	for _, finding := range InspectDeck(manifest, free) {
+		if finding.Kind == FindingUndescribed {
+			freeAsked++
+		}
+	}
+	if freeAsked != 1 {
+		t.Errorf("a freely placed picture with no words was asked about %d times, want 1", freeAsked)
+	}
+}

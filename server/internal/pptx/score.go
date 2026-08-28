@@ -55,6 +55,7 @@ var dimensionOf = map[string]string{
 	FindingEcho:        DimensionStructure,
 	FindingCollision:   DimensionVisual,
 	FindingContrast:    DimensionAccessibility,
+	FindingUndescribed: DimensionAccessibility,
 	FindingSource:      DimensionEvidence,
 }
 
@@ -76,6 +77,11 @@ func weightOf(finding Finding) int {
 		case FindingSource:
 			// A figure with no source is the advisory a company acts on first.
 			return 12
+		case FindingUndescribed:
+			// Content that reaches everyone looking at the slide and nobody who
+			// is not. It costs what content left off the slide costs, because
+			// for that reader it is the same thing.
+			return 10
 		case FindingStale:
 			// A plan whose first step is behind the room reading it is noticed by
 			// everybody at once, and it costs the deck the rest of its argument.

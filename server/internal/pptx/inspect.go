@@ -44,6 +44,13 @@ const (
 	// FindingLink is a line written as a link whose target is not one the deck
 	// will follow, so the slide draws the markup rather than the words.
 	FindingLink = "link"
+	// FindingUndescribed is a picture with no words describing it. The file
+	// carries the picture and, without a caption, nothing else: a reader who
+	// cannot see the slide is told "Picture Placeholder 2". Every other thing
+	// this product draws says what it is — a table, a chart, a component all
+	// carry their own description — and the one thing a person has to write
+	// themselves was the one nobody was asked for.
+	FindingUndescribed = "undescribed"
 	// FindingSource is a slide that states figures and says nowhere they came
 	// from. In a company the first question asked of any number on a slide is
 	// where it is from, and a deck that cannot answer is not finished — however
@@ -563,6 +570,10 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			finding.Slide = index + 1
 			findings = append(findings, finding)
 		}
+		for _, finding := range undescribedPictures(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		if strings.TrimSpace(slide.Notes) == "" && carriesArgument(slide, layout) {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
@@ -732,6 +743,41 @@ func danglingJumps(slide Slide, slides int) []Finding {
 		}
 	}
 	report("notes", slide.Notes)
+	return findings
+}
+
+// undescribedPictures reports a picture nobody can read.
+//
+// A picture is written into the file with the caption as its alternative text,
+// and with nothing at all when there is no caption. The deck then has content
+// that reaches everyone looking at it and nobody who is not: a screen reader
+// announces "Picture Placeholder 2" and moves on, and so does anyone reading
+// the deck as an outline.
+//
+// It is advisory, and it has to be: the words are the author's to write. What
+// this can do is ask, which is more than the silence it replaces.
+func undescribedPictures(slide Slide) []Finding {
+	var findings []Finding
+	slots := make([]string, 0, len(slide.Pictures))
+	for slot := range slide.Pictures {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		picture := slide.Pictures[slot]
+		if len(picture.Data) == 0 || strings.TrimSpace(picture.Caption) != "" {
+			continue
+		}
+		findings = append(findings, Finding{Slot: slot, Kind: FindingUndescribed, Advisory: true,
+			Detail: "a picture with no words describing it: a reader who cannot see the slide is told nothing about it"})
+	}
+	for _, element := range slide.Elements {
+		if element.Kind != "image" || strings.TrimSpace(element.Caption) != "" {
+			continue
+		}
+		findings = append(findings, Finding{Slot: SlotBody, Kind: FindingUndescribed, Advisory: true,
+			Detail: "a picture with no words describing it: a reader who cannot see the slide is told nothing about it"})
+	}
 	return findings
 }
 

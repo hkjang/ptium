@@ -39,6 +39,7 @@ export function findingLabel(kind: string) {
     case 'unfinished': return '제목이 문장 중간에서 끊김'
     case 'twiceTitled': return '앞 장과 같은 제목'
     case 'stale': return '이미 지난 날짜로 계획함'
+    case 'undescribed': return '이미지 설명 없음'
   }
   return kind
 }

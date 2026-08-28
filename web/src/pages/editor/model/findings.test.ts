@@ -77,7 +77,7 @@ describe('a measurement in the reader’s words', () => {
   })
 
   it('names every kind the measurement can report', () => {
-    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed', 'link', 'unfinished', 'twiceTitled']
+    const kinds = ['overflow', 'outside', 'collision', 'contrast', 'orphan', 'density', 'notes', 'repeat', 'source', 'echo', 'trimmed', 'link', 'unfinished', 'twiceTitled', 'undescribed']
     for (const kind of kinds) {
       expect(findingLabel(kind), kind).not.toBe(kind)
     }

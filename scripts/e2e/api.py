@@ -700,6 +700,34 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a picture with no words describing it ──")
+# A picture is written into the file with its caption as alternative text and
+# with nothing at all without one: a reader who cannot see the slide is told
+# "Picture Placeholder 2", and nobody was asked for the words.
+described_picture = data_of(call("POST", "/assets", files={"file": (f"alt-{RUN}.png", png(rgb=(120, 160, 90)), "image/png")},
+                                 expect=201)) or {}
+picture_name = described_picture.get("name")
+if picture_name:
+    described_deck = data_of(call("POST", "/presentations", {"title": f"대체텍스트 {RUN}", "prompt": "사진", "slideCount": 3}, expect=201)) or {}
+    call("PUT", f"/presentations/{described_deck['id']}/source", {"source":
+        "# 표지\n@cover\n> 한 줄\n\n"
+        f"# 설명 없는 사진\n@content\n::image {picture_name}\n- 사진 옆의 글\n\n"
+        f"# 설명 있는 사진\n@content\n::image {picture_name} | 자동 분류기가 상자를 옮기는 모습\n- 사진 옆의 글\n"}, expect=200)
+    described_found = [one.get("slide") for one in (data_of(call("GET", f"/presentations/{described_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+                       if one.get("kind") == "undescribed"]
+    checks += 1
+    if described_found != [2]:
+        failures.append(f"a picture with no words is asked about on slides {described_found}, want only the one without a caption")
+    _, described_file = call("GET", f"/presentations/{described_deck['id']}/export.pptx", raw=True, expect=200)
+    checks += 1
+    with zipfile.ZipFile(io.BytesIO(described_file or b"")) as bundle:
+        drawn = "".join(bundle.read(name).decode("utf-8", "replace") for name in bundle.namelist()
+                        if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
+    if "자동 분류기가 상자를 옮기는 모습" not in drawn:
+        failures.append("a picture's caption is not written into the file as its alternative text")
+    call("DELETE", f"/presentations/{described_deck['id']}", expect=204)
+    call("DELETE", f"/assets/{described_picture.get('id')}", expect=[204, 404])
+
 print("── a jump the deck cannot follow is drawn as words ──")
 # The exported file writes no relationship for it and the printed page no
 # annotation; the drawing was the surface still promising something to click.
