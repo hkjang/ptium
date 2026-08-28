@@ -86,6 +86,9 @@ type ImportedChart struct {
 type ImportedPicture struct {
 	Name string
 	Data []byte
+	// Caption is the alternative text the picture already had, which is the one
+	// thing about a picture that cannot be worked out by looking at it.
+	Caption string
 	// Area is how much of the slide the picture covered, in per-mille. A logo in
 	// the corner is not the slide's illustration.
 	Area int
@@ -674,10 +677,35 @@ func readPictures(pkg *Package, slidePart string, tree rawShapeTree, slideArea i
 		if hasGeometry && slideArea > 0 {
 			area = int(int64(width) * int64(height) * 1000 / int64(slideArea))
 		}
-		pictures = append(pictures, ImportedPicture{Name: path.Base(target), Data: data, Area: area})
+		caption := ""
+		if nonVisual := shape.nonVisual(); nonVisual != nil {
+			caption = describedAs(nonVisual.CNvPr.Descr, path.Base(target))
+		}
+		pictures = append(pictures, ImportedPicture{Name: path.Base(target), Data: data, Area: area, Caption: caption})
 	}
 	return pictures
 }
+
+// describedAs is the alternative text a picture carries, if it says anything.
+//
+// PowerPoint fills the field with the picture's own file name when nobody
+// writes anything — "image.png", "다운로드.jpg" — and so does every tool that
+// writes a deck. Carrying that across would put a file name where the
+// description belongs and, worse, stop this product asking for the real one.
+func describedAs(descr, file string) string {
+	described := strings.TrimSpace(descr)
+	if described == "" || strings.EqualFold(described, strings.TrimSpace(file)) {
+		return ""
+	}
+	// A bare file name with no words in it is a file name wherever it came from.
+	if !strings.ContainsAny(described, " \t") && imageFileName.MatchString(described) {
+		return ""
+	}
+	return described
+}
+
+// imageFileName is a name with a picture's extension and nothing else.
+var imageFileName = regexp.MustCompile(`(?i)^[^\s]+\.(png|jpe?g|gif|bmp|tiff?|webp|emf|wmf|svg)$`)
 
 // readTables reads every table on a slide as rows of cell text, and says how
 // many of those cells had a rule drawn through them.

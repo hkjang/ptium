@@ -700,6 +700,42 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a picture keeps the words it already had ──")
+# The alternative text somebody wrote in PowerPoint is the one thing about a
+# picture nobody can work out by looking at it. Dropped on import, this product
+# then asked the author to write what they had already written.
+alt_pptx = None
+try:
+    from pptx import Presentation as AltWriter
+    from pptx.util import Inches as AltInches
+    written = AltWriter()
+    AltWriter.__module__  # keep the import used
+    cover = written.slides.add_slide(written.slide_layouts[5]); cover.shapes.title.text = "표지"
+    shown = written.slides.add_slide(written.slide_layouts[5]); shown.shapes.title.text = "현장 사진"
+    placed = shown.shapes.add_picture(io.BytesIO(png(rgb=(30, 140, 210))), AltInches(1), AltInches(2), AltInches(4), AltInches(3))
+    placed._element._nvXxPr.cNvPr.set("descr", "자동 분류기가 상자를 컨베이어로 옮기는 모습")
+    holder = io.BytesIO(); written.save(holder); alt_pptx = holder.getvalue()
+except ImportError:
+    print("   python-pptx is not installed here, so the picture's own words were not checked")
+if alt_pptx:
+    alt_deck = data_of(call("POST", "/presentations/import",
+                            files={"file": (f"alt-{RUN}.pptx", alt_pptx, "application/vnd.openxmlformats-officedocument.presentationml.presentation")}, expect=201)) or {}
+    alt_id = (alt_deck.get("presentation") or alt_deck).get("id")
+    alt_source = (data_of(call("GET", f"/presentations/{alt_id}/source", expect=200)) or {}).get("source", "")
+    checks += 1
+    if "자동 분류기가 상자를 컨베이어로 옮기는 모습" not in alt_source:
+        failures.append("a picture's alternative text did not survive the import")
+    checks += 1
+    if [one for one in (data_of(call("GET", f"/presentations/{alt_id}/inspect", expect=200)) or {}).get("findings", [])
+            if one.get("kind") == "undescribed"]:
+        failures.append("an author was asked to describe a picture they had already described")
+    call("DELETE", f"/presentations/{alt_id}", expect=204)
+    # The import puts the picture in the library, where it stays after the deck
+    # is gone; this run tidies up after itself.
+    for one in data_of(call("GET", "/assets?limit=100", expect=200)) or []:
+        if str(one.get("name", "")).startswith(f"alt-{RUN}"):
+            call("DELETE", f"/assets/{one.get('id')}", expect=[204, 404])
+
 print("── a picture with no words describing it ──")
 # A picture is written into the file with its caption as alternative text and
 # with nothing at all without one: a reader who cannot see the slide is told

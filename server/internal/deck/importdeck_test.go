@@ -257,3 +257,31 @@ func TestADeckWithNothingStruckIsToldNothing(t *testing.T) {
 		}
 	}
 }
+
+// An author who wrote a picture's alternative text in PowerPoint should not be
+// asked to write it again here. It travels with the picture into the deck's
+// own source, where the drawing puts it back into the file it exports.
+func TestAPicturesAlternativeTextTravelsWithIt(t *testing.T) {
+	deck := pptx.ImportedDeck{Slides: []pptx.ImportedSlide{{
+		Title: "현장 사진",
+		Pictures: []pptx.ImportedPicture{
+			{Name: "image1.png", Data: []byte{1}, Caption: "자동 분류기가 상자를 옮기는 모습"},
+			{Name: "image2.png", Data: []byte{2}},
+		},
+	}}}
+	stored := 0
+	source, _ := SourceFromImportWithImages(deck, func(picture pptx.ImportedPicture) (string, bool) {
+		stored++
+		return picture.Name, true
+	})
+	if stored != 2 {
+		t.Fatalf("%d pictures were stored, want 2", stored)
+	}
+	if !strings.Contains(source, "::image image1.png | 자동 분류기가 상자를 옮기는 모습") {
+		t.Errorf("the picture's own words did not travel with it:\n%s", source)
+	}
+	// A picture that never had any is written as it always was.
+	if !strings.Contains(source, "::image image2.png\n") {
+		t.Errorf("a picture with no words gained something to say:\n%s", source)
+	}
+}

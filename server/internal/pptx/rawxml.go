@@ -214,6 +214,11 @@ type rawNonVisual struct {
 	CNvPr struct {
 		ID   string `xml:"id,attr"`
 		Name string `xml:"name,attr"`
+		// Descr is the alternative text somebody wrote for the shape: the words
+		// a reader who cannot see the slide is given instead of it. Reading the
+		// picture and not this is how an imported deck came back needing the
+		// accessibility work done again.
+		Descr string `xml:"descr,attr"`
 	} `xml:"cNvPr"`
 	NvPr struct {
 		Ph *rawPlaceholderRef `xml:"ph"`

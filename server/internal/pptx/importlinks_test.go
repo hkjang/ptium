@@ -224,3 +224,28 @@ func TestASpaceIsNotEmphasised(t *testing.T) {
 		t.Fatalf("a run of spaces was marked up as %q", got)
 	}
 }
+
+// The alternative text somebody wrote in PowerPoint is the one thing about a
+// picture nobody can work out by looking at it. Reading the picture and not
+// this brought a deck back needing the accessibility work done again — and this
+// product now asks for it, so it asked them to write what they had written.
+func TestAPicturesAlternativeTextComesAcross(t *testing.T) {
+	for _, one := range []struct {
+		descr, file, want string
+	}{
+		{"자동 분류기가 상자를 옮기는 모습", "image1.png", "자동 분류기가 상자를 옮기는 모습"},
+		// Every tool that writes a deck leaves the file name in the field when
+		// nobody writes anything, PowerPoint included.
+		{"image.png", "image.png", ""},
+		{"image1.png", "photo.png", ""},
+		{"다운로드.jpg", "image1.png", ""},
+		{"", "image1.png", ""},
+		{"   ", "image1.png", ""},
+		// A description that happens to name a file is still a description.
+		{"보고서 표지 image.png 를 다시 쓴 것", "image1.png", "보고서 표지 image.png 를 다시 쓴 것"},
+	} {
+		if got := describedAs(one.descr, one.file); got != one.want {
+			t.Errorf("descr %q with file %q read as %q, want %q", one.descr, one.file, got, one.want)
+		}
+	}
+}

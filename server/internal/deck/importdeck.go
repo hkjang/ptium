@@ -89,7 +89,14 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 			if !ok {
 				continue
 			}
-			fmt.Fprintf(&builder, "::image %s\n", escapeItemField(name))
+			// The alternative text comes with the picture when it had one: it is
+			// the one thing about a picture nobody can work out by looking at it,
+			// and an author who wrote it once should not be asked again.
+			if caption := strings.TrimSpace(picture.Caption); caption != "" {
+				fmt.Fprintf(&builder, "::image %s | %s\n", escapeItemField(name), escapeItemField(caption))
+			} else {
+				fmt.Fprintf(&builder, "::image %s\n", escapeItemField(name))
+			}
 			placed++
 		}
 		if notes := strings.TrimSpace(slide.Notes); notes != "" {
