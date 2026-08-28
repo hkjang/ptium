@@ -858,6 +858,19 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── a heading cut on a connective ──")
+# "비용을 줄이고" is one clause of two. 보고, 참고, 사고, 창고 and 광고 all end a
+# heading perfectly well and every one of them ends in 고.
+cut_deck = data_of(call("POST", "/presentations", {"title": f"제목 {RUN}", "prompt": "제목", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{cut_deck['id']}/source", {"source":
+    "# 비용을 줄이고\n- 내용 한 줄\n\n# 분기 실적 보고\n- 내용 한 줄\n"}, expect=200)
+cut_found = [one.get("slide") for one in (data_of(call("GET", f"/presentations/{cut_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+             if one.get("kind") == "unfinished"]
+checks += 1
+if cut_found != [1]:
+    failures.append(f"a heading cut on a connective is reported on slides {cut_found}, want only the cut one")
+call("DELETE", f"/presentations/{cut_deck['id']}", expect=204)
+
 print("── the same point made twice, in two forms of the same words ──")
 # Korean puts an ending on both sides far more often than it leaves one bare,
 # and a word was only ever matched against its own bare stem.

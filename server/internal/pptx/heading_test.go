@@ -294,3 +294,29 @@ func TestASlideHeadedWhatAnEarlierSlideIsHeaded(t *testing.T) {
 		}
 	}
 }
+
+// A heading that stops on a connective is half of what it was going to say:
+// "비용을 줄이고" is one clause of two, and the deck goes out headed with it.
+//
+// The verbs are written out rather than matched as a bare 고, for the same
+// reason 야 is: 보고, 참고, 사고, 창고, 광고 and 회고 all end a heading
+// perfectly well, and every one of them ends in 고.
+func TestAHeadingCutOnAConnectiveIsReported(t *testing.T) {
+	for _, one := range []string{
+		"비용을 줄이고", "설계를 마치고", "체계를 세우고", "품질을 높이며",
+		"비용은 늘었지만", "도입을 검토하면서", "적용하려면", "시작하거나",
+	} {
+		if !unfinishedEnding.MatchString(one) {
+			t.Errorf("%q stops in the middle of what it was saying and was not reported", one)
+		}
+	}
+	for _, one := range []string{
+		"분기 실적 보고", "참고 자료", "사고 예방 계획", "창고 운영 현황",
+		"광고 효과 분석", "지난 분기 회고", "예고된 위험", "보고 체계 개편",
+		"도입 효과", "비용과 효과", "지금 무엇이 문제인가", "무엇을 바꾸었는가",
+	} {
+		if unfinishedEnding.MatchString(one) {
+			t.Errorf("%q is a whole heading and was called half of one", one)
+		}
+	}
+}

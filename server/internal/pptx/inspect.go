@@ -289,6 +289,46 @@ func slideSentences(slide Slide) []string {
 	return sentences
 }
 
+// saidLine is one line a slide says, and where it says it from: the heading
+// names the slide, and a component's entries are what it is made of.
+type saidLine struct {
+	text      string
+	heading   bool
+	component bool
+}
+
+// saidLines is what repeatedPoints compares, with enough of where each line
+// came from to know which pairs are worth comparing at all.
+func saidLines(slide Slide) []saidLine {
+	var lines []saidLine
+	slots := make([]string, 0, len(slide.Fields))
+	for slot := range slide.Fields {
+		slots = append(slots, slot)
+	}
+	sort.Strings(slots)
+	for _, slot := range slots {
+		for _, paragraph := range slide.Fields[slot] {
+			lines = append(lines, saidLine{text: paragraph.Text,
+				heading: slot == SlotTitle || slot == SlotSubtitle})
+		}
+	}
+	blocks := make([]string, 0, len(slide.Blocks))
+	for slot := range slide.Blocks {
+		blocks = append(blocks, slot)
+	}
+	sort.Strings(blocks)
+	for _, slot := range blocks {
+		block := slide.Blocks[slot]
+		for _, item := range block.Items {
+			for _, part := range []string{item.Label, item.Value, item.Detail} {
+				lines = append(lines, saidLine{text: part, component: true})
+			}
+		}
+		lines = append(lines, saidLine{text: block.Text, component: true})
+	}
+	return lines
+}
+
 // repeatedPoints finds two lines that make the same point in different words.
 //
 // A model writing to a line count restates rather than stops, and a restatement
@@ -297,10 +337,12 @@ func slideSentences(slide Slide) []string {
 // at all. Parallel lines ("매출은 전년 대비 12% 늘었습니다" beside "비용은 전년
 // 대비 8% 줄었습니다") are good writing and share too little to trip this.
 func repeatedPoints(slide Slide) []Finding {
-	sentences := slideSentences(slide)
-	words := make([][]string, len(sentences))
-	for index, sentence := range sentences {
-		words[index] = contentWords(sentence)
+	lines := saidLines(slide)
+	sentences := make([]string, len(lines))
+	words := make([][]string, len(lines))
+	for index, line := range lines {
+		sentences[index] = line.text
+		words[index] = contentWords(line.text)
 	}
 	var findings []Finding
 	for index, first := range sentences {
@@ -324,6 +366,16 @@ func repeatedPoints(slide Slide) []Finding {
 			// repetition, it told a model to delete half of its own table.
 			if comparesFigures(first, sentences[other]) || sameMeasure(first, sentences[other]) ||
 				sharesAValue(first, sentences[other]) {
+				continue
+			}
+			// A component's own entry saying what the slide is called is not the
+			// same point made twice. A comparison of "현행 유지" against
+			// "투자 12억 원" on a slide headed "12억 원 요청 — 선택지 비교" names
+			// the proposal in the heading because that is the thing being
+			// compared; told it had said itself twice, an author would delete
+			// one side of their own comparison.
+			if (lines[index].heading && lines[other].component) ||
+				(lines[other].heading && lines[index].component) {
 				continue
 			}
 			if wordOverlap(words[index], words[other]) >= 0.65 {
@@ -524,7 +576,14 @@ func isKoreanEnding(rest string) bool {
 func repeatedSlides(deck Deck) []Finding {
 	lines := make([][][]string, len(deck.Slides))
 	for index, slide := range deck.Slides {
-		for _, sentence := range slideSentences(slide) {
+		for _, said := range saidLines(slide) {
+			// What two slides say, not what they are called. Decks name their
+			// subject in every heading — "…요청", "…요청 — 선택지 비교",
+			// "…요청 — 기대 효과" — and a slide of bullets beside a slide of a
+			// comparison was called an echo of it because both were headed with
+			// the deck's own subject.
+
+			sentence := said.text
 			if words := contentWords(sentence); len(words) >= 4 {
 				lines[index] = append(lines[index], words)
 			}

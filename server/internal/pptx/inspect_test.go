@@ -879,3 +879,62 @@ func TestThePointMadeTwiceIsReported(t *testing.T) {
 		t.Errorf("the finding does not name the lines: %q", said[0])
 	}
 }
+
+// A component's own entry saying what the slide is called is not the same point
+// made twice. A comparison of "현행 유지" against "투자 12억 원" on a slide headed
+// "12억 원 요청 — 선택지 비교" names the proposal in the heading because that is
+// the thing being compared; told it had said itself twice, an author would
+// delete one side of their own comparison.
+func TestAComparisonNamingItsOwnSubjectIsNotARepeat(t *testing.T) {
+	slide := Slide{
+		Fields: map[string][]Paragraph{SlotTitle: {{Text: "12억 원을 이사회에 요청 — 선택지 비교"}}},
+		Blocks: map[string]Block{SlotBody: {Kind: BlockComparison, Items: []Item{
+			{Label: "현행 유지", Value: "추가 비용 없음 · 문제는 누적"},
+			{Label: "투자 12억 원을 이사회에 요청", Value: "초기 투자 필요 · 구조 개선"},
+		}}}}
+	if found := repeatedPoints(slide); len(found) > 0 {
+		t.Errorf("a comparison naming the slide's own subject was called a repetition: %s", found[0].Detail)
+	}
+	// What the rule is for still fires: two body lines making one point.
+	twice := Slide{Fields: map[string][]Paragraph{
+		SlotTitle: {{Text: "도입 효과"}},
+		SlotBody: {
+			{Text: "자동화를 도입하면 오출고율이 크게 낮아집니다"},
+			{Text: "오출고율은 자동화 도입으로 크게 낮아집니다"},
+		}}}
+	if len(repeatedPoints(twice)) != 1 {
+		t.Error("the same point written twice is no longer reported")
+	}
+}
+
+// A deck names its subject in every heading — "…요청", "…요청 — 선택지 비교",
+// "…요청 — 기대 효과". A slide of bullets beside a slide of a comparison was
+// called an echo of it because both were headed with the deck's own subject.
+func TestSlidesSharingOnlyTheirSubjectAreNotAnEcho(t *testing.T) {
+	heading := func(title string, points ...string) Slide {
+		paragraphs := make([]Paragraph, 0, len(points))
+		for _, point := range points {
+			paragraphs = append(paragraphs, Paragraph{Text: point})
+		}
+		return Slide{Fields: map[string][]Paragraph{
+			SlotTitle: {{Text: title}}, SlotBody: paragraphs}}
+	}
+	named := Deck{Language: "ko", Slides: []Slide{
+		heading("12억 원을 이사회에 요청", "투입은 인력과 라이선스와 이관 비용입니다", "회수는 절감액과 회수 시점으로 봅니다"),
+		heading("12억 원을 이사회에 요청 — 선택지 비교", "현행을 유지하면 문제가 그대로 누적됩니다", "투자하면 구조가 바뀌고 위험이 줄어듭니다"),
+		heading("12억 원을 이사회에 요청 — 기대 효과", "여섯 달 안에 확인할 지표를 정합니다", "열두 달 목표와 판단 기준을 함께 둡니다"),
+	}}
+	if found := repeatedSlides(named); len(found) > 0 {
+		t.Errorf("slides sharing only the deck's subject were called an echo: %s", found[0].Detail)
+	}
+	// The deck this rule was written for still fires: the same content twice.
+	same := heading("후보 사무실",
+		"강남 사무실은 월 임대료가 3천만 원이고 통근 시간은 35분입니다",
+		"판교 사무실은 월 임대료가 2천만 원이고 통근 시간은 50분입니다",
+		"여의도 사무실은 월 임대료가 4천만 원이고 통근 시간은 25분입니다")
+	again := same
+	again.Fields = map[string][]Paragraph{SlotTitle: {{Text: "다시 정리하면"}}, SlotBody: same.Fields[SlotBody]}
+	if found := repeatedSlides(Deck{Language: "ko", Slides: []Slide{same, again}}); len(found) == 0 {
+		t.Error("a slide repeating an earlier slide's content is no longer reported")
+	}
+}

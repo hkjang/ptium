@@ -32,7 +32,19 @@ var unfinishedEnding = regexp.MustCompile(
 		// only when something was taken off it: "데이터 거버넌스 체계를 세우" was
 		// the cover of a deck, cut out of "…세우려고 합니다".
 		`(?:^|\s)(?:세우|세워|줄이|줄여|늘리|늘려|높이|높여|낮추|낮춰|바꾸|바꿔|맞추|맞춰|이루|이뤄)$|` +
-		`(?:^|\s)(?:위한|위해|통한|통해|대한|관한)$`)
+		`(?:^|\s)(?:위한|위해|통한|통해|대한|관한)$|` +
+		// A clause joined to one that never came. "비용을 줄이고", "설계를
+		// 마치고": the heading says one half of what it was going to say.
+		//
+		// Written as whole verbs rather than as a bare 고, for the reason 야 is:
+		// 보고, 참고, 사고, 창고, 광고 and 회고 all end a heading perfectly
+		// well, and every one of them ends in 고.
+		`(?:하고|되고|시키고|마치고|만들고|줄이고|늘리고|높이고|낮추고|바꾸고|맞추고|세우고|이루고|` +
+		`하며|되며|시키며|만들며|줄이며|늘리며|높이며|낮추며|이루며)$|` +
+		// These join clauses and nothing else, so they need no verb in front of
+		// them to be read as an ending: no word of this language ends in them
+		// by accident.
+		`(?:면서|지만|거나|든지|려면|는데도|음에도)$`)
 
 // strandedParticle is a heading whose last word is still holding the particle
 // that joined it to words that are no longer there.
