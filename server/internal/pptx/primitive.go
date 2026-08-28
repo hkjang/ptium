@@ -242,7 +242,7 @@ func textOf(primitives []Primitive) string {
 // DrawingML wraps a component in a group whose child coordinate space matches
 // its own, so children keep absolute coordinates while the whole component
 // stays selectable and movable as one object in PowerPoint.
-func (c Component) DrawingML(startID int, chartRelationshipID string, links *linkTable) (string, int) {
+func (c Component) DrawingML(startID int, chartRelationshipID string, links *linkTable, language string) (string, int) {
 	if len(c.Primitives) == 0 {
 		return "", startID
 	}
@@ -259,7 +259,7 @@ func (c Component) DrawingML(startID int, chartRelationshipID string, links *lin
 	}
 	for _, primitive := range primitives {
 		id++
-		body.WriteString(primitive.drawingML(id))
+		body.WriteString(primitive.drawingML(id, language))
 	}
 	name := c.Name
 	if name == "" {
@@ -284,10 +284,13 @@ func (c Component) DrawingML(startID int, chartRelationshipID string, links *lin
 	}
 	if c.Table != nil {
 		id++
-		group += c.Table.drawingML(id, c.Description, links)
+		group += c.Table.drawingML(id, c.Description, links, language)
 	}
 	if chart {
 		id++
+		// The chart's own text speaks the deck's language, like everything else
+		// drawn on the slide.
+		c.Chart.Language = language
 		group += c.Chart.graphicFrame(id, chartRelationshipID, c.Description)
 	}
 	return group, id + 1
@@ -299,12 +302,12 @@ func bar(frame Frame, fill string, corner int, side string) Primitive {
 	return Primitive{Kind: shapeRound2, Frame: frame, Fill: fill, Corner: corner, Side: side}
 }
 
-func (p Primitive) drawingML(id int) string {
+func (p Primitive) drawingML(id int, language string) string {
 	switch p.Kind {
 	case shapeText:
-		return p.textDrawingML(id)
+		return p.textDrawingML(id, language)
 	case shapePolyline:
-		return p.polylineDrawingML(id)
+		return p.polylineDrawingML(id, language)
 	}
 	geometry := `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>`
 	switch p.Kind {
@@ -350,7 +353,7 @@ func (p Primitive) drawingML(id int) string {
 	}
 	return fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s %d"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`+
 		`<p:spPr>%s%s%s%s</p:spPr>`+
-		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`,
+		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="`+escapeAttribute(spokenLanguage(language))+`"/></a:p></p:txBody></p:sp>`,
 		id, escapeAttribute(name), id, p.transform(), geometry, fill, outline)
 }
 
@@ -398,7 +401,7 @@ func cornerAdjustment(p Primitive) int {
 	return adjust
 }
 
-func (p Primitive) textDrawingML(id int) string {
+func (p Primitive) textDrawingML(id int, language string) string {
 	wrap := "none"
 	if p.Wrap {
 		wrap = "square"
@@ -414,7 +417,7 @@ func (p Primitive) textDrawingML(id int) string {
 			properties += ` lvl="` + strconv.Itoa(paragraph.Level) + `"`
 		}
 		properties += `><a:buNone/></a:pPr>`
-		runProperties := `<a:rPr lang="ko-KR" sz="` + strconv.Itoa(p.FontSize) + `" dirty="0"`
+		runProperties := `<a:rPr lang="` + escapeAttribute(spokenLanguage(language)) + `" sz="` + strconv.Itoa(p.FontSize) + `" dirty="0"`
 		if p.Bold {
 			runProperties += ` b="1"`
 		}
@@ -426,7 +429,7 @@ func (p Primitive) textDrawingML(id int) string {
 		paragraphs.WriteString(`<a:p>` + properties + `<a:r>` + runProperties + `<a:t>` + escapeText(paragraph.Text) + `</a:t></a:r></a:p>`)
 	}
 	if paragraphs.Len() == 0 {
-		paragraphs.WriteString(`<a:p><a:endParaRPr lang="ko-KR"/></a:p>`)
+		paragraphs.WriteString(`<a:p><a:endParaRPr lang="` + escapeAttribute(spokenLanguage(language)) + `"/></a:p>`)
 	}
 	return fmt.Sprintf(`<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s %d"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`+
 		`<p:spPr><a:xfrm><a:off x="%d" y="%d"/><a:ext cx="%d" cy="%d"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/></p:spPr>`+
@@ -436,7 +439,7 @@ func (p Primitive) textDrawingML(id int) string {
 
 // polylineDrawingML emits a stroked freeform path: what every preview draws a
 // trend with, and what a freeform slide keeps its own lines as.
-func (p Primitive) polylineDrawingML(id int) string {
+func (p Primitive) polylineDrawingML(id int, language string) string {
 	if len(p.Points) < 2 {
 		return ""
 	}
@@ -466,7 +469,7 @@ func (p Primitive) polylineDrawingML(id int) string {
 		`<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/>`+
 		`<a:pathLst><a:path w="%d" h="%d">%s</a:path></a:pathLst></a:custGeom><a:noFill/>`+
 		`<a:ln w="%d" cap="rnd"><a:solidFill>%s</a:solidFill><a:round/></a:ln></p:spPr>`+
-		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody></p:sp>`,
+		`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="`+escapeAttribute(spokenLanguage(language))+`"/></a:p></p:txBody></p:sp>`,
 		id, id, minimumX, minimumY, width, height, width, height, path.String(), strokeWidth, solidColor(p.Stroke, 0))
 }
 

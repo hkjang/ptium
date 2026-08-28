@@ -190,7 +190,7 @@ func TestATableCellDrawsItsMarksRatherThanPrintingThem(t *testing.T) {
 		t.Fatal("the table drew nothing")
 	}
 	links := &linkTable{}
-	markup := part.drawingML(7, "", links)
+	markup := part.drawingML(7, "", links, "ko-KR")
 	for _, mark := range []string{"**", "](", "https://example.invalid"} {
 		if strings.Contains(markup, "<a:t>"+mark) || strings.Contains(markup, mark+"</a:t>") {
 			t.Errorf("the exported table prints %q where a reader can see it", mark)
@@ -224,7 +224,7 @@ func TestACutTableCellKeepsItsWordsAndNotHalfALink(t *testing.T) {
 	if part == nil {
 		t.Fatal("the table drew nothing")
 	}
-	markup := part.drawingML(7, "", &linkTable{})
+	markup := part.drawingML(7, "", &linkTable{}, "ko-KR")
 	if strings.Contains(markup, "https://example.invalid") {
 		t.Error("a cut cell exported the address as text on the slide")
 	}

@@ -54,6 +54,10 @@ type ChartPart struct {
 	AxisInk    string
 	AxisLine   string
 	Legend     bool
+	// Language is the tag the chart's own text declares itself in. A screen
+	// reader picks a voice from it, and an English deck's axis saying ko-KR is
+	// the same mistake as its table cells saying it.
+	Language string
 }
 
 // graphicFrame writes the frame that points at the chart part.
@@ -237,13 +241,13 @@ func (c *ChartPart) numberFormat() string {
 func (c *ChartPart) axisTextXML() string {
 	return `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="` + strconv.Itoa(c.size()) +
 		`"><a:solidFill><a:srgbClr val="` + hexColor(c.AxisInk) + `"/></a:solidFill>` + c.typefaceXML() +
-		`</a:defRPr></a:pPr><a:endParaRPr lang="ko-KR"/></a:p></c:txPr>`
+		`</a:defRPr></a:pPr><a:endParaRPr lang="` + escapeAttribute(spokenLanguage(c.Language)) + `"/></a:p></c:txPr>`
 }
 
 func (c *ChartPart) labelTextXML() string {
 	return `<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="` + strconv.Itoa(c.size()) +
 		`" b="1"><a:solidFill><a:srgbClr val="` + hexColor(c.LabelInk) + `"/></a:solidFill>` + c.typefaceXML() +
-		`</a:defRPr></a:pPr><a:endParaRPr lang="ko-KR"/></a:p></c:txPr>`
+		`</a:defRPr></a:pPr><a:endParaRPr lang="` + escapeAttribute(spokenLanguage(c.Language)) + `"/></a:p></c:txPr>`
 }
 
 func (c *ChartPart) typefaceXML() string {

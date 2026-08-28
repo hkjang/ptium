@@ -146,12 +146,12 @@ func AlignmentIsKnown(align, verticalAlign string) bool {
 
 // drawingML emits an editable PowerPoint shape or text box. Images are emitted
 // by freeformPictureXML after their relationship id has been allocated.
-func (e Element) drawingML(shapeID int, links *linkTable) string {
+func (e Element) drawingML(shapeID int, links *linkTable, language string) string {
 	if e.Kind == "image" {
 		return ""
 	}
 	if e.Kind == "table" {
-		return e.tableDrawingML(shapeID)
+		return e.tableDrawingML(shapeID, language)
 	}
 	name := strings.TrimSpace(e.ID)
 	if name == "" {
@@ -172,9 +172,9 @@ func (e Element) drawingML(shapeID int, links *linkTable) string {
 	}
 	body := ""
 	if e.Kind == "text" || strings.TrimSpace(e.Text) != "" {
-		body = e.textBodyXML(links)
+		body = e.textBodyXML(links, language)
 	} else {
-		body = `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="ko-KR"/></a:p></p:txBody>`
+		body = `<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="` + escapeAttribute(spokenLanguage(language)) + `"/></a:p></p:txBody>`
 	}
 	return `<p:sp><p:nvSpPr><p:cNvPr id="` + strconv.Itoa(shapeID) + `" name="` + escapeAttribute(name) +
 		`"/><p:cNvSpPr` + txBox + `>` + e.locksXML() + `</p:cNvSpPr><p:nvPr/></p:nvSpPr>` +
@@ -182,7 +182,7 @@ func (e Element) drawingML(shapeID int, links *linkTable) string {
 		`</p:spPr>` + body + `</p:sp>`
 }
 
-func (e Element) tableDrawingML(shapeID int) string {
+func (e Element) tableDrawingML(shapeID int, language string) string {
 	if len(e.Cells) == 0 || len(e.Cells[0]) == 0 {
 		return ""
 	}
@@ -221,7 +221,7 @@ func (e Element) tableDrawingML(shapeID int) string {
 				text = row[columnIndex]
 			}
 			header := rowIndex < e.HeaderRows || columnIndex < e.HeaderColumns
-			body.WriteString(e.tableCellXML(text, header))
+			body.WriteString(e.tableCellXML(text, header, language))
 		}
 		body.WriteString(`</a:tr>`)
 	}
@@ -238,7 +238,7 @@ func (e Element) tableDrawingML(shapeID int) string {
 		body.String() + `</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`
 }
 
-func (e Element) tableCellXML(text string, header bool) string {
+func (e Element) tableCellXML(text string, header bool, language string) string {
 	fontSize := e.FontSize
 	if fontSize <= 0 {
 		fontSize = 1400
@@ -273,12 +273,12 @@ func (e Element) tableCellXML(text string, header bool) string {
 	properties := `<a:tcPr marL="45720" marR="45720" marT="27432" marB="27432"><a:solidFill>` + solidColor(fill, e.opacity()) +
 		`</a:solidFill><a:lnL w="` + strconv.Itoa(borderWidth) + `">` + line + `</a:lnL><a:lnR w="` + strconv.Itoa(borderWidth) + `">` + line +
 		`</a:lnR><a:lnT w="` + strconv.Itoa(borderWidth) + `">` + line + `</a:lnT><a:lnB w="` + strconv.Itoa(borderWidth) + `">` + line + `</a:lnB></a:tcPr>`
-	return `<a:tc><a:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"><a:buNone/></a:pPr><a:r><a:rPr lang="ko-KR" sz="` +
+	return `<a:tc><a:txBody><a:bodyPr anchor="ctr"/><a:lstStyle/><a:p><a:pPr algn="ctr"><a:buNone/></a:pPr><a:r><a:rPr lang="` + escapeAttribute(spokenLanguage(language)) + `" sz="` +
 		strconv.Itoa(fontSize) + `" dirty="0"` + bold + `><a:solidFill>` + solidColor(textColor, e.opacity()) + `</a:solidFill>` + font +
 		`</a:rPr><a:t>` + escapeText(text) + `</a:t></a:r></a:p></a:txBody>` + properties + `</a:tc>`
 }
 
-func (e Element) textBodyXML(links *linkTable) string {
+func (e Element) textBodyXML(links *linkTable, language string) string {
 	anchor := verticalAnchors[strings.ToLower(strings.TrimSpace(e.VerticalAlign))]
 	if anchor == "" {
 		anchor = "t"
@@ -315,7 +315,7 @@ func (e Element) textBodyXML(links *linkTable) string {
 	}
 	var paragraphs strings.Builder
 	for _, line := range lines {
-		properties := `<a:rPr lang="ko-KR" sz="` + strconv.Itoa(size) + `" dirty="0"` + runFlags +
+		properties := `<a:rPr lang="` + escapeAttribute(spokenLanguage(language)) + `" sz="` + strconv.Itoa(size) + `" dirty="0"` + runFlags +
 			`><a:solidFill>` + solidColor(color, e.opacity()) + `</a:solidFill>` + font + `</a:rPr>`
 		paragraphs.WriteString(`<a:p><a:pPr algn="` + align + `"><a:buNone/></a:pPr>` +
 			runsXML(line, properties, links) + `</a:p>`)

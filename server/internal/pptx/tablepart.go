@@ -15,7 +15,7 @@ import (
 // rule under the header, hairlines between rows, labels left and figures right.
 
 // drawingML writes the table as a graphic frame.
-func (t *TablePart) drawingML(shapeID int, description string, links *linkTable) string {
+func (t *TablePart) drawingML(shapeID int, description string, links *linkTable, language string) string {
 	if t == nil || len(t.Columns) == 0 || len(t.Rows) == 0 {
 		return ""
 	}
@@ -54,7 +54,7 @@ func (t *TablePart) drawingML(shapeID int, description string, links *linkTable)
 	var body strings.Builder
 	body.WriteString(`<a:tr h="` + strconv.Itoa(headerHeight) + `">`)
 	for index, heading := range t.Columns {
-		body.WriteString(t.cellXML(heading, index, true, links))
+		body.WriteString(t.cellXML(heading, index, true, links, language))
 	}
 	body.WriteString(`</a:tr>`)
 	for _, row := range t.Rows {
@@ -64,7 +64,7 @@ func (t *TablePart) drawingML(shapeID int, description string, links *linkTable)
 			if index < len(row) {
 				value = row[index]
 			}
-			body.WriteString(t.cellXML(value, index, false, links))
+			body.WriteString(t.cellXML(value, index, false, links, language))
 		}
 		body.WriteString(`</a:tr>`)
 	}
@@ -89,7 +89,7 @@ func (t *TablePart) drawingML(shapeID int, description string, links *linkTable)
 // one piece it was neither — the preview drew the words alone while the
 // exported file printed **1분기** and [근거](https://…) in the header, so the
 // markup only ever appeared where the author had stopped looking.
-func (t *TablePart) cellXML(value string, column int, header bool, links *linkTable) string {
+func (t *TablePart) cellXML(value string, column int, header bool, links *linkTable, language string) string {
 	align := "l"
 	if column < len(t.Aligns) && t.Aligns[column] != "" {
 		align = t.Aligns[column]
@@ -113,7 +113,7 @@ func (t *TablePart) cellXML(value string, column int, header bool, links *linkTa
 	// default would draw four sides around every cell.
 	lines := `<a:lnB w="` + strconv.Itoa(width) + `" cap="flat" cmpd="sng" algn="ctr">` +
 		`<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(rule, "#")) + `"/></a:solidFill></a:lnB>`
-	properties := `<a:rPr lang="ko-KR" sz="` + strconv.Itoa(size) + `"` + bold + `>` +
+	properties := `<a:rPr lang="` + escapeAttribute(spokenLanguage(language)) + `" sz="` + strconv.Itoa(size) + `"` + bold + `>` +
 		`<a:solidFill><a:srgbClr val="` + escapeAttribute(strings.TrimPrefix(colour, "#")) + `"/></a:solidFill>` +
 		font + `</a:rPr>`
 	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="` + align + `"/>` +

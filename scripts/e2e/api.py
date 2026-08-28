@@ -700,6 +700,26 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── every run speaks the deck's own language ──")
+# A screen reader picks its voice from the run's language and PowerPoint
+# spell-checks against it; an English deck's table cells said ko-KR.
+spoken_deck = data_of(call("POST", "/presentations", {"title": f"lang {RUN}", "prompt": "language", "slideCount": 3}, expect=201)) or {}
+call("PUT", f"/presentations/{spoken_deck['id']}/source", {"source":
+    "# Quarterly review\n- Throughput rose to 1,800 units an hour\n\n"
+    "# Cost by quarter\n::table\n- Item | Q1\n- Infrastructure | 800\n::\n\n"
+    "# Key numbers\n::kpi\n- Throughput | 1,800/h | +45%\n::\n\n"
+    "# Trend\n::columns Throughput\n- Q1 | 1240\n::\n"}, expect=200)
+call("PATCH", f"/presentations/{spoken_deck['id']}", {"language": "en"}, expect=[200, 204])
+_, spoken_file = call("GET", f"/presentations/{spoken_deck['id']}/export.pptx", raw=True, expect=200)
+with zipfile.ZipFile(io.BytesIO(spoken_file or b"")) as bundle:
+    spoken_markup = "".join(bundle.read(name).decode("utf-8", "replace") for name in bundle.namelist()
+                            if re.fullmatch(r"ppt/slides/slide\d+\.xml", name))
+spoken_tags = sorted(set(re.findall(r'lang="([^"]+)"', spoken_markup)))
+checks += 1
+if spoken_tags != ["en-US"]:
+    failures.append(f"an English deck declares its runs as {spoken_tags}")
+call("DELETE", f"/presentations/{spoken_deck['id']}", expect=204)
+
 print("── a picture keeps the words it already had ──")
 # The alternative text somebody wrote in PowerPoint is the one thing about a
 # picture nobody can work out by looking at it. Dropped on import, this product

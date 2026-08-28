@@ -631,6 +631,18 @@ func freeformPictureXML(shapeID int, element Element, placed placedPicture) stri
 // slideXML writes the slide, and returns the charts it placed on it in the
 // order their relationship ids were handed out. The parts themselves are
 // written by the caller, which is the one holding the package.
+// spokenLanguage is the tag a run declares itself in. A screen reader picks its
+// voice from it and PowerPoint spell-checks against it, so a deck written in
+// English whose table cells said ko-KR had those cells read aloud in Korean and
+// underlined as Korean misspellings. Empty is the Korean this product was
+// written for, which is what every one of those places used to hardcode.
+func spokenLanguage(language string) string {
+	if language = strings.TrimSpace(language); language == "" {
+		return "ko-KR"
+	}
+	return language
+}
+
 func slideXML(layout Layout, slide Slide, language string, design Design,
 	pictures []placedPicture, slides int) (string, []*ChartPart, []slideLink) {
 	var shapes, components, freeform strings.Builder
@@ -682,7 +694,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design,
 				if component.Table != nil {
 					component.Description = describeTable(component.Table, block, language)
 				}
-				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart), links)
+				markup, next := component.DrawingML(shapeID, chartRelationship(component.Chart), links, language)
 				components.WriteString(markup)
 				shapeID = next
 				continue
@@ -712,7 +724,7 @@ func slideXML(layout Layout, slide Slide, language string, design Design,
 			}
 			continue
 		}
-		freeform.WriteString(element.drawingML(shapeID, links))
+		freeform.WriteString(element.drawingML(shapeID, links, language))
 		shapeID++
 	}
 	// show="0" is how the format says "not part of the show". Written only when

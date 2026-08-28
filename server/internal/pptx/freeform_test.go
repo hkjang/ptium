@@ -12,7 +12,7 @@ func TestFreeformElementRendersEditableDrawingMLAndSVG(t *testing.T) {
 		Rotation: 12, Text: "핵심 & 내용", FontFamily: "Aptos", FontSize: 2400, TextColor: "FFFFFF", Bold: true,
 		Fill: "725BD6", Stroke: "4C3AA0", StrokeWidth: EMUPerPoint, Opacity: 80,
 	}
-	drawing := element.drawingML(8, nil)
+	drawing := element.drawingML(8, nil, "ko-KR")
 	for _, wanted := range []string{`<p:sp>`, `prst="roundRect"`, `rot="720000"`, `핵심 &amp; 내용`, `alpha val="80000"`} {
 		if !strings.Contains(drawing, wanted) {
 			t.Fatalf("DrawingML is missing %q:\n%s", wanted, drawing)
@@ -42,7 +42,7 @@ func TestFreeformTableExportsAsNativePowerPointTable(t *testing.T) {
 		Cells: [][]string{{"항목", "상태"}, {"핵심 & 검증", "완료"}}, HeaderRows: 1,
 		FontSize: 1400, Fill: "725BD6", Stroke: "D9D6E1", StrokeWidth: EMUPerPoint,
 	}
-	drawing := element.drawingML(9, nil)
+	drawing := element.drawingML(9, nil, "ko-KR")
 	for _, wanted := range []string{`<p:graphicFrame>`, `<a:tbl>`, `<a:tblGrid>`, `firstRow="1"`, `핵심 &amp; 검증`} {
 		if !strings.Contains(drawing, wanted) {
 			t.Fatalf("native table DrawingML is missing %q:\n%s", wanted, drawing)
@@ -60,7 +60,7 @@ func TestFreeformTableExportsAsNativePowerPointTable(t *testing.T) {
 func TestFreeformLineExportsArrowheadsAndDash(t *testing.T) {
 	element := Element{ID: "line-1", Kind: "line", Frame: Frame{Width: 1000000, Height: 200000}, Stroke: "4C3AA0", StrokeWidth: 2 * EMUPerPoint,
 		StartArrow: "oval", EndArrow: "triangle", Dash: "dashDot"}
-	drawing := element.drawingML(4, nil)
+	drawing := element.drawingML(4, nil, "ko-KR")
 	for _, wanted := range []string{`<a:headEnd type="oval"`, `<a:tailEnd type="triangle"`, `<a:prstDash val="dashDot"`} {
 		if !strings.Contains(drawing, wanted) {
 			t.Fatalf("line DrawingML is missing %q: %s", wanted, drawing)
@@ -84,7 +84,7 @@ func TestAnObjectIsAlignedInEitherVocabulary(t *testing.T) {
 		element := Element{ID: "s1", Kind: "shape", Shape: "roundRect", Text: "도형 안의 글",
 			Frame: Frame{X: 0, Y: 0, Width: 2000000, Height: 1000000},
 			Align: pair[0], VerticalAlign: pair[1]}
-		markup := element.drawingML(2, nil)
+		markup := element.drawingML(2, nil, "ko-KR")
 		if !strings.Contains(markup, `anchor="ctr"`) || !strings.Contains(markup, `algn="ctr"`) {
 			t.Errorf("%v was not centred:\n%s", pair, markup)
 		}

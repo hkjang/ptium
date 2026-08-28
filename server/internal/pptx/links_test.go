@@ -1,6 +1,8 @@
 package pptx
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -538,5 +540,62 @@ func TestADanglingJumpIsDrawnAsTheWordsItIs(t *testing.T) {
 	// own — draws every jump as a link, as it always did.
 	if alone := PreviewSVG(manifest, layout, slide, PreviewOptions{Width: 960}); !strings.Contains(alone, `href="#slide-9"`) {
 		t.Error("a preview that was not told the deck's size stopped drawing jumps")
+	}
+}
+
+// A screen reader picks its voice from the run's language and PowerPoint
+// spell-checks against it. A deck written in English had its bullets say en-US
+// and its table cells, cards and chart labels say ko-KR, because every one of
+// those places wrote the tag this product was built for rather than the deck's.
+func TestEveryRunSpeaksTheDecksLanguage(t *testing.T) {
+	data, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, manifest, err := AnalyzeBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	layout, ok := manifest.LayoutForRole(RoleContent)
+	if !ok {
+		t.Fatal("the builtin template has no content layout")
+	}
+	deck := Deck{Language: "en", Slides: []Slide{
+		{LayoutID: layout.ID,
+			Fields: map[string][]Paragraph{SlotTitle: {{Text: "Quarterly review"}}}},
+		{LayoutID: layout.ID,
+			Fields: map[string][]Paragraph{SlotTitle: {{Text: "Cost by quarter"}}},
+			Blocks: map[string]Block{SlotBody: {Kind: BlockTable,
+				Columns: []string{"Item", "Q1"}, Rows: [][]string{{"Infrastructure", "800"}}}}},
+		{LayoutID: layout.ID,
+			Fields: map[string][]Paragraph{SlotTitle: {{Text: "Key numbers"}}},
+			Blocks: map[string]Block{SlotBody: {Kind: BlockKPI,
+				Items: []Item{{Label: "Throughput", Value: "1,800/h", Delta: "+45%"}}}}},
+	}}
+	built, err := RenderBytes(data, deck)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := Open(built)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spoken := map[string]int{}
+	for index := 1; index <= len(deck.Slides); index++ {
+		markup, ok := pkg.Text(fmt.Sprintf("ppt/slides/slide%d.xml", index))
+		if !ok {
+			t.Fatalf("slide %d is not in the package", index)
+		}
+		for _, found := range regexp.MustCompile(`lang="([^"]+)"`).FindAllStringSubmatch(markup, -1) {
+			spoken[found[1]]++
+		}
+	}
+	if spoken["en-US"] == 0 {
+		t.Fatal("an English deck says nothing in English")
+	}
+	for tag, count := range spoken {
+		if tag != "en-US" {
+			t.Errorf("an English deck declares %d run(s) as %q", count, tag)
+		}
 	}
 }
