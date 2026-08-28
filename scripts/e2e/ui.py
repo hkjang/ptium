@@ -326,6 +326,22 @@ with sync_playwright() as play:
     visit(f"/presentations/{deck}/editor", wait=3000)
 
 
+    # A preview is drawn by the server on request, and opening a deck of fifty
+    # slides used to ask for all fifty while six were on the screen.
+    tall = api("/presentations", "POST", {"title": "긴 덱", "language": "ko"})
+    api(f"/presentations/{tall['id']}/source", "PUT", {
+        "source": "".join(f"# {n}번 슬라이드\n- 내용 한 줄\n\n" for n in range(1, 51)),
+        "version": tall.get("version", 1)})
+    drawn = {"count": 0}
+    page.on("request", lambda request: drawn.__setitem__("count", drawn["count"] + 1)
+            if "preview.svg" in request.url else None)
+    visit(f"/presentations/{tall['id']}/editor", wait=4500)
+    if drawn["count"] > 20:
+        failures.append(f"opening a fifty-slide deck asked for {drawn['count']} previews; only a windowful is on screen")
+    if drawn["count"] == 0:
+        failures.append("opening a deck drew no preview at all")
+    api(f"/presentations/{tall['id']}", "DELETE")
+
     # A deck of fifty slides has a rail taller than any window, and a slide
     # zoomed to 200% is wider than the canvas. Both live inside a grid whose
     # items default to min-height:auto, so both used to grow to their content
