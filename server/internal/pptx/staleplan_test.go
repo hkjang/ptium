@@ -81,3 +81,83 @@ func TestARecordOfThePastIsNotAStalePlan(t *testing.T) {
 		}
 	}
 }
+
+// A step and its date are one line to anybody looking at the slide, and were
+// walked as the two strings they are stored as: the words that make a line a
+// plan sat in one and the date in the other, so a roadmap written with this
+// product's own steps component could not be read as a plan at all.
+//
+// And a plan is late by the month it names, not only by its year. A roadmap
+// written in August that opens on March is five months behind the room, and
+// its year says nothing is wrong.
+func TestARoadmapWrittenAsStepsIsReadAsAPlan(t *testing.T) {
+	atDate(t, time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC))
+
+	steps := func(kind string, items ...Item) Slide {
+		return Slide{Fields: map[string][]Paragraph{SlotTitle: {{Text: "이행 계획"}}},
+			Blocks: map[string]Block{SlotBody: {Kind: kind, Items: items}}}
+	}
+	said := func(slide Slide) string {
+		for _, finding := range stalePlans(slide) {
+			return finding.Detail
+		}
+		return ""
+	}
+
+	if detail := said(steps(BlockSteps,
+		Item{Label: "설계", Value: "2026년 3월까지"},
+		Item{Label: "설치", Value: "2026년 12월까지"})); !strings.Contains(detail, "2026-03") {
+		t.Errorf("a step dated five months back was not reported: %q", detail)
+	}
+	// A quarter is late once its last month is.
+	if detail := said(steps(BlockSteps,
+		Item{Label: "설계", Value: "2026년 1분기"},
+		Item{Label: "설치", Value: "2026년 4분기"})); !strings.Contains(detail, "2026-03") {
+		t.Errorf("a step dated to a quarter already over was not reported: %q", detail)
+	}
+	// A timeline is the same thing under another name.
+	if detail := said(steps(BlockTimeline,
+		Item{Label: "2026년 2월", Value: "착수"},
+		Item{Label: "2026년 11월", Value: "완료"})); !strings.Contains(detail, "2026-02") {
+		t.Errorf("a timeline entry already past was not reported: %q", detail)
+	}
+	// What is still ahead is not late.
+	if detail := said(steps(BlockSteps,
+		Item{Label: "설계", Value: "2026년 12월까지"},
+		Item{Label: "안정화", Value: "2027년 3월까지"})); detail != "" {
+		t.Errorf("a plan still ahead of the room was called late: %q", detail)
+	}
+	// Neither is a record of something done.
+	if detail := said(steps(BlockSteps,
+		Item{Label: "설계", Value: "2026년 3월에 완료했습니다"},
+		Item{Label: "설치", Value: "2026년 5월에 마쳤습니다"})); detail != "" {
+		t.Errorf("work already done was called a late plan: %q", detail)
+	}
+	// A component that carries no date says nothing either way.
+	if detail := said(steps(BlockSteps,
+		Item{Label: "설계", Value: "먼저"}, Item{Label: "설치", Value: "다음"})); detail != "" {
+		t.Errorf("a plan with no date in it was called late: %q", detail)
+	}
+}
+
+// Korean fuses the past marker into the verb's own syllable, so a line can be
+// unmistakably about something already done without containing 했, 였 or 었.
+func TestThePastTenseIsReadWhereverItFused(t *testing.T) {
+	for _, line := range []string{
+		"2026년 5월에 마쳤습니다", "2026년 3월에 끝냈습니다", "2026년 2월에 됐습니다",
+		"2026년 1월에 나왔습니다", "2026년 4월에 갔습니다", "2026년 6월에 했습니다",
+		"작년에 완료된 일", "finished in March",
+	} {
+		if !saysItHappened(line) {
+			t.Errorf("%q is written in the past and was not read as such", line)
+		}
+	}
+	for _, line := range []string{
+		"2026년 12월까지 마칩니다", "2026년 9월 착수 예정", "계획이 있습니다",
+		"관련 자료가 없습니다", "설계", "2027년 3월까지",
+	} {
+		if saysItHappened(line) {
+			t.Errorf("%q is not in the past and was read as though it were", line)
+		}
+	}
+}

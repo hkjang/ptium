@@ -858,6 +858,20 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── a roadmap written as steps is read as a plan ──")
+# A step and its date are one line to anybody looking at the slide, and were
+# walked as the two strings they are stored as.
+plan_deck = data_of(call("POST", "/presentations", {"title": f"계획 {RUN}", "prompt": "계획", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{plan_deck['id']}/source", {"source":
+    "# 이행 계획\n::steps\n- 설계 | 2019년 3월까지\n- 설치 | 2019년 6월까지\n::\n\n"
+    "# 끝난 일\n::steps\n- 설계 | 2019년 3월에 마쳤습니다\n- 설치 | 2019년 6월에 끝냈습니다\n::\n"}, expect=200)
+plan_found = [one.get("slide") for one in (data_of(call("GET", f"/presentations/{plan_deck['id']}/inspect", expect=200)) or {}).get("findings", [])
+              if one.get("kind") == "stale"]
+checks += 1
+if plan_found != [1]:
+    failures.append(f"a roadmap dated to a year long past is reported on slides {plan_found}, want only the one that is still a plan")
+call("DELETE", f"/presentations/{plan_deck['id']}", expect=204)
+
 print("── a chart is asked where its numbers came from ──")
 # The same figures asked about in a point, a table and a KPI row went unasked
 # as a bar chart, which is the thing a room quotes.
