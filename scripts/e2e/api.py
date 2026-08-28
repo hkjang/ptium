@@ -520,6 +520,62 @@ for key in ("generation.max_slides", "generation.default_slide_count"):
 # text box instead of a title placeholder leaves the outline view and the screen
 # reader blank. A chart flattened to a picture cannot be edited or read aloud. A
 # link written as blue text is not a link.
+# ── every design this deployment ships ──
+# A template is not one deck's problem: every deck made with it inherits
+# whatever is wrong, and fifty of them travel inside the image. Nothing outside
+# this product had ever opened them.
+print("── every design this deployment ships ──")
+try:
+    from pptx import Presentation as DesignReader
+except ImportError:
+    print("   python-pptx is not installed here, so the designs were not opened independently")
+    DesignReader = None
+if DesignReader is not None:
+    designs = data_of(call("GET", "/templates?limit=100", expect=200)) or []
+    checks += 1
+    if len(designs) < 1:
+        failures.append("this deployment ships no designs at all")
+    opened, sizes = 0, set()
+    for design in designs:
+        status, file = call("GET", f"/templates/{design['id']}/download", raw=True, expect=200)
+        if status != 200 or not file:
+            failures.append(f"the design {design['name']!r} could not be fetched")
+            continue
+        try:
+            drawing = DesignReader(io.BytesIO(file))
+        except Exception as error:
+            failures.append(f"the design {design['name']!r} cannot be opened by an OOXML reader: {error}")
+            continue
+        opened += 1
+        sizes.add((round(drawing.slide_width / 914400, 2), round(drawing.slide_height / 914400, 2)))
+        layouts = list(drawing.slide_layouts)
+        if design.get("layoutCount") and len(layouts) != design["layoutCount"]:
+            failures.append(f"{design['name']!r}: the product says {design['layoutCount']} layouts "
+                            f"and a reader sees {len(layouts)}")
+        if drawing.slide_master is None:
+            failures.append(f"{design['name']!r} has no slide master")
+        roles = set()
+        blank = 0
+        for layout in layouts:
+            if len(layout.placeholders) == 0:
+                blank += 1
+            for shape in layout.placeholders:
+                roles.add(str(shape.placeholder_format.type))
+        # The blank layout is meant to hold nothing; a second one is a place no
+        # deck can be written into.
+        if blank > 1:
+            failures.append(f"{design['name']!r} has {blank} layouts with nowhere to put words")
+        if not any(role.startswith("TITLE") or role.startswith("CENTER_TITLE") for role in roles):
+            failures.append(f"{design['name']!r} offers no title placeholder on any layout")
+        if not any(role.startswith(("BODY", "SUBTITLE", "OBJECT")) for role in roles):
+            failures.append(f"{design['name']!r} offers nowhere for a deck's words")
+    checks += 1
+    if opened != len(designs):
+        failures.append(f"{len(designs)} designs ship and {opened} could be opened")
+    checks += 1
+    if len(sizes) > 1:
+        failures.append(f"the shipped designs are not one slide size: {sorted(sizes)}")
+
 print("── the exported file, read by somebody else ──")
 # The PDF gets the same treatment. The product reads its own PDFs back in its
 # own tests, which cannot say whether anyone else's reader agrees: a file can
