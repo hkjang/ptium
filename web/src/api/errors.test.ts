@@ -4,7 +4,7 @@ import { errorText } from './errors'
 describe('what the server refused, in the reader’s words', () => {
   it('writes the message the server sent', () => {
     expect(errorText('version_conflict', 'The presentation changed in another session'))
-      .toBe('다른 곳에서 이 덱이 먼저 바뀌었습니다. 새로고침한 뒤 다시 시도해 주세요.')
+      .toContain('다른 곳에서 이 덱이 먼저 바뀌었습니다')
     expect(errorText('presentation_has_no_slides', 'Generate or add slides before exporting'))
       .toBe('내보내려면 먼저 슬라이드를 만들어 주세요.')
   })
@@ -97,5 +97,21 @@ describe('a setting this deployment will not honour', () => {
       'generation.outline_pass must be true or false', 'ai.reasoning must be one of auto, off, on']) {
       expect(errorText('validation_error', message), message).not.toContain('은(는)')
     }
+  })
+  // Both places that raise a version conflict are the editor's own saves, so
+  // whoever reads it has just typed something. Measured in two windows: after
+  // the refusal the edit is still on the screen, and after the refresh the
+  // message asks for, it is gone. Telling somebody to refresh without saying
+  // what that costs sends them to throw their own work away.
+  it('says what a refresh costs before asking for one', () => {
+    const said = errorText('version_conflict', 'The presentation changed in another session')
+    expect(said).toContain('새로고침')
+    expect(said).toContain('사라집니다')
+    expect(said).toContain('복사')
+  })
+
+  it('says it on the generic code too, where the message is not the deck’s', () => {
+    const said = errorText('version_conflict', 'something the rules have no line for')
+    expect(said).toContain('복사')
   })
 })

@@ -71,8 +71,13 @@ const byMessage: Record<string, string> = {
   'This deployment does not issue session cookies': '이 배포는 세션 쿠키를 발급하지 않습니다.',
 
   // The deck and its slides.
+  // Both places that raise this are the editor's own saves, so the person
+  // reading it has just typed something. Telling them to refresh without
+  // saying what that costs sent them to throw their own work away: the edit is
+  // still on the screen after the refusal, and gone after the reload.
   'The presentation changed in another session':
-    '다른 곳에서 이 덱이 먼저 바뀌었습니다. 새로고침한 뒤 다시 시도해 주세요.',
+    '다른 곳에서 이 덱이 먼저 바뀌었습니다. 여기서 고친 내용은 아직 화면에 있지만 새로고침하면 사라집니다. ' +
+    '필요한 부분을 복사해 두고 새로고침한 뒤 다시 넣어 주세요.',
   'The presentation does not exist': '이 프레젠테이션을 찾을 수 없습니다.',
   'The requested resource was not found': '요청한 항목을 찾을 수 없습니다.',
   'The requested layout does not exist': '요청한 레이아웃이 이 템플릿에 없습니다.',
@@ -137,7 +142,7 @@ const byCode: Record<string, string> = {
   account_disabled: '이 계정은 사용이 중지되었습니다. 관리자에게 문의하세요.',
   insufficient_scope: 'API 키에 이 작업 권한이 없습니다.',
   not_found: '요청한 항목을 찾을 수 없습니다.',
-  version_conflict: '다른 곳에서 먼저 바뀌었습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  version_conflict: '다른 곳에서 먼저 바뀌었습니다. 고친 내용을 복사해 두고 새로고침한 뒤 다시 시도해 주세요.',
   invalid_json: '요청 본문을 읽지 못했습니다.',
   invalid_id: '주소의 id 형식이 올바르지 않습니다.',
   invalid_upload: '업로드한 파일을 읽지 못했습니다.',

@@ -339,6 +339,49 @@ with sync_playwright() as play:
     page.wait_for_timeout(1000)
     check("presenter timer")
 
+    # ── the same deck in two windows ──
+    # One window's save wins and the other is refused, which is right. What the
+    # refusal then tells the loser is the part that was wrong: it asked them to
+    # refresh, and refreshing throws away what they had just typed. Measured in
+    # two windows — the edit is on the screen after the refusal and gone after
+    # the reload.
+    print("── the same deck in two windows ──")
+    run = int(time.time()) % 10000
+    second = context.new_page()
+    for window in (page, second):
+        window.goto(f"{BASE}/presentations/{deck_id}/editor", wait_until="domcontentloaded")
+        window.wait_for_selector(".canvas-area", timeout=25000)
+        window.wait_for_timeout(2000)
+
+    def retitle(window, index, text):
+        window.bring_to_front()
+        window.locator(".slide-thumbnail-row").nth(index).click()
+        window.wait_for_timeout(1200)
+        field = window.locator("aside input, .inspector-body input").first
+        field.click()
+        field.fill(text)
+        window.wait_for_timeout(500)
+        window.keyboard.press("Control+s")
+        window.wait_for_timeout(3500)
+        toast = window.locator(".toast, .toast-stack").first
+        return toast.inner_text().replace("\n", " ") if toast.count() else ""
+
+    retitle(page, 0, f"먼저 고친 장 {run}")
+    refused = retitle(second, 1, f"나중에 고친 장 {run}")
+    titles = [slide["title"] for slide in api(f"/presentations/{deck_id}")["slides"]]
+    if f"먼저 고친 장 {run}" not in titles:
+        failures.append("the first window's save did not survive the second window's")
+    if f"나중에 고친 장 {run}" in titles:
+        failures.append("a stale window overwrote the deck instead of being refused")
+    if "먼저 바뀌" not in refused:
+        failures.append(f"a stale save was answered with {refused[:80]!r}")
+    # Asking somebody to refresh has to say what refreshing costs.
+    if "새로고침" in refused and not ("사라" in refused and "복사" in refused):
+        failures.append(f"the conflict asks for a refresh without saying it loses the edit: {refused[:110]!r}")
+    second.close()
+    page.bring_to_front()
+    check("two windows")
+
     print("── the recycle bin ──")
     page.goto(f"{BASE}/presentations", wait_until="networkidle")
     page.wait_for_timeout(2000)
