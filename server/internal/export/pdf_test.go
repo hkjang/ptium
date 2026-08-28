@@ -380,3 +380,31 @@ func testPhotograph(width, height int) []byte {
 	}
 	return buffer.Bytes()
 }
+
+// The handout leaves out the slides the author is skipping, so the deck's third
+// slide is not the third page. A link written [3장](#3) was handed to the paper
+// as the number alone, and clicking it turned to the page after the one it
+// names — one further on for every skipped slide before it.
+func TestAJumpOnPaperNamesThePageItIsPrintedOn(t *testing.T) {
+	file, _ := printedDeck(t, "# 첫 장\n@content\n- 세 번째 장 [3장 참고](#3)\n- 건너뛴 장 [2장](#2)\n- 없는 장 [9장](#9)\n\n"+
+		"# 둘째 장\n@content\n!skip\n- 뺀 장\n\n# 셋째 장\n@content\n- 여기가 3장\n\n# 넷째 장\n@content\n- 4장\n")
+	body := string(file)
+	if pages := strings.Count(body, "/Type /Page "); pages != 3 {
+		t.Fatalf("a deck of three shown slides printed %d pages", pages)
+	}
+	// /Dest [1 /Fit] is the second page, which is where the deck's third slide
+	// is printed. The jump naming the skipped slide lands there too — the next
+	// page there is — and the jump past the end of the deck names no page.
+	destinations := regexp.MustCompile(`/Dest \[(\d+) /Fit\]`).FindAllStringSubmatch(body, -1)
+	var landed []string
+	for _, one := range destinations {
+		landed = append(landed, one[1])
+	}
+	if len(landed) != 2 || landed[0] != "1" || landed[1] != "1" {
+		t.Errorf("the jumps landed on pages %v, want both on the second page (index 1)", landed)
+	}
+	// A link that names neither a page nor an address is not written at all.
+	if strings.Contains(body, "/URI ()") {
+		t.Error("a jump past the end of the deck was written as a link to nowhere")
+	}
+}

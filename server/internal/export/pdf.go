@@ -3,7 +3,9 @@ package export
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/hkjang/ptium/server/internal/deck"
@@ -74,6 +76,7 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 	height := float64(heightEMU) / 12700
 	document := pdf.New(width, height, presentation.Title, font)
 	built := deck.BuildWithImages(presentation, manifest, options.Author, options.Images)
+	printed := printedPages(built.Slides)
 	for index, slide := range built.Slides {
 		if slide.Skipped {
 			// A slide kept out of the talk is kept out of the handout: the paper
@@ -90,9 +93,9 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 		// A page is not a screen: it is drawn in points and printed at far more
 		// dots than a point, so a picture is embedded for the paper rather than
 		// for a monitor.
-		drawing := pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{
+		drawing := onPrintedPages(pptx.PreviewSVG(manifest, layout, slide, pptx.PreviewOptions{
 			Width: int(width), Media: options.Media, Language: presentation.Language,
-			PictureDensity: pptx.PrintPictureDensity})
+			PictureDensity: pptx.PrintPictureDensity}), printed)
 		page := document.AddPage()
 		if !options.WithNotes {
 			if err := pdf.DrawSVG(page, drawing); err != nil {
@@ -100,7 +103,7 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 			}
 			continue
 		}
-		if err := printWithNotes(document, page, drawing, slide, presentation.Language, width, height); err != nil {
+		if err := printWithNotes(document, page, drawing, slide, presentation.Language, width, height, printed); err != nil {
 			return nil, nil, fmt.Errorf("draw slide %d: %w", index+1, err)
 		}
 	}
@@ -109,6 +112,57 @@ func PDFWithMissing(presentation model.Presentation, options Options) ([]byte, [
 	}
 	return document.Bytes(), missingRunes(document), nil
 }
+
+// printedPages maps a slide of the deck to the page it is printed on.
+//
+// The handout leaves out the slides the author is skipping, so the deck's third
+// slide is not the third page. A link written [3장](#3) names the deck's third
+// slide, and it was handed to the paper as the number alone: on a deck with one
+// skipped slide before it, clicking it in the PDF turned to the page after the
+// one it names. A jump naming a slide that is not printed goes to the next one
+// that is, which is what presenting and a shared link both do; a jump past the
+// end of the deck names no page at all, and no link is drawn for it.
+func printedPages(slides []pptx.Slide) map[int]int {
+	pages := map[int]int{}
+	page := 0
+	for index := len(slides) - 1; index >= 0; index-- {
+		if !slides[index].Skipped {
+			page = countPrintedTo(slides, index)
+		}
+		pages[index+1] = page
+	}
+	return pages
+}
+
+// countPrintedTo is the page number a slide is printed on, counting the slides
+// before it that are printed at all.
+func countPrintedTo(slides []pptx.Slide, index int) int {
+	page := 0
+	for at := 0; at <= index; at++ {
+		if !slides[at].Skipped {
+			page++
+		}
+	}
+	return page
+}
+
+// onPrintedPages rewrites a drawing's jumps from the deck's numbering into the
+// paper's. A jump with no page left is written as #slide-0, which names no page
+// and draws no link.
+func onPrintedPages(drawing string, printed map[int]int) string {
+	if len(printed) == 0 || !strings.Contains(drawing, "#slide-") {
+		return drawing
+	}
+	return jumpHref.ReplaceAllStringFunc(drawing, func(match string) string {
+		number, err := strconv.Atoi(strings.TrimPrefix(match, "#slide-"))
+		if err != nil {
+			return match
+		}
+		return fmt.Sprintf("#slide-%d", printed[number])
+	})
+}
+
+var jumpHref = regexp.MustCompile(`#slide-\d+`)
 
 // printWithNotes is the handout: the slide at the top of the page and what the
 // presenter meant to say underneath it.
@@ -132,7 +186,7 @@ func missingRunes(document *pdf.Document) []rune {
 }
 
 func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slide pptx.Slide,
-	language string, width, height float64) error {
+	language string, width, height float64, printed map[int]int) error {
 	const margin = 36
 	const gap = 22
 	scale := 0.62
@@ -184,7 +238,7 @@ func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slid
 		}
 		start := cursor + at
 		cursor = start + len(line)
-		drawNoteLine(document, page, runs, plain, start, cursor, left, top)
+		drawNoteLine(document, page, runs, plain, start, cursor, left, top, printed)
 		top += 15
 	}
 	return nil
@@ -196,7 +250,7 @@ func printWithNotes(document *pdf.Document, page *pdf.Page, drawing string, slid
 // that same text, so what belongs to this line is an overlap rather than a
 // search for the words again.
 func drawNoteLine(document *pdf.Document, page *pdf.Page, runs []pptx.TextRun, plain string,
-	from, to int, x, y float64) {
+	from, to int, x, y float64, printed map[int]int) {
 	at := 0
 	for _, run := range runs {
 		start, end := at, at+len(run.Text)
@@ -217,7 +271,9 @@ func drawNoteLine(document *pdf.Document, page *pdf.Page, runs []pptx.TextRun, p
 			page.Underline(x, y, width, colour, 10.5)
 			target, jump := run.Href, 0
 			if number, ok := pptx.SlideJump(run.Href); ok {
-				target, jump = "", number
+				// The note is on the paper too, and the paper's pages are not
+				// the deck's slides when a slide is being skipped.
+				target, jump = "", printed[number]
 			}
 			page.Link(x, y-8.4, width, 11, target, jump)
 		}

@@ -68,9 +68,17 @@ func (d *Document) Bytes() []byte {
 		if len(page.links) > 0 {
 			var ids []string
 			for _, one := range page.links {
-				ids = append(ids, fmt.Sprintf("%d 0 R", object(d.annotation(page, one))))
+				// A link that names neither a page in this document nor an
+				// address is not written at all: it is nothing to click.
+				written := d.annotation(page, one)
+				if written == "" {
+					continue
+				}
+				ids = append(ids, fmt.Sprintf("%d 0 R", object(written)))
 			}
-			annotations = " /Annots [" + strings.Join(ids, " ") + "]"
+			if len(ids) > 0 {
+				annotations = " /Annots [" + strings.Join(ids, " ") + "]"
+			}
 		}
 		// A page names what it draws with. Listing every picture in the deck on
 		// every page is not wrong, and it is not what the page is.
@@ -129,6 +137,12 @@ func (d *Document) annotation(page *Page, one link) string {
 	if one.page > 0 && one.page <= len(d.pages) {
 		return fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect %s /Border [0 0 0] /Dest [%d /Fit] >>",
 			rectangle, one.page-1)
+	}
+	if strings.TrimSpace(one.target) == "" {
+		// A link that names neither a page in this document nor an address is
+		// not a link. Written anyway it became /URI (), an annotation a reader
+		// will happily let somebody click on its way to nowhere.
+		return ""
 	}
 	return fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect %s /Border [0 0 0] /A << /Type /Action /S /URI /URI %s >> >>",
 		rectangle, uriLiteral(one.target))

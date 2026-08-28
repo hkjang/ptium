@@ -700,6 +700,24 @@ if ThirdPartyReader is not None:
                     failures.append(f"a PDF reader cannot find {wanted!r} in the exported file")
     call("DELETE", f"/presentations/{spec_deck['id']}", expect=(200, 204))
 
+print("── a jump on paper names the page it is printed on ──")
+# The handout leaves out the slides being skipped, so the deck's third slide is
+# not the third page; the jump was handed to the paper as the number alone.
+paper_deck = data_of(call("POST", "/presentations", {"title": f"인쇄점프 {RUN}", "prompt": "인쇄", "slideCount": 3}, expect=201)) or {}
+call("PUT", f"/presentations/{paper_deck['id']}/source", {"source":
+    "# 첫 장\n- 세 번째 장 [3장 참고](#3) 과 없는 장 [9장](#9)\n\n# 둘째 장\n!skip\n- 뺀 장\n\n"
+    "# 셋째 장\n- 여기가 3장\n\n# 넷째 장\n- 4장\n"}, expect=200)
+_, printed_pdf = call("GET", f"/presentations/{paper_deck['id']}/export.pdf", raw=True, expect=200)
+printed_body = (printed_pdf or b"").decode("latin-1")
+checks += 1
+landed = re.findall(r"/Dest \[(\d+) /Fit\]", printed_body)
+if landed != ["1"]:
+    failures.append(f"a jump on paper lands on pages {landed}, want the second page (index 1)")
+checks += 1
+if "/URI ()" in printed_body:
+    failures.append("a jump past the end of the deck was printed as a link to nowhere")
+call("DELETE", f"/presentations/{paper_deck['id']}", expect=204)
+
 print("── a shared link says which slide of the deck each page is ──")
 # A shared link leaves out the slides the author is skipping, so its third place
 # is not the deck's third slide; a jump written [3장](#3) has to land on the one
