@@ -54,6 +54,21 @@ func (s *Server) createShare(writer http.ResponseWriter, request *http.Request) 
 		s.handleStoreError(writer, request, err, "share_create_failed")
 		return
 	}
+	// Opening a link hands the deck to whoever holds it, with no account and no
+	// sign-in. Creating an API key is written down and so is revoking one; this
+	// gives away more and was written down nowhere. An administrator could see
+	// the links that were still open and, of the ones that were not, only those
+	// an administrator had closed themselves.
+	//
+	// The token is not recorded. What is worth knowing afterwards is that a link
+	// was opened on this deck, by whom, under what name and until when — never
+	// the thing that opens it.
+	until := ""
+	if expires != nil {
+		until = expires.UTC().Format(time.RFC3339)
+	}
+	s.store.Audit(request.Context(), &user.ID, "share.create", "share", share.ID,
+		map[string]any{"presentationId": share.PresentationID, "label": share.Label, "expiresAt": until})
 	// The link is shown once. Nothing stored can produce it again, which is the
 	// point: a lost database is not a set of open decks.
 	share.URL = shareURL(request, token)
@@ -76,6 +91,11 @@ func (s *Server) revokeShare(writer http.ResponseWriter, request *http.Request) 
 		s.handleStoreError(writer, request, err, "share_revoke_failed")
 		return
 	}
+	// Closing one's own link is the other half of opening it. An administrator
+	// reading back over a deck should find both, not a link that appears from
+	// nowhere and leaves the same way.
+	s.store.Audit(request.Context(), &user.ID, "share.revoke", "share", request.PathValue("shareId"),
+		map[string]any{"presentationId": request.PathValue("id")})
 	writer.WriteHeader(http.StatusNoContent)
 }
 

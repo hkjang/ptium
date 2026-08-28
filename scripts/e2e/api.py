@@ -858,6 +858,24 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── opening and closing a link is written down ──")
+# A share link hands the deck to whoever holds it, with no account and no
+# sign-in. Creating an API key was written down and this was not.
+audit_deck = data_of(call("POST", "/presentations", {"title": f"공유감사 {RUN}", "prompt": "감사", "slideCount": 1}, expect=201)) or {}
+audit_share = data_of(call("POST", f"/presentations/{audit_deck['id']}/shares", {"label": f"검토 {RUN}", "days": 7}, expect=201)) or {}
+audit_token = (audit_share.get("url") or "").rstrip("/").split("/")[-1]
+call("DELETE", f"/presentations/{audit_deck['id']}/shares/{audit_share.get('id')}", expect=204)
+audit_rows = data_of(call("GET", "/admin/audit?limit=50", expect=200)) or []
+audit_rows = audit_rows if isinstance(audit_rows, list) else audit_rows.get("items", [])
+audit_mine = [one for one in audit_rows if one.get("targetId") == audit_share.get("id")]
+checks += 1
+if sorted(one.get("action") for one in audit_mine) != ["share.create", "share.revoke"]:
+    failures.append(f"opening and closing a link left {[one.get('action') for one in audit_mine]} in the audit log")
+checks += 1
+if audit_token and any(audit_token in json.dumps(one) for one in audit_rows):
+    failures.append("the audit log holds the token that opens a shared deck")
+call("DELETE", f"/presentations/{audit_deck['id']}", expect=204)
+
 print("── both bar charts, each the way round it is named ──")
 # The guide named the horizontal bar chart under none of the four names that
 # reach it, and used `bars` — a spelling of the vertical one — for it.
