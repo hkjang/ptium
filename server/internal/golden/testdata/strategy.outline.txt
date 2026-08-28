@@ -2162,7 +2162,7 @@ p:sld
                       a:r
                         a:rPr lang=ko-KR sz=1600
                           a:solidFill
-                            a:srgbClr val=D5D1DB
+                            a:srgbClr val=F2EDF8
                           a:latin typeface=Aptos
                         a:t
                           "4.2억"
@@ -2180,7 +2180,7 @@ p:sld
                       a:r
                         a:rPr lang=ko-KR sz=1600
                           a:solidFill
-                            a:srgbClr val=D5D1DB
+                            a:srgbClr val=F2EDF8
                           a:latin typeface=Aptos
                         a:t
                           "3.4억"
@@ -2217,7 +2217,7 @@ p:sld
                       a:r
                         a:rPr lang=ko-KR sz=1600
                           a:solidFill
-                            a:srgbClr val=D5D1DB
+                            a:srgbClr val=F2EDF8
                           a:latin typeface=Aptos
                         a:t
                           "1.1억"
@@ -2235,7 +2235,7 @@ p:sld
                       a:r
                         a:rPr lang=ko-KR sz=1600
                           a:solidFill
-                            a:srgbClr val=D5D1DB
+                            a:srgbClr val=F2EDF8
                           a:latin typeface=Aptos
                         a:t
                           "1.4억"

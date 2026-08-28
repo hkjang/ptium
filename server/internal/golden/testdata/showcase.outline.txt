@@ -2324,7 +2324,7 @@ p:sld
               a:r
                 a:rPr b=1 dirty=0 lang=ko-KR sz=1600
                   a:solidFill
-                    a:srgbClr val=717273
+                    a:srgbClr val=535455
                   a:latin typeface=Aptos
                 a:t
                   "68%"
@@ -2645,7 +2645,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=717273
+                    a:srgbClr val=535455
                   a:latin typeface=Aptos
                 a:t
                   "직영  52"
@@ -2691,7 +2691,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=717273
+                    a:srgbClr val=535455
                   a:latin typeface=Aptos
                 a:t
                   "대리점  31"
@@ -2737,7 +2737,7 @@ p:sld
               a:r
                 a:rPr dirty=0 lang=ko-KR sz=1200
                   a:solidFill
-                    a:srgbClr val=717273
+                    a:srgbClr val=535455
                   a:latin typeface=Aptos
                 a:t
                   "온라인  17"

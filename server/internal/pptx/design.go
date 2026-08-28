@@ -67,6 +67,16 @@ func NewDesign(manifest Manifest) Design {
 	dark := relativeLuminance(surface) < 0.4
 
 	raised := mixColor(surface, ink, ifElse(dark, 0.10, 0.045))
+	// The quietest register first, then one that has to be clearly stronger than
+	// it. Naming a fixed floor for each cannot work on both a light design and a
+	// dark one: one floor for both drew nine of the ten palettes' secondary and
+	// muted in the same grey, and a floor high enough to separate them on a
+	// light design left the dark ones drawing secondary in the primary ink.
+	// What the design actually wants is a ladder, so the rung is measured from
+	// the rung below it.
+	muted := fadeInkAgainst(ink, surface, raised, 0.48, 4.5)
+	secondary := fadeInkAgainst(ink, surface, raised, 0.28,
+		math.Max(4.5, contrastRatio(muted, raised)*1.3))
 	design := Design{
 		Surface:       surface,
 		SurfaceRaised: raised,
@@ -80,10 +90,15 @@ func NewDesign(manifest Manifest) Design {
 		// because both are drawn on one: a KPI label, a table's banded row, a
 		// card's caption. And both keep the floor for text of the size they are
 		// set at — these labels are 12pt, which is not the large text that is
-		// allowed 3:1. Muted stays far quieter than the primary ink; on every
-		// design this ships, the gap is more than tenfold.
-		InkSecondary: fadeInkAgainst(ink, surface, raised, 0.28, 4.5),
-		InkMuted:     fadeInkAgainst(ink, surface, raised, 0.48, 4.5),
+		// allowed 3:1.
+		//
+		// They are told apart by what each must clear rather than by how far it
+		// is mixed, because a mix that gets clamped to the same floor is the
+		// same colour: given one floor for both, nine of the ten palettes this
+		// ships drew secondary and muted in exactly the same grey, and the deck
+		// lost a register it had. Three steps, each above what its size needs.
+		InkSecondary: secondary,
+		InkMuted:     muted,
 		Accent:       theme.Color("accent1"),
 		DeEmphasis:   fadeInk(ink, surface, 0.62, 1.6),
 		Display:      4400,

@@ -1,6 +1,9 @@
 package pptx
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The cover's one-line summary is prose somebody reads. Mixed toward the
 // surface by a fixed amount it landed at 2.2:1 on thirty-two of the designs
@@ -38,8 +41,9 @@ func TestTheInksADesignDerivesAreLegibleWhereTheyAreDrawn(t *testing.T) {
 	for _, palette := range builtinPalettes {
 		surface, ink := palette.Surface, palette.Ink
 		raised := mixColor(surface, ink, ifElse(relativeLuminance(surface) < 0.4, 0.10, 0.045))
-		secondary := fadeInkAgainst(ink, surface, raised, 0.28, 4.5)
 		muted := fadeInkAgainst(ink, surface, raised, 0.48, 4.5)
+		secondary := fadeInkAgainst(ink, surface, raised, 0.28,
+			mathMax(4.5, contrastRatio(muted, raised)*1.3))
 		for _, one := range []struct {
 			name string
 			ink  string
@@ -60,4 +64,42 @@ func TestTheInksADesignDerivesAreLegibleWhereTheyAreDrawn(t *testing.T) {
 			t.Errorf("%s: the muted ink is no quieter than the primary one", palette.Key)
 		}
 	}
+}
+
+// A design writes in three registers: the primary ink, a secondary one for the
+// lines beside it, and a muted one for labels. Giving the secondary and the
+// muted ink one contrast floor to clear made them the same colour on nine of
+// the ten palettes this ships — every one of them legible, and the deck a
+// register poorer for it. Naming a higher floor for the secondary instead left
+// the four dark designs drawing it in the primary ink.
+//
+// The rung is measured from the rung below, so this holds on a light design and
+// a dark one alike.
+func TestADesignKeepsItsThreeRegisters(t *testing.T) {
+	for _, palette := range builtinPalettes {
+		surface, ink := palette.Surface, palette.Ink
+		raised := mixColor(surface, ink, ifElse(relativeLuminance(surface) < 0.4, 0.10, 0.045))
+		muted := fadeInkAgainst(ink, surface, raised, 0.48, 4.5)
+		secondary := fadeInkAgainst(ink, surface, raised, 0.28,
+			mathMax(4.5, contrastRatio(muted, raised)*1.3))
+		primary := strings.ToUpper(strings.TrimPrefix(ink, "#"))
+		for _, pair := range [][2]string{{primary, secondary}, {secondary, muted}, {primary, muted}} {
+			if strings.EqualFold(pair[0], pair[1]) {
+				t.Errorf("%s: two of the three registers are the same colour (%s)", palette.Key, pair[0])
+			}
+		}
+		// And they stand in order: each quieter than the one above it.
+		if !(contrastRatio(ink, surface) > contrastRatio(secondary, surface) &&
+			contrastRatio(secondary, surface) > contrastRatio(muted, surface)) {
+			t.Errorf("%s: the registers are not in order (%.2f, %.2f, %.2f)", palette.Key,
+				contrastRatio(ink, surface), contrastRatio(secondary, surface), contrastRatio(muted, surface))
+		}
+	}
+}
+
+func mathMax(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
 }
