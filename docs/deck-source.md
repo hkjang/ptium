@@ -22,6 +22,7 @@ produces most reliably.
 - 예상 절감 | 18%
 ::                            the component ends
 !notes 예산 질문이 나오면…      speaker notes, continuing over following lines
+!source 2026 시장 조사 보고서   where a figure came from (!출처 도 같습니다)
 !skip                          keep this slide out of the talk (!건너뛰기 도 같습니다)
 !build                         give the points out one at a time while presenting (!하나씩)
 [안내 문서](https://…)          a link, in any line of prose
@@ -53,9 +54,17 @@ cover, the last of three or more is a closing, everything between is content.
 
 ### Components
 
-`kpi` `hero` `steps` `timeline` `comparison` `columns` `bars` `line` `share`
-`meter` `table` `quote` `callout` `grid`, with aliases in both languages (`지표`,
-`단계`, `로드맵`, `비교`, `추이`, `비중`, `달성률`, `강조`, …).
+`bullets` `kpi` `hero` `steps` `timeline` `comparison` `columns` `hbars`
+`line` `share` `meter` `table` `quote` `callout` `grid`, with aliases in both
+languages (`목록`, `지표`, `단계`, `로드맵`, `비교`, `세로막대`, `가로막대`,
+`추이`, `비중`, `달성률`, `강조`, …).
+
+The two bar charts stand apart by which way the bars run. `columns` stands them
+up from a baseline, which is what a quarter-by-quarter figure wants; `hbars`
+lays them along one, which is what a ranking wants, because a name reads better
+beside its bar than under it. `bars` and `bar` are older names for `columns`, so
+a deck that used them keeps drawing what it drew; `barchart`, `ranking` and
+`가로막대` all name the horizontal one.
 
 Rows are `label | value | detail`; any part may be omitted. A value that carries
 a number — `42개`, `18%`, `1,200억`, `-3.5pt` — is read as one, so bars and

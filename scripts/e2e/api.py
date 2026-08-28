@@ -858,6 +858,26 @@ if len(jump_found) != 1 or "9장 참고" not in jump_found[0].get("detail", ""):
     failures.append(f"a jump past the end of the deck is not reported: {jump_found}")
 call("DELETE", f"/presentations/{jump_deck['id']}", expect=204)
 
+print("── both bar charts, each the way round it is named ──")
+# The guide named the horizontal bar chart under none of the four names that
+# reach it, and used `bars` — a spelling of the vertical one — for it.
+bar_deck = data_of(call("POST", "/presentations", {"title": f"막대 {RUN}", "prompt": "막대", "slideCount": 2}, expect=201)) or {}
+call("PUT", f"/presentations/{bar_deck['id']}/source", {"source":
+    "# 세로\n::columns 매출\n- 서울 | 1240\n- 부산 | 620\n::\n\n"
+    "# 가로\n::hbars 매출\n- 서울 | 1240\n- 부산 | 620\n::\n"}, expect=200)
+for bar_slide, bar_axis in ((1, "wide"), (2, "tall")):
+    _, bar_svg = call("GET", f"/presentations/{bar_deck['id']}/preview.svg?slide={bar_slide}", raw=True, expect=200)
+    drawn = (bar_svg or b"").decode("utf-8", "replace")
+    # the baseline: a column chart rules along the foot, a bar chart down the side
+    rules = [(float(w), float(h)) for w, h in
+             re.findall(r'<rect[^>]*width="([\d.]+)"[^>]*height="([\d.]+)"[^>]*rx="0\.0"', drawn)]
+    checks += 1
+    if not rules:
+        failures.append(f"slide {bar_slide} drew no chart axis at all")
+    elif (rules[0][0] > rules[0][1]) != (bar_axis == "wide"):
+        failures.append(f"slide {bar_slide} drew its bars the wrong way round: axis {rules[0]}")
+call("DELETE", f"/presentations/{bar_deck['id']}", expect=204)
+
 print("── what is cut is said, and what fits is drawn whole ──")
 # Everything a component can drop has to be reported, and everything it can
 # hold has to arrive: a cell that wraps inside its row is not trimmed, and an
