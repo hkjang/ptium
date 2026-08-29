@@ -44,6 +44,7 @@ type worksheet struct {
 		Cells     []struct {
 			Reference string `xml:"r,attr"`
 			Type      string `xml:"t,attr"`
+			Style     string `xml:"s,attr"`
 			Value     string `xml:"v"`
 			Inline    string `xml:"is>t"`
 		} `xml:"c"`
@@ -80,6 +81,8 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 	}
 	var strings0 sharedStrings
 	_ = xml.Unmarshal(parts["xl/sharedStrings.xml"], &strings0)
+	// What each style means, so a date is a day and a per cent is a per cent.
+	formats := readCellFormats(parts["xl/styles.xml"])
 	shared := make([]string, 0, len(strings0.Items))
 	for _, item := range strings0.Items {
 		if item.Text != "" {
@@ -111,7 +114,7 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if err := xml.Unmarshal(content, &parsed); err != nil {
 			continue
 		}
-		rows := gridOf(parsed, shared)
+		rows := gridOf(parsed, shared, formats)
 		count, sheetWarnings := writeSheet(&builder, filename, sheet.Name, rows)
 		written += count
 		warnings = append(warnings, sheetWarnings...)
@@ -134,7 +137,7 @@ func sheetPart(name string) string {
 
 // gridOf reads a sheet into rows of text, in the cells' own positions: a sheet
 // leaves out empty cells, and reading them in order would shift a row left.
-func gridOf(sheet worksheet, shared []string) [][]string {
+func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 	grid := make([][]string, 0, len(sheet.Rows))
 	for _, row := range sheet.Rows {
 		cells := map[int]string{}
@@ -149,6 +152,12 @@ func gridOf(sheet worksheet, shared []string) [][]string {
 				}
 			case "inlineStr":
 				value = cell.Inline
+			default:
+				// A number carries its meaning in its format: a day counted
+				// from 1899-12-30, or a fraction of one written as a per cent.
+				if shown, ok := formats.written(cell.Style, value); ok {
+					value = shown
+				}
 			}
 			cells[column] = strings.TrimSpace(value)
 			if column > widest {
