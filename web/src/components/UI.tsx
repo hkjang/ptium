@@ -58,6 +58,25 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
   )
 }
 
+/**
+ * The last place the keyboard stood outside any overlay.
+ *
+ * Watched for the whole page rather than by each overlay, because a dialog
+ * rendered only while it has something to show mounts already open: it never
+ * saw the click that opened it, and by the time it runs, a field of its own
+ * asking for the focus has already taken it. The body is skipped — closing an
+ * overlay drops the focus there on the way out, and that is nowhere to send
+ * anyone back to.
+ */
+let cameBefore: HTMLElement | null = null
+if (typeof window !== 'undefined') {
+  window.addEventListener('focusin', () => {
+    const on = document.activeElement
+    if (on instanceof HTMLElement && on !== document.body
+        && !on.closest('.modal, .error-drawer, [role="dialog"]')) cameBefore = on
+  }, true)
+}
+
 /** Everything inside `root` the keyboard can stand on, in tab order. */
 function focusStops(root: HTMLElement): HTMLElement[] {
   const kinds = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),'
@@ -78,7 +97,6 @@ function focusStops(root: HTMLElement): HTMLElement[] {
  */
 export function useOverlayKeys(open: boolean, onClose: () => void) {
   const panel = useRef<HTMLElement | null>(null)
-  const cameFrom = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -99,15 +117,16 @@ export function useOverlayKeys(open: boolean, onClose: () => void) {
   }, [open, onClose])
 
   // The panel itself takes the focus rather than its first button, so a screen
-  // reader reads the title before the controls under it.
+  // reader reads the title before the controls under it — unless a field inside
+  // asked for the focus first. React grants that during the commit, before this
+  // runs, so taking it unconditionally threw away what the author asked for:
+  // the new-key dialog opens on its name field, and every letter typed into it
+  // went nowhere.
   useEffect(() => {
     if (!open) return
-    cameFrom.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    panel.current?.focus()
-    return () => {
-      const back = cameFrom.current
-      if (back && document.contains(back)) back.focus()
-    }
+    const back = cameBefore
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus()
+    return () => { if (back && document.contains(back)) back.focus() }
   }, [open])
 
   return panel

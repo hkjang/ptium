@@ -721,7 +721,7 @@ with sync_playwright() as play:
     STANDING = ("() => { const on = document.activeElement; return on ? on.tagName + '|' +"
                 " (on.textContent || on.getAttribute('aria-label') || '').trim().slice(0, 24) : '' }")
 
-    def overlay(path, opener, name):
+    def overlay(path, opener, name, types=None):
         page.goto(BASE + path, wait_until="networkidle")
         page.wait_for_timeout(2500)
         button = page.locator(opener).first
@@ -737,6 +737,16 @@ with sync_playwright() as play:
             return
         if not page.evaluate(INSIDE):
             failures.append(f"{name}: opening it left the keyboard outside — at {page.evaluate(STANDING)}")
+        # A dialog whose field asks for the focus keeps it. Taking the focus for
+        # the panel unconditionally looked correct on every count above and threw
+        # away what the author asked for: the letters went nowhere.
+        if types:
+            page.keyboard.press("x")
+            page.keyboard.press("y")
+            page.wait_for_timeout(200)
+            landed = page.evaluate("() => { const box = document.querySelector('%s'); return box ? box.value : null }" % types)
+            if landed != "xy":
+                failures.append(f"{name}: it opens on a field, and typing into it gave {landed!r}")
         leaked = 0
         for _ in range(25):
             page.keyboard.press("Tab")
@@ -756,6 +766,7 @@ with sync_playwright() as play:
             failures.append(f"{name}: closing it did not give the keyboard back to what opened it"
                             f" ({page.evaluate(STANDING)!r}, not {opened_from!r})")
 
+    overlay("/api-keys", "button:has-text('새 API 키')", "the new-key dialog", types=".modal input.input")
     overlay("/templates", ".template-card-preview", "the template dialog")
     overlay("/admin/users", ".user-cell", "the user dialog")
     overlay("/admin/audit", "button.error-row", "the audit drawer")
