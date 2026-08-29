@@ -89,3 +89,45 @@ func TestAFileEditedElsewhereIsNotRestoredFromItsOldSource(t *testing.T) {
 		t.Fatal("an edited file was restored from the source it no longer matches")
 	}
 }
+
+// The same, for the pane the speaker actually writes in.
+//
+// Fingerprinting only the slides let a note edited in PowerPoint through: every
+// word on the slides still matched, so the source was restored whole and what
+// the speaker had written to say was thrown away — with the import saying it
+// had taken the file "as it was".
+func TestANoteEditedElsewhereIsNotRestoredFromItsOldSource(t *testing.T) {
+	template, err := BuiltinTemplate("")
+	if err != nil {
+		t.Fatalf("builtin template: %v", err)
+	}
+	rendered, err := RenderBytes(template, Deck{Title: "노트 왕복", Language: "ko",
+		Source: "# 분기 실적\n!notes 예산 질문이 나오면 이 장에서 답합니다\n- 매출 1,240억\n",
+		Slides: []Slide{{LayoutID: "제목-및-내용", Notes: "예산 질문이 나오면 이 장에서 답합니다",
+			Fields: map[string][]Paragraph{
+				SlotTitle: {{Text: "분기 실적"}}, SlotBody: {{Text: "매출 1,240억"}}}}}})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	pkg, err := Open(rendered)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, ok := DeckSource(pkg); !ok {
+		t.Fatal("the untouched file does not carry its source")
+	}
+
+	// The note is rewritten in PowerPoint. Not a word on the slides changes.
+	notes, ok := pkg.Text("ppt/notesSlides/notesSlide1.xml")
+	if !ok {
+		t.Fatal("the rendered file carries no notes to edit")
+	}
+	if !strings.Contains(notes, "예산 질문") {
+		t.Fatalf("the note is not in the notes slide: %.200s", notes)
+	}
+	pkg.SetText("ppt/notesSlides/notesSlide1.xml",
+		strings.Replace(notes, "예산 질문이 나오면 이 장에서 답합니다", "가격 질문이 나오면 다음 장으로 넘기세요", 1))
+	if _, ok := DeckSource(pkg); ok {
+		t.Fatal("a file whose notes were edited was restored from the source it no longer matches")
+	}
+}

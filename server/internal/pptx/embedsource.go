@@ -36,20 +36,27 @@ func writeDeckSource(pkg *Package, source string) string {
 		return ""
 	}
 	pkg.SetText(sourcePart, xmlDeclaration+
-		`<deckSource xmlns="`+sourceNamespace+`" version="1" slides="`+slideTextDigest(pkg)+`">`+
+		`<deckSource xmlns="`+sourceNamespace+`" version="1" slides="`+deckTextDigest(pkg)+`">`+
 		escapeSourceText(trimmed)+`</deckSource>`)
 	return sourcePart
 }
 
-// slideTextDigest is a fingerprint of every word the slides carry.
+// deckTextDigest is a fingerprint of every word the deck carries, on its slides
+// and in its speaker notes alike.
 //
 // Someone who opens the exported file in PowerPoint, fixes a number and sends
 // it back has made the embedded source out of date. Restoring from it would
 // throw their edit away without saying so — the worst thing this feature could
 // do — so the file is checked against the fingerprint first, and one that no
 // longer matches is read from its shapes like anyone else's.
-func slideTextDigest(pkg *Package) string {
-	names := pkg.NamesUnder("ppt/slides/")
+//
+// The notes count. Fingerprinting only the slides let an edit made in the notes
+// pane through: the words on the slides still matched, the source was restored
+// whole, and what the speaker had written to say was gone with nothing said
+// about it. Notes are written into the package before this runs, so they are
+// there to be read.
+func deckTextDigest(pkg *Package) string {
+	names := append(pkg.NamesUnder("ppt/slides/"), pkg.NamesUnder("ppt/notesSlides/")...)
 	sort.Strings(names)
 	digest := sha256.New()
 	for _, name := range names {
@@ -99,7 +106,7 @@ func DeckSource(pkg *Package) (string, bool) {
 	// is the escaping applied above.
 	// A file edited somewhere else no longer says what this source says, and the
 	// author's edit is worth more than the components the source would restore.
-	if recorded := digestAttribute(content[start:opening]); recorded != "" && recorded != slideTextDigest(pkg) {
+	if recorded := digestAttribute(content[start:opening]); recorded != "" && recorded != deckTextDigest(pkg) {
 		return "", false
 	}
 	source := strings.TrimSpace(html.UnescapeString(content[opening+1 : closing]))
