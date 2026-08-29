@@ -22,6 +22,10 @@ describe('한 낱말 뒤에 오는 조사', () => {
     expect(objectParticle('KPI')).toBe('를')          // 케이피아이
     expect(objectParticle('Excel')).toBe('을')        // 엑셀
     expect(objectParticle('2026')).toBe('을')         // 이천이십육
+    // 영 closes on ㅇ, and a longer number ending in zero is read 십 · 백 · 천,
+    // which close on a consonant too.
+    expect(objectParticle('2020')).toBe('을')         // 이천이십
+    expect(topicParticle('v10')).toBe('은')           // 십
     expect(objectParticle('v2')).toBe('를')           // 브이투
     expect(topicParticle('Zoom')).toBe('은')          // 줌
     expect(subjectParticle('plan9')).toBe('가')       // 구

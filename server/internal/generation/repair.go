@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/korean"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -398,7 +399,7 @@ func leftAsWrittenNote(positions []int, language string) string {
 		return fmt.Sprintf("%s请模型重写后并没有变好，因此保持原样。请手动修改或换一种说法。", which)
 	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
 		return fmt.Sprintf("%s%s 모델에게 다시 쓰게 했지만 나아지지 않아 그대로 두었습니다. 손으로 고치거나 다른 표현을 지시해 주세요.",
-			which, koreanTopic(which))
+			which, korean.Topic(which))
 	}
 	if len(positions) == 1 {
 		return fmt.Sprintf("%s was sent back to the model and came back no better, so it was left as written. "+
@@ -406,32 +407,6 @@ func leftAsWrittenNote(positions []int, language string) string {
 	}
 	return fmt.Sprintf("%s were sent back to the model and came back no better, so they were left as written. "+
 		"Fix them by hand, or say what to change.", which)
-}
-
-// koreanTopic is 은 or 는 for what comes before it.
-//
-// Which one depends on the last syllable: 는 after a vowel, 은 after a final
-// consonant. The phrase before it is not fixed — "4번 슬라이드" ends in a vowel
-// and "슬라이드 9장" in a consonant — so the particle cannot be written into the
-// sentence, and writing it there gave "슬라이드는" as "슬라이드은".
-func koreanTopic(phrase string) string {
-	runes := []rune(strings.TrimSpace(phrase))
-	if len(runes) == 0 {
-		return "은"
-	}
-	last := runes[len(runes)-1]
-	if last >= 0xAC00 && last <= 0xD7A3 {
-		if (last-0xAC00)%28 == 0 {
-			return "는"
-		}
-		return "은"
-	}
-	// A number is read aloud, and four of the ten readings end in a vowel.
-	switch last {
-	case '2', '4', '5', '9':
-		return "는"
-	}
-	return "은"
 }
 
 // slidesSaid names the slides something happened to, in the deck's own
@@ -490,7 +465,7 @@ func noTimeLeftNote(positions []int, language string) string {
 		return fmt.Sprintf("%s没有时间重写。可在编辑器的检查结果中修复。", which)
 	case strings.HasPrefix(strings.ToLower(language), "ko"), strings.TrimSpace(language) == "":
 		return fmt.Sprintf("%s%s 다시 쓸 시간이 없었습니다. 편집기의 검사 결과에서 고칠 수 있습니다.",
-			which, koreanTopic(which))
+			which, korean.Topic(which))
 	}
 	return fmt.Sprintf("%s had no time left to be rewritten. The editor's measurements will fix them.", which)
 }

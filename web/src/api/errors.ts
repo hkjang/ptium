@@ -24,6 +24,27 @@ const byMessage: Record<string, string> = {
   'this deck has as many comments as it will hold': '이 덱에는 더 이상 의견을 남길 수 없습니다.',
   'a share needs a short label and a sensible number of days':
     '링크 이름은 짧게, 기간은 일 단위로 3650일까지 지정할 수 있습니다.',
+  // Refusals the workspace can walk into and had no rule for: an upload that is
+  // too large, a command sent to a deck with no slides, an export of a deck
+  // whose every slide is skipped.
+  'Generate or add slides before commanding the deck':
+    '먼저 슬라이드를 만들거나 추가한 뒤에 덱에 지시할 수 있습니다.',
+  'Generate or add slides before inspecting':
+    '먼저 슬라이드를 만들거나 추가한 뒤에 점검할 수 있습니다.',
+  'The deck source must be UTF-8 text within the size limit':
+    '덱 소스는 UTF-8 글자여야 하고, 크기 제한을 넘지 않아야 합니다.',
+  'instruction or slot exceeds its allowed length': '지시문이나 자리 이름이 너무 깁니다.',
+  'Only pptx and pdf export are supported': 'pptx 와 pdf 로만 내보낼 수 있습니다.',
+  'Every slide is marked skipped, so the PDF would have no pages':
+    '모든 슬라이드가 건너뛰기로 표시되어 있어 PDF 에 넣을 쪽이 없습니다.',
+  'That change is not in the trail': '그 변경은 기록에 없습니다.',
+  'state must be open, expired or revoked': '상태는 열림 · 만료 · 회수 중 하나여야 합니다.',
+  'kind must be builtin or uploaded': '종류는 내장 또는 올린 것 중 하나여야 합니다.',
+  'shared must be true or false': '공유 여부는 참 또는 거짓이어야 합니다.',
+  'Send the image as multipart/form-data with a file field':
+    '이미지는 multipart/form-data 의 file 항목으로 보내 주세요.',
+  "Send either the slide's source, or the deck and the slide to save":
+    '슬라이드 소스를 보내거나, 저장할 덱과 슬라이드를 함께 보내 주세요.',
   // Messages a person meets in the workspace that had no rule written for
   // them, so they arrived in English on a screen that is Korean throughout.
   // The commonest by far is the first: on a site with no model configured,
@@ -174,6 +195,10 @@ const byCode: Record<string, string> = {
  * box to look at.
  */
 const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
+  // The limit is a deployment's own setting, so it arrives in the sentence.
+  [/^An image must be (\d+) MiB or smaller$/, (m) => `이미지는 ${m[1]}MiB 이하여야 합니다.`],
+  [/^The template must not exceed (\d+) MiB$/, (m) => `템플릿은 ${m[1]}MiB 를 넘을 수 없습니다.`],
+  [/^The upload must not exceed (\d+) MiB$/, (m) => `올리는 파일은 ${m[1]}MiB 를 넘을 수 없습니다.`],
   [/^(?:slide )?(\w+) is required and must not exceed (\d+) characters$/,
     (m) => `${topic(fieldName(m[1]))} 비워 둘 수 없고 ${m[2]}자를 넘을 수 없습니다.`],
   [/^(\w+) must not exceed (\d+) characters$/,

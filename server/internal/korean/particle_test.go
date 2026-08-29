@@ -24,6 +24,12 @@ func TestTheParticleFollowsTheWord(t *testing.T) {
 		{"KPI", "는", "를", "가", "와"},
 		{"Excel", "은", "을", "이", "과"},
 		{"2026", "은", "을", "이", "과"},
+		// 영 closes on ㅇ, so a name ending in zero takes the same form — and a
+		// longer number ending in zero is read 십 · 백 · 천 · 만 · 억, which close
+		// on a consonant as well.
+		{"2020", "은", "을", "이", "과"},
+		{"v10", "은", "을", "이", "과"},
+		{"0", "은", "을", "이", "과"},
 		{"v2", "는", "를", "가", "와"},
 		// %q wraps the word in quotation marks, and the word is what decides.
 		{`"매출"`, "은", "을", "이", "과"},

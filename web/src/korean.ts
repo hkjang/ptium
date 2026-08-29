@@ -17,8 +17,10 @@
 
 /** The names of the digits, for a word that ends in one. */
 const digitEndsInConsonant: Record<string, boolean> = {
-  // 영 이 사 오 구 end open; 일 삼 육 칠 팔 end on a consonant.
-  '0': false, '1': true, '2': false, '3': true, '4': false,
+  // 이 사 오 구 end open; 영 일 삼 육 칠 팔 end on a consonant — 영 ends on ㅇ,
+  // and a number written with a trailing zero is read 십 · 백 · 천 · 만 · 억,
+  // every one of which closes on a consonant too.
+  '0': true, '1': true, '2': false, '3': true, '4': false,
   '5': false, '6': true, '7': true, '8': true, '9': false,
 }
 

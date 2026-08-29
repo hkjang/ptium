@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/hkjang/ptium/server/internal/deck"
+	"github.com/hkjang/ptium/server/internal/korean"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
@@ -316,12 +317,14 @@ func TestTheNotesReadAsSentences(t *testing.T) {
 // writing the particle into the sentence gave "슬라이드은".
 func TestTheKoreanParticleFollowsWhatComesBeforeIt(t *testing.T) {
 	for phrase, want := range map[string]string{
-		"4번 슬라이드":   "는",
-		"슬라이드 9장":   "은",
+		"4번 슬라이드":     "는",
+		"슬라이드 9장":     "은",
 		"2·5·6번 슬라이드": "는",
-		"":           "은",
+		// Nothing in front of it decides nothing; the shared rule gives the form
+		// that follows a vowel, and a note with no subject is malformed either way.
+		"": "는",
 	} {
-		if got := koreanTopic(phrase); got != want {
+		if got := korean.Topic(phrase); got != want {
 			t.Errorf("%q took %q, want %q", phrase, got, want)
 		}
 	}
