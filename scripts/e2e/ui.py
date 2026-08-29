@@ -340,6 +340,21 @@ with sync_playwright() as play:
         failures.append(f"opening a fifty-slide deck asked for {drawn['count']} previews; only a windowful is on screen")
     if drawn["count"] == 0:
         failures.append("opening a deck drew no preview at all")
+    # And the reader ahead of the fold is served: the margin that decides what
+    # counts as near is measured against the rail, not the window, so the next
+    # screenful is already drawn. Measured against the window it stopped at the
+    # rail's edge and nothing past it was ever drawn early.
+    ahead = page.evaluate("""() => {
+      const rail = document.querySelector('.slide-list')
+      if (!rail) return -1
+      const box = rail.getBoundingClientRect()
+      return [...rail.querySelectorAll('img.slide-preview')].filter((el) => {
+        const seen = el.getBoundingClientRect()
+        return seen.top >= box.bottom || seen.bottom <= box.top
+      }).length
+    }""")
+    if ahead < 1:
+        failures.append(f"nothing below the rail's fold was drawn ahead of the reader ({ahead})")
     api(f"/presentations/{tall['id']}", "DELETE")
 
     # A deck of fifty slides has a rail taller than any window, and a slide

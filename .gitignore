@@ -38,3 +38,4 @@ dist/
 # Screenshots the end-to-end sweeps write where they are run.
 /*.png
 node_modules/
+scripts/e2e/*.png

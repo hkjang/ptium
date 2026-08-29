@@ -13,8 +13,21 @@ import { ImageOff, LoaderCircle } from 'lucide-react'
  * were for nobody, and a longer deck wasted proportionally more.
  *
  * The margin is generous on purpose — scrolling should meet a picture that is
- * already there rather than a spinner that starts when it arrives.
+ * already there rather than a spinner that starts when it arrives. It is
+ * measured against the panel the thumbnails actually scroll in, because a
+ * margin is only ever applied to the observer's own root: left at the window,
+ * it was cut off at the rail's edge and the deck ahead of the reader was never
+ * drawn early. The rail is the thing being scrolled, so the rail is the root.
  */
+/** The scrolling panel an element sits in, or null when that is the window. */
+function scrollingParent(element: Element): Element | null {
+  for (let node = element.parentElement; node; node = node.parentElement) {
+    const overflow = getComputedStyle(node).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll') && node.scrollHeight > node.clientHeight) return node
+  }
+  return null
+}
+
 export function SlidePreview({ load, alt, className, cacheKey }: {
   load: () => Promise<string>
   alt: string
@@ -39,7 +52,7 @@ export function SlidePreview({ load, alt, className, cacheKey }: {
         setNear(true)
         watcher.disconnect()
       }
-    }, { rootMargin: '600px' })
+    }, { root: scrollingParent(element), rootMargin: '600px' })
     watcher.observe(element)
     return () => watcher.disconnect()
   }, [near])
