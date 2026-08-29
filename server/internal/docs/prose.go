@@ -95,7 +95,26 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 			writer.table(rows)
 		}
 	}
-	return writer.document()
+	document, err := writer.document()
+	if err != nil {
+		return document, err
+	}
+	// A picture in the file is not read — the reader takes words and tables —
+	// and a deck that quietly comes back without the photograph somebody put in
+	// their report is worse than one that says so. The presentation reader says
+	// the same thing in the same words.
+	if drawings := picturesIn(content); drawings > 0 {
+		document.Warnings = append(document.Warnings, fmt.Sprintf(
+			"그림 %d개는 가져오지 않았습니다. 이미지 탭에서 올려 다시 넣어 주세요", drawings))
+	}
+	return document, nil
+}
+
+// picturesIn counts the pictures a Word document draws, in either of the two
+// ways it writes them: the drawing a modern Word writes, and the shape that
+// older files and some exporters still carry.
+func picturesIn(content []byte) int {
+	return bytes.Count(content, []byte("<w:drawing")) + bytes.Count(content, []byte("<w:pict"))
 }
 
 // headingLevel reads a paragraph's style. Word writes "Heading1" in English and
