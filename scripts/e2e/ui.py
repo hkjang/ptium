@@ -140,6 +140,39 @@ with sync_playwright() as play:
             failures.append(f"{path}: a {role} a screen reader cannot name"
                             + (f" (it reads {shows!r})" if shows else ""))
 
+    # A hand-shaped cursor is a promise that something happens here. The shares
+    # screen made it over a hundred rows that were plain divs: the row style was
+    # shared with the audit log, where the row really is a button, and the
+    # cursor came along with it. Only the small buttons at the end of the row
+    # did anything, and the hand covered the whole width.
+    #
+    # It asks where the hand *starts* — the cursor is inherited, so every span
+    # inside such a row shows one too and only the outermost is the mistake.
+    HANDS = """
+    () => {
+      const control = 'a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]),' +
+                      ' [contenteditable], [role=button], [role=tab], [role=menuitem], label, summary'
+      const out = {}
+      for (const el of document.querySelectorAll('body *')) {
+        const style = getComputedStyle(el)
+        if (style.cursor !== 'pointer' || style.visibility === 'hidden' || style.pointerEvents === 'none') continue
+        const parent = el.parentElement
+        if (parent && parent !== document.body && getComputedStyle(parent).cursor === 'pointer') continue
+        const rect = el.getBoundingClientRect()
+        if (rect.width < 6 || rect.height < 6) continue
+        if (el.matches(control) || el.closest(control)) continue
+        const key = el.tagName.toLowerCase() + '.' +
+                    (el.className || '').toString().trim().split(/\\s+/).slice(0, 2).join('.')
+        out[key] = (out[key] || 0) + 1
+      }
+      return out
+    }
+    """
+
+    def honest(path):
+        for what, many in page.evaluate(HANDS).items():
+            failures.append(f"{path}: {many} × {what} shows a hand but is not something to press")
+
     def readable(path):
         found = page.evaluate(READABILITY)
         for row in found["small"]:
@@ -160,6 +193,7 @@ with sync_playwright() as play:
             failures.append(f"{path}: {kind} {message}")
         readable(path)
         announced(path)
+        honest(path)
         return body
 
     print("── every route ──")
@@ -330,10 +364,10 @@ with sync_playwright() as play:
         visit(path, expect_text=expect_text)
         try:
             page.wait_for_selector(selector, timeout=9000)
-            return True
         except Exception:
             failures.append(missing)
             return False
+        return True
 
     if waits_for("/admin/shares", "공유 링크", ".error-row", "the share screen lists no links at all"):
         counted = page.locator(".error-stat-grid article strong").first
