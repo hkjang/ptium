@@ -54,7 +54,20 @@ func Reads(filename string) bool {
 // Read turns a file into deck source.
 func Read(filename string, data []byte) (Document, error) {
 	name := strings.TrimSpace(path.Base(filename))
-	switch strings.ToLower(path.Ext(name)) {
+	extension := strings.ToLower(path.Ext(name))
+	// A spreadsheet or a note carries no declaration of what it is written in,
+	// so the bytes are read as text before anything reads them as a document.
+	// The formats below this are packages that say for themselves.
+	switch extension {
+	case ".csv", ".tsv", ".md", ".markdown", ".txt":
+		text, ok := asText(data)
+		if !ok {
+			return Document{}, fmt.Errorf(
+				"이 파일의 글자를 읽지 못했습니다. UTF-8 이나 CP949 로 저장한 뒤 다시 올려 주세요")
+		}
+		data = []byte(text)
+	}
+	switch extension {
 	case ".csv":
 		return readSeparated(name, data, ',')
 	case ".tsv":

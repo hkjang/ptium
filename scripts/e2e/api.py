@@ -1482,6 +1482,26 @@ if document_id:
 # A bullet is drawn on the page of a PDF, so it comes back as a character. Kept,
 # every point read out of a handout began "• " and the deck drew a second bullet
 # in front of it.
+# Excel in Korean writes CP949 unless somebody opens the encoding menu. Those
+# bytes reached the database untouched and were refused, so uploading an
+# ordinary spreadsheet ended in a server error naming nothing.
+print("── a spreadsheet saved the way Excel saves it ──")
+korean_bytes = "항목,작년,올해\n매출,103억,128억\n".encode("cp949")
+legacy = data_of(call("POST", "/presentations/import",
+                      files={"file": (f"CP949-{RUN}.csv", korean_bytes, "text/csv")},
+                      expect=201)) or {}
+checks += 1
+legacy_id = ((legacy.get("presentation") or {}).get("id")) or ""
+legacy_source = ((legacy.get("presentation") or {}).get("source")) or ""
+if not legacy_id:
+    failures.append("a CP949 spreadsheet did not import at all")
+elif not all(word in legacy_source for word in ("항목", "작년", "103억")):
+    failures.append(f"a CP949 spreadsheet lost its words: {legacy_source[:120]!r}")
+else:
+    print("   CP949 -> the words came through")
+if legacy_id:
+    call("DELETE", f"/presentations/{legacy_id}", expect=204)
+
 print("── a handout read back has no bullets in its words ──")
 paper = data_of(call("POST", "/presentations", {"title": f"유인물 {RUN}", "prompt": "유인물"}, expect=201))
 call("PUT", f"/presentations/{paper['id']}/source",
