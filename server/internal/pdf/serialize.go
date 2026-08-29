@@ -58,9 +58,32 @@ func (d *Document) Bytes() []byte {
 			number(toRed), number(toGreen), number(toBlue)))
 	}
 
-	// The page tree is written after its pages, so each page can name it: the
-	// number is known before anything is written because it is allocated here.
-	pagesObject := len(offsets) + len(d.pages)*2 + d.annotationCount()
+	// A link into this document has to name the page object it lands on, and a
+	// page object is written after the links that point at it. So every number
+	// is worked out first: objects are handed out in the order they are
+	// written, which makes the whole layout arithmetic.
+	//
+	// A link that will not be written takes no number, which is also how the
+	// page tree's own number stays right — counting every link instead of the
+	// ones that survive would leave the count short by each one dropped.
+	kept := make([]int, len(d.pages))
+	for i, page := range d.pages {
+		for _, one := range page.links {
+			if d.leads(one) {
+				kept[i]++
+			}
+		}
+	}
+	pageNumbers := make([]int, len(d.pages))
+	free := len(offsets)
+	for i := range d.pages {
+		free++          // the content stream
+		free += kept[i] // the links drawn on it
+		pageNumbers[i] = free
+		free++
+	}
+	// The page tree is written after its pages, so each page can name it.
+	pagesObject := free
 	pageObjects := make([]int, 0, len(d.pages))
 	for _, page := range d.pages {
 		content := stream("/Filter /FlateDecode", deflate(page.content.Bytes()))
@@ -70,7 +93,7 @@ func (d *Document) Bytes() []byte {
 			for _, one := range page.links {
 				// A link that names neither a page in this document nor an
 				// address is not written at all: it is nothing to click.
-				written := d.annotation(page, one)
+				written := d.annotation(page, one, pageNumbers)
 				if written == "" {
 					continue
 				}
@@ -120,23 +143,26 @@ func (d *Document) Bytes() []byte {
 	return out.Bytes()
 }
 
-// annotationCount is how many objects the links will take, so the page tree's
-// own number can be worked out before any of them are written.
-func (d *Document) annotationCount() int {
-	count := 0
-	for _, page := range d.pages {
-		count += len(page.links)
+// leads reports whether a link is something to click: a page in this document,
+// or an address. One that names neither is not written at all.
+func (d *Document) leads(one link) bool {
+	if one.page > 0 && one.page <= len(d.pages) {
+		return true
 	}
-	return count
+	return strings.TrimSpace(one.target) != ""
 }
 
-func (d *Document) annotation(page *Page, one link) string {
+func (d *Document) annotation(page *Page, one link, pageNumbers []int) string {
 	rectangle := fmt.Sprintf("[%s %s %s %s]", number(one.x), number(page.flip(one.y+one.height)),
 		number(one.x+one.width), number(page.flip(one.y)))
 	// A link inside the document names a page; one that leaves it names a URI.
+	//
+	// The page is named by its object, not by its position. A bare number is
+	// how a destination in *another* file is written, and a reader handed one
+	// here has nothing to resolve: pypdf reads the jump and lands nowhere.
 	if one.page > 0 && one.page <= len(d.pages) {
-		return fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect %s /Border [0 0 0] /Dest [%d /Fit] >>",
-			rectangle, one.page-1)
+		return fmt.Sprintf("<< /Type /Annot /Subtype /Link /Rect %s /Border [0 0 0] /Dest [%d 0 R /Fit] >>",
+			rectangle, pageNumbers[one.page-1])
 	}
 	if strings.TrimSpace(one.target) == "" {
 		// A link that names neither a page in this document nor an address is

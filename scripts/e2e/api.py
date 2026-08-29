@@ -810,9 +810,15 @@ call("PUT", f"/presentations/{paper_deck['id']}/source", {"source":
 _, printed_pdf = call("GET", f"/presentations/{paper_deck['id']}/export.pdf", raw=True, expect=200)
 printed_body = (printed_pdf or b"").decode("latin-1")
 checks += 1
-landed = re.findall(r"/Dest \[(\d+) /Fit\]", printed_body)
-if landed != ["1"]:
-    failures.append(f"a jump on paper lands on pages {landed}, want the second page (index 1)")
+# A destination inside the document names the page object, not a position: a
+# bare number is how a page in another file is written, and a reader handed one
+# here resolves nothing. So the jump is followed the way a reader follows it.
+kids = re.search(r"/Kids \[([^\]]*)\]", printed_body)
+order = re.findall(r"(\d+) 0 R", kids.group(1)) if kids else []
+landed = [order.index(one) + 1 if one in order else None
+          for one in re.findall(r"/Dest \[(\d+) 0 R /Fit\]", printed_body)]
+if landed != [2]:
+    failures.append(f"a jump on paper lands on pages {landed}, want the second printed page")
 checks += 1
 if "/URI ()" in printed_body:
     failures.append("a jump past the end of the deck was printed as a link to nowhere")

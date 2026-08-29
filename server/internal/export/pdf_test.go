@@ -392,16 +392,33 @@ func TestAJumpOnPaperNamesThePageItIsPrintedOn(t *testing.T) {
 	if pages := strings.Count(body, "/Type /Page "); pages != 3 {
 		t.Fatalf("a deck of three shown slides printed %d pages", pages)
 	}
-	// /Dest [1 /Fit] is the second page, which is where the deck's third slide
-	// is printed. The jump naming the skipped slide lands there too — the next
-	// page there is — and the jump past the end of the deck names no page.
-	destinations := regexp.MustCompile(`/Dest \[(\d+) /Fit\]`).FindAllStringSubmatch(body, -1)
+	// A destination inside the document names the page object, not a position:
+	// a bare number is how a page in another file is written, and a reader
+	// handed one here resolves nothing. So the jump is followed the way a
+	// reader follows it — through the page tree, to a page.
+	kids := regexp.MustCompile(`/Kids \[([^\]]*)\]`).FindStringSubmatch(body)
+	if kids == nil {
+		t.Fatal("the printed file has no page tree")
+	}
+	order := regexp.MustCompile(`(\d+) 0 R`).FindAllStringSubmatch(kids[1], -1)
+	if len(order) != 3 {
+		t.Fatalf("the page tree lists %d pages", len(order))
+	}
+	destinations := regexp.MustCompile(`/Dest \[(\d+) 0 R /Fit\]`).FindAllStringSubmatch(body, -1)
 	var landed []string
 	for _, one := range destinations {
-		landed = append(landed, one[1])
+		where := "어느 쪽도 아님"
+		for at, page := range order {
+			if page[1] == one[1] {
+				where = fmt.Sprintf("%d", at+1)
+			}
+		}
+		landed = append(landed, where)
 	}
-	if len(landed) != 2 || landed[0] != "1" || landed[1] != "1" {
-		t.Errorf("the jumps landed on pages %v, want both on the second page (index 1)", landed)
+	// The deck's third slide is printed second, the skipped slide's jump lands
+	// on the next page there is, and the jump past the end names no page.
+	if len(landed) != 2 || landed[0] != "2" || landed[1] != "2" {
+		t.Errorf("the jumps landed on pages %v, want both on the second printed page", landed)
 	}
 	// A link that names neither a page nor an address is not written at all.
 	if strings.Contains(body, "/URI ()") {
