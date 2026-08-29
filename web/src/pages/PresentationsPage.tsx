@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast'
 import { navigate, useLocation } from '../router'
 import type { Presentation } from '../types'
 import { displayError } from '../utils'
+import { objectParticle } from '../korean'
 
 type LibraryFilter = 'all' | 'ready' | 'draft' | 'generating' | 'trash'
 
@@ -118,7 +119,7 @@ export function PresentationsPage() {
   const importDeck = async (file?: File) => {
     if (!file) return
     setImporting(true)
-    showToast(`${file.name}을 읽고 있습니다…`)
+    showToast(`${file.name}${objectParticle(file.name)} 읽고 있습니다…`)
     try {
       const result = await api.importPresentation(file)
       // A toast says it worked. What the import did with their file — which

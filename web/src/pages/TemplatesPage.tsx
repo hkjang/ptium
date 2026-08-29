@@ -12,6 +12,7 @@ import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type { Template, TemplateLayout } from '../types'
 import { displayError, relativeDate } from '../utils'
+import { objectParticle } from '../korean'
 
 const roleLabels: Record<string, string> = {
   title: '표지', section: '구역', content: '본문', twoContent: '2단',
@@ -66,7 +67,7 @@ export function TemplatesPage() {
   }
 
   const remove = async (template: Template) => {
-    if (!window.confirm(`템플릿 "${template.name}"을 삭제할까요? 이 템플릿으로 만든 프레젠테이션은 기본 디자인으로 내보내집니다.`)) return
+    if (!window.confirm(`템플릿 "${template.name}"${objectParticle(template.name)} 삭제할까요? 이 템플릿으로 만든 프레젠테이션은 기본 디자인으로 내보내집니다.`)) return
     try {
       await api.deleteTemplate(template.id)
       showToast('템플릿을 삭제했습니다.')

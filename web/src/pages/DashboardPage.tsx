@@ -9,6 +9,7 @@ import { Button, EmptyState, ErrorState, LoadingState } from '../components/UI'
 import { Link, navigate } from '../router'
 import type { Presentation } from '../types'
 import { displayError } from '../utils'
+import { subjectParticle } from '../korean'
 
 export function DashboardPage() {
   const { user } = useAuth()
@@ -45,7 +46,7 @@ export function DashboardPage() {
   return (
     <AppShell>
       <section className="dashboard-hero">
-        <div className="hero-copy"><span className="eyebrow">MY WORKSPACE</span><h1>{firstName}님, 어떤 이야기를<br />만들어 볼까요?</h1><p>아이디어를 입력하면 {productName}이 구조와 콘텐츠를 슬라이드로 완성합니다.</p></div>
+        <div className="hero-copy"><span className="eyebrow">MY WORKSPACE</span><h1>{firstName}님, 어떤 이야기를<br />만들어 볼까요?</h1><p>아이디어를 입력하면 {productName}{subjectParticle(productName)} 구조와 콘텐츠를 슬라이드로 완성합니다.</p></div>
         <div className="hero-orb" aria-hidden="true"><i /><i /><i /><span><Sparkles size={23} /></span></div>
         <button className="prompt-launcher" onClick={() => navigate('/create')}><WandSparkles size={20} /><span>만들고 싶은 프레젠테이션을 설명해 주세요</span><kbd>시작하기 <ArrowRight size={14} /></kbd></button>
       </section>
@@ -59,7 +60,7 @@ export function DashboardPage() {
 
       <section className="section-block">
         <div className="section-heading"><div><h2>최근 프레젠테이션</h2><p>마지막으로 작업한 콘텐츠를 이어서 완성하세요.</p></div><Link to="/presentations" className="text-link">전체 보기 <ArrowRight size={15} /></Link></div>
-        {loading ? <div className="card-loading-grid">{[1, 2, 3].map((item) => <div key={item} className="presentation-card skeleton-card"><span /><i /><i /></div>)}</div> : error ? <ErrorState message={error} onRetry={() => void load()} /> : items.length === 0 ? <EmptyState icon={<BookOpen size={25} />} title="첫 프레젠테이션을 만들어 보세요" description={`한 문장의 아이디어로 시작할 수 있어요. 구성은 ${productName}이 도와드립니다.`} action={<Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button>} /> : <div className="presentation-grid">{items.slice(0, 3).map((item) => <PresentationCard key={item.id} presentation={item} />)}</div>}
+        {loading ? <div className="card-loading-grid">{[1, 2, 3].map((item) => <div key={item} className="presentation-card skeleton-card"><span /><i /><i /></div>)}</div> : error ? <ErrorState message={error} onRetry={() => void load()} /> : items.length === 0 ? <EmptyState icon={<BookOpen size={25} />} title="첫 프레젠테이션을 만들어 보세요" description={`한 문장의 아이디어로 시작할 수 있어요. 구성은 ${productName}${subjectParticle(productName)} 도와드립니다.`} action={<Button onClick={() => navigate('/create')}><Plus size={16} /> 새로 만들기</Button>} /> : <div className="presentation-grid">{items.slice(0, 3).map((item) => <PresentationCard key={item.id} presentation={item} />)}</div>}
       </section>
 
       <section className="dashboard-lower-grid">

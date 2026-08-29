@@ -14,6 +14,7 @@ import { useToast } from '../components/Toast'
 import { Link, navigate } from '../router'
 import type { Template } from '../types'
 import { displayError } from '../utils'
+import { subjectParticle } from '../korean'
 
 /**
  * audiences are the ones people actually pick, and the labels a stored setting
@@ -184,7 +185,7 @@ export function CreatePage() {
         <Link to="/dashboard" className="create-exit">나가기</Link>
       </header>
       {step === 1 ? <section className="create-content brief-step">
-        <div className="create-title"><span className="step-icon"><MessageSquareText size={22} /></span><span className="eyebrow">STEP 01 · BRIEF</span><h1>어떤 프레젠테이션이<br />필요한가요?</h1><p>완벽하게 쓰지 않아도 괜찮아요. {productName}이 아이디어를 구조화합니다.</p></div>
+        <div className="create-title"><span className="step-icon"><MessageSquareText size={22} /></span><span className="eyebrow">STEP 01 · BRIEF</span><h1>어떤 프레젠테이션이<br />필요한가요?</h1><p>완벽하게 쓰지 않아도 괜찮아요. {productName}{subjectParticle(productName)} 아이디어를 구조화합니다.</p></div>
         <div className="prompt-composer">
           <Textarea autoFocus disabled={defaultsLoading} value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="예: 친환경 패키징 솔루션의 시장 기회와 제품 경쟁력을 설명하는 투자자용 피치덱을 만들어줘. 핵심 지표와 3개년 성장 전략을 포함해줘." maxLength={2000} />
           <div className="composer-tools"><div /><span>{prompt.length.toLocaleString()} / 2,000</span></div>

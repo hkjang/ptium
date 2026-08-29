@@ -10,6 +10,7 @@
  */
 
 import type { DeckFinding } from '../../../api/client'
+import { objectParticle, subjectParticle, toParticle, topicParticle, withParticle } from '../../../korean'
 
 export function scoreDimensionLabel(key: string) {
   switch (key) {
@@ -75,18 +76,18 @@ export function findingDetail(detail: string) {
       (m) => `${m[2]}줄 자리에 ${m[1]}줄이라 ${m[3]}%로 줄여도 들어가지 않습니다`],
     [/^(\w+) overlaps (\w+) by (\d+)%$/,
       (m) => `${named(m[1])}${subjectParticle(named(m[1]))} ${named(m[2])} 영역과 ${m[3]}% 겹칩니다`],
-    [/^text covers (\d+)% of the layout's own (.+)$/, (m) => `글이 템플릿 자체의 ${m[2]}를 ${m[1]}% 덮습니다`],
+    [/^text covers (\d+)% of the layout's own (.+)$/, (m) => `글이 템플릿 자체의 ${m[2]}${objectParticle(m[2])} ${m[1]}% 덮습니다`],
     [/^text (\w+) on (\w+) is ([\d.]+):1, below 4\.5:1$/,
-      (m) => `글자색 #${m[1]}과 배경 #${m[2]}의 대비가 ${m[3]}:1로, 기준 4.5:1에 못 미칩니다`],
+      (m) => `글자색 #${m[1]}${withParticle(m[1])} 배경 #${m[2]}의 대비가 ${m[3]}:1로, 기준 4.5:1에 못 미칩니다`],
     [/^(\d+) points in one region; past (\d+) an audience reads instead of listening$/,
       (m) => `한 영역에 요점이 ${m[1]}개입니다. ${m[2]}개를 넘으면 듣지 않고 읽습니다`],
     [/^the region is (\d+)% full; a slide needs room to breathe$/,
       (m) => `영역이 ${m[1]}% 찼습니다. 슬라이드에는 여백이 필요합니다`],
     [/^the heading "(.+)" stops in the middle of what it was saying$/,
-      (m) => `제목 "${m[1]}" 이(가) 문장 중간에서 끊깁니다 — 브리프의 부탁하는 말이 제목에 섞였을 수 있습니다`],
+      (m) => `제목 "${m[1]}"${subjectParticle(m[1])} 문장 중간에서 끊깁니다 — 브리프의 부탁하는 말이 제목에 섞였을 수 있습니다`],
     [/^slide (\d+) is headed "(.+)" as well$/,
       (m) => `${m[1]}번 슬라이드도 제목이 "${m[2]}"입니다. 같은 제목이 두 번 나오면 어느 쪽 이야기인지 알 수 없습니다`],
-    [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"와 "${m[2]}"`],
+    [/^the same point twice: "(.+)" and "(.+)"$/, (m) => `같은 말을 두 번 합니다: "${m[1]}"${withParticle(m[1])} "${m[2]}"`],
     [/^this plans something for (\d+), which is already past: "(.+)"$/,
       (m) => `"${m[2]}" — ${m[1]}년은 이미 지났습니다. 오늘 이후 날짜로 고치세요`],
     [/^(\d+) of this slide's (\d+) points were already made on slide (\d+)$/,
@@ -96,7 +97,7 @@ export function findingDetail(detail: string) {
     [/^table draws (\d+) of its (\d+) columns; "(.+)" and what follows are on no slide$/,
       (m) => `표가 ${m[2]}칸 중 ${m[1]}칸만 그립니다. "${m[3]}" 이후는 어느 슬라이드에도 없습니다`],
     [/^(\w+) cut "(.+)" to fit; the rest of that line is on no slide$/,
-      (m) => `${named(m[1])} 컴포넌트가 "${m[2]}"를 잘라서 넣었습니다. 잘린 뒷부분은 어느 슬라이드에도 없습니다`],
+      (m) => `${named(m[1])} 컴포넌트가 "${m[2]}"${objectParticle(m[2])} 잘라서 넣었습니다. 잘린 뒷부분은 어느 슬라이드에도 없습니다`],
     [/^(\w+) draws (\d+) of its (\d+) entries; the rest are on no slide$/,
       (m) => `${named(m[1])} 컴포넌트가 ${m[3]}개 중 ${m[2]}개만 그립니다. 나머지는 어느 슬라이드에도 없습니다`],
     [/^"(.+)" is not a link the deck can follow, so the line draws its markup; .+$/,
@@ -149,13 +150,13 @@ export function warningText(warning: string) {
     [/^(\d+) line\(s\) were shortened to fit (\w+)$/,
       (m) => `${named(m[2])}에 맞추느라 ${m[1]}줄을 줄였습니다 — 줄인 뒤는 어느 슬라이드에도 없습니다`],
     [/^layout "(.+)" cannot hold this slide; used "(.+)" instead$/,
-      (m) => `"${m[1]}" 레이아웃에는 이 슬라이드가 들어가지 않아 "${m[2]}"를 썼습니다`],
+      (m) => `"${m[1]}" 레이아웃에는 이 슬라이드가 들어가지 않아 "${m[2]}"${objectParticle(m[2])} 썼습니다`],
     [/^layout "(.+)" does not exist in this template; used "(.+)" instead$/,
-      (m) => `이 템플릿에 "${m[1]}" 레이아웃이 없어 "${m[2]}"를 썼습니다`],
+      (m) => `이 템플릿에 "${m[1]}" 레이아웃이 없어 "${m[2]}"${objectParticle(m[2])} 썼습니다`],
     [/^this template has no (\w+) layout; used "(.+)", which has room for the points$/,
-      (m) => `이 템플릿에는 ${roleName(m[1])} 레이아웃이 없어, 요점이 들어갈 자리가 있는 "${m[2]}"를 썼습니다`],
+      (m) => `이 템플릿에는 ${roleName(m[1])} 레이아웃이 없어, 요점이 들어갈 자리가 있는 "${m[2]}"${objectParticle(m[2])} 썼습니다`],
     [/^the "(.+)" layout has no room for this slide's points; used "(.+)" instead$/,
-      (m) => `"${m[1]}" 레이아웃에는 요점이 들어갈 자리가 없어 "${m[2]}"를 썼습니다`],
+      (m) => `"${m[1]}" 레이아웃에는 요점이 들어갈 자리가 없어 "${m[2]}"${objectParticle(m[2])} 썼습니다`],
     [/^layout "(.+)" has no free body region, so its points were kept as plain text$/,
       (m) => `"${m[1]}" 레이아웃에는 본문 영역이 없어 요점을 제목 아래 줄로 적었습니다`],
     [/^(\w+) has no free region in layout "(.+)" and was written as text$/,
@@ -168,14 +169,14 @@ export function warningText(warning: string) {
       (m) => `"${m[1]}" 레이아웃에는 이미지가 들어갈 자리가 없습니다`],
     [/^no uploaded image is named "(.+)"$/, (m) => `"${m[1]}"이라는 이름의 이미지가 없습니다`],
     [/^images cannot be resolved here, so "(.+)" was skipped$/,
-      (m) => `여기서는 이미지를 찾을 수 없어 "${m[1]}"을 건너뛰었습니다`],
+      (m) => `여기서는 이미지를 찾을 수 없어 "${m[1]}"${objectParticle(m[1])} 건너뛰었습니다`],
     [/^no grid is defined as "(.+)"$/, (m) => `"${m[1]}"이라는 격자 정의가 없습니다`],
     [/^a slide may cite at most (\d+) sources; the rest were dropped$/,
       (m) => `한 슬라이드에는 출처를 ${m[1]}개까지 달 수 있어 나머지는 빠졌습니다`],
     [/^::image needs the name or id of an uploaded image$/, () => '::image 에는 올려 둔 이미지의 이름이나 id가 필요합니다'],
-    [/^unknown component "(.+)"$/, (m) => `"${m[1]}"은 없는 컴포넌트입니다`],
-    [/^unknown slide kind "(.+)"$/, (m) => `"${m[1]}"은 없는 슬라이드 종류입니다`],
-    [/^unknown directive "(.+)"$/, (m) => `"${m[1]}"은 없는 지시어입니다`],
+    [/^unknown component "(.+)"$/, (m) => `"${m[1]}"${topicParticle(m[1])} 없는 컴포넌트입니다`],
+    [/^unknown slide kind "(.+)"$/, (m) => `"${m[1]}"${topicParticle(m[1])} 없는 슬라이드 종류입니다`],
+    [/^unknown directive "(.+)"$/, (m) => `"${m[1]}"${topicParticle(m[1])} 없는 지시어입니다`],
     [/^@layout needs a layout id$/, () => '@layout 에는 레이아웃 id가 필요합니다'],
     [/^!source needs a title: (.+)$/, (m) => `!source 에는 출처 이름이 필요합니다: ${m[1]}`],
   ]
@@ -210,23 +211,9 @@ function batchim(word: string): number | null {
   return (code - 0xac00) % 28
 }
 
-/** 이 / 가 */
-export function subjectParticle(word: string) {
-  const final = batchim(word)
-  return final === null || final === 0 ? '가' : '이'
-}
-
-/** 을 / 를 */
-export function objectParticle(word: string) {
-  const final = batchim(word)
-  return final === null || final === 0 ? '를' : '을'
-}
-
-/** 으로 / 로 — ㄹ takes 로, like 서울로. */
-export function toParticle(word: string) {
-  const final = batchim(word)
-  return final === null || final === 0 || final === 8 ? '로' : '으로'
-}
+// The particles themselves live in one place, because every screen that
+// names something back to somebody needs them.
+export { subjectParticle, objectParticle, toParticle } from '../../../korean'
 
 const roleNames: Record<string, string> = {
   title: '표지', section: '구역', closing: '마무리', content: '본문',

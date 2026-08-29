@@ -5,6 +5,7 @@ import { AppShell } from '../components/AppShell'
 import { Badge, Button, EmptyState, ErrorState, Input, LoadingState } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { displayError } from '../utils'
+import { objectParticle, toParticle } from '../korean'
 
 /**
  * The designs this deployment writes decks in.
@@ -70,7 +71,7 @@ export function AdminTemplatesPage() {
     setWorking(design.id)
     try {
       await api.setStandardTemplate(design.id)
-      showToast(`새 덱은 이제 "${design.name}"으로 만들어집니다.`)
+      showToast(`새 덱은 이제 "${design.name}"${toParticle(design.name)} 만들어집니다.`)
       await load()
     } catch (err) { showToast(displayError(err), 'error') } finally { setWorking('') }
   }
@@ -78,7 +79,7 @@ export function AdminTemplatesPage() {
     setWorking(design.id)
     try {
       await api.shareTemplate(design.id, shared)
-      showToast(shared ? `"${design.name}"을 모두가 쓸 수 있게 했습니다.` : `"${design.name}"을 올린 사람만 쓰도록 되돌렸습니다.`)
+      showToast(shared ? `"${design.name}"${objectParticle(design.name)} 모두가 쓸 수 있게 했습니다.` : `"${design.name}"${objectParticle(design.name)} 올린 사람만 쓰도록 되돌렸습니다.`)
       await load()
     } catch (err) { showToast(displayError(err), 'error') } finally { setWorking('') }
   }

@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { Button, EmptyState } from './UI'
 import type { Asset, AssetTag } from '../types'
 import { displayError, relativeDate } from '../utils'
+import { objectParticle, topicParticle } from '../korean'
 
 export type { Asset }
 
@@ -123,11 +124,11 @@ export function AssetLibrary({ onInsert, onPlace, notify, compact = true }: {
   }
 
   const remove = async (asset: Asset) => {
-    if (asset.deckCount > 0 && !window.confirm(`${asset.name}은 덱 ${asset.deckCount}개에서 쓰고 있습니다. 삭제하면 그 자리는 비어 보입니다. 삭제할까요?`)) return
+    if (asset.deckCount > 0 && !window.confirm(`${asset.name}${topicParticle(asset.name)} 덱 ${asset.deckCount}개에서 쓰고 있습니다. 삭제하면 그 자리는 비어 보입니다. 삭제할까요?`)) return
     setBusy(true)
     try {
       await api.deleteAsset(asset.id)
-      notify(`${asset.name}을 삭제했습니다.`)
+      notify(`${asset.name}${objectParticle(asset.name)} 삭제했습니다.`)
       await reload()
     } catch (err) { notify(displayError(err), 'error') } finally { setBusy(false) }
   }

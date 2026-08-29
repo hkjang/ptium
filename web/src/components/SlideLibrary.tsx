@@ -7,6 +7,7 @@ import { SlidePreview } from './SlidePreview'
 import { Button, EmptyState } from './UI'
 import type { Snippet, AssetTag } from '../types'
 import { displayError, relativeDate } from '../utils'
+import { objectParticle } from '../korean'
 
 /**
  * Slides someone keeps.
@@ -112,7 +113,7 @@ export function SlideLibrary({ presentationId, onInsert, onSaveCurrent, notify, 
   }
 
   const remove = async (snippet: Snippet) => {
-    if (!window.confirm(`"${snippet.name}"을 라이브러리에서 지울까요? 이미 넣어 둔 슬라이드는 그대로 남습니다.`)) return
+    if (!window.confirm(`"${snippet.name}"${objectParticle(snippet.name)} 라이브러리에서 지울까요? 이미 넣어 둔 슬라이드는 그대로 남습니다.`)) return
     setBusy(snippet.id)
     try {
       await api.deleteSnippet(snippet.id)

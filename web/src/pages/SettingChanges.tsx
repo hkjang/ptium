@@ -5,6 +5,7 @@ import { settingName } from '../api/errors'
 import { Badge, Button } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { displayError, relativeDate } from '../utils'
+import { objectParticle } from '../korean'
 
 /**
  * What was changed in the settings, and putting one back.
@@ -54,7 +55,8 @@ export function SettingChanges({ onReverted }: { onReverted?: () => void }) {
     setWorking(change.id)
     try {
       await api.revertSettingChange(change.id)
-      showToast(`${settingName(change.metadata?.key || change.targetId || '')}을(를) 이전 값으로 되돌렸습니다.`)
+      const reverted = settingName(change.metadata?.key || change.targetId || '')
+      showToast(`${reverted}${objectParticle(reverted)} 이전 값으로 되돌렸습니다.`)
       await load()
       onReverted?.()
     } catch (err) { showToast(displayError(err), 'error') } finally { setWorking(0) }

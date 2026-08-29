@@ -7,6 +7,7 @@ import { AppShell } from '../components/AppShell'
 import { ShortcutTable, editorShortcuts, presentationShortcuts } from '../components/Shortcuts'
 import { useBrand } from '../branding/BrandContext'
 import { Link } from '../router'
+import { topicParticle } from '../korean'
 
 /**
  * The usage guide.
@@ -79,7 +80,7 @@ export function GuidePage() {
       <article className="guide-body">
         <section id="quickstart" className="guide-section">
           <h2><Sparkles size={19} /> 5분 만에 첫 덱</h2>
-          <p className="guide-lead">{productName}은 <b>쓴 글</b>을 <b>가지고 있는 템플릿</b>에 맞춰 그립니다.
+          <p className="guide-lead">{productName}{topicParticle(productName)} <b>쓴 글</b>을 <b>가지고 있는 템플릿</b>에 맞춰 그립니다.
             그래서 순서는 언제나 같습니다 — 무엇을 말할지 적고, 어느 디자인에 담을지 고르고, 고칩니다.</p>
           <ol className="guide-steps">
             <li><b>새로 만들기</b>에서 무엇을 발표할지 두세 문장으로 적습니다.</li>

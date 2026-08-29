@@ -40,6 +40,7 @@ import { ShareDialog } from './editor/ShareDialog'
 import { CommentsDialog } from './editor/CommentsDialog'
 import { ExportDialog } from './editor/ExportDialog'
 import { useAutosave, useUnsavedWarning } from './editor/hooks/useAutosave'
+import { objectParticle } from '../korean'
 
 export function EditorPage({ id }: { id: string }) {
   const [presentation, setPresentation] = useState<Presentation | null>(null)
@@ -1140,14 +1141,14 @@ export function EditorPage({ id }: { id: string }) {
       updateActive(withProse({ ...active, fields, blocks, images }, { fields, blocks, images }))
       setImageTarget('')
       setCanvasMode('edit')
-      showToast(`${asset.name}을 ${imageTarget} 영역에 넣었습니다.`)
+      showToast(`${asset.name}${objectParticle(asset.name)} ${imageTarget} 영역에 넣었습니다.`)
       return
     }
     const highest = Math.max(0, ...(active.elements || []).map((element) => element.zIndex || 0))
     const image = imageElement(asset, at, highest + 1)
     updateActive({ elements: [...(active.elements || []), image] })
     setCanvasMode('edit')
-    showToast(`${asset.name}을 현재 슬라이드에 배치했습니다.`)
+    showToast(`${asset.name}${objectParticle(asset.name)} 현재 슬라이드에 배치했습니다.`)
   }
 
   /**
@@ -1170,8 +1171,8 @@ export function EditorPage({ id }: { id: string }) {
     setDirty(true)
     setCanvasMode('edit')
     showToast(rendered.warnings.length > 0
-      ? `${snippet.name}을 넣었습니다. ${rendered.warnings[0]}`
-      : `${snippet.name}을 넣었습니다.`)
+      ? `${snippet.name}${objectParticle(snippet.name)} 넣었습니다. ${rendered.warnings[0]}`
+      : `${snippet.name}${objectParticle(snippet.name)} 넣었습니다.`)
   }
 
   /** Saves the slide being edited, as text, for use in any other deck. */
@@ -1179,7 +1180,7 @@ export function EditorPage({ id }: { id: string }) {
     if (!active) return
     if (dirty) await save().catch(() => { /* what is stored is what gets saved */ })
     const snippet = await api.saveSnippet({ name, presentationId: id, slide: activeIndex + 1 })
-    showToast(`"${snippet.name}"을 라이브러리에 저장했습니다. 다른 덱에서도 쓸 수 있어요.`)
+    showToast(`"${snippet.name}"${objectParticle(snippet.name)} 라이브러리에 저장했습니다. 다른 덱에서도 쓸 수 있어요.`)
   }
 
   /**

@@ -5739,7 +5739,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.69.7
+            service.version: 1.69.8
         requestId:
           $ref: '#/components/schemas/RequestID'
 

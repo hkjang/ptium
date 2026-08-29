@@ -6,6 +6,7 @@ import { AppShell } from '../components/AppShell'
 import { Badge, Button, EmptyState, ErrorState, Input } from '../components/UI'
 import { useToast } from '../components/Toast'
 import { displayError, relativeDate } from '../utils'
+import { objectParticle } from '../korean'
 
 type QueuedDeck = {
   id: string; title: string; ownerEmail: string; status: string
@@ -57,7 +58,7 @@ export function AdminQueuePage() {
   const act = async (deck: QueuedDeck, what: 'requeue' | 'cancel') => {
     setWorking(deck.id)
     try {
-      if (what === 'requeue') { await api.requeueGeneration(deck.id); showToast(`"${deck.title}"을 다시 큐에 넣었습니다.`) }
+      if (what === 'requeue') { await api.requeueGeneration(deck.id); showToast(`"${deck.title}"${objectParticle(deck.title)} 다시 큐에 넣었습니다.`) }
       else {
         await api.cancelGeneration(deck.id, reason.trim() || '관리자가 생성을 중단했습니다')
         showToast(`"${deck.title}" 생성을 중단했습니다. 작성자에게 이유가 보입니다.`)

@@ -108,7 +108,9 @@ describe('what compiling adjusted, in the reader’s words', () => {
   })
 
   it('says what a source-language mistake was', () => {
-    expect(warningText('line 7: unknown component "flowchart"')).toBe('line 7: "flowchart"은 없는 컴포넌트입니다')
+    // flowchart 는 "플로차트"로 읽혀 받침이 없으니 는이 붙는다. 이 줄은 오래도록
+    // 은을 기대하고 있었다.
+    expect(warningText('line 7: unknown component "flowchart"')).toBe('line 7: "flowchart"는 없는 컴포넌트입니다')
     expect(warningText('line 9: @layout needs a layout id')).toBe('line 9: @layout 에는 레이아웃 id가 필요합니다')
   })
 

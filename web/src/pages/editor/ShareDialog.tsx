@@ -4,6 +4,7 @@ import { Button, EmptyState, Modal } from '../../components/UI'
 import type { Share } from '../../types'
 import { relativeDate } from '../../utils'
 import { shareLife, shareState } from './sharelife'
+import { objectParticle } from '../../korean'
 
 /**
  * Links that open this deck for someone who has no account here.
@@ -61,7 +62,7 @@ export function ShareDialog({
   }
 
   const close = async (share: Share) => {
-    if (!window.confirm(`"${share.label || '이름 없는 링크'}"를 회수하면 이 주소로는 더 이상 덱이 열리지 않습니다.`)) return
+    if (!window.confirm(`"${share.label || '이름 없는 링크'}"${objectParticle(share.label || '이름 없는 링크')} 회수하면 이 주소로는 더 이상 덱이 열리지 않습니다.`)) return
     setWorking(true)
     try {
       await revoke(deckId, share.id)
