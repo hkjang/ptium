@@ -154,6 +154,8 @@ export function warningText(warning: string) {
     [/^the template exposes no usable layout$/, () => '이 템플릿에는 쓸 수 있는 레이아웃이 없습니다'],
     // What fitting had to remove. These two are the warnings an author meets
     // most often, and they were the ones still arriving in English.
+    [/^a hero draws one figure and (\d+) were written, so they were drawn as (\w+)$/,
+      (m) => `대표 숫자는 하나만 그리는데 ${m[1]}개를 썼습니다. ${named(m[2])}${toParticle(named(m[2]))} 그렸습니다`],
     [/^(\d+) point\(s\) did not fit in (\w+) and were left out$/,
       (m) => `${named(m[2])}에 자리가 모자라 요점 ${m[1]}개가 빠졌습니다`],
     [/^the proposal keeps (\d+)% of this slide's speaker notes; applying it drops the rest$/,

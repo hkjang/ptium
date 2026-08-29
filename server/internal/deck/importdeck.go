@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hkjang/ptium/server/internal/korean"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
@@ -129,7 +130,8 @@ func SourceFromImportWithImages(imported pptx.ImportedDeck, store func(pptx.Impo
 	var warnings []string
 	for _, header := range headers {
 		warnings = append(warnings, fmt.Sprintf(
-			"슬라이드마다 반복되던 머리글 %q은 가져오지 않고, 각 장의 제목을 그 아래에서 찾았습니다", header))
+			"슬라이드마다 반복되던 머리글 %q%s 가져오지 않고, 각 장의 제목을 그 아래에서 찾았습니다",
+			header, korean.Topic(header)))
 	}
 	// A deck exported as pictures — one image filling each slide, which is what
 	// several of the tools people generate decks with produce — reads as a run
