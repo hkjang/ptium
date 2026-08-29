@@ -100,8 +100,19 @@ export function findingDetail(detail: string) {
       (m) => `${named(m[1])} 컴포넌트가 "${m[2]}"${objectParticle(m[2])} 잘라서 넣었습니다. 잘린 뒷부분은 어느 슬라이드에도 없습니다`],
     [/^(\w+) draws (\d+) of its (\d+) entries; the rest are on no slide$/,
       (m) => `${named(m[1])} 컴포넌트가 ${m[3]}개 중 ${m[2]}개만 그립니다. 나머지는 어느 슬라이드에도 없습니다`],
+    // The same three, written for a component rather than a line. A bad link
+    // inside a KPI or a table cell reached the reader in English, because the
+    // rule beside this one only knew about a line.
+    [/^"(.+)" is not a link the deck can follow, so the component draws its markup; .+$/,
+      (m) => `컴포넌트 안의 "${m[1]}"${subjectParticle(m[1])} 링크로 인식되지 않아 대괄호와 주소가 그대로 그려집니다. https://… , mailto:… 또는 다른 슬라이드로 가는 #3 이어야 합니다`],
+    [/^"(.+)" jumps to a slide this deck of (\d+) does not have, so the words draw without a link$/,
+      (m) => `"${m[1]}"${subjectParticle(m[1])} 이 덱에 없는 슬라이드로 갑니다. 이 덱은 ${m[2]}장이라 글자만 그리고 링크는 걸지 않았습니다`],
+    [/^"(.+)" was shortened to fit (\w+); what follows the ellipsis is on no slide$/,
+      (m) => `"${m[1]}"${objectParticle(m[1])} ${named(m[2])} 자리에 맞추느라 줄였습니다. 말줄임표 뒤는 어느 슬라이드에도 없습니다`],
     [/^"(.+)" is not a link the deck can follow, so the line draws its markup; .+$/,
       (m) => `"${m[1]}"${subjectParticle(m[1])} 링크로 인식되지 않아 대괄호와 주소가 그대로 그려집니다. https://… , mailto:… 또는 다른 슬라이드로 가는 #3 이어야 합니다`],
+    [/^a picture with no words describing it: .+$/,
+      () => '이미지를 설명하는 말이 없습니다. 화면을 볼 수 없는 사람에게는 이 자리에 아무것도 없는 것과 같습니다'],
     [/^no speaker notes: .+$/, () => '발표 노트가 없습니다. 이 슬라이드에서 무엇을 말할지 적혀 있지 않습니다'],
     [/^figures with no source: (.+)$/,
       (m) => `브리프에 없는 숫자에 출처가 없습니다: ${m[1]}. !source 로 어디서 온 숫자인지 적어 두면 발표자 노트에 함께 나갑니다`],
