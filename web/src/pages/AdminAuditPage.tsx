@@ -100,7 +100,7 @@ export function AdminAuditPage() {
           <div className="search-box"><Search size={16} />
             <Input value={search} onChange={(event) => setSearch(event.target.value)}
               placeholder="행위자, 대상, 기록 내용 검색" /></div>
-          <Select value={action} onChange={(event) => setAction(event.target.value)}>
+          <Select aria-label="동작으로 거르기" value={action} onChange={(event) => setAction(event.target.value)}>
             <option value="">모든 동작</option>
             {actions.map((row) => <option key={row.action} value={row.action}>
               {label(row.action)} ({row.count.toLocaleString('ko-KR')})</option>)}

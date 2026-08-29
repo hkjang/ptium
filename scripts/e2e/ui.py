@@ -59,6 +59,8 @@ with sync_playwright() as play:
     context = browser.new_context(viewport={"width": 1500, "height": 1000},
                                   extra_http_headers={"X-Ptium-Dev-Secret": SECRET})
     page = context.new_page()
+    reader = context.new_cdp_session(page)
+    reader.send("Accessibility.enable")
     problems = []
     page.on("console", lambda m: problems.append(("console", m.text)) if m.type == "error" else None)
     page.on("pageerror", lambda e: problems.append(("pageerror", str(e))))
@@ -110,6 +112,34 @@ with sync_playwright() as play:
     }
     """
 
+    # What a screen reader is handed is not the markup but the tree the browser
+    # computes from it, so that tree is what this asks. A control with no name
+    # in it is announced as its kind and nothing else — "combobox", and the
+    # person has to change it to find out what it filters. Six of them were
+    # shipped: two colour boxes that lost their label to the swatch beside them
+    # (a label names only the first control under it) and four filters that
+    # never had one.
+    CONTROLS = {"button", "link", "textbox", "checkbox", "radio", "combobox", "slider",
+                "switch", "menuitem", "tab", "searchbox", "spinbutton", "listbox"}
+
+    def announced(path):
+        try:
+            nodes = reader.send("Accessibility.getFullAXTree")["nodes"]
+        except Exception as error:                      # the tree is a debugging surface
+            failures.append(f"{path}: could not read the accessibility tree: {error}")
+            return
+        for node in nodes:
+            if node.get("ignored"):
+                continue
+            role = (node.get("role") or {}).get("value")
+            if role not in CONTROLS:
+                continue
+            if ((node.get("name") or {}).get("value") or "").strip():
+                continue
+            shows = ((node.get("value") or {}).get("value") or "").strip()
+            failures.append(f"{path}: a {role} a screen reader cannot name"
+                            + (f" (it reads {shows!r})" if shows else ""))
+
     def readable(path):
         found = page.evaluate(READABILITY)
         for row in found["small"]:
@@ -129,6 +159,7 @@ with sync_playwright() as play:
         for kind, message in problems:
             failures.append(f"{path}: {kind} {message}")
         readable(path)
+        announced(path)
         return body
 
     print("── every route ──")
