@@ -710,6 +710,57 @@ with sync_playwright() as play:
     for kind, message in problems:
         failures.append(f"view: {kind} {message}")
 
+    # What an overlay owes the keyboard. `aria-modal` says everything behind the
+    # dialog is out of play; before v1.69.6 nothing made that so, and opening one
+    # left the keyboard on the button that opened it — 95 tab presses short of
+    # the dialog's own controls, walking the page behind it to get there.
+    print("── the keyboard inside a dialog ──")
+    PANEL = ".modal, .error-drawer"
+    INSIDE = "() => !!(document.activeElement && document.activeElement.closest('%s'))" % PANEL
+    SHOWING = "() => !!document.querySelector('%s')" % PANEL
+    STANDING = ("() => { const on = document.activeElement; return on ? on.tagName + '|' +"
+                " (on.textContent || on.getAttribute('aria-label') || '').trim().slice(0, 24) : '' }")
+
+    def overlay(path, opener, name):
+        page.goto(BASE + path, wait_until="networkidle")
+        page.wait_for_timeout(2500)
+        button = page.locator(opener).first
+        if not button.count():
+            failures.append(f"{name}: nothing on {path} matched {opener}")
+            return
+        button.focus()
+        opened_from = page.evaluate(STANDING)
+        button.click()
+        page.wait_for_timeout(1000)
+        if not page.evaluate(SHOWING):
+            failures.append(f"{name}: pressing {opener} opened no dialog")
+            return
+        if not page.evaluate(INSIDE):
+            failures.append(f"{name}: opening it left the keyboard outside — at {page.evaluate(STANDING)}")
+        leaked = 0
+        for _ in range(25):
+            page.keyboard.press("Tab")
+            if not page.evaluate(INSIDE):
+                leaked += 1
+        for _ in range(25):
+            page.keyboard.press("Shift+Tab")
+            if not page.evaluate(INSIDE):
+                leaked += 1
+        if leaked:
+            failures.append(f"{name}: the keyboard left the dialog on {leaked} of 50 presses")
+        page.keyboard.press("Escape")
+        page.wait_for_timeout(700)
+        if page.evaluate(SHOWING):
+            failures.append(f"{name}: Escape did not close it")
+        elif page.evaluate(STANDING) != opened_from:
+            failures.append(f"{name}: closing it did not give the keyboard back to what opened it"
+                            f" ({page.evaluate(STANDING)!r}, not {opened_from!r})")
+
+    overlay("/templates", ".template-card-preview", "the template dialog")
+    overlay("/admin/users", ".user-cell", "the user dialog")
+    overlay("/admin/audit", "button.error-row", "the audit drawer")
+    print("   dialogs held the keyboard, closed on Escape, and gave it back")
+
     print("── search and the command palette ──")
     problems.clear()
     page.goto(f"{BASE}/dashboard", wait_until="networkidle")

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronRight, Download, History, RefreshCw, Search, ShieldCheck, User } from 'lucide-react'
 import { api } from '../api/client'
 import { AppShell } from '../components/AppShell'
-import { Badge, Button, EmptyState, ErrorState, Input, Select } from '../components/UI'
+import { Badge, Button, EmptyState, ErrorState, Input, Select, useOverlayKeys } from '../components/UI'
 import { useToast } from '../components/Toast'
 import type { AuditEntry } from '../types'
 import { displayError, formatDate, relativeDate } from '../utils'
@@ -52,6 +52,9 @@ export function AdminAuditPage() {
   const [action, setAction] = useState('')
   const [days, setDays] = useState(7)
   const [selected, setSelected] = useState<AuditEntry | null>(null)
+  // The drawer is a dialog like any other: Escape closes it, Tab stays in it,
+  // and the row that opened it gets the keyboard back.
+  const drawer = useOverlayKeys(Boolean(selected), () => setSelected(null))
   const { showToast } = useToast()
 
   const load = useCallback(async (nextOffset: number) => {
@@ -134,7 +137,7 @@ export function AdminAuditPage() {
             </>}
     </section>
     {selected && <div className="drawer-backdrop" onClick={() => setSelected(null)}>
-      <aside className="error-drawer" onClick={(event) => event.stopPropagation()}>
+      <aside ref={drawer as React.RefObject<HTMLElement>} tabIndex={-1} className="error-drawer" onClick={(event) => event.stopPropagation()}>
         <header><div><Badge tone={actionTone(selected.action)}>{label(selected.action)}</Badge><code>{selected.action}</code></div>
           <button className="icon-button" onClick={() => setSelected(null)} aria-label="닫기">×</button></header>
         <section className="error-drawer-title"><h2>{selected.targetType || '기록'} {selected.targetId}</h2>

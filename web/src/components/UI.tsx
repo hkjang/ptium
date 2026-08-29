@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react'
 import { AlertTriangle, Inbox, LoaderCircle, RefreshCw } from 'lucide-react'
 
@@ -58,24 +58,72 @@ export function EmptyState({ icon, title, description, action }: { icon?: ReactN
   )
 }
 
+/** Everything inside `root` the keyboard can stand on, in tab order. */
+function focusStops(root: HTMLElement): HTMLElement[] {
+  const kinds = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),'
+    + ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  return [...root.querySelectorAll<HTMLElement>(kinds)].filter((el) => el.getClientRects().length > 0)
+}
+
+/**
+ * What an overlay owes the keyboard: Escape closes it, Tab stays inside it,
+ * and whatever the keyboard was standing on gets it back on the way out.
+ *
+ * `aria-modal` says everything behind is out of play, and saying it does not
+ * make it so. Before this, opening a dialog left the keyboard on the button
+ * that opened it — 95 tab presses away from the dialog's own controls, through
+ * the page behind it.
+ *
+ * Put the returned ref on the panel and give it `tabIndex={-1}`.
+ */
+export function useOverlayKeys(open: boolean, onClose: () => void) {
+  const panel = useRef<HTMLElement | null>(null)
+  const cameFrom = useRef<HTMLElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const held = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { onClose(); return }
+      if (event.key !== 'Tab' || !panel.current) return
+      const stops = focusStops(panel.current)
+      if (!stops.length) { event.preventDefault(); panel.current.focus(); return }
+      const edge = event.shiftKey ? stops[0] : stops[stops.length - 1]
+      const wrap = event.shiftKey ? stops[stops.length - 1] : stops[0]
+      if (document.activeElement === edge || !panel.current.contains(document.activeElement)) {
+        event.preventDefault()
+        wrap.focus()
+      }
+    }
+    window.addEventListener('keydown', held)
+    return () => window.removeEventListener('keydown', held)
+  }, [open, onClose])
+
+  // The panel itself takes the focus rather than its first button, so a screen
+  // reader reads the title before the controls under it.
+  useEffect(() => {
+    if (!open) return
+    cameFrom.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    panel.current?.focus()
+    return () => {
+      const back = cameFrom.current
+      if (back && document.contains(back)) back.focus()
+    }
+  }, [open])
+
+  return panel
+}
+
 export function Modal({ open, title, description, children, footer, onClose, wide }: {
   open: boolean; title: string; description?: string; children: ReactNode; footer?: ReactNode
   onClose: () => void
   /** A dialog that holds a gallery rather than a form needs the width. */
   wide?: boolean
 }) {
-  // Escape closes a dialog. Every other overlay in the workspace does, and one
-  // that does not reads as stuck.
-  useEffect(() => {
-    if (!open) return
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [open, onClose])
+  const panel = useOverlayKeys(open, onClose)
   if (!open) return null
   return (
     <div className="modal-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose() }}>
-      <section className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <section ref={panel} tabIndex={-1} className={`modal ${wide ? 'modal-wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div className="modal-header"><div><h2 id="modal-title">{title}</h2>{description && <p>{description}</p>}</div><button className="icon-button" onClick={onClose} aria-label="닫기">×</button></div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
