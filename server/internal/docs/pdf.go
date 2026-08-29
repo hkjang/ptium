@@ -54,11 +54,15 @@ func readPDF(filename string, data []byte) (Document, error) {
 		// said. What is past the slide goes into its notes, where it is still
 		// there to be read, exported and searched.
 		for index, line := range lines {
+			// The bullet is drawn on the page, so it arrives as a character.
+			// Kept, the point reads "• 매출이 늘었습니다" and the deck draws a
+			// second bullet in front of it.
+			point, _ := withoutListMarker(line)
 			if index < maximumPoints {
-				writer.point(line)
+				writer.point(point)
 				continue
 			}
-			writer.note(line)
+			writer.note(point)
 		}
 	}
 	if said == 0 {

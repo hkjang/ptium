@@ -1478,6 +1478,30 @@ if document_id:
         if wanted not in written:
             failures.append(f"the imported spreadsheet lost {wanted!r}")
     print(f"   spreadsheet -> {imported.get('slides')} slides, cited")
+
+# A bullet is drawn on the page of a PDF, so it comes back as a character. Kept,
+# every point read out of a handout began "• " and the deck drew a second bullet
+# in front of it.
+print("── a handout read back has no bullets in its words ──")
+paper = data_of(call("POST", "/presentations", {"title": f"유인물 {RUN}", "prompt": "유인물"}, expect=201))
+call("PUT", f"/presentations/{paper['id']}/source",
+     {"source": "# 표지\n- 여는 줄\n\n# 첫 내용\n- 매출이 늘었습니다\n- 고객이 늘었습니다\n"}, expect=200)
+_, handout = call("GET", f"/presentations/{paper['id']}/export.pdf", raw=True, expect=200)
+read_back = data_of(call("POST", "/presentations/import",
+                         files={"file": (f"유인물-{RUN}.pdf", handout or b"", "application/pdf")},
+                         expect=201)) or {}
+checks += 1
+carried = ((read_back.get("presentation") or {}).get("source")) or ""
+if not carried:
+    failures.append("a handout read back gave no source at all")
+elif "•" in carried:
+    failures.append(f"a handout read back keeps the bullet drawn on the page: "
+                    f"{[line for line in carried.split(chr(10)) if chr(0x2022) in line][:2]}")
+else:
+    print("   handout -> points without the drawn bullet")
+for made in [(read_back.get("presentation") or {}).get("id"), paper["id"]]:
+    if made:
+        call("DELETE", f"/presentations/{made}", expect=204)
 # A deck carried in from PowerPoint keeps what its runs said, not only what
 # they spelled. An address is the one part of a link nobody can type again from
 # looking at the slide, and it used to be dropped: the words came across and the

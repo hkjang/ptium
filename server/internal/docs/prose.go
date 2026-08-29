@@ -145,9 +145,10 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 				continue
 			}
 			table = append(table, cells)
-		case strings.HasPrefix(line, "-"), strings.HasPrefix(line, "*"), strings.HasPrefix(line, "•"):
+		case isListLine(line):
 			flush()
-			writer.point(strings.TrimSpace(line[1:]))
+			point, _ := withoutListMarker(line)
+			writer.point(point)
 		default:
 			flush()
 			writer.point(line)
