@@ -36,11 +36,11 @@ To reproduce the same bundle from source on a build host:
 ## Import on the target host
 
 ```powershell
-.\load-ptium-1.69.19.ps1 -Archive .\ptium-1.69.19.tar.gz
+.\load-ptium-1.69.20.ps1 -Archive .\ptium-1.69.20.tar.gz
 ```
 
 ```bash
-./load-ptium-1.69.19.sh ptium-1.69.19.tar.gz
+./load-ptium-1.69.20.sh ptium-1.69.20.tar.gz
 ```
 
 Both loaders verify the adjacent `.sha256` file and stop before import if it
@@ -48,9 +48,9 @@ does not match. Pass `-SkipChecksum` only when verification has already been
 enforced by the network-transfer process. Without a helper:
 
 ```bash
-sha256sum -c ptium-1.69.19.tar.gz.sha256
-gzip -dc ptium-1.69.19.tar.gz | docker load
-docker image inspect ptium-1.69.19:latest ptium:1.69.19 >/dev/null
+sha256sum -c ptium-1.69.20.tar.gz.sha256
+gzip -dc ptium-1.69.20.tar.gz | docker load
+docker image inspect ptium-1.69.20:latest ptium:1.69.20 >/dev/null
 ```
 
 ## Provide the database
@@ -114,8 +114,8 @@ Copy `ptium-<version>.env.example` to `.env`, set `DATABASE_URL` and replace
 every remaining placeholder:
 
 ```bash
-docker compose --env-file .env -f docker-compose.ptium-1.69.19.yml up -d
-docker compose --env-file .env -f docker-compose.ptium-1.69.19.yml ps
+docker compose --env-file .env -f docker-compose.ptium-1.69.20.yml up -d
+docker compose --env-file .env -f docker-compose.ptium-1.69.20.yml ps
 curl --fail http://localhost:8080/readyz
 ```
 
@@ -127,7 +127,7 @@ Ptium is then available at `http://<host>:8080`.
 kubectl create secret generic ptium \
   --from-literal=DATABASE_URL='postgres://ptium:...@postgres:5432/ptium?sslmode=require' \
   --from-literal=KEY_ENCRYPTION_SECRET="$(openssl rand -base64 32)"
-kubectl apply -f ptium-1.69.19.kubernetes.yaml
+kubectl apply -f ptium-1.69.20.kubernetes.yaml
 ```
 
 The manifest runs two replicas as a non-root user with a read-only root
