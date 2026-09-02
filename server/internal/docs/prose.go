@@ -29,12 +29,16 @@ type wordBlock struct {
 			Value string `xml:"val,attr"`
 		} `xml:"pStyle"`
 	} `xml:"pPr"`
-	Runs []string `xml:"r>t"`
-	// A table's cells, flattened: rows of cells of paragraphs of runs.
+	// The paragraph's own XML, because its text is not all in runs directly
+	// under it: a link, a tracked insertion and a content control each hold
+	// their runs a level down. See textIn.
+	Inner []byte `xml:",innerxml"`
+	// A table's cells, flattened: rows of cells of paragraphs, each read the
+	// same way.
 	Rows []struct {
 		Cells []struct {
 			Paragraphs []struct {
-				Runs []string `xml:"r>t"`
+				Inner []byte `xml:",innerxml"`
 			} `xml:"p"`
 		} `xml:"tc"`
 	} `xml:"tr"`
@@ -70,7 +74,7 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 	for _, block := range parsed.Body.Content {
 		switch block.XMLName.Local {
 		case "p":
-			text := strings.TrimSpace(strings.Join(block.Runs, ""))
+			text := strings.TrimSpace(textIn(block.Inner))
 			if text == "" {
 				continue
 			}
@@ -86,7 +90,7 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 				for _, cell := range row.Cells {
 					parts := make([]string, 0, len(cell.Paragraphs))
 					for _, paragraph := range cell.Paragraphs {
-						parts = append(parts, strings.Join(paragraph.Runs, ""))
+						parts = append(parts, textIn(paragraph.Inner))
 					}
 					cells = append(cells, strings.TrimSpace(strings.Join(parts, " ")))
 				}
