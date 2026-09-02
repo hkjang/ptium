@@ -15,9 +15,12 @@ import (
 // revision marks, the picture of the office — is not what the deck is made of.
 
 type wordDocument struct {
-	Body struct {
-		Content []wordBlock `xml:",any"`
-	} `xml:"body"`
+	Body wordBlocks `xml:"body"`
+}
+
+// wordBlocks is a run of blocks: the body's, or a wrapper's. See blocksIn.
+type wordBlocks struct {
+	Content []wordBlock `xml:",any"`
 }
 
 type wordBlock struct {
@@ -71,7 +74,7 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 	}
 
 	writer := newDeckWriter(filename, titleOf(filename))
-	for _, block := range parsed.Body.Content {
+	for _, block := range blocksIn(parsed.Body.Content, 0) {
 		switch block.XMLName.Local {
 		case "p":
 			text := strings.TrimSpace(textIn(block.Inner))
@@ -112,6 +115,44 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 			"그림 %d개는 가져오지 않았습니다. 이미지 탭에서 올려 다시 넣어 주세요", drawings))
 	}
 	return document, nil
+}
+
+// A block is not always where it looks it is.
+//
+// Word wraps whole runs of a document in a content control — the cover page of a
+// template, a table of contents, the answered part of a form — and the
+// paragraphs and tables inside one are the document's own, not the wrapper's.
+// Reading only the blocks directly under the body passed over every one of them:
+// a report whose text was inside a content control came back as a deck with a
+// title and nothing else, and nothing was said about the rest.
+var wordWrappers = map[string]bool{"sdt": true, "sdtContent": true, "customXml": true}
+
+// wordNesting is how far the reader follows wrappers into one another. Word
+// nests a few; a file that nests more than this is not one somebody wrote.
+const wordNesting = 12
+
+// blocksIn reads a run of blocks with the wrappers around them opened, so that a
+// paragraph is read wherever the document put it.
+func blocksIn(blocks []wordBlock, depth int) []wordBlock {
+	opened := make([]wordBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if !wordWrappers[block.XMLName.Local] {
+			opened = append(opened, block)
+			continue
+		}
+		if depth >= wordNesting {
+			continue
+		}
+		// The wrapper's own XML is read on its own, the way a paragraph's is: it
+		// is a fragment, so it is given a root to hang from first.
+		var inside wordBlocks
+		fragment := append(append([]byte("<blocks>"), block.Inner...), "</blocks>"...)
+		if err := xml.Unmarshal(fragment, &inside); err != nil {
+			continue
+		}
+		opened = append(opened, blocksIn(inside.Content, depth+1)...)
+	}
+	return opened
 }
 
 // picturesIn counts the pictures a Word document draws, in either of the two
