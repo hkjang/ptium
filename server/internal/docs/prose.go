@@ -32,19 +32,11 @@ type wordBlock struct {
 			Value string `xml:"val,attr"`
 		} `xml:"pStyle"`
 	} `xml:"pPr"`
-	// The paragraph's own XML, because its text is not all in runs directly
-	// under it: a link, a tracked insertion and a content control each hold
-	// their runs a level down. See textIn.
+	// The block's own XML. A paragraph's text is not all in runs directly under
+	// it — a link, a tracked insertion and a content control each hold their
+	// runs a level down (see textIn) — and a table's rows are not all directly
+	// under it either (see tableRows).
 	Inner []byte `xml:",innerxml"`
-	// A table's cells, flattened: rows of cells of paragraphs, each read the
-	// same way.
-	Rows []struct {
-		Cells []struct {
-			Paragraphs []struct {
-				Inner []byte `xml:",innerxml"`
-			} `xml:"p"`
-		} `xml:"tc"`
-	} `xml:"tr"`
 }
 
 // readWordDocument reads a .docx into slides.
@@ -87,19 +79,7 @@ func readWordDocument(filename string, data []byte) (Document, error) {
 			}
 			writer.point(text)
 		case "tbl":
-			rows := make([][]string, 0, len(block.Rows))
-			for _, row := range block.Rows {
-				cells := make([]string, 0, len(row.Cells))
-				for _, cell := range row.Cells {
-					parts := make([]string, 0, len(cell.Paragraphs))
-					for _, paragraph := range cell.Paragraphs {
-						parts = append(parts, textIn(paragraph.Inner))
-					}
-					cells = append(cells, strings.TrimSpace(strings.Join(parts, " ")))
-				}
-				rows = append(rows, cells)
-			}
-			writer.table(rows)
+			writer.table(tableRows(block))
 		}
 	}
 	document, err := writer.document()
@@ -143,16 +123,56 @@ func blocksIn(blocks []wordBlock, depth int) []wordBlock {
 		if depth >= wordNesting {
 			continue
 		}
-		// The wrapper's own XML is read on its own, the way a paragraph's is: it
-		// is a fragment, so it is given a root to hang from first.
-		var inside wordBlocks
-		fragment := append(append([]byte("<blocks>"), block.Inner...), "</blocks>"...)
-		if err := xml.Unmarshal(fragment, &inside); err != nil {
-			continue
-		}
-		opened = append(opened, blocksIn(inside.Content, depth+1)...)
+		opened = append(opened, blocksInside(block.Inner, depth+1)...)
 	}
 	return opened
+}
+
+// blocksInside reads a block's own XML as the run of blocks it holds, with the
+// wrappers around them opened. The XML is a fragment, so it is given a root to
+// hang from first.
+func blocksInside(inner []byte, depth int) []wordBlock {
+	var inside wordBlocks
+	fragment := append(append([]byte("<blocks>"), inner...), "</blocks>"...)
+	if err := xml.Unmarshal(fragment, &inside); err != nil {
+		return nil
+	}
+	return blocksIn(inside.Content, depth)
+}
+
+// A table is wrapped the same way the body is.
+//
+// The rows of a repeating section are held by a w:sdt inside the table, and a
+// cell somebody filled in on a form holds its paragraph inside one too. Reading
+// only what is directly under each level lost both: a wrapped cell came back
+// empty, and a table whose rows were all in a repeating section was left with
+// its header alone and dropped for being too short to be a table.
+//
+// A table inside a cell is passed over here as it was before: its paragraphs
+// are not this table's cells.
+func tableRows(table wordBlock) [][]string {
+	rows := make([][]string, 0, 8)
+	for _, row := range blocksInside(table.Inner, 0) {
+		if row.XMLName.Local != "tr" {
+			continue
+		}
+		cells := make([]string, 0, 4)
+		for _, cell := range blocksInside(row.Inner, 0) {
+			if cell.XMLName.Local != "tc" {
+				continue
+			}
+			parts := make([]string, 0, 2)
+			for _, paragraph := range blocksInside(cell.Inner, 0) {
+				if paragraph.XMLName.Local != "p" {
+					continue
+				}
+				parts = append(parts, textIn(paragraph.Inner))
+			}
+			cells = append(cells, strings.TrimSpace(strings.Join(parts, " ")))
+		}
+		rows = append(rows, cells)
+	}
+	return rows
 }
 
 // picturesIn counts the pictures a Word document draws, in either of the two
