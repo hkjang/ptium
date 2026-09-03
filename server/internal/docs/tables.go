@@ -2,6 +2,7 @@ package docs
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -16,14 +17,9 @@ import (
 
 // readSeparated reads a CSV or TSV file.
 func readSeparated(filename string, data []byte, separator rune) (Document, error) {
-	reader := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\ufeff")))
-	reader.Comma = separator
-	// A ragged file is normal: someone's export has a trailing note, or a blank
-	// column. Reading it is better than refusing it.
-	reader.FieldsPerRecord = -1
-	rows, err := reader.ReadAll()
+	rows, forgiven, err := separatedRows(strings.TrimPrefix(string(data), "\ufeff"), separator)
 	if err != nil {
-		return Document{}, fmt.Errorf("이 파일을 표로 읽지 못했습니다: %w", err)
+		return Document{}, err
 	}
 	document := Document{Title: titleOf(filename)}
 	var builder strings.Builder
@@ -33,8 +29,55 @@ func readSeparated(filename string, data []byte, separator rune) (Document, erro
 		return Document{}, fmt.Errorf("이 파일에는 읽을 표가 없습니다")
 	}
 	document.Source = builder.String()
-	document.Warnings = warnings
+	if forgiven > 0 {
+		document.Warnings = append(document.Warnings, fmt.Sprintf(
+			"%s의 %d번째 줄에 짝이 없는 따옴표가 있어 글자 그대로 읽었습니다", filename, forgiven))
+	}
+	document.Warnings = append(document.Warnings, warnings...)
 	return document, nil
+}
+
+// separatedRows reads the rows, and says which line's quote it had to forgive.
+//
+// A quote in a field nobody quoted is not a broken file. An export writes
+// 15" 모니터, or a width as 21", and the strict reader stops the whole file at
+// that one character: five hundred rows refused over a Korean sentence with an
+// English parser message inside it, naming a line and a column nobody can act
+// on. So a file the strict reader will not take is read again with the quote
+// taken literally, and the line it was on is said as a warning instead — in
+// case what is written there was meant to be a quoted field after all.
+func separatedRows(text string, separator rune) ([][]string, int, error) {
+	rows, strict := separatedReader(text, separator, false).ReadAll()
+	if strict == nil {
+		return rows, 0, nil
+	}
+	lazy, err := separatedReader(text, separator, true).ReadAll()
+	if err != nil {
+		return nil, 0, fmt.Errorf("이 파일을 표로 읽지 못했습니다: %w", strict)
+	}
+	// The line the record started on, not the one the reader gave up on: a
+	// quote that never closes is a mistake where it was opened, and the reader
+	// runs to the end of the file before it says anything.
+	line := 1
+	var parse *csv.ParseError
+	if errors.As(strict, &parse) {
+		if parse.StartLine > 0 {
+			line = parse.StartLine
+		} else if parse.Line > 0 {
+			line = parse.Line
+		}
+	}
+	return lazy, line, nil
+}
+
+func separatedReader(text string, separator rune, lazy bool) *csv.Reader {
+	reader := csv.NewReader(strings.NewReader(text))
+	reader.Comma = separator
+	// A ragged file is normal: someone's export has a trailing note, or a blank
+	// column. Reading it is better than refusing it.
+	reader.FieldsPerRecord = -1
+	reader.LazyQuotes = lazy
+	return reader
 }
 
 // writeSheet turns a grid into slides, and returns how many it wrote.
