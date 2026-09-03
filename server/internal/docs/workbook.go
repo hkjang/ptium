@@ -137,13 +137,25 @@ func sheetPart(name string) string {
 
 // gridOf reads a sheet into rows of text, in the cells' own positions: a sheet
 // leaves out empty cells, and reading them in order would shift a row left.
+//
+// The position is in the cell's own reference where it has one. It is allowed
+// not to have one — the reference is optional, and the writers that stream a
+// sheet out row by row leave it off — and then the cell is simply the next one
+// along. Reading a missing reference as column A instead put every cell of the
+// row in the same place and kept the last: a two-column sheet came back as one
+// column of figures with the labels gone, and the deck said nothing about it.
 func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 	grid := make([][]string, 0, len(sheet.Rows))
 	for _, row := range sheet.Rows {
 		cells := map[int]string{}
 		widest := -1
+		next := 0
 		for _, cell := range row.Cells {
 			column := columnOf(cell.Reference)
+			if column < 0 {
+				column = next
+			}
+			next = column + 1
 			value := cell.Value
 			switch cell.Type {
 			case "s":
@@ -175,7 +187,8 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 	return grid
 }
 
-// columnOf reads the column out of a cell reference such as "BC12".
+// columnOf reads the column out of a cell reference such as "BC12", and
+// returns -1 for a reference that names no column at all.
 func columnOf(reference string) int {
 	column := 0
 	for _, symbol := range strings.ToUpper(strings.TrimSpace(reference)) {
@@ -185,7 +198,7 @@ func columnOf(reference string) int {
 		column = column*26 + int(symbol-'A') + 1
 	}
 	if column <= 0 {
-		return 0
+		return -1
 	}
 	return column - 1
 }
