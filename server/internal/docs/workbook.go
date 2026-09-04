@@ -164,6 +164,18 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 				}
 			case "inlineStr":
 				value = cell.Inline
+			case "b":
+				// A logical cell stores TRUE as 1 and FALSE as 0, and the sheet
+				// shows the word. Read as the number it stores, a checklist came
+				// back as a column of 0s and 1s and was drawn as a bar chart of
+				// them; with a format on the cell it was worse, because 1 under a
+				// date format is a day and 0 under a per cent is "0%".
+				value = truthOf(cell.Value)
+			case "str", "e":
+				// A formula's cached result: text, or the error it ended in.
+				// Neither is a number, so neither is a day or a per cent —
+				// a formula that returned the characters "45678" into a
+				// date-formatted cell is not 2025-01-21.
 			default:
 				// A number carries its meaning in its format: a day counted
 				// from 1899-12-30, or a fraction of one written as a per cent.
@@ -185,6 +197,18 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 		grid = append(grid, line)
 	}
 	return grid
+}
+
+// truthOf writes a logical cell the way a spreadsheet shows it. Anything that
+// is neither of the two things a logical cell can store is left as it is.
+func truthOf(value string) string {
+	switch strings.TrimSpace(value) {
+	case "1":
+		return "TRUE"
+	case "0":
+		return "FALSE"
+	}
+	return value
 }
 
 // columnOf reads the column out of a cell reference such as "BC12", and
