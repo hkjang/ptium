@@ -16,6 +16,11 @@ import (
 // and a split reads "0.68" where the sheet on screen says 68%. Both are the
 // point of the cell; neither survives being read as a number.
 //
+// A clock is the same count: a time of day is the part of a day gone by, so an
+// agenda reads "0.5625" where it should say 13:30, and a length of time is a
+// count of whole days, so a day and a half of machine time reads "1.5" where
+// the sheet says 36:00.
+//
 // The rest of the formatting — fonts, borders, colours — is not what a deck is
 // made of and is still passed over.
 
@@ -29,14 +34,28 @@ type styleSheet struct {
 	} `xml:"cellXfs>xf"`
 }
 
-// cellFormats says, for each style a cell can carry, what kind of number it is.
-type cellFormats struct{ kinds []string }
+// numberKind is what a style says a number is, and how much of it the sheet
+// shows: a format that spells seconds out is written with its seconds.
+type numberKind struct {
+	what    string // "", "date", "time", "datetime", "elapsed", "percent"
+	seconds bool
+}
 
-// The built-in formats a spreadsheet does not spell out. 14–17 and 22 are the
-// dates and date-times; 45–47 are durations, which are read as times of day and
-// left alone; 9 and 10 are the percentages.
-var builtInDates = map[string]bool{"14": true, "15": true, "16": true, "17": true, "22": true}
-var builtInPercents = map[string]bool{"9": true, "10": true}
+// cellFormats says, for each style a cell can carry, what kind of number it is.
+type cellFormats struct{ kinds []numberKind }
+
+// The built-in formats a spreadsheet does not spell out. 14–17 are dates and 22
+// is a date with a time on it; 18–21 are times of day; 45–47 are durations; 9
+// and 10 are the percentages.
+var builtInNumbers = map[string]numberKind{
+	"9": {what: "percent"}, "10": {what: "percent"},
+	"14": {what: "date"}, "15": {what: "date"}, "16": {what: "date"}, "17": {what: "date"},
+	"18": {what: "time"}, "19": {what: "time", seconds: true},
+	"20": {what: "time"}, "21": {what: "time", seconds: true},
+	"22": {what: "datetime"},
+	"45": {what: "elapsed", seconds: true}, "46": {what: "elapsed", seconds: true},
+	"47": {what: "elapsed", seconds: true},
+}
 
 func readCellFormats(data []byte) cellFormats {
 	var sheet styleSheet
@@ -47,35 +66,77 @@ func readCellFormats(data []byte) cellFormats {
 	for _, one := range sheet.Formats {
 		custom[one.ID] = one.Code
 	}
-	kinds := make([]string, 0, len(sheet.Cells))
+	kinds := make([]numberKind, 0, len(sheet.Cells))
 	for _, one := range sheet.Cells {
 		kinds = append(kinds, kindOfFormat(one.FormatID, custom[one.FormatID]))
 	}
 	return cellFormats{kinds: kinds}
 }
 
-// kindOfFormat reads what the format is for: "date", "percent" or "".
-func kindOfFormat(id, code string) string {
-	if builtInPercents[id] {
-		return "percent"
-	}
-	if builtInDates[id] {
-		return "date"
+// kindOfFormat reads what the format is for.
+func kindOfFormat(id, code string) numberKind {
+	if built, ok := builtInNumbers[id]; ok {
+		return built
 	}
 	if code == "" {
-		return ""
+		return numberKind{}
 	}
-	// A format code spells the parts out: "yyyy-mm-dd", "0.0%". The literal text
-	// inside quotation marks is not a part, so "0\"%\"" is not a percentage, and
-	// neither is what stands in square brackets.
+	// A format code spells the parts out: "yyyy-mm-dd", "0.0%", "h:mm". The
+	// literal text inside quotation marks is not a part, so "0\"%\"" is not a
+	// percentage, and neither is what stands in square brackets.
 	spoken := spokenPartsOf(code)
 	if strings.Contains(spoken, "%") {
-		return "percent"
+		return numberKind{what: "percent"}
 	}
-	if strings.ContainsAny(spoken, "yYdD") {
-		return "date"
+	// An hour is written "h" and a second "s". A minute is written "m", the
+	// same letter a month is, so it is never what makes a format a time — a
+	// minute only ever stands beside an hour or a second anyway.
+	day := strings.ContainsAny(spoken, "yYdD")
+	clock := strings.ContainsAny(spoken, "hH")
+	seconds := strings.ContainsAny(spoken, "sS")
+	switch {
+	// A unit in square brackets — "[h]:mm:ss", "[mm]:ss" — is what a sheet puts
+	// on a length of time rather than a moment in one, so that 36 hours stays
+	// 36 hours instead of turning midday on the second day.
+	case (clock || seconds) && elapsedUnit(code):
+		return numberKind{what: "elapsed", seconds: seconds}
+	case day && (clock || seconds):
+		return numberKind{what: "datetime", seconds: seconds}
+	case day:
+		return numberKind{what: "date"}
+	case clock || seconds:
+		return numberKind{what: "time", seconds: seconds}
 	}
-	return ""
+	return numberKind{}
+}
+
+// elapsedUnit says whether a format code carries a unit in square brackets,
+// which is how a spreadsheet is told to let hours run past 24.
+//
+// Only the units are: what else stands in brackets is a colour, a condition, a
+// locale or a currency sign, and none of those is spelt out of h, m and s.
+func elapsedUnit(code string) bool {
+	quoted := false
+	for at := 0; at < len(code); at++ {
+		switch {
+		case code[at] == '"':
+			quoted = !quoted
+		case code[at] == '\\' && at+1 < len(code):
+			at++
+		case quoted:
+		case code[at] == '[':
+			end := strings.IndexByte(code[at:], ']')
+			if end < 0 {
+				return false
+			}
+			inside := code[at+1 : at+end]
+			at += end
+			if inside != "" && strings.Trim(strings.ToLower(inside), "hms") == "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // spokenPartsOf keeps only the parts of a format code that say what shape the
@@ -115,13 +176,13 @@ func spokenPartsOf(code string) string {
 }
 
 // kind says what the style at this index is for.
-func (formats cellFormats) kind(style string) string {
+func (formats cellFormats) kind(style string) numberKind {
 	if style == "" {
-		return ""
+		return numberKind{}
 	}
 	at, err := strconv.Atoi(strings.TrimSpace(style))
 	if err != nil || at < 0 || at >= len(formats.kinds) {
-		return ""
+		return numberKind{}
 	}
 	return formats.kinds[at]
 }
@@ -131,19 +192,55 @@ func (formats cellFormats) kind(style string) string {
 // agrees to keep it.
 var spreadsheetEpoch = time.Date(1899, time.December, 30, 0, 0, 0, 0, time.UTC)
 
+// The last day the count reaches, 9999-12-31, and with it the largest number
+// any of these formats can be asked to write.
+const lastCountedDay = 2958465
+
 // written turns the stored number into what the sheet shows.
 func (formats cellFormats) written(style, value string) (string, bool) {
 	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	if err != nil {
 		return value, false
 	}
-	switch formats.kind(style) {
+	kind := formats.kind(style)
+	switch kind.what {
 	case "date":
-		if number < 1 || number > 2958465 { // 1900-01-01 to 9999-12-31
+		if number < 1 || number > lastCountedDay { // 1900-01-01 to 9999-12-31
 			return value, false
 		}
 		day := spreadsheetEpoch.AddDate(0, 0, int(number))
 		return day.Format("2006-01-02"), true
+	case "datetime":
+		if number < 1 || number > lastCountedDay {
+			return value, false
+		}
+		moment := spreadsheetEpoch.Add(time.Duration(math.Round(number*86400)) * time.Second)
+		if kind.seconds {
+			return moment.Format("2006-01-02 15:04:05"), true
+		}
+		return moment.Format("2006-01-02 15:04"), true
+	case "time":
+		// A time of day is the part of the count that is not whole days: a
+		// meeting at half past one is 0.5625, and the sheet shows "13:30".
+		if number < 0 || number > lastCountedDay {
+			return value, false
+		}
+		second := int(math.Round((number-math.Floor(number))*86400)) % 86400
+		if kind.seconds {
+			return fmt.Sprintf("%02d:%02d:%02d", second/3600, second/60%60, second%60), true
+		}
+		return fmt.Sprintf("%02d:%02d", second/3600, second/60%60), true
+	case "elapsed":
+		// A length of time is counted whole: a day and a half of machine time
+		// is 36:00, not midday.
+		if number < 0 || number > lastCountedDay {
+			return value, false
+		}
+		second := int(math.Round(number * 86400))
+		if kind.seconds {
+			return fmt.Sprintf("%d:%02d:%02d", second/3600, second/60%60, second%60), true
+		}
+		return fmt.Sprintf("%d:%02d", second/3600, second/60%60), true
 	case "percent":
 		return trimZeros(number*100) + "%", true
 	}
