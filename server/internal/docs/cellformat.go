@@ -66,8 +66,9 @@ func kindOfFormat(id, code string) string {
 		return ""
 	}
 	// A format code spells the parts out: "yyyy-mm-dd", "0.0%". The literal text
-	// inside quotation marks is not a part, so "0\"%\"" is not a percentage.
-	spoken := withoutQuoted(code)
+	// inside quotation marks is not a part, so "0\"%\"" is not a percentage, and
+	// neither is what stands in square brackets.
+	spoken := spokenPartsOf(code)
 	if strings.Contains(spoken, "%") {
 		return "percent"
 	}
@@ -77,7 +78,17 @@ func kindOfFormat(id, code string) string {
 	return ""
 }
 
-func withoutQuoted(code string) string {
+// spokenPartsOf keeps only the parts of a format code that say what shape the
+// number has, dropping the parts that only say how to print it.
+//
+// Those are the text inside quotation marks, the character after a backslash,
+// and every section in square brackets. A bracket holds a colour, a condition,
+// a locale or a currency symbol — "[Red]", "[>=1000]", "[$-409]", "[$₩-412]" —
+// and none of them makes the cell a date or a percentage. Read as if they did,
+// "#,##0;[Red]-#,##0" — which is what the Currency dialog writes when negatives
+// are shown in red, and one of the commonest formats on any sheet of money —
+// has a "d" in it, and every amount on the sheet came back as a day in 1903.
+func spokenPartsOf(code string) string {
 	var out strings.Builder
 	quoted := false
 	for at := 0; at < len(code); at++ {
@@ -86,7 +97,17 @@ func withoutQuoted(code string) string {
 			quoted = !quoted
 		case code[at] == '\\' && at+1 < len(code):
 			at++
-		case !quoted:
+		case quoted:
+		case code[at] == '[':
+			// A bracket somebody never closed is not a bracket; keep it, so a
+			// broken code is read the way the rest of it is written.
+			end := strings.IndexByte(code[at:], ']')
+			if end < 0 {
+				out.WriteByte(code[at])
+				continue
+			}
+			at += end
+		default:
 			out.WriteByte(code[at])
 		}
 	}
