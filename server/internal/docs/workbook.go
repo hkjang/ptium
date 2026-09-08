@@ -16,6 +16,9 @@ import (
 // — formatting, formulas, pivot caches — is not what a deck is made of.
 
 type workbookIndex struct {
+	Properties struct {
+		Date1904 string `xml:"date1904,attr"`
+	} `xml:"workbookPr"`
 	Sheets struct {
 		Sheet []struct {
 			Name  string `xml:"name,attr"`
@@ -82,8 +85,10 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 	}
 	var strings0 sharedStrings
 	_ = xml.Unmarshal(parts["xl/sharedStrings.xml"], &strings0)
-	// What each style means, so a date is a day and a per cent is a per cent.
-	formats := readCellFormats(parts["xl/styles.xml"])
+	// What each style means, so a date is a day and a per cent is a per cent —
+	// and which day the workbook counts its days from, so the day is the one on
+	// the sheet.
+	formats := readCellFormats(parts["xl/styles.xml"], counts1904(index.Properties.Date1904))
 	shared := make([]string, 0, len(strings0.Items))
 	for _, item := range strings0.Items {
 		if item.Text != "" {
@@ -155,6 +160,20 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 func sheetHidden(state string) bool {
 	switch strings.ToLower(strings.TrimSpace(state)) {
 	case "hidden", "veryhidden":
+		return true
+	}
+	return false
+}
+
+// counts1904 reports whether a workbook counts its days from 1904 rather than
+// from 1900, which is what Excel for the Macintosh wrote and what a workbook
+// keeps doing however it is opened afterwards.
+//
+// The switch is written the way the format writes every switch: "1" or "true",
+// and a workbook that says nothing counts from 1900.
+func counts1904(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true":
 		return true
 	}
 	return false

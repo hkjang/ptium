@@ -17,7 +17,7 @@ func TestANumberIsWrittenTheWayItsFormatMeansIt(t *testing.T) {
 		<cellXfs>
 			<xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="9"/>
 			<xf numFmtId="164"/><xf numFmtId="165"/><xf numFmtId="166"/>
-		</cellXfs></styleSheet>`))
+		</cellXfs></styleSheet>`), false)
 	for _, one := range []struct {
 		what          string
 		style, stored string
@@ -45,18 +45,18 @@ func TestANumberIsWrittenTheWayItsFormatMeansIt(t *testing.T) {
 
 // The day the count runs from.
 //
-// The format keeps a leap day in 1900 that never happened. Counting from two
-// days before 1900-01-01 puts every date from March 1900 onwards where the
-// sheet shows it, which is every date anybody imports; the two months before
-// that come out a day earlier than Excel draws them, and no reader agrees with
-// Excel there without repeating the mistake.
+// The count keeps a leap day in 1900 that never happened, so it runs two days
+// before 1900-01-01 from March 1900 onwards — which is where every date anybody
+// imports is — and one day before it for the two months before that. A deck says
+// the day the sheet shows on either side of it, phantom day and all.
 func TestTheDayTheCountRunsFrom(t *testing.T) {
-	formats := readCellFormats([]byte(`<styleSheet><cellXfs><xf numFmtId="14"/></cellXfs></styleSheet>`))
+	formats := readCellFormats([]byte(`<styleSheet><cellXfs><xf numFmtId="14"/></cellXfs></styleSheet>`), false)
 	for stored, want := range map[string]string{
-		"1": "1899-12-31", // the count's own first day
-		// Excel draws day 60 as 1900-02-29, a day that did not exist.
-		"60":    "1900-02-28",
-		"61":    "1900-03-01", // from here on the two agree
+		"1":  "1900-01-01", // the count's own first day
+		"59": "1900-02-28",
+		// The day that did not exist, which the sheet shows all the same.
+		"60":    "1900-02-29",
+		"61":    "1900-03-01",
 		"45678": "2025-01-21",
 		"45900": "2025-08-31",
 	} {

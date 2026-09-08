@@ -41,8 +41,13 @@ type numberKind struct {
 	seconds bool
 }
 
-// cellFormats says, for each style a cell can carry, what kind of number it is.
-type cellFormats struct{ kinds []numberKind }
+// cellFormats says, for each style a cell can carry, what kind of number it is,
+// and which day the workbook counts its days from.
+type cellFormats struct {
+	kinds []numberKind
+	// date1904 is set by the workbooks that count from 1904 rather than 1900.
+	date1904 bool
+}
 
 // The built-in formats a spreadsheet does not spell out. 14–17 are dates and 22
 // is a date with a time on it; 18–21 are times of day; 45–47 are durations; 9
@@ -57,10 +62,10 @@ var builtInNumbers = map[string]numberKind{
 	"47": {what: "elapsed", seconds: true},
 }
 
-func readCellFormats(data []byte) cellFormats {
+func readCellFormats(data []byte, date1904 bool) cellFormats {
 	var sheet styleSheet
 	if len(data) == 0 || xml.Unmarshal(data, &sheet) != nil {
-		return cellFormats{}
+		return cellFormats{date1904: date1904}
 	}
 	custom := map[string]string{}
 	for _, one := range sheet.Formats {
@@ -70,7 +75,7 @@ func readCellFormats(data []byte) cellFormats {
 	for _, one := range sheet.Cells {
 		kinds = append(kinds, kindOfFormat(one.FormatID, custom[one.FormatID]))
 	}
-	return cellFormats{kinds: kinds}
+	return cellFormats{kinds: kinds, date1904: date1904}
 }
 
 // kindOfFormat reads what the format is for.
@@ -189,12 +194,51 @@ func (formats cellFormats) kind(style string) numberKind {
 
 // The day a spreadsheet counts from. It is two days before 1900-01-01 because
 // the format keeps a leap day in 1900 that never happened, and every reader
-// agrees to keep it.
+// agrees to keep it — for the days after that day, which is where every date
+// anybody puts in a deck is.
 var spreadsheetEpoch = time.Date(1899, time.December, 30, 0, 0, 0, 0, time.UTC)
 
-// The last day the count reaches, 9999-12-31, and with it the largest number
+// The other day a spreadsheet counts from. Excel for the Macintosh counted from
+// 1904 and wrote the workbooks that say so, and a workbook keeps counting the
+// way it was written however it is opened afterwards. Read as if it counted from
+// 1900, every date in one is four years and a day early: a delivery due
+// 2026-03-02 arrives in the deck as 2022-03-01.
+var macintoshEpoch = time.Date(1904, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// The last day each count reaches, 9999-12-31, and with it the largest number
 // any of these formats can be asked to write.
-const lastCountedDay = 2958465
+const (
+	lastCountedDay     = 2958465
+	lastCountedDay1904 = lastCountedDay - 1462 // the four years between the two
+)
+
+// dayShown writes the day a workbook's count of days stands for, and says when
+// the count stands for no day at all.
+//
+// A workbook that counts from 1904 counts plainly: its first day is 0. The one
+// that counts from 1900 counts through 1900-02-29, a day that never happened —
+// the count was copied from a spreadsheet that had the leap year wrong, and
+// every reader since has kept it so that the counts people already had went on
+// meaning the same days. So the counts before it stand for a day later than the
+// arithmetic says (1 is 1900-01-01, not 1899-12-31), and 60 is the day itself,
+// which the sheet shows and no calendar has.
+func (formats cellFormats) dayShown(count int) (string, bool) {
+	if formats.date1904 {
+		if count < 0 || count > lastCountedDay1904 {
+			return "", false
+		}
+		return macintoshEpoch.AddDate(0, 0, count).Format("2006-01-02"), true
+	}
+	switch {
+	case count < 1 || count > lastCountedDay: // 1900-01-01 to 9999-12-31
+		return "", false
+	case count == 60:
+		return "1900-02-29", true
+	case count < 60:
+		return spreadsheetEpoch.AddDate(0, 0, count+1).Format("2006-01-02"), true
+	}
+	return spreadsheetEpoch.AddDate(0, 0, count).Format("2006-01-02"), true
+}
 
 // written turns the stored number into what the sheet shows.
 func (formats cellFormats) written(style, value string) (string, bool) {
@@ -205,20 +249,31 @@ func (formats cellFormats) written(style, value string) (string, bool) {
 	kind := formats.kind(style)
 	switch kind.what {
 	case "date":
-		if number < 1 || number > lastCountedDay { // 1900-01-01 to 9999-12-31
+		if number < 0 || number > lastCountedDay {
 			return value, false
 		}
-		day := spreadsheetEpoch.AddDate(0, 0, int(number))
-		return day.Format("2006-01-02"), true
+		day, ok := formats.dayShown(int(number))
+		if !ok {
+			return value, false
+		}
+		return day, true
 	case "datetime":
-		if number < 1 || number > lastCountedDay {
+		if number < 0 || number > lastCountedDay {
 			return value, false
 		}
-		moment := spreadsheetEpoch.Add(time.Duration(math.Round(number*86400)) * time.Second)
-		if kind.seconds {
-			return moment.Format("2006-01-02 15:04:05"), true
+		// The count is rounded to the second before the day is taken out of it,
+		// so a moment a hair before midnight is the next day rather than
+		// twenty-four o'clock on this one.
+		second := int(math.Round(number * 86400))
+		day, ok := formats.dayShown(second / 86400)
+		if !ok {
+			return value, false
 		}
-		return moment.Format("2006-01-02 15:04"), true
+		clock := second % 86400
+		if kind.seconds {
+			return fmt.Sprintf("%s %02d:%02d:%02d", day, clock/3600, clock/60%60, clock%60), true
+		}
+		return fmt.Sprintf("%s %02d:%02d", day, clock/3600, clock/60%60), true
 	case "time":
 		// A time of day is the part of the count that is not whole days: a
 		// meeting at half past one is 0.5625, and the sheet shows "13:30".
