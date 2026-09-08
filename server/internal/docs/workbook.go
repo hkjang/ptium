@@ -18,8 +18,9 @@ import (
 type workbookIndex struct {
 	Sheets struct {
 		Sheet []struct {
-			Name string `xml:"name,attr"`
-			ID   string `xml:"id,attr"`
+			Name  string `xml:"name,attr"`
+			ID    string `xml:"id,attr"`
+			State string `xml:"state,attr"`
 		} `xml:"sheet"`
 	} `xml:"sheets"`
 }
@@ -97,7 +98,16 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 	fmt.Fprintf(&builder, "# %s\n@cover\n> %s\n\n", escapeLine(document.Title), escapeLine(filename))
 	written := 0
 	var warnings []string
+	var hidden []string
 	for _, sheet := range index.Sheets.Sheet {
+		// A workbook says which of its sheets it hides, and a hidden sheet is
+		// one nobody meant anyone to see: the code table a formula looks up in,
+		// the settings a macro reads, last quarter's working copy. Taken as if
+		// it were visible, it became a slide in the middle of the deck.
+		if sheetHidden(sheet.State) {
+			hidden = append(hidden, sheet.Name)
+			continue
+		}
 		if written >= maximumSlides {
 			warnings = append(warnings, fmt.Sprintf("시트가 많아 앞 %d개만 가져왔습니다", maximumSlides))
 			break
@@ -120,11 +130,34 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		warnings = append(warnings, sheetWarnings...)
 	}
 	if written == 0 {
+		// Why there is nothing to show matters when the file plainly has
+		// figures in it: "읽을 표가 없습니다" sends someone back to a workbook
+		// they can see the numbers in, to look for what is wrong with it.
+		if len(hidden) > 0 {
+			return Document{}, fmt.Errorf("이 통합 문서의 시트(%s)는 모두 숨겨져 있습니다",
+				strings.Join(hidden, ", "))
+		}
 		return Document{}, fmt.Errorf("이 통합 문서에는 읽을 표가 없습니다")
+	}
+	if len(hidden) > 0 {
+		warnings = append(warnings, fmt.Sprintf("숨겨진 시트(%s)는 가져오지 않았습니다",
+			strings.Join(hidden, ", ")))
 	}
 	document.Source = builder.String()
 	document.Warnings = warnings
 	return document, nil
+}
+
+// sheetHidden reports whether a workbook hides a sheet. "veryHidden" is the
+// one only a macro can put back, which is further from being meant for a deck
+// rather than nearer; anything else, including the state a sheet writes by
+// writing nothing, is a sheet somebody looks at.
+func sheetHidden(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "hidden", "veryhidden":
+		return true
+	}
+	return false
 }
 
 // sheetPart joins a workbook-relative part name, which may already be absolute.
