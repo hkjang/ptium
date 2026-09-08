@@ -30,7 +30,7 @@ const timeStyles = `<styleSheet><numFmts>
 </cellXfs></styleSheet>`
 
 func TestATimeIsWrittenAsTheClockTheSheetShows(t *testing.T) {
-	formats := readCellFormats([]byte(timeStyles))
+	formats := readCellFormats([]byte(timeStyles), false)
 	for _, one := range []struct {
 		what          string
 		style, stored string

@@ -25,7 +25,7 @@ func TestABracketInAFormatSaysHowToPrintNotWhatToRead(t *testing.T) {
 	</numFmts><cellXfs>
 		<xf numFmtId="164"/><xf numFmtId="165"/><xf numFmtId="166"/><xf numFmtId="167"/>
 		<xf numFmtId="168"/><xf numFmtId="169"/><xf numFmtId="170"/>
-	</cellXfs></styleSheet>`))
+	</cellXfs></styleSheet>`), false)
 	for _, one := range []struct {
 		what          string
 		style, stored string
