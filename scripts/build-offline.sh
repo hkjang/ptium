@@ -62,20 +62,44 @@ docker image inspect "$image" "$alias_image" > /dev/null
 #
 # --dry-run=client still asks a cluster for the schema it validates against, so
 # on a host whose cluster is down the check failed and took the release with it —
-# a laptop's minikube being asleep is not a broken manifest. The structural
-# decode runs either way; when the schema check cannot run, it says so rather
-# than passing quietly.
-if command -v kubectl > /dev/null; then
-    manifest="$dist/ptium-$version.kubernetes.yaml"
-    if kubectl apply --dry-run=client -f "$manifest" > /dev/null 2>&1; then
+# a laptop's minikube being asleep is not a broken manifest.
+#
+# `create --validate=false` was the way out of that, and it is not one: it still
+# asks the cluster which kinds exist, so it fails for the same reason and the
+# release stopped saying "the manifest is not valid" about a manifest nobody had
+# been able to read. What runs without a cluster is a decode, so that is what
+# runs when there is no cluster, and it says which of the two it did.
+manifest="$dist/ptium-$version.kubernetes.yaml"
+if command -v kubectl > /dev/null && kubectl apply --dry-run=client -f "$manifest" > /dev/null 2>&1; then
+    :
+elif command -v python3 > /dev/null; then
+    if python3 - "$manifest" <<'DECODE'
+import sys, yaml
+path = sys.argv[1]
+with open(path, encoding="utf-8") as handle:
+    documents = [d for d in yaml.safe_load_all(handle) if d]
+if not documents:
+    print(f"{path} holds no resources at all", file=sys.stderr)
+    raise SystemExit(1)
+missing = [f"resource {n}: no {f}" for n, d in enumerate(documents, 1)
+           for f in ("apiVersion", "kind")
+           if not str(d.get(f) or "").strip()]
+missing += [f"resource {n} ({d.get('kind')}): no metadata.name" for n, d in enumerate(documents, 1)
+            if not str((d.get("metadata") or {}).get("name") or "").strip()]
+if missing:
+    print("\n".join(missing), file=sys.stderr)
+    raise SystemExit(1)
+print(f"note: {len(documents)} resources decode and are named; "
+      "no cluster was reachable to check them against the API schema")
+DECODE
+    then
         :
-    elif kubectl create --dry-run=client --validate=false -f "$manifest" -o name > /dev/null 2>&1; then
-        echo "note: every resource in the manifest decodes; no cluster was reachable to check it against the API schema"
     else
         echo "The Kubernetes manifest in this bundle is not valid." >&2
-        kubectl create --dry-run=client --validate=false -f "$manifest" -o name >&2 || true
         exit 1
     fi
+else
+    echo "note: the Kubernetes manifest was not checked; neither a cluster nor python3 was available" >&2
 fi
 
 # What the archive holds is what a target site will run, so it is worth running
