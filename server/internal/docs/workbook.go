@@ -104,6 +104,7 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 	written := 0
 	var warnings []string
 	var hidden []string
+	var left []string
 	for _, sheet := range index.Sheets.Sheet {
 		// A workbook says which of its sheets it hides, and a hidden sheet is
 		// one nobody meant anyone to see: the code table a formula looks up in,
@@ -112,10 +113,6 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if sheetHidden(sheet.State) {
 			hidden = append(hidden, sheet.Name)
 			continue
-		}
-		if written >= maximumSlides {
-			warnings = append(warnings, fmt.Sprintf("시트가 많아 앞 %d개만 가져왔습니다", maximumSlides))
-			break
 		}
 		name := target[sheet.ID]
 		if name == "" {
@@ -130,6 +127,20 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 			continue
 		}
 		rows := gridOf(parsed, shared, formats)
+		// A deck holds so many slides, and a workbook of forty sheets runs out
+		// of deck before it runs out of sheets. What was left out is what the
+		// person who uploaded it has to know, and naming it is the only way
+		// they can: "시트가 많아 앞 30개만 가져왔습니다" named neither, and the
+		// number in it was how many slides a deck holds — so a workbook whose
+		// sheets each fill three slides said it had taken the first thirty of
+		// its eleven. A sheet with nothing on it was never going to be a
+		// slide, so it is not something that was left out.
+		if written >= maximumSlides {
+			if len(trimGrid(rows)) >= 2 {
+				left = append(left, sheet.Name)
+			}
+			continue
+		}
 		count, sheetWarnings := writeSheet(&builder, filename, sheet.Name, rows)
 		written += count
 		warnings = append(warnings, sheetWarnings...)
@@ -140,13 +151,18 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		// they can see the numbers in, to look for what is wrong with it.
 		if len(hidden) > 0 {
 			return Document{}, fmt.Errorf("이 통합 문서의 시트(%s)는 모두 숨겨져 있습니다",
-				strings.Join(hidden, ", "))
+				sheetsNamed(hidden))
 		}
 		return Document{}, fmt.Errorf("이 통합 문서에는 읽을 표가 없습니다")
 	}
+	if len(left) > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"슬라이드가 많아 시트(%s)는 가져오지 않았습니다. 나눠서 올리면 전부 가져옵니다",
+			sheetsNamed(left)))
+	}
 	if len(hidden) > 0 {
 		warnings = append(warnings, fmt.Sprintf("숨겨진 시트(%s)는 가져오지 않았습니다",
-			strings.Join(hidden, ", ")))
+			sheetsNamed(hidden)))
 	}
 	document.Source = builder.String()
 	document.Warnings = warnings
@@ -163,6 +179,22 @@ func sheetHidden(state string) bool {
 		return true
 	}
 	return false
+}
+
+// sheetsNamed writes the sheets a warning is about, named while naming them is
+// what somebody can act on.
+//
+// A warning is one line that somebody reads. Forty names is the workbook's
+// table of contents written into that line, and the ones at the end of it are
+// the ones that go off the edge; past a handful, how many there are is the
+// part that can be acted on, and the first few say which end of the workbook
+// they came from.
+func sheetsNamed(names []string) string {
+	const named = 5
+	if len(names) <= named {
+		return strings.Join(names, ", ")
+	}
+	return fmt.Sprintf("%s 외 %d개", strings.Join(names[:named], ", "), len(names)-named)
 }
 
 // counts1904 reports whether a workbook counts its days from 1904 rather than
