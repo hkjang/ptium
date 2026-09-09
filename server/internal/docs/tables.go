@@ -232,6 +232,14 @@ func trimGrid(rows [][]string) [][]string {
 }
 
 // allNumeric reports whether every row carries a number in a column.
+//
+// This is the question that sends a sheet on as a chart, and the answer has to
+// stay no wider than what the deck's own parser (deck.parseNumber) can read
+// back out of the same cell. The two are separate readings on purpose — the
+// deck's one keeps a contract this one does not, that a figure ends at a space,
+// which is what lets a line chart's row hold four of them — so widening this
+// one past that is how a column gets called figures and then handed bar heights
+// nobody wrote.
 func allNumeric(rows [][]string, column int) bool {
 	found := false
 	for _, row := range rows {
@@ -242,10 +250,60 @@ func allNumeric(rows [][]string, column int) bool {
 		if value == "" {
 			return false
 		}
-		if _, err := strconv.ParseFloat(strings.NewReplacer(",", "", "%", "", " ", "").Replace(value), 64); err != nil {
+		if _, ok := amountOf(value); !ok {
 			return false
 		}
 		found = true
 	}
 	return found
 }
+
+// amountOf reads a figure the way a sheet of money writes one.
+//
+// A column of amounts is a column of figures, but a spreadsheet almost never
+// writes them bare. The Currency format puts a sign on every row — "₩1,200" in
+// Korea, "$1,200" elsewhere, "1,200원" where the currency is a word — and the
+// accounting convention writes a negative one in brackets, "(340)", which is
+// what a refund row looks like. None of that is text a person put there; it is
+// how the sheet shows the number. Read as text, one such column was not a
+// column of figures, so a two-column sheet of sales by region came out as a
+// table of the very numbers somebody opened it to see drawn.
+//
+// Only the signs come off, and a unit that is a word stays: "1월" is a month
+// and "3개" is a count of things, and neither is a figure to plot an axis by.
+// The fixed space an export leaves between a figure and its unit stays as well,
+// though it is only a space: the deck's parser ends a figure at any space, so a
+// column this read as 1,200 and the chart then drew as 1 is worse off than the
+// table it was. Where the two readings disagree, this one gives way.
+func amountOf(value string) (float64, bool) {
+	trimmed := strings.TrimSpace(value)
+	negative := false
+	if len(trimmed) > 2 && strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {
+		trimmed, negative = trimmed[1:len(trimmed)-1], true
+	}
+	number, err := strconv.ParseFloat(amountSigns.Replace(trimmed), 64)
+	if err != nil {
+		return 0, false
+	}
+	if negative {
+		return -number, true
+	}
+	return number, true
+}
+
+// The marks a spreadsheet puts on a figure without changing what the figure is:
+// the thousands separator and the per-cent sign a column already carried, the
+// plain space, and the currency signs.
+//
+// The fixed space (U+00A0) is deliberately not among them, though a spreadsheet
+// does write one between a figure and its unit. Taking it off here while the
+// deck's parser ends a figure at it is what read "1 200" as 1,200 on the way in
+// and drew it as 1 on the way out, a bar an eighth of a per cent tall. Left in
+// place, such a column is no figure column and the sheet stays the table it is
+// today. The plain space is the same disagreement and older than this list —
+// worth settling, but on its own, since taking it off changes which sheets a
+// deck has been drawing as charts all along.
+var amountSigns = strings.NewReplacer(
+	",", "", "%", "", " ", "",
+	"₩", "", "￦", "", "$", "", "€", "", "£", "", "¥", "", "￥", "", "원", "",
+)
