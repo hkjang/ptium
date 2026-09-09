@@ -3,11 +3,11 @@ package deck
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/hkjang/ptium/server/internal/figures"
 	"github.com/hkjang/ptium/server/internal/pptx"
 )
 
@@ -691,33 +691,13 @@ func parseSourceItem(text string) pptx.Item {
 
 // parseNumber pulls a magnitude out of a written value: "18%", "42개",
 // "1,200억", "-3.5pt" all carry one.
+//
+// It is the same reading a spreadsheet's importer makes when it decides a
+// column is figures at all, because it is the same scan (internal/figures): a
+// sheet the importer sends here as a chart is one this has to size, and the two
+// disagreed about "1 200" — 1,200 to the importer, 1 to this.
 func parseNumber(value string) (float64, bool) {
-	var digits strings.Builder
-	seenDigit := false
-	for _, character := range value {
-		switch {
-		case character >= '0' && character <= '9':
-			digits.WriteRune(character)
-			seenDigit = true
-		case character == '.' && seenDigit:
-			digits.WriteRune(character)
-		case (character == '-' || character == '+') && digits.Len() == 0:
-			digits.WriteRune(character)
-		case character == ',':
-			// A thousands separator, not a decimal point.
-		default:
-			if seenDigit {
-				// Stop at the first unit so "42개 / 18%" reads as 42.
-				number, err := strconv.ParseFloat(digits.String(), 64)
-				return number, err == nil
-			}
-		}
-	}
-	if !seenDigit {
-		return 0, false
-	}
-	number, err := strconv.ParseFloat(digits.String(), 64)
-	return number, err == nil
+	return figures.Of(value)
 }
 
 // TitleFromSource is what a deck written in this language calls itself: the

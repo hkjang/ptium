@@ -4,8 +4,9 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
+
+	"github.com/hkjang/ptium/server/internal/figures"
 )
 
 // A spreadsheet is a deck's numbers, already gathered.
@@ -232,6 +233,14 @@ func trimGrid(rows [][]string) [][]string {
 }
 
 // allNumeric reports whether every row carries a number in a column.
+//
+// A column of money is a column of figures, but a sheet almost never writes one
+// bare: the Currency format signs every row of it and the accounting convention
+// brackets a negative one. Read as text, a sheet of sales by region came out as
+// a table of the very numbers somebody opened it to see drawn. What counts as a
+// figure is figures.Alone's to say, and the deck's parser reads the figure out
+// of that same code, so a column sent on as a chart is one the chart reads the
+// same way.
 func allNumeric(rows [][]string, column int) bool {
 	found := false
 	for _, row := range rows {
@@ -242,7 +251,7 @@ func allNumeric(rows [][]string, column int) bool {
 		if value == "" {
 			return false
 		}
-		if _, err := strconv.ParseFloat(strings.NewReplacer(",", "", "%", "", " ", "").Replace(value), 64); err != nil {
+		if _, ok := figures.Alone(value); !ok {
 			return false
 		}
 		found = true
