@@ -262,12 +262,11 @@ func allNumeric(rows [][]string, column int) bool {
 //
 // A column of amounts is a column of figures, but a spreadsheet almost never
 // writes them bare. The Currency format puts a sign on every row — "₩1,200" in
-// Korea, "$1,200" elsewhere, "1,200원" where the currency is a word — and the
-// accounting convention writes a negative one in brackets, "(340)", which is
-// what a refund row looks like. None of that is text a person put there; it is
-// how the sheet shows the number. Read as text, one such column was not a
-// column of figures, so a two-column sheet of sales by region came out as a
-// table of the very numbers somebody opened it to see drawn.
+// Korea, "$1,200" elsewhere, "1,200원" where the currency is a word. None of
+// that is text a person put there; it is how the sheet shows the number. Read
+// as text, one such column was not a column of figures, so a two-column sheet
+// of sales by region came out as a table of the very numbers somebody opened it
+// to see drawn.
 //
 // Only the signs come off, and a unit that is a word stays: "1월" is a month
 // and "3개" is a count of things, and neither is a figure to plot an axis by.
@@ -275,18 +274,17 @@ func allNumeric(rows [][]string, column int) bool {
 // though it is only a space: the deck's parser ends a figure at any space, so a
 // column this read as 1,200 and the chart then drew as 1 is worse off than the
 // table it was. Where the two readings disagree, this one gives way.
+//
+// The accounting bracket — "(340)", how a sheet writes a refund — is the same
+// disagreement and stays out for the same reason. A bar is laid out by its
+// magnitude, so a refund read as -340 is drawn in the direction and at the
+// height of a month that sold 340, and the minus survives only in a value label
+// the chart drops once it holds more than six bars. A column with a refund in
+// it is left the table it was, where the brackets are still on the page.
 func amountOf(value string) (float64, bool) {
-	trimmed := strings.TrimSpace(value)
-	negative := false
-	if len(trimmed) > 2 && strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {
-		trimmed, negative = trimmed[1:len(trimmed)-1], true
-	}
-	number, err := strconv.ParseFloat(amountSigns.Replace(trimmed), 64)
+	number, err := strconv.ParseFloat(amountSigns.Replace(strings.TrimSpace(value)), 64)
 	if err != nil {
 		return 0, false
-	}
-	if negative {
-		return -number, true
 	}
 	return number, true
 }

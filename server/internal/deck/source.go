@@ -690,24 +690,10 @@ func parseSourceItem(text string) pptx.Item {
 }
 
 // parseNumber pulls a magnitude out of a written value: "18%", "42개",
-// "1,200억", "-3.5pt" all carry one.
-//
-// A figure wrapped in brackets is a negative one. That is how every accounting
-// sheet writes a refund — "(340)", never "-340" — and read without its brackets
-// the refund drew above the axis, the same height as a month that sold 340.
+// "1,200억", "-3.5pt" all carry one. A sign the value carries itself is kept; a
+// bracket is not read as one, because a bar is laid out by its magnitude and a
+// figure read as -340 draws where 340 does.
 func parseNumber(value string) (float64, bool) {
-	if trimmed := strings.TrimSpace(value); len(trimmed) > 2 &&
-		strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {
-		if number, ok := bareNumber(trimmed[1 : len(trimmed)-1]); ok {
-			return -number, true
-		}
-		return 0, false
-	}
-	return bareNumber(value)
-}
-
-// bareNumber reads the magnitude out of a value that carries its own sign.
-func bareNumber(value string) (float64, bool) {
 	var digits strings.Builder
 	seenDigit := false
 	for _, character := range value {

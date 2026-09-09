@@ -105,17 +105,23 @@ func TestParseNumberReadsWrittenValues(t *testing.T) {
 	}
 }
 
-// Brackets are how an accounting sheet writes a minus, so a refund belongs
-// below the axis rather than as high as a month that sold as much.
-func TestParseNumberReadsBracketsAsAMinus(t *testing.T) {
+// Brackets are how an accounting sheet writes a minus, but nothing that reads
+// this figure can draw one: a bar is laid out by its magnitude, so a refund read
+// as -340 stands where 340 stands. The minus is not invented here, and the
+// importer keeps a sheet holding one as the table it was, brackets and all.
+func TestParseNumberDoesNotReadABracketAsAMinus(t *testing.T) {
 	cases := map[string]float64{
-		"(340)": -340, "(1,200원)": -1200, "(₩340)": -340, "(0.5)": -0.5, " (340) ": -340,
+		"(340)": 340, "(1,200원)": 1200, "(₩340)": 340, "(0.5)": 0.5, " (340) ": 340,
 	}
 	for value, want := range cases {
 		got, ok := parseNumber(value)
 		if !ok || got != want {
 			t.Fatalf("parseNumber(%q) = %v, %v; want %v", value, got, ok, want)
 		}
+	}
+	// A sign the value carries itself is still a sign.
+	if got, ok := parseNumber("-3.5pt"); !ok || got != -3.5 {
+		t.Fatalf(`parseNumber("-3.5pt") = %v, %v; want -3.5`, got, ok)
 	}
 	// A bracket with no figure in it is not a figure.
 	for _, value := range []string{"(미집계)", "()"} {

@@ -9,10 +9,13 @@ import (
 )
 
 // A column of money is a column of figures, but a sheet almost never writes it
-// bare: the Currency format puts a sign on every row of it, and the accounting
-// convention puts a negative one in brackets. Read as text, a sheet of sales by
-// region came out as a table of the same numbers instead of the chart anybody
-// would have drawn from it.
+// bare: the Currency format puts a sign on every row of it. Read as text, a
+// sheet of sales by region came out as a table of the same numbers instead of
+// the chart anybody would have drawn from it.
+//
+// The accounting bracket is the one thing a sign coming off does not cover. A
+// bar is drawn by its magnitude, so a refund would take the height of a month
+// that sold as much, and a sheet holding one is left the table it was.
 
 func TestASheetOfMoneyIsDrawnAsAChart(t *testing.T) {
 	for _, test := range []struct {
@@ -40,11 +43,14 @@ func TestASheetOfMoneyIsDrawnAsAChart(t *testing.T) {
 		},
 		{
 			// A refund. Brackets are how an accounting sheet writes a minus, and
-			// one such row was enough to turn the whole chart back into a table.
-			name:       "a negative amount written in brackets",
+			// nothing downstream can draw one: a bar is laid out by its
+			// magnitude, so "(340)" would stand exactly as high as a month that
+			// sold 340, with the minus surviving only in a value label the chart
+			// drops past six bars. The sheet keeps its brackets as a table.
+			name:       "a refund in brackets is left a table",
 			csv:        "지역,매출\n서울,\"1,200\"\n부산,\"(340)\"\n",
-			want:       []string{"::columns 매출", "- 부산 | (340)"},
-			wantAbsent: []string{"::table 지역"},
+			want:       []string{"::table 지역", "- 부산 | (340)"},
+			wantAbsent: []string{"::columns 매출"},
 		},
 		{
 			name:       "an amount in dollars",
@@ -112,9 +118,11 @@ func TestAnAmountIsReadWithItsSignTakenOff(t *testing.T) {
 		{"€1.5", 1.5, true},
 		{"1,200원", 1200, true},
 		{"-₩1,200", -1200, true},
-		{"(1,200)", -1200, true},
-		{"(₩340)", -340, true},
 		{"68%", 68, true},
+		// The accounting bracket is a minus no bar can be drawn at, so a column
+		// holding one is not a column this sends on to a chart.
+		{"(1,200)", 0, false},
+		{"(₩340)", 0, false},
 		// The fixed space an export writes between a figure and its unit is a
 		// space all the same, and the deck's parser ends a figure at one. Read
 		// here as 1,200 the sheet goes on as a chart the deck then draws as 1,
@@ -166,14 +174,6 @@ func TestTheChartReadsTheFiguresTheSheetWasSentOnFor(t *testing.T) {
 			name: "amounts in dollars, one of them with a decimal",
 			csv:  "지역,매출\n서울,\"$1,200.50\"\n부산,\"$980\"\n",
 			want: map[string]float64{"서울": 1200.5, "부산": 980},
-		},
-		{
-			// A refund. The chart reads it as the minus the sheet wrote, though
-			// a bar is drawn by its size alone, so this is the figure the audit
-			// and the notes quote rather than the height on the slide.
-			name: "a refund in brackets",
-			csv:  "지역,매출\n서울,\"1,200\"\n부산,(340)\n",
-			want: map[string]float64{"서울": 1200, "부산": -340},
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
