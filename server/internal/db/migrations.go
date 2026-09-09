@@ -1,5 +1,7 @@
 package db
 
+import "sort"
+
 var migrations = []string{
 	`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version integer PRIMARY KEY,
@@ -309,6 +311,29 @@ var migrations = []string{
 func ShippedSetting(key string) (string, bool) {
 	setting, ok := defaultSettings[key]
 	return setting.Value, ok
+}
+
+// SettingIsSecret says whether this product ships a setting as one to keep
+// hidden, and whether it ships it at all.
+//
+// It is the one place that decides. Guessing from the name instead read
+// "security.api_key_grace" — a rotation overlap, seeded in the open — as a
+// secret because "api_key" is inside it, and an administrator who saved that
+// field could never see its value again.
+// ShippedSettingKeys names every setting this product ships, so a check about
+// all of them cannot quietly be a check about none.
+func ShippedSettingKeys() []string {
+	keys := make([]string, 0, len(defaultSettings))
+	for key := range defaultSettings {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func SettingIsSecret(key string) (bool, bool) {
+	setting, ok := defaultSettings[key]
+	return setting.Sensitive, ok
 }
 
 var defaultSettings = map[string]struct {

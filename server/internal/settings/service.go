@@ -18,6 +18,26 @@ import (
 type Service struct {
 	store *store.Store
 	aead  cipher.AEAD
+	// Secret says whether this product ships a key as one to keep hidden, and
+	// whether it ships it at all. It is set by whoever knows — this package
+	// cannot reach the seed without the two importing each other.
+	//
+	// A value sealed by a rule that has since been corrected is still sealed in
+	// the database, and only this can tell that it should not have been. Left
+	// unset, the stored flag is taken as it stands.
+	Secret func(key string) (bool, bool)
+}
+
+// keptHidden reports whether a stored setting's value is still to be withheld.
+func (s *Service) keptHidden(setting model.Setting) bool {
+	if !setting.Sensitive {
+		return false
+	}
+	if s.Secret == nil {
+		return true
+	}
+	secret, shipped := s.Secret(setting.Key)
+	return !shipped || secret
 }
 
 // ErrUnreadable reports a sensitive setting whose stored value cannot be
@@ -58,6 +78,15 @@ func (s *Service) ListForAdmin(ctx context.Context) ([]model.Setting, error) {
 	for i := range result {
 		if result[i].Sensitive {
 			plain, openErr := s.open(result[i].Value)
+			if openErr == nil && !s.keptHidden(result[i]) {
+				// Sealed by the old rule, which read "api_key" inside
+				// "api_key_grace". The value was never a secret, so it is shown
+				// again rather than waiting for somebody to guess and retype it.
+				result[i].Sensitive = false
+				result[i].Configured = configuredValue(plain)
+				result[i].Value = plain
+				continue
+			}
 			if openErr != nil {
 				// One key the server cannot decrypt must not take the settings
 				// page down with it: that is precisely the moment an operator

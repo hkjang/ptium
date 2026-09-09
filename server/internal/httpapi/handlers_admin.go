@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/db"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
@@ -225,7 +226,19 @@ func parseSettingUpdates(section string, raw json.RawMessage) ([]settingUpdate, 
 	return list, nil
 }
 
+// sensitiveSettingKey says whether a setting's value is one to keep hidden.
+//
+// What this product ships decides it. Reading the name instead made
+// "security.api_key_grace" a secret — a rotation overlap seeded in the open,
+// caught by "api_key" sitting inside the word — so an administrator who saved
+// that field was never shown its value again, on that screen or any other.
+//
+// The name is still read for a key this product does not ship, which is all a
+// deployment could have that the seed has never heard of.
 func sensitiveSettingKey(key string) bool {
+	if secret, shipped := db.SettingIsSecret(key); shipped {
+		return secret
+	}
 	lower := strings.ToLower(key)
 	return strings.Contains(lower, "api_key") || strings.Contains(lower, "client_secret") || strings.Contains(lower, "password") || strings.HasSuffix(lower, ".secret")
 }

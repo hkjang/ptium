@@ -109,6 +109,9 @@ func main() {
 	if err != nil {
 		fatal("initialize encrypted settings", err)
 	}
+	// Which settings are secrets is what this product ships, not what their
+	// names look like.
+	settingService.Secret = db.SettingIsSecret
 	keyManager := keys.New(pool)
 
 	applicationConfig.CORSAllowedOrigins = appendUnique(applicationConfig.CORSAllowedOrigins, databaseCORSOrigins(rootContext, settingService)...)
