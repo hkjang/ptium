@@ -105,6 +105,30 @@ func TestParseNumberReadsWrittenValues(t *testing.T) {
 	}
 }
 
+// Brackets are how an accounting sheet writes a minus, so a refund belongs
+// below the axis rather than as high as a month that sold as much.
+func TestParseNumberReadsBracketsAsAMinus(t *testing.T) {
+	cases := map[string]float64{
+		"(340)": -340, "(1,200원)": -1200, "(₩340)": -340, "(0.5)": -0.5, " (340) ": -340,
+	}
+	for value, want := range cases {
+		got, ok := parseNumber(value)
+		if !ok || got != want {
+			t.Fatalf("parseNumber(%q) = %v, %v; want %v", value, got, ok, want)
+		}
+	}
+	// A bracket with no figure in it is not a figure.
+	for _, value := range []string{"(미집계)", "()"} {
+		if _, ok := parseNumber(value); ok {
+			t.Fatalf("parseNumber(%q) should find no number", value)
+		}
+	}
+	// A note in brackets after a figure leaves the figure where it was.
+	if got, ok := parseNumber("340(잠정)"); !ok || got != 340 {
+		t.Fatalf(`parseNumber("340(잠정)") = %v, %v; want 340`, got, ok)
+	}
+}
+
 func testManifest() pptx.Manifest {
 	body := func(slot string, x int) pptx.Placeholder {
 		return pptx.Placeholder{Slot: slot, Kind: "text", Type: "body", X: x, Y: 2000000,

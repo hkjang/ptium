@@ -242,10 +242,48 @@ func allNumeric(rows [][]string, column int) bool {
 		if value == "" {
 			return false
 		}
-		if _, err := strconv.ParseFloat(strings.NewReplacer(",", "", "%", "", " ", "").Replace(value), 64); err != nil {
+		if _, ok := amountOf(value); !ok {
 			return false
 		}
 		found = true
 	}
 	return found
 }
+
+// amountOf reads a figure the way a sheet of money writes one.
+//
+// A column of amounts is a column of figures, but a spreadsheet almost never
+// writes them bare. The Currency format puts a sign on every row — "₩1,200" in
+// Korea, "$1,200" elsewhere, "1,200원" where the currency is a word — and the
+// accounting convention writes a negative one in brackets, "(340)", which is
+// what a refund row looks like. None of that is text a person put there; it is
+// how the sheet shows the number. Read as text, one such column was not a
+// column of figures, so a two-column sheet of sales by region came out as a
+// table of the very numbers somebody opened it to see drawn.
+//
+// Only the signs come off, and a unit that is a word stays: "1월" is a month
+// and "3개" is a count of things, and neither is a figure to plot an axis by.
+func amountOf(value string) (float64, bool) {
+	trimmed := strings.TrimSpace(value)
+	negative := false
+	if len(trimmed) > 2 && strings.HasPrefix(trimmed, "(") && strings.HasSuffix(trimmed, ")") {
+		trimmed, negative = trimmed[1:len(trimmed)-1], true
+	}
+	number, err := strconv.ParseFloat(amountSigns.Replace(trimmed), 64)
+	if err != nil {
+		return 0, false
+	}
+	if negative {
+		return -number, true
+	}
+	return number, true
+}
+
+// The marks a spreadsheet puts on a figure without changing what the figure is:
+// the thousands separators and the per-cent sign a column already carried, the
+// spaces an export leaves around them — the fixed one included, which is what a
+// spreadsheet writes between a figure and its unit — and the currency signs.
+var amountSigns = strings.NewReplacer(
+	",", "", "%", "", " ", "", " ", "",
+	"₩", "", "￦", "", "$", "", "€", "", "£", "", "¥", "", "￥", "", "원", "",
+)
