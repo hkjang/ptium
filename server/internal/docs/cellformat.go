@@ -240,6 +240,76 @@ func (formats cellFormats) dayShown(count int) (string, bool) {
 	return spreadsheetEpoch.AddDate(0, 0, count).Format("2006-01-02"), true
 }
 
+// The shapes a moment is written in. A workbook saved to the strict schema
+// writes the moment itself and leaves the count of days out, so there is no
+// epoch to read it against — only the characters, which may carry a clock, the
+// seconds of one, a fraction of a second, and the offset the clock is kept at.
+var momentShapes = []string{
+	time.RFC3339Nano, // and RFC3339 with it: "2025-01-21T13:30:00+09:00", "…Z"
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
+	"2006-01-02T15:04",
+	"2006-01-02",
+}
+
+// isoMoment reads the moment a cell stores as characters rather than as a
+// count. The offset it is kept at, where it writes one, is not converted away:
+// the clock the sheet shows is the one written down, and moving it into another
+// zone would move the deck's meetings around.
+func isoMoment(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	for _, shape := range momentShapes {
+		if moment, err := time.Parse(shape, value); err == nil {
+			return moment, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// moment turns a moment stored as characters into what the sheet shows.
+//
+// The strict schema — "Strict Open XML Spreadsheet", which is what a workbook
+// saved for an archive or for a public body is written in — stores a date as
+// t="d" and "2025-01-21T13:30:00" rather than as a count of days. Read as a
+// count, it is not a number at all, so it was passed through as it stands and a
+// delivery date arrived in the deck with a T in the middle of it.
+func (formats cellFormats) moment(style, value string) (string, bool) {
+	moment, ok := isoMoment(value)
+	if !ok {
+		return value, false
+	}
+	kind := formats.kind(style)
+	switch kind.what {
+	case "date":
+		return moment.Format("2006-01-02"), true
+	case "datetime":
+		if kind.seconds {
+			return moment.Format("2006-01-02 15:04:05"), true
+		}
+		return moment.Format("2006-01-02 15:04"), true
+	case "time":
+		if kind.seconds {
+			return moment.Format("15:04:05"), true
+		}
+		return moment.Format("15:04"), true
+	}
+	// Told nothing about the cell — a format the workbook leaves at General, or
+	// one that says per cent or a length of time, neither of which a moment is
+	// — write what the moment itself holds: the day, and the clock where it is
+	// not midnight.
+	hour, minute, second := moment.Clock()
+	switch {
+	case hour == 0 && minute == 0 && second == 0:
+		return moment.Format("2006-01-02"), true
+	case second == 0:
+		return moment.Format("2006-01-02 15:04"), true
+	}
+	return moment.Format("2006-01-02 15:04:05"), true
+}
+
 // written turns the stored number into what the sheet shows.
 func (formats cellFormats) written(style, value string) (string, bool) {
 	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
