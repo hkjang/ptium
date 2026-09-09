@@ -223,6 +223,13 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 				// them; with a format on the cell it was worse, because 1 under a
 				// date format is a day and 0 under a per cent is "0%".
 				value = truthOf(cell.Value)
+			case "d":
+				// A workbook written to the strict schema keeps a date as the
+				// date, not as a count of days. It is the format that says how
+				// much of it the sheet shows, the same as for a count.
+				if shown, ok := formats.moment(cell.Style, value); ok {
+					value = shown
+				}
 			case "str", "e":
 				// A formula's cached result: text, or the error it ended in.
 				// Neither is a number, so neither is a day or a per cent —
