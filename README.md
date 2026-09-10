@@ -482,8 +482,9 @@ REST 전 구간, 한계값(50장·16MiB·동시 편집), 모든 화면, 생성�
 PTIUM_URL=http://localhost:8080 python3 scripts/e2e/api.py
 ```
 
-처음 쓰는 사람을 위한 안내는 [사용 가이드](docs/user-guide.md)에 있고, 같은 내용을 제품
-안에서도 **사용 가이드**(`/guide`) 화면으로 볼 수 있습니다.
+처음 쓰는 사람을 위한 안내는 [사용자 가이드](docs/USER_GUIDE.md)에 있고, 같은 내용을 제품
+안에서도 **사용 가이드**(`/guide`) 화면으로 볼 수 있습니다. 설치·설정·운영은
+[관리자 가이드](docs/ADMIN_GUIDE.md)에 있습니다(둘 다 PDF 로도 `docs/` 에 있습니다).
 
 요구사항별 검증 기준은 [objective traceability](docs/requirements.md), 구조와
 보안 결정은 [architecture](docs/architecture.md)와 [security](docs/security.md)에
