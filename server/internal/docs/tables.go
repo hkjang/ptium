@@ -270,10 +270,12 @@ func allNumeric(rows [][]string, column int) bool {
 //
 // Only the signs come off, and a unit that is a word stays: "1월" is a month
 // and "3개" is a count of things, and neither is a figure to plot an axis by.
-// The fixed space an export leaves between a figure and its unit stays as well,
-// though it is only a space: the deck's parser ends a figure at any space, so a
-// column this read as 1,200 and the chart then drew as 1 is worse off than the
-// table it was. Where the two readings disagree, this one gives way.
+// A space between the figure and its unit comes off with the unit, but a space
+// inside the figure does not: the deck's parser ends a figure at any space, so
+// "1 200" — how a sheet in a good many countries writes a thousand — is 1,200
+// here and 1 on the bar, and the sheet is worse off as a chart of heights
+// nobody wrote than as the table it was. Where the two readings disagree, this
+// one gives way.
 //
 // The accounting bracket — "(340)", how a sheet writes a refund — is the same
 // disagreement and stays out for the same reason. A bar is laid out by its
@@ -282,26 +284,56 @@ func allNumeric(rows [][]string, column int) bool {
 // the chart drops once it holds more than six bars. A column with a refund in
 // it is left the table it was, where the brackets are still on the page.
 func amountOf(value string) (float64, bool) {
-	number, err := strconv.ParseFloat(amountSigns.Replace(strings.TrimSpace(value)), 64)
+	cleaned := strings.TrimSpace(amountSigns.Replace(strings.TrimSpace(value)))
+	if !bareFigure(cleaned) {
+		return 0, false
+	}
+	number, err := strconv.ParseFloat(cleaned, 64)
 	if err != nil {
 		return 0, false
 	}
 	return number, true
 }
 
-// The marks a spreadsheet puts on a figure without changing what the figure is:
-// the thousands separator and the per-cent sign a column already carried, the
-// plain space, and the currency signs.
+// bareFigure reports whether what is left once the signs are off is a figure
+// the deck's parser reads to the end: a sign, digits, and at most one decimal
+// point after a digit, and nothing else.
 //
-// The fixed space (U+00A0) is deliberately not among them, though a spreadsheet
-// does write one between a figure and its unit. Taking it off here while the
+// This is the same giving way, spelt out. Go's own reading of a number is wider
+// than the deck's — it takes the exponent a spreadsheet writes a large amount
+// with ("1.5E+15", which is how the file itself holds a figure that long), and
+// it takes "Inf" and "NaN" besides. The deck's parser stops at the letter, so a
+// column of those is one this would call figures and the chart would then draw
+// at 1.5. Whatever the two cannot read alike is left the table it was.
+func bareFigure(text string) bool {
+	digits := false
+	point := false
+	for index, character := range text {
+		switch {
+		case character >= '0' && character <= '9':
+			digits = true
+		case character == '.' && digits && !point:
+			point = true
+		case (character == '-' || character == '+') && index == 0:
+		default:
+			return false
+		}
+	}
+	return digits
+}
+
+// The marks a spreadsheet puts on a figure without changing what the figure is:
+// the thousands separator and the per-cent sign a column already carried, and
+// the currency signs.
+//
+// No space is among them, plain or fixed (U+00A0), though a spreadsheet writes
+// both — one between a figure and its unit, which comes off with the trimming
+// that follows the replacing, and one inside the figure as the thousands
+// separator, which must not come off at all. Taking a space off here while the
 // deck's parser ends a figure at it is what read "1 200" as 1,200 on the way in
 // and drew it as 1 on the way out, a bar an eighth of a per cent tall. Left in
-// place, such a column is no figure column and the sheet stays the table it is
-// today. The plain space is the same disagreement and older than this list —
-// worth settling, but on its own, since taking it off changes which sheets a
-// deck has been drawing as charts all along.
+// place, such a column is no figure column and the sheet stays the table it is.
 var amountSigns = strings.NewReplacer(
-	",", "", "%", "", " ", "",
+	",", "", "%", "",
 	"₩", "", "￦", "", "$", "", "€", "", "£", "", "¥", "", "￥", "", "원", "",
 )

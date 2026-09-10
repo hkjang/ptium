@@ -77,6 +77,36 @@ func TestASheetOfMoneyIsDrawnAsAChart(t *testing.T) {
 			wantAbsent: []string{"::columns 매출"},
 		},
 		{
+			// The same thousand separated by a plain space, which is how a
+			// sheet written in a good part of Europe holds it and what a person
+			// types when the format is not on. The deck's parser ends a figure
+			// at this space too, so the chart drew 서울 as a bar of 1 against
+			// 부산's 980 — a sheet nobody would have called a chart if they had
+			// seen it. It stays the table it reads as.
+			name:       "a thousand separated by a plain space is still a table",
+			csv:        "지역,매출\n서울,1 200\n부산,980\n",
+			want:       []string{"::table 지역", "- 서울 | 1 200"},
+			wantAbsent: []string{"::columns 매출"},
+		},
+		{
+			// The unit written a space away from the figure, which is the same
+			// column of money as "1,200원" and is drawn the same: the deck's
+			// parser has the whole figure before it reaches the space.
+			name:       "an amount a space away from its unit is still a chart",
+			csv:        "지역,매출\n서울,\"1,200 원\"\n부산,980원\n",
+			want:       []string{"::columns 매출", "- 서울 | 1,200 원"},
+			wantAbsent: []string{"::table 지역"},
+		},
+		{
+			// A figure long enough that the file writes it with an exponent.
+			// The deck's parser stops at the E and would draw the year's takings
+			// as 1.5, so the sheet keeps the figures it shows as a table.
+			name:       "an amount written with an exponent is still a table",
+			csv:        "지역,매출\n서울,1.5E+15\n부산,9.8E+14\n",
+			want:       []string{"::table 지역", "- 서울 | 1.5E+15"},
+			wantAbsent: []string{"::columns 매출"},
+		},
+		{
 			// One row of prose in the column and it is not a column of figures,
 			// however the rest of it is written.
 			name:       "a column with a phrase in it is still a table",
@@ -123,11 +153,33 @@ func TestAnAmountIsReadWithItsSignTakenOff(t *testing.T) {
 		// holding one is not a column this sends on to a chart.
 		{"(1,200)", 0, false},
 		{"(₩340)", 0, false},
-		// The fixed space an export writes between a figure and its unit is a
-		// space all the same, and the deck's parser ends a figure at one. Read
-		// here as 1,200 the sheet goes on as a chart the deck then draws as 1,
-		// so it is no figure at all and the sheet stays the table it was.
+		// A space inside the figure is the thousands separator of a good many
+		// countries, and the deck's parser ends a figure at it. Read here as
+		// 1,200 the sheet goes on as a chart the deck then draws as 1, so it is
+		// no figure at all and the sheet stays the table it was. The fixed space
+		// an export writes is a space all the same.
 		{"1\u00a0200", 0, false},
+		{"1 200", 0, false},
+		{"1 200 000", 0, false},
+		{"₩1 200", 0, false},
+		// A space between the figure and its unit is another matter: the deck's
+		// parser has the whole figure in hand before it gets there, so the two
+		// readings agree and the column is the column of money it looks like.
+		{"1,200 원", 1200, true},
+		{"1,200\u00a0원", 1200, true},
+		{"₩ 1,200", 1200, true},
+		{"12 %", 12, true},
+		// What Go reads as a number and the deck does not. A figure long enough
+		// for the file to write it with an exponent would be drawn at 1.5, and
+		// the words are not figures anybody wrote in a cell.
+		{"1.5E+15", 0, false},
+		{"1e3", 0, false},
+		{"NaN", 0, false},
+		{"Inf", 0, false},
+		{"-Inf", 0, false},
+		{"0x1p4", 0, false},
+		// The deck's parser wants a digit before the point, and reads ".5" as 5.
+		{".5", 0, false},
 		// Nothing but a sign is not an amount, and neither is a word with a
 		// figure in it: a month is not the number one.
 		{"₩", 0, false},
@@ -168,6 +220,13 @@ func TestTheChartReadsTheFiguresTheSheetWasSentOnFor(t *testing.T) {
 		{
 			name: "an amount with the currency spelt after it",
 			csv:  "지역,매출\n서울,\"1,200원\"\n부산,\"980원\"\n",
+			want: map[string]float64{"서울": 1200, "부산": 980},
+		},
+		{
+			// The unit a space away from the figure, the one place a space is
+			// allowed to stand in a column this calls figures.
+			name: "an amount a space away from its unit",
+			csv:  "지역,매출\n서울,\"1,200 원\"\n부산,\"980 원\"\n",
 			want: map[string]float64{"서울": 1200, "부산": 980},
 		},
 		{
