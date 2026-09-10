@@ -690,7 +690,9 @@ func parseSourceItem(text string) pptx.Item {
 }
 
 // parseNumber pulls a magnitude out of a written value: "18%", "42개",
-// "1,200억", "-3.5pt" all carry one.
+// "1,200억", "-3.5pt" all carry one. A sign the value carries itself is kept; a
+// bracket is not read as one, because a bar is laid out by its magnitude and a
+// figure read as -340 draws where 340 does.
 func parseNumber(value string) (float64, bool) {
 	var digits strings.Builder
 	seenDigit := false

@@ -105,6 +105,66 @@ func TestParseNumberReadsWrittenValues(t *testing.T) {
 	}
 }
 
+// Brackets are how an accounting sheet writes a minus, but nothing that reads
+// this figure can draw one: a bar is laid out by its magnitude, so a refund read
+// as -340 stands where 340 stands. The minus is not invented here, and the
+// importer keeps a sheet holding one as the table it was, brackets and all.
+func TestParseNumberDoesNotReadABracketAsAMinus(t *testing.T) {
+	cases := map[string]float64{
+		"(340)": 340, "(1,200원)": 1200, "(₩340)": 340, "(0.5)": 0.5, " (340) ": 340,
+	}
+	for value, want := range cases {
+		got, ok := parseNumber(value)
+		if !ok || got != want {
+			t.Fatalf("parseNumber(%q) = %v, %v; want %v", value, got, ok, want)
+		}
+	}
+	// A sign the value carries itself is still a sign.
+	if got, ok := parseNumber("-3.5pt"); !ok || got != -3.5 {
+		t.Fatalf(`parseNumber("-3.5pt") = %v, %v; want -3.5`, got, ok)
+	}
+	// A bracket with no figure in it is not a figure.
+	for _, value := range []string{"(미집계)", "()"} {
+		if _, ok := parseNumber(value); ok {
+			t.Fatalf("parseNumber(%q) should find no number", value)
+		}
+	}
+	// A note in brackets after a figure leaves the figure where it was.
+	if got, ok := parseNumber("340(잠정)"); !ok || got != 340 {
+		t.Fatalf(`parseNumber("340(잠정)") = %v, %v; want 340`, got, ok)
+	}
+}
+
+// A figure ends at a space. That is not a detail of this parser but the
+// contract a line chart's rows are written to: "120, 118, 121, 119" is four
+// points, and reading the spaces as thousands separators instead runs the row
+// together into 120118121119 — the height the first point then draws at, and
+// the figure the slide's audit goes on to name as having no source.
+//
+// The importer's own reading is deliberately a separate one (docs.amountOf),
+// and it is the one that gives way where they differ.
+func TestALineChartRowKeepsItsFiguresApart(t *testing.T) {
+	// The row as docs/deck-source.md writes it.
+	item := parseSourceItem("전환 전 | 120, 118, 121, 119")
+	if item.Number == nil || *item.Number != 120 {
+		t.Fatalf("the row's figure = %v; want 120", item.Number)
+	}
+	for _, test := range []struct {
+		written string
+		want    float64
+	}{
+		{"120, 118, 121, 119", 120},
+		{"1,200 118", 1200},
+		{"120 118", 120},
+		// The thousands separator on its own still binds.
+		{"1,200", 1200},
+	} {
+		if got, ok := parseNumber(test.written); !ok || got != test.want {
+			t.Fatalf("parseNumber(%q) = %v, %v; want %v", test.written, got, ok, test.want)
+		}
+	}
+}
+
 func testManifest() pptx.Manifest {
 	body := func(slot string, x int) pptx.Placeholder {
 		return pptx.Placeholder{Slot: slot, Kind: "text", Type: "body", X: x, Y: 2000000,
