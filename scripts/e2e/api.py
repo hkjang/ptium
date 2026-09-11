@@ -1502,6 +1502,29 @@ else:
 if legacy_id:
     call("DELETE", f"/presentations/{legacy_id}", expect=204)
 
+# A table in a PDF is cells drawn at coordinates. Every one of them arrived as
+# its own bullet, so a report full of figures became a list of loose words.
+print("── a table on a page comes back a table ──")
+figures = data_of(call("POST", "/presentations", {"title": f"표 유인물 {RUN}", "prompt": "표"}, expect=201))
+call("PUT", f"/presentations/{figures['id']}/source", {"source":
+    "# 표지\n- 여는 줄\n\n# 분기 실적\n::table 연간 비용\n"
+    "- 항목 | 작년 | 올해\n- 매출 | 103억 | 128억\n- 고객 | 264곳 | 312곳\n::\n"}, expect=200)
+_, printed = call("GET", f"/presentations/{figures['id']}/export.pdf", raw=True, expect=200)
+back = data_of(call("POST", "/presentations/import",
+                    files={"file": (f"표-{RUN}.pdf", printed or b"", "application/pdf")},
+                    expect=201)) or {}
+checks += 1
+carried = ((back.get("presentation") or {}).get("source")) or ""
+if "::table" not in carried:
+    failures.append(f"a table printed to PDF came back as loose lines: {carried[:160]!r}")
+elif "103억 | 128억" not in carried:
+    failures.append(f"a table came back without its row: {carried[:160]!r}")
+else:
+    print("   a printed table -> ::table with its rows")
+for made in [(back.get("presentation") or {}).get("id"), figures["id"]]:
+    if made:
+        call("DELETE", f"/presentations/{made}", expect=204)
+
 print("── a handout read back has no bullets in its words ──")
 paper = data_of(call("POST", "/presentations", {"title": f"유인물 {RUN}", "prompt": "유인물"}, expect=201))
 call("PUT", f"/presentations/{paper['id']}/source",

@@ -3,6 +3,7 @@ package pdftext
 import (
 	"bytes"
 	"compress/zlib"
+	"encoding/hex"
 	"errors"
 	"io"
 	"regexp"
@@ -29,6 +30,9 @@ type document struct {
 	// the font would otherwise re-read: a long file names the same twelve
 	// thousand entry CMap on all of its pages.
 	charted map[int]map[uint32]string
+	// locked says the file asked for a password this does not have, which is a
+	// different thing from a file with nothing in it.
+	locked bool
 	// exhausted says the document asked to unpack more than the budget allows.
 	// From that point on the file is unread rather than empty, and the two must
 	// not be confused: one is a scan, the other is a document too big to read
@@ -67,6 +71,9 @@ func open(data []byte) (*document, error) {
 	doc := &document{data: data, objects: map[int]value{}, streams: map[int]stream{},
 		unpacked: map[int][]byte{}, charted: map[int]map[uint32]string{}}
 	doc.scan()
+	// A protected file's streams are encrypted, including the ones that hold
+	// other objects, so this comes before they are opened.
+	doc.unlockStreams()
 	doc.expandObjectStreams()
 	return doc, nil
 }
@@ -78,6 +85,10 @@ func (d *document) scan() {
 		if err != nil {
 			continue
 		}
+		generation, err := strconv.Atoi(string(d.data[place[4]:place[5]]))
+		if err != nil {
+			generation = 0
+		}
 		reader := &lexer{data: d.data, at: place[1]}
 		object, err := reader.object()
 		if err != nil {
@@ -88,7 +99,7 @@ func (d *document) scan() {
 			save := reader.at
 			if word := reader.token(); word == "stream" {
 				if raw, end, ok := d.streamBytes(entries, reader.at); ok {
-					d.streams[number] = stream{dict: entries, raw: raw}
+					d.streams[number] = stream{dict: entries, raw: raw, generation: generation}
 					d.objects[number] = entries
 					_ = end
 					continue
@@ -188,6 +199,29 @@ func (d *document) decoded(number int) ([]byte, bool) {
 	return said, true
 }
 
+// earlyChange reports whether an LZW stream widens its codes a code early,
+// which is what a PDF does unless its own parameters say otherwise.
+func (d *document) earlyChange(entries dict) bool {
+	parms := d.dict(entries["DecodeParms"])
+	if parms == nil {
+		if items := d.array(entries["DecodeParms"]); len(items) > 0 {
+			for _, item := range items {
+				if found := d.dict(item); found != nil {
+					parms = found
+					break
+				}
+			}
+		}
+	}
+	if parms == nil {
+		return true
+	}
+	if value, ok := d.number(parms["EarlyChange"]); ok {
+		return value != 0
+	}
+	return true
+}
+
 func (d *document) decodeStream(held stream) ([]byte, bool) {
 	filters := []name{}
 	switch filter := d.resolve(held.dict["Filter"]).(type) {
@@ -211,6 +245,33 @@ func (d *document) decodeStream(held stream) ([]byte, bool) {
 			expanded, err := io.ReadAll(io.LimitReader(reader, maximumStreamBytes))
 			reader.Close()
 			if err != nil && len(expanded) == 0 {
+				return nil, false
+			}
+			data = expanded
+		// A stream is often wrapped twice so the file stays printable all the
+		// way through. Undoing only the Flate half left the page empty, and an
+		// empty page is told to the person as a file with no text in it.
+		case "ASCII85Decode", "A85":
+			expanded, err := decodeASCII85(data)
+			if err != nil {
+				return nil, false
+			}
+			data = expanded
+		case "ASCIIHexDecode", "AHx":
+			expanded, err := decodeASCIIHex(data)
+			if err != nil {
+				return nil, false
+			}
+			data = expanded
+		case "RunLengthDecode", "RL":
+			expanded, err := decodeRunLength(data)
+			if err != nil {
+				return nil, false
+			}
+			data = expanded
+		case "LZWDecode", "LZW":
+			expanded, err := decodeLZW(data, d.earlyChange(held.dict))
+			if err != nil {
 				return nil, false
 			}
 			data = expanded
@@ -335,6 +396,55 @@ func (d *document) expandObjectStreams() {
 			if _, taken := d.objects[item.number]; !taken {
 				d.objects[item.number] = object
 			}
+		}
+	}
+}
+
+var encryptPointer = regexp.MustCompile(`/Encrypt\s+(\d+)\s+(\d+)\s+R`)
+var firstFileID = regexp.MustCompile(`/ID\s*\[\s*<([0-9A-Fa-f]*)>`)
+
+// unlockStreams undoes the encryption on a file anybody can open.
+//
+// The usual office setting is an owner password and no user password: the file
+// opens for a reader and only says what they may not do with it. Its streams
+// are encrypted regardless, and reading one without undoing that gives an empty
+// page — which was reported to the person as a file with no text in it.
+func (d *document) unlockStreams() {
+	place := encryptPointer.FindSubmatch(d.data)
+	if place == nil {
+		return
+	}
+	number, err := strconv.Atoi(string(place[1]))
+	if err != nil {
+		return
+	}
+	entries := d.dict(d.objects[number])
+	if entries == nil {
+		d.locked = true
+		return
+	}
+	var firstID []byte
+	if found := firstFileID.FindSubmatch(d.data); found != nil {
+		firstID = make([]byte, hex.DecodedLen(len(found[1])))
+		if _, err := hex.Decode(firstID, found[1]); err != nil {
+			firstID = nil
+		}
+	}
+	held, ok := d.unlock(entries, firstID)
+	if !ok {
+		// The file wants a password this does not have. That is a different
+		// thing from a file with nothing in it, and the two must not be told
+		// to somebody as the same.
+		d.locked = true
+		return
+	}
+	for at, one := range d.streams {
+		if at == number {
+			continue
+		}
+		if said := held.decrypt(one.raw, at, one.generation); said != nil {
+			one.raw = said
+			d.streams[at] = one
 		}
 	}
 }

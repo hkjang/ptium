@@ -31,6 +31,8 @@ type dict map[name]value
 type stream struct {
 	dict dict
 	raw  []byte
+	// generation is the object's own, which its decryption key is made from.
+	generation int
 }
 
 type array []value

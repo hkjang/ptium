@@ -2,6 +2,7 @@ package pdftext
 
 import (
 	"math"
+	"sort"
 	"strings"
 	"unicode/utf16"
 )
@@ -10,11 +11,26 @@ import (
 type Page struct {
 	Number int
 	Lines  []string
+	// Rows groups the lines that share a baseline, left to right.
+	//
+	// A table in a PDF is not a table. It is cells drawn at coordinates, and a
+	// wide gap between two of them on one baseline is what tells a column from
+	// a space — so the reader keeps them apart, and every cell of a four-column
+	// table arrived as its own bullet. What they were a row of is only knowable
+	// here, where the coordinates still are.
+	//
+	// A row of one is an ordinary line, so Rows and Lines say the same thing
+	// about a page of prose.
+	Rows [][]string
 }
 
 // Reading is what a PDF turned out to hold.
 type Reading struct {
 	Pages []Page
+	// Locked says the file wants a password this does not have. Its pages come
+	// back empty, and empty is what a scan looks like: telling somebody their
+	// protected report is a scanned image sends them to fix the wrong thing.
+	Locked bool
 	// Short says the file asked to unpack more than this reads in one go, so
 	// Pages is the front of the document rather than all of it. The pages past
 	// it were not read, which is a different thing from being empty — and
@@ -38,7 +54,7 @@ func Read(data []byte) (Reading, error) {
 		return Reading{}, err
 	}
 	all := doc.pages()
-	read := Reading{Pages: make([]Page, 0, 16), Total: len(all)}
+	read := Reading{Pages: make([]Page, 0, 16), Total: len(all), Locked: doc.locked}
 	for index, page := range all {
 		fonts := doc.fontsOf(page)
 		content := doc.contentOf(page)
@@ -48,7 +64,12 @@ func Read(data []byte) (Reading, error) {
 			read.Short = true
 			break
 		}
-		read.Pages = append(read.Pages, Page{Number: index + 1, Lines: extractLines(content, fonts)})
+		placed := doc.placedOn(page, content, fonts)
+		read.Pages = append(read.Pages, Page{
+			Number: index + 1,
+			Lines:  textsOf(placed),
+			Rows:   rowsOf(placed),
+		})
 	}
 	return read, nil
 }
@@ -143,6 +164,14 @@ type font struct {
 	// simple says the font's codes are bytes of a Latin encoding, which can be
 	// read without a map.
 	simple bool
+	// encoded is what each byte draws according to the font's own /Encoding,
+	// for the codes a ToUnicode map does not cover.
+	encoded map[byte]string
+	// subset says the font carries only the glyphs one document used, which is
+	// written as a BaseFont called "AAAAAA+Something". Such a font numbers its
+	// glyphs however it likes, so a code it does not name means nothing — least
+	// of all the letter that byte would be in ASCII.
+	subset bool
 }
 
 func (d *document) fontsOf(page dict) map[name]*font {
@@ -166,6 +195,12 @@ func (d *document) readFont(entries dict) *font {
 	subtype := d.name(entries["Subtype"])
 	held.twoByte = subtype == "Type0"
 	held.simple = !held.twoByte
+	if base := string(d.name(entries["BaseFont"])); len(base) > 7 && base[6] == '+' {
+		held.subset = true
+	}
+	if held.simple {
+		held.encoded = d.readEncoding(entries)
+	}
 	if pointer, ok := entries["ToUnicode"].(ref); ok {
 		if mapped, ok := d.charted[pointer.number]; ok {
 			held.toUnicode = mapped
@@ -368,21 +403,145 @@ func (m matrix) tall() float64 { return math.Hypot(m.c, m.d) }
 // here is what shares a baseline, and a gap wide enough to be a space becomes
 // one.
 func extractLines(content []byte, fonts map[name]*font) []string {
-	placed := extractPlaced(content, fonts)
-	lines := make([]string, 0, len(placed))
-	for _, line := range placed {
+	return textsOf(extractPlaced(content, fonts))
+}
+
+func textsOf(drawn []placed) []string {
+	lines := make([]string, 0, len(drawn))
+	for _, line := range drawn {
 		lines = append(lines, line.text)
 	}
 	return lines
 }
 
+// rowsOf gathers what was drawn on one baseline, left to right.
+//
+// The reader has already decided where one piece of text ends and the next
+// begins; this only says which of them were side by side. A generator draws a
+// row's cells in whatever order suits it, so they are put back in the order a
+// person reads them.
+func rowsOf(drawn []placed) [][]string {
+	rows := make([][]string, 0, len(drawn))
+	for at := 0; at < len(drawn); {
+		end := at + 1
+		for end < len(drawn) && sameBaseline(drawn[at], drawn[end]) {
+			end++
+		}
+		row := append([]placed(nil), drawn[at:end]...)
+		sort.SliceStable(row, func(i, j int) bool { return row[i].x < row[j].x })
+		cells := make([]string, 0, len(row))
+		for _, cell := range row {
+			cells = append(cells, cell.text)
+		}
+		rows = append(rows, cells)
+		at = end
+	}
+	return rows
+}
+
+// sameBaseline reports whether two pieces of text sit on one line of the page.
+//
+// The tolerance is absolute rather than a share of the font size because the
+// two may be set at different sizes — a heading cell beside a plain one — and
+// a baseline is a baseline.
+func sameBaseline(a, b placed) bool { return difference(a.y, b.y) <= 1.5 }
+
 // placed is a line and where on the page it was drawn.
 type placed struct {
 	text string
 	x, y float64
+	// fromForm marks a line that came out of a form the page drew rather than
+	// out of the page's own stream, which is what decides whether the page can
+	// be put back into the order somebody reads it in.
+	fromForm bool
+}
+
+// placedOn reads a page, following the forms it draws.
+//
+// A generator is free to put part of a page — a header, a footer, a whole
+// letterhead — in a form XObject and draw it with one Do. Reading only the
+// page's own stream left that text out of the deck with nothing said about it.
+func (d *document) placedOn(page dict, content []byte, fonts map[name]*font) []placed {
+	resources := d.dict(page["Resources"])
+	return inReadingOrder(extractPlacedIn(content, fonts, d.formsIn(resources, 0)))
+}
+
+// inReadingOrder puts a form's lines where they sit on the page.
+//
+// A page drawn top to bottom is read top to bottom, and a header drawn last
+// belongs at the top rather than after the body. A page that was not drawn in
+// that order is left exactly as it was drawn: its own order is the only thing
+// that keeps the columns of a two-column page from being shuffled together.
+func inReadingOrder(lines []placed) []placed {
+	own := make([]placed, 0, len(lines))
+	for _, line := range lines {
+		if !line.fromForm {
+			own = append(own, line)
+		}
+	}
+	if len(own) == len(lines) {
+		return lines
+	}
+	for at := 1; at < len(own); at++ {
+		if own[at].y > own[at-1].y+1.5 {
+			return lines
+		}
+	}
+	sort.SliceStable(lines, func(i, j int) bool { return lines[i].y > lines[j].y+1.5 })
+	return lines
+}
+
+// forms is what a Do can draw: the form's own content and the fonts it names.
+type forms map[name]func() ([]byte, map[name]*font, forms)
+
+// maximumFormDepth stops a file whose forms draw each other from running for
+// ever. Nothing legible nests this deep.
+const maximumFormDepth = 8
+
+func (d *document) formsIn(resources dict, depth int) forms {
+	if resources == nil || depth >= maximumFormDepth {
+		return nil
+	}
+	drawable := forms{}
+	for key, item := range d.dict(resources["XObject"]) {
+		pointer, ok := item.(ref)
+		if !ok {
+			continue
+		}
+		held, ok := d.streams[pointer.number]
+		if !ok || d.name(held.dict["Subtype"]) != "Form" {
+			continue
+		}
+		entries := held.dict
+		drawable[key] = func() ([]byte, map[name]*font, forms) {
+			body, ok := d.decoded(pointer.number)
+			if !ok {
+				return nil, nil, nil
+			}
+			own := d.dict(entries["Resources"])
+			if own == nil {
+				own = resources
+			}
+			inner := map[name]*font{}
+			for name0, item0 := range d.dict(own["Font"]) {
+				if found := d.dict(item0); found != nil {
+					inner[name0] = d.readFont(found)
+				}
+			}
+			return body, inner, d.formsIn(own, depth+1)
+		}
+	}
+	if len(drawable) == 0 {
+		return nil
+	}
+	return drawable
 }
 
 func extractPlaced(content []byte, fonts map[name]*font) []placed {
+	return extractPlacedIn(content, fonts, nil)
+}
+
+func extractPlacedIn(content []byte, fonts map[name]*font, drawable forms) []placed {
 	if len(content) == 0 {
 		return nil
 	}
@@ -485,6 +644,21 @@ func extractPlaced(content []byte, fonts map[name]*font) []placed {
 			if len(stack) >= 6 {
 				applied := matrix{a: number(6), b: number(5), c: number(4), d: number(3), e: number(2), f: number(1)}
 				here = applied.through(here)
+			}
+		case "Do":
+			// A form is drawn where the page has moved to, so what it holds is
+			// read in that same place and joined to the page's own lines.
+			if len(stack) >= 1 && len(drawable) > 0 {
+				if key, ok := stack[len(stack)-1].(name); ok {
+					if open := drawable[key]; open != nil {
+						endLine()
+						body, inner, deeper := open()
+						for _, found := range extractPlacedIn(body, inner, deeper) {
+							at := matrix{a: 1, d: 1, e: found.x, f: found.y}.through(here)
+							lines = append(lines, placed{text: found.text, x: at.e, y: at.f, fromForm: true})
+						}
+					}
+				}
 			}
 		case "BT":
 			text, next = identity, identity
@@ -599,7 +773,20 @@ func decodeShown(raw []byte, held *font) string {
 				said.WriteString(mapped)
 				continue
 			}
-			if step == 1 && raw[index] >= 32 && raw[index] < 127 {
+			// The map said nothing about this code, so the font's own encoding
+			// is asked next.
+			if step == 1 {
+				if drawn, ok := held.encoded[raw[index]]; ok {
+					said.WriteString(drawn)
+					continue
+				}
+			}
+			// Reading the byte as ASCII is only right for a font whose codes
+			// are ASCII. A subset font numbers its glyphs to suit itself, and
+			// printing the byte turned its space — landing on 0x24 — into the
+			// dollar sign in "매출$이$늘었습니다".
+			if step == 1 && !held.subset && len(held.encoded) == 0 &&
+				raw[index] >= 32 && raw[index] < 127 {
 				said.WriteByte(raw[index])
 				continue
 			}
@@ -618,6 +805,16 @@ func decodeShown(raw []byte, held *font) string {
 	}
 	if said, ok := utf16Korean(raw); ok {
 		return said
+	}
+	// A simple font with an encoding of its own draws what the encoding says.
+	if held != nil && len(held.encoded) > 0 {
+		var said strings.Builder
+		for _, character := range raw {
+			if drawn, ok := held.encoded[character]; ok {
+				said.WriteString(drawn)
+			}
+		}
+		return said.String()
 	}
 	// A simple font with no map draws bytes that are almost always Latin-1.
 	var said strings.Builder

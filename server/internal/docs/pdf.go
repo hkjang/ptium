@@ -26,22 +26,22 @@ func readPDF(filename string, data []byte) (Document, error) {
 	said, blank := 0, 0
 	heading := ""
 	for _, page := range pages {
-		lines := make([]string, 0, len(page.Lines))
-		for _, line := range page.Lines {
-			if furniture[line] || pageNumberOnly(line) {
+		rows := make([][]string, 0, len(page.Rows))
+		for _, row := range page.Rows {
+			if len(row) == 1 && (furniture[row[0]] || pageNumberOnly(row[0])) {
 				continue
 			}
-			lines = append(lines, line)
+			rows = append(rows, row)
 		}
-		if len(lines) == 0 {
+		if len(rows) == 0 {
 			blank++
 			continue
 		}
 		said++
 		where := fmt.Sprintf("%d쪽", page.Number)
-		if looksLikeHeading(lines[0]) {
-			heading = lines[0]
-			lines = lines[1:]
+		if len(rows[0]) == 1 && looksLikeHeading(rows[0][0]) {
+			heading = rows[0][0]
+			rows = rows[1:]
 		} else if heading != "" {
 			heading = continued(heading)
 		} else {
@@ -53,19 +53,35 @@ func readPDF(filename string, data []byte) (Document, error) {
 		// thousand slides nobody will read; dropping them loses what the page
 		// said. What is past the slide goes into its notes, where it is still
 		// there to be read, exported and searched.
-		for index, line := range lines {
-			// The bullet is drawn on the page, so it arrives as a character.
-			// Kept, the point reads "• 매출이 늘었습니다" and the deck draws a
-			// second bullet in front of it.
-			point, _ := withoutListMarker(line)
-			if index < maximumPoints {
-				writer.point(point)
+		points := 0
+		for at := 0; at < len(rows); {
+			// Rows side by side on consecutive baselines are a table, and the
+			// deck draws one rather than turning every cell into its own point.
+			if table, end := tableAt(rows, at); table != nil {
+				writer.table(table)
+				at = end
 				continue
 			}
-			writer.note(point)
+			for _, line := range rows[at] {
+				// The bullet is drawn on the page, so it arrives as a
+				// character. Kept, the point reads "• 매출이 늘었습니다" and the
+				// deck draws a second bullet in front of it.
+				point, _ := withoutListMarker(line)
+				if points < maximumPoints {
+					writer.point(point)
+				} else {
+					writer.note(point)
+				}
+				points++
+			}
+			at++
 		}
 	}
 	if said == 0 {
+		if read.Locked {
+			return Document{}, fmt.Errorf(
+				"이 PDF는 암호가 걸려 있어 열지 못했습니다. 암호를 푼 파일로 올려주세요")
+		}
 		if read.Short {
 			return Document{}, fmt.Errorf("이 PDF가 한 번에 읽기에 너무 큽니다. 쪽을 나눠서 올려주세요")
 		}
@@ -172,4 +188,43 @@ func looksLikeHeading(line string) bool {
 		return false
 	}
 	return !strings.HasSuffix(trimmed, "다") && !strings.HasSuffix(trimmed, "요")
+}
+
+// tableAt reads a table starting at this row, and says where it ends.
+//
+// A table in a PDF is cells drawn at coordinates: what makes it a table is that
+// several baselines in a row each carry the same number of pieces, side by
+// side. One such row is a caption beside a figure, or a two-column layout, so
+// it takes at least two to be worth calling a table.
+//
+// A page of prose set in two columns would otherwise qualify, so the cells have
+// to be short. A table holds labels and figures; a column of a report holds
+// sentences.
+func tableAt(rows [][]string, from int) ([][]string, int) {
+	width := len(rows[from])
+	if width < 2 {
+		return nil, from
+	}
+	end := from
+	for end < len(rows) && len(rows[end]) == width && shortCells(rows[end]) {
+		end++
+	}
+	if end-from < 2 {
+		return nil, from
+	}
+	return rows[from:end], end
+}
+
+// maximumCellRunes is how long a piece of a row can be and still read as a
+// cell. A heading cell of a real table runs to a few words; past this it is
+// prose that happens to sit beside other prose.
+const maximumCellRunes = 40
+
+func shortCells(row []string) bool {
+	for _, cell := range row {
+		if len([]rune(cell)) > maximumCellRunes {
+			return false
+		}
+	}
+	return true
 }
