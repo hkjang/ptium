@@ -13,8 +13,16 @@ with sample decks and pictures, and stops rather than guess when they are unset.
 The deployment needs development auth on, with the dev account carrying the
 administrator role (DEV_AUTH_ROLES=ptium-admin,user), and a DEV_AUTH_EMAIL and
 DEV_AUTH_NAME that may appear in print: nothing here reads a real directory.
-It changes no service setting; the sample data it adds carries a marker so a
-second run reuses it instead of adding more.
+The sample data it adds carries a marker so a second run reuses it instead of
+adding more.
+
+One picture needs a deck that failed — the queue, the error centre and the
+editor's failure screen are empty otherwise — so for the length of one
+generation the AI model is pointed at an address that answers but is not a
+model. The two settings it moves are read first and put back in a finally,
+the way scripts/e2e/withmodel.py does; nothing else in the service settings is
+touched. The address defaults to the deployment's own API from inside its
+container (PTIUM_GUIDE_DEAD_MODEL_URL overrides it when HTTP_ADDR is not 8080).
 """
 import io
 import json
@@ -135,7 +143,58 @@ def seed():
     return ready
 
 
-LOGO = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+FAILED_TITLE = f"협력사 계약 갱신 검토 {MARK}"
+DEAD_MODEL = os.environ.get("PTIUM_GUIDE_DEAD_MODEL_URL", "http://127.0.0.1:8080/api/v1")
+
+
+def settings_now():
+    """The service settings as key → value, whichever shape the release lists them in."""
+    listed = call("GET", "/admin/settings") or {}
+    rows = listed.get("settings") if isinstance(listed, dict) else listed
+    return {row.get("key"): row.get("value") for row in rows or []}
+
+
+def seed_failure():
+    """A deck whose generation failed, for the screens that show one.
+
+    A model host that is down is not a failure — the generator writes the deck
+    offline and says so — so the model is pointed at the deployment's own API,
+    which answers a completions call with 401 and a JSON body: a model that is
+    set up wrong, which is the kind of failure that reaches the queue and the
+    error centre. Only ai.provider and ai.base_url move, and they go back to
+    what they were whether or not the deck fails."""
+    have = [d for d in call("GET", "/presentations?limit=50") or [] if d.get("title") == FAILED_TITLE]
+    if have:
+        return have[0]
+    before = settings_now()
+    was = {key: before.get(key) for key in ("ai.provider", "ai.base_url")}
+    put_back = {key: value for key, value in was.items() if isinstance(value, str) and value}
+    put_back.setdefault("ai.provider", "fallback")
+    print("  pointing the model at", DEAD_MODEL, "for one generation; was", json.dumps(was))
+    call("PATCH", "/admin/settings", {"values": {"ai.provider": "openai-compatible", "ai.base_url": DEAD_MODEL}})
+    try:
+        deck = call("POST", "/presentations/generate",
+                    {"title": FAILED_TITLE, "prompt": "협력사 3곳의 계약 갱신 조건을 비교하고 권고안을 담아 주세요. "
+                     "단가 인상률, 납기, 위약 조항을 표로.", "language": "ko", "slideCount": 6,
+                     "audience": "구매팀", "tone": "professional"})
+        state = wait_for(deck["id"], seconds=120) if deck else {}
+        print("  ", FAILED_TITLE, state.get("status"), (state.get("errorMessage") or "")[:80])
+    finally:
+        call("PATCH", "/admin/settings", {"values": put_back})
+        print("   model settings put back:", json.dumps(put_back, ensure_ascii=False))
+    return state if state.get("status") == "failed" else None
+
+
+def seed_share(deck):
+    """An open share link on the deck the guide shows, so the share list has a row."""
+    shares = call("GET", f"/presentations/{deck['id']}/shares") or []
+    if any(MARK in (s.get("label") or "") for s in shares):
+        return
+    if call("POST", f"/presentations/{deck['id']}/shares", {"label": f"경영진 검토용 {MARK}", "days": 14}):
+        print("  shared", deck["title"])
+
+
+LOGO ="""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
 <rect width="240" height="240" rx="48" fill="#1d4ed8"/><circle cx="120" cy="120" r="64" fill="none" stroke="#fff" stroke-width="18"/>
 <text x="120" y="212" font-family="sans-serif" font-size="28" fill="#fff" text-anchor="middle">DEMO</text></svg>"""
 PRODUCT = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400">
@@ -154,18 +213,18 @@ def main():
     if not decks:
         sys.exit("no generated deck to show; look at the deployment's log")
     deck = decks[0]
+    seed_share(deck)
+    failed = seed_failure()
     print("showing", deck["title"])
 
     with sync_playwright() as play:
         browser = play.chromium.launch()
-        shot = 0
+        started = time.time()
 
         def snap(page, name, settle=1.5):
-            nonlocal shot
             page.wait_for_load_state("networkidle")
             time.sleep(settle)
             page.screenshot(path=os.path.join(OUT, name + ".png"))
-            shot += 1
             print("  ", name)
 
         # The sign-in screen is what a person sees with no session at all.
@@ -198,6 +257,8 @@ def main():
         click(page, "title", "말로 시킵니다", "editor-command")
         click(page, "title", "계정이 없는 사람도 볼 수 있는 링크를 만듭니다", "editor-share")
         open_quality(page)
+        if failed:
+            go(f"/presentations/{failed['id']}/editor", "editor-failed", settle=3)
         go("/profile", "profile")
         go("/api-keys", "api-keys")
         go("/guide", "guide")
@@ -211,12 +272,19 @@ def main():
         click(page, "button", "보안 · 키", "admin-settings-security")
         go("/admin/users", "admin-users")
         go("/admin/usage", "admin-usage", settle=3)
-        go("/admin/errors", "admin-errors")
+        if failed:
+            go("/admin/queue", "admin-queue", settle=3)
+            go("/admin/errors", "admin-errors", settle=3)
+            open_incident(page)
+        else:
+            print("   (no failed deck; the queue and error screens would be empty — skipped)")
+        go("/admin/shares", "admin-shares", settle=3)
         go("/admin/audit", "admin-audit")
         go("/admin/designs", "admin-designs", settle=3)
         go("/admin/tidy", "admin-tidy", settle=3)
         browser.close()
-    print(f"{shot} screens in {OUT}")
+    taken = [name for name in os.listdir(OUT) if name.endswith(".png") and os.path.getmtime(os.path.join(OUT, name)) >= started]
+    print(f"{len(taken)} screens in {OUT}")
 
 
 def fill_brief(page):
@@ -266,6 +334,21 @@ def open_tab(page, label, name):
     time.sleep(2)
     page.screenshot(path=os.path.join(OUT, name + ".png"))
     print("  ", name)
+
+
+def open_incident(page):
+    """The first incident's drawer: request ID, versions, notes and the buttons
+    that move it from open to investigating to resolved."""
+    row = page.locator(".error-row").first
+    if row.count() == 0:
+        print("   (no incident row; skipped)")
+        return
+    row.click()
+    time.sleep(2)
+    page.screenshot(path=os.path.join(OUT, "admin-errors-detail.png"))
+    print("   admin-errors-detail")
+    page.get_by_role("button", name="닫기").first.click()
+    time.sleep(0.5)
 
 
 def open_quality(page):
