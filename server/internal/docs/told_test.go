@@ -28,7 +28,10 @@ func TestEveryFormatReadIsAFormatSaid(t *testing.T) {
 		".markdown": "`.md`",
 		".txt":      "`.txt`",
 	}
-	for _, page := range []string{"../../../README.md", "../../../docs/user-guide.md"} {
+	// The guide moved: docs/user-guide.md is now a stub pointing at the canonical
+	// pair, so reading it here would only ever check the forwarding note. What the
+	// person deciding what to upload actually reads is USER_GUIDE.md.
+	for _, page := range []string{"../../../README.md", "../../../docs/USER_GUIDE.md"} {
 		content, err := os.ReadFile(page)
 		if err != nil {
 			t.Fatalf("%s: %v", page, err)
