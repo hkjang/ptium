@@ -166,8 +166,14 @@ try:
     # The image exits when the database is not there yet — a pod restarts, and
     # compose says restart: unless-stopped for the same reason. A check that
     # raced it would be reporting on the wait, not on the image.
+    #
+    # The wait asks over TCP because that is what the server uses. Asked on the
+    # unix socket it answers "accepting connections" a second before the port
+    # is open — postgres opens the socket to finish setting itself up and only
+    # then restarts listening — and the release stopped on an image that was
+    # fine, saying it never came up.
     for attempt in range(60):
-        ready = subprocess.run(["docker", "exec", database, "pg_isready", "-U", "postgres"],
+        ready = subprocess.run(["docker", "exec", database, "pg_isready", "-h", "127.0.0.1", "-U", "postgres"],
                                capture_output=True, text=True)
         if ready.returncode == 0:
             break
