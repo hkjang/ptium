@@ -41,6 +41,7 @@ export function findingLabel(kind: string) {
     case 'twiceTitled': return '앞 장과 같은 제목'
     case 'stale': return '이미 지난 날짜로 계획함'
     case 'undescribed': return '이미지 설명 없음'
+    case 'tooSmall': return '글자가 너무 작아짐'
   }
   return kind
 }
@@ -74,6 +75,8 @@ export function findingDetail(detail: string) {
       (m) => `${m[2]}줄 자리에 ${m[1]}줄이 들어가 템플릿 크기의 ${m[3]}%로 줄여야 합니다`],
     [/^(\d+) lines of text in room for (\d+); it does not fit even at (\d+)%$/,
       (m) => `${m[2]}줄 자리에 ${m[1]}줄이라 ${m[3]}%로 줄여도 들어가지 않습니다`],
+    [/^text is drawn at (\d+)pt after shrinking from (\d+)pt, below the (\d+)pt a room can read$/,
+      (m) => `글자가 템플릿의 ${m[2]}pt에서 ${m[1]}pt로 줄어, 뒷자리에서 읽히는 ${m[3]}pt보다 작습니다`],
     [/^(\w+) overlaps (\w+) by (\d+)%$/,
       (m) => `${named(m[1])}${subjectParticle(named(m[1]))} ${named(m[2])} 영역과 ${m[3]}% 겹칩니다`],
     [/^text covers (\d+)% of the layout's own (.+)$/, (m) => `글이 템플릿 자체의 ${m[2]}${objectParticle(m[2])} ${m[1]}% 덮습니다`],

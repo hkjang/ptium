@@ -5739,7 +5739,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.69.34
+            service.version: 1.69.35
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6469,7 +6469,8 @@ components:
             measurable, so a client should show an unrecognised kind rather than
             refuse the response.
           enum: [overflow, trimmed, outside, collision, contrast, orphan, density,
-                 notes, repeat, link, source, echo, unfinished, twiceTitled, stale]
+                 notes, repeat, link, source, echo, unfinished, twiceTitled, stale,
+                 undescribed, tooSmall]
         detail:
           type: string
           description: What is wrong, in numbers the author can act on.

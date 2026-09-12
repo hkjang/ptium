@@ -762,7 +762,9 @@ export function EditorPage({ id }: { id: string }) {
 		// slide: which five it drew is arithmetic, not judgement, so nothing has
 		// to be rewritten to fix it.
 		if (finding.kind === 'trimmed') return slides.length < MAX_SLIDES && Boolean(trimmedItems(finding))
-		if (finding.kind !== 'density' && finding.kind !== 'overflow') return false
+		// Text shrunk below what a room reads is the same problem density is: the
+		// body holds more than the box. Splitting it in two is the same remedy.
+		if (finding.kind !== 'density' && finding.kind !== 'overflow' && finding.kind !== 'tooSmall') return false
 		return slides.length < MAX_SLIDES && slideBodyLines(slides[finding.slide - 1]).length >= 4
 	}
 

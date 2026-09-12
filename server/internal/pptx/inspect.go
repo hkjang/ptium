@@ -69,6 +69,13 @@ const (
 	// model writing a roadmap has no clock, and a first step two years behind
 	// the room is the kind of thing everybody in it notices at once.
 	FindingStale = "stale"
+	// FindingTooSmall is text this product shrank until a room cannot read it.
+	// A region that will not hold its words is fitted by making the type
+	// smaller, which is why nothing ever looked wrong: every word is there,
+	// inside its box, correctly drawn. Nobody was told how small it ended up. A
+	// template's twenty-point body fitted to a full slide comes out at sixteen,
+	// and sixteen points is a document, not a slide.
+	FindingTooSmall = "tooSmall"
 	// FindingTwiceTitled is two slides carrying the same heading. A room reading
 	// "다음 단계" for the second time cannot tell whether it went back a slide,
 	// whether the deck repeated itself, or which of the two was the real one.
@@ -141,6 +148,10 @@ func (f Finding) String() string {
 const (
 	minimumAutofitScale = 40
 	crowdedAutofitScale = 62
+	// readablePoints is the smallest type somebody at the back of a room reads
+	// rather than gives up on. Every published guide on presentation
+	// typography puts the floor in the same place.
+	readablePoints = 18
 )
 
 // InspectSlide reports what is wrong with one drawn slide.
@@ -191,6 +202,7 @@ func InspectSlide(manifest Manifest, layout Layout, slide Slide, design Design) 
 		switch current.kind {
 		case "text":
 			findings = append(findings, inspectText(current.placeholder, slide.Fields[current.slot])...)
+			findings = append(findings, inspectSize(current.placeholder, slide.Fields[current.slot])...)
 			findings = append(findings, inspectLineBreaks(current.placeholder, slide.Fields[current.slot])...)
 			findings = append(findings, inspectDensity(current.placeholder, slide.Fields[current.slot])...)
 		case "component":
@@ -1416,6 +1428,42 @@ func inspectText(placeholder Placeholder, paragraphs []Paragraph) []Finding {
 			needed, placeholder.MaxLines, scale)
 	}
 	return []Finding{{Slot: placeholder.Slot, Kind: FindingOverflow, Detail: detail}}
+}
+
+// inspectSize reports text this product shrank until it stopped being readable.
+//
+// inspectText answers "does it fit"; this answers "at what size did it end up",
+// and those are different questions. Fitting is done by scaling the type down,
+// so a region always fits in the end — the deck exports clean, the preview
+// looks right, and the words on the wall are sixteen points high.
+//
+// Only the shrinking is reported, never the template's own size. A design that
+// sets its body at fourteen points did that deliberately, on every slide of
+// every deck, and telling its owner so on each one would be noise about a
+// decision that is not this author's to make. What is this author's is having
+// written more than the box holds.
+func inspectSize(placeholder Placeholder, paragraphs []Paragraph) []Finding {
+	if placeholder.FontSize <= 0 || len(paragraphs) == 0 {
+		return nil
+	}
+	scale, _ := autofit(placeholder, paragraphs)
+	// Below the crowding floor inspectText already says the text does not fit.
+	// One region, one cause, one finding.
+	if scale >= 100 || scale < crowdedAutofitScale {
+		return nil
+	}
+	// The size the template asks for, and the size this text will be drawn at.
+	// Sub-bullets step down further, but by how much is the template's own
+	// business, so what is reported is the size of a top-level line: the
+	// largest body text on the slide is already too small.
+	template := float64(placeholder.FontSize) / 100
+	drawn := template * scale / 100
+	if drawn >= readablePoints {
+		return nil
+	}
+	return []Finding{{Slot: placeholder.Slot, Kind: FindingTooSmall, Advisory: true,
+		Detail: fmt.Sprintf("text is drawn at %.0fpt after shrinking from %.0fpt, below the %dpt a room can read",
+			drawn, template, readablePoints)}}
 }
 
 // inspectLineBreaks reports a heading whose wrap leaves a stray last line. It is

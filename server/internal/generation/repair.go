@@ -196,7 +196,7 @@ func slideShape(slide model.Slide) (headings, regions int) {
 func repairable(finding pptx.Finding) bool {
 	switch finding.Kind {
 	case pptx.FindingOverflow, pptx.FindingOutside, pptx.FindingCollision, pptx.FindingContrast,
-		pptx.FindingDensity, pptx.FindingRepeat, pptx.FindingTrimmed:
+		pptx.FindingDensity, pptx.FindingRepeat, pptx.FindingTrimmed, pptx.FindingTooSmall:
 		return true
 	}
 	return false

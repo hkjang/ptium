@@ -42,6 +42,7 @@ var dimensionOf = map[string]string{
 	FindingOrphan:   DimensionReadability,
 	FindingTrimmed:  DimensionReadability,
 	FindingLink:     DimensionReadability,
+	FindingTooSmall: DimensionReadability,
 	FindingNotes:    DimensionStructure,
 	FindingRepeat:   DimensionStructure,
 	// The two findings about a slide's heading were weighted as the costliest
@@ -70,6 +71,11 @@ func weightOf(finding Finding) int {
 			return 6
 		case FindingTrimmed:
 			// Content that is on no slide is worse than content that is crowded.
+			return 10
+		case FindingTooSmall:
+			// The words are all on the slide and none of them can be read from
+			// the back of the room, which for that half of the room is the same
+			// as content that was left off.
 			return 10
 		case FindingLink:
 			// The markup is printed on the wall, which every reader can see.
