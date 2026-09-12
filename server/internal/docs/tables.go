@@ -283,7 +283,50 @@ func allNumeric(rows [][]string, column int) bool {
 // height of a month that sold 340, and the minus survives only in a value label
 // the chart drops once it holds more than six bars. A column with a refund in
 // it is left the table it was, where the brackets are still on the page.
+// commaIsNotAThousandsSeparator reports whether a comma in the written figure is
+// doing something other than grouping thousands — which, in practice, means the
+// sheet is written in a locale where the comma is the decimal point.
+//
+// It matters because amountSigns strips commas outright. "1,200" is 1200 either
+// way, but "€1.234,56" becomes "1.23456" and draws a bar a thousandth of its
+// height, and the reader has no way to see that the number on the page is not
+// the number on the chart. Before the European signs were added here such a cell
+// was no figure at all and the sheet stayed a table, which was the safe answer.
+//
+// A comma that groups thousands is always followed by exactly three digits, and
+// a sheet does not use both separators for grouping. Anything else is a locale
+// this reader cannot tell apart, so it gives way — the same rule the space
+// thousands form is excluded under.
+func commaIsNotAThousandsSeparator(value string) bool {
+	if !strings.Contains(value, ",") {
+		return false
+	}
+	// Both separators present: whichever comes last is the decimal point.
+	// "1,234.56" is English and reads correctly; "1.234,56" is not.
+	if dot := strings.LastIndex(value, "."); dot >= 0 {
+		return strings.LastIndex(value, ",") > dot
+	}
+	for index := strings.Index(value, ","); index >= 0; {
+		digits := 0
+		for position := index + 1; position < len(value) && value[position] >= '0' && value[position] <= '9'; position++ {
+			digits++
+		}
+		if digits != 3 {
+			return true
+		}
+		next := strings.Index(value[index+1:], ",")
+		if next < 0 {
+			break
+		}
+		index = index + 1 + next
+	}
+	return false
+}
+
 func amountOf(value string) (float64, bool) {
+	if commaIsNotAThousandsSeparator(strings.TrimSpace(value)) {
+		return 0, false
+	}
 	cleaned := strings.TrimSpace(amountSigns.Replace(strings.TrimSpace(value)))
 	if !bareFigure(cleaned) {
 		return 0, false
