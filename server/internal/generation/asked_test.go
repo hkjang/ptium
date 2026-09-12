@@ -400,8 +400,10 @@ func TestABriefIsReadTheWayItIsWritten(t *testing.T) {
 // worse than — is not the subject.
 func TestTheAskingAroundASubjectIsNotTheSubject(t *testing.T) {
 	for brief, want := range map[string]string{
-		// "…개선하려고 합니다" — an intention.
-		"협력사 정산 프로세스를 개선하려고 합니다. 현재 정산까지 14일 걸리는데 7일로 줄이는 것이 목표입니다.": "협력사 정산 프로세스를 개선",
+		// "…개선하려고 합니다" — an intention. What is left once the intention
+		// goes is an object still wearing its marker, which is a clause; the
+		// title is the noun phrase inside it.
+		"협력사 정산 프로세스를 개선하려고 합니다. 현재 정산까지 14일 걸리는데 7일로 줄이는 것이 목표입니다.": "협력사 정산 프로세스 개선",
 		// "자료 만들어줘" — the verb left its ending behind: "회사 소개 어줘".
 		"다음 주 전사 워크숍에서 쓸 회사 소개 자료 만들어줘": "다음 주 전사 워크숍에서 쓸 회사 소개",
 		// "보고서" is one word: the deck was titled "AI 챗봇 도입 검토 서".
@@ -440,6 +442,21 @@ func TestAWrittenDeckIsMeasuredForWhatItSays(t *testing.T) {
 		"협력사 정산 프로세스를 개선하려고 합니다. 현재 정산까지 14일 걸리는데 7일로 줄이는 것이 목표입니다.",
 		"고객센터 상담 품질 관리 체계를 새로 만들려고 하는데 임원 보고용으로 8장 정도 필요합니다",
 		"우리 팀 2026년 목표와 실행 계획을 팀원들에게 공유하려고 합니다",
+		// Ten more, run through the deployed product rather than written by
+		// hand. Sixty headings came back and four of them were half a sentence:
+		// "재고 회전율 개선 근거를 담고", "하반기 목표를 제안", "다음 분기 과제를
+		// 정", and one deck headed "만들고 적용 일정을 안내" on all four of its
+		// content slides.
+		"물류센터 자동화 도입을 경영진에게 승인받기 위한 발표. 처리 시간 단축과 재고 회전율 개선 근거를 담고, 3분기 안에 시범 도입을 제안한다.",
+		"신규 고객관리 시스템 도입 계획을 설명하고, 기존 시스템의 문제와 이관 일정을 정리한다.",
+		"올해 상반기 실적을 보고하고 하반기 목표를 제안하려고 합니다.",
+		"데이터 거버넌스 체계를 세우려고 합니다. 부서별 역할과 책임을 나누고 우선순위를 정합니다.",
+		"품질 불량률을 낮추기 위한 개선 활동 결과를 공유하고, 다음 분기 과제를 정한다.",
+		"채용 프로세스를 개선해서 입사까지 걸리는 기간을 줄이고자 합니다.",
+		"클라우드 이전 비용과 일정을 검토하고 위험을 정리해 의사결정을 요청드립니다.",
+		"고객 이탈률이 높아지는 원인을 분석하고 대응 방안을 제안합니다.",
+		"보안 사고 대응 체계를 점검하고 미비점을 보완하려 합니다.",
+		"협력사 평가 기준을 다시 만들고 적용 일정을 안내합니다.",
 	} {
 		presentation := model.Presentation{OwnerID: "owner-1", Language: "ko", RequestedSlideCount: 8, Prompt: brief}
 		made, err := New(testSettings{"ai.provider": "fallback"}).Generate(context.Background(),

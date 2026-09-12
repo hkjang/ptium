@@ -2,6 +2,7 @@ package pptx
 
 import (
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/korean"
 	"regexp"
 	"strings"
 	"unicode"
@@ -27,7 +28,12 @@ var unfinishedEnding = regexp.MustCompile(
 		// a bare 야, because 분야 and 시야 are ordinary words that end a heading
 		// perfectly well.
 		`(?:어야|여야|아야|해야|되어야|돼야)$|` +
-		`(?:^|\s)(?:하|되|만들|만드|작성|정리|준비)$|` +
+		// 하, 되, 만들 and 만드 are not words on their own, so a heading ending
+		// on one was cut. 작성, 정리 and 준비 were here too and are ordinary
+		// nouns: "이관 일정 정리" and "회의 자료 작성" are headings, and were
+		// both reported. What they were here for — "…일정을 정리" — is the
+		// object rule below, which reads the marker rather than the word.
+		`(?:^|\s)(?:하|되|만들|만드)$|` +
 		// A verb the reader cut before its ending. Each of these is a whole word
 		// only when something was taken off it: "데이터 거버넌스 체계를 세우" was
 		// the cover of a deck, cut out of "…세우려고 합니다".
@@ -95,6 +101,13 @@ func unfinishedHeading(heading string) bool {
 		return true
 	}
 	if unfinishedEnding.MatchString(trimmed) {
+		return true
+	}
+	// The rule the language already has, rather than another list of verbs:
+	// an object still wearing its marker with nothing finished after it, and a
+	// phrase that starts after its own beginning. 담고 was on neither list here
+	// nor in the writer, and "재고 회전율 개선 근거를 담고" shipped headed.
+	if korean.CutPhrase(trimmed) || korean.BeginsMidClause(trimmed) {
 		return true
 	}
 	// A particle at the end is only a fragment when something came before it:

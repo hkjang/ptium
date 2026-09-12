@@ -36,15 +36,16 @@ const (
 
 // dimensionOf maps a finding to the dimension it belongs to.
 var dimensionOf = map[string]string{
-	FindingOverflow: DimensionReadability,
-	FindingOutside:  DimensionReadability,
-	FindingDensity:  DimensionReadability,
-	FindingOrphan:   DimensionReadability,
-	FindingTrimmed:  DimensionReadability,
-	FindingLink:     DimensionReadability,
-	FindingTooSmall: DimensionReadability,
-	FindingNotes:    DimensionStructure,
-	FindingRepeat:   DimensionStructure,
+	FindingOverflow:  DimensionReadability,
+	FindingOutside:   DimensionReadability,
+	FindingDensity:   DimensionReadability,
+	FindingOrphan:    DimensionReadability,
+	FindingTrimmed:   DimensionReadability,
+	FindingLink:      DimensionReadability,
+	FindingTooSmall:  DimensionReadability,
+	FindingNotes:     DimensionStructure,
+	FindingNotesEcho: DimensionStructure,
+	FindingRepeat:    DimensionStructure,
 	// The two findings about a slide's heading were weighted as the costliest
 	// advisories this product has — the heading is the line the room reads
 	// before anything else — and then counted in no dimension at all, so a deck
@@ -68,6 +69,11 @@ func weightOf(finding Finding) int {
 	if finding.Advisory {
 		switch finding.Kind {
 		case FindingDensity, FindingRepeat, FindingEcho:
+			return 6
+		case FindingNotesEcho:
+			// Less than having no notes at all, which is what this is one step
+			// away from: the author has something written down, and it is the
+			// slide. It costs what saying the same thing twice costs.
 			return 6
 		case FindingTrimmed:
 			// Content that is on no slide is worse than content that is crowded.

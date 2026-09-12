@@ -2,6 +2,7 @@ import type React from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, CircleAlert, Code2, Copy, Download, EyeOff, FileText, History, Image, Keyboard, LayoutPanelTop, LifeBuoy, Link2, ListOrdered, LoaderCircle, MessageSquare, MessageSquareText, MonitorPlay, Plus, RotateCcw, Trash2, WandSparkles, X } from 'lucide-react'
 import { markupFor } from './editor/model/markup'
+import { noteDraft } from './editor/model/notes'
 import { RewriteDialog } from './editor/RewriteDialog'
 import { stageText } from './editor/model/stage'
 import { beingWritten } from '../api/client'
@@ -863,7 +864,7 @@ export function EditorPage({ id }: { id: string }) {
 			const indexes = new Set(notes.map((finding) => finding.slide - 1))
 			markEdited()
 			setSlides((current) => current.map((slide, slideIndex) => indexes.has(slideIndex)
-				? { ...slide, speakerNotes: `${slide.title}: ${slide.subtitle || slideBodyLines(slide)[0] || slide.title}`.slice(0, 4000) }
+				? { ...slide, speakerNotes: noteDraft(current, slideIndex) }
 				: slide))
 			setDirty(true)
 			showToast(`${notes.length}장에 발표 노트 초안을 추가했습니다.`)
@@ -878,9 +879,8 @@ export function EditorPage({ id }: { id: string }) {
 		if (!target || !canSafelyFix(finding)) return
 		markEdited()
 		if (finding.kind === 'notes') {
-			const lead = target.subtitle || slideBodyLines(target)[0] || target.title
 			setSlides((current) => current.map((slide, slideIndex) => slideIndex === index
-				? { ...slide, speakerNotes: `${slide.title}: ${lead}`.slice(0, 4000) }
+				? { ...slide, speakerNotes: noteDraft(current, slideIndex) }
 				: slide))
 			setActiveId(target.id)
 			setDirty(true)

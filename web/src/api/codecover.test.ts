@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { errorText } from './errors'
@@ -25,11 +25,14 @@ const MACHINE_ONLY = [
   'code, redirect_uri and code_verifier are required',
 ]
 
+// withFileTypes, so that walking the tree costs one call per directory rather
+// than one per file. On a working copy mounted from another filesystem the stat
+// per entry was most of the time this test took.
 function goFiles(dir: string): string[] {
-  return readdirSync(dir).flatMap((entry) => {
-    const full = join(dir, entry)
-    if (statSync(full).isDirectory()) return goFiles(full)
-    return full.endsWith('.go') && !full.endsWith('_test.go') ? [full] : []
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) return goFiles(full)
+    return entry.name.endsWith('.go') && !entry.name.endsWith('_test.go') ? [full] : []
   })
 }
 
@@ -55,13 +58,18 @@ const asShown = (format: string) =>
   format.replace(/%d/g, '7').replace(/%s/g, 'kpi').replace(/%q/g, '"매출"').trim()
 
 describe('거절당했을 때도 읽는 사람의 말로', () => {
+  // Read once. Every .go file in the tree is opened and scanned, and doing it
+  // per test put this over the five-second limit whenever the suite ran the
+  // rest of the files beside it.
+  const said = refusals()
+
   it('서버가 보낼 수 있는 거절을 찾아낸다', () => {
     // If this ever reads nothing, the check below is passing on an empty list.
-    expect(refusals().length).toBeGreaterThan(50)
+    expect(said.length).toBeGreaterThan(50)
   })
 
   it('영어 그대로 나오는 거절이 없다', () => {
-    const left = refusals()
+    const left = said
       .map(asShown)
       // The code is deliberately one no map knows. errorText falls back to the
       // code when the message has no rule, so passing a real code makes every

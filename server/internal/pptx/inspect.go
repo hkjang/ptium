@@ -37,6 +37,13 @@ const (
 	FindingDensity = "density"
 	// FindingNotes is a slide with nothing to say out loud.
 	FindingNotes = "notes"
+	// FindingNotesEcho is a note that only says what the slide already shows.
+	// Reviews that actually test these tools name speaker notes as the weakest
+	// thing the whole category produces: skipped, or filler. This product wrote
+	// its own — the one-click draft was the title and the first point joined by
+	// a colon — so a presenter reading it aloud said what the room was reading,
+	// and a slide with nothing but a title got its title twice.
+	FindingNotesEcho = "notesEcho"
 	// FindingRepeat is the same point made twice in different words. A model
 	// writing to a line count pads rather than stops, and a padded slide reads as
 	// generated — so it is measured rather than hoped away.
@@ -707,6 +714,10 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 			findings = append(findings, Finding{Slide: index + 1, Kind: FindingNotes, Advisory: true,
 				Detail: "no speaker notes: nothing is written down to say over this slide"})
 		}
+		for _, finding := range notesRepeatingTheSlide(slide) {
+			finding.Slide = index + 1
+			findings = append(findings, finding)
+		}
 		// Only the figures the brief did not give are asked about. A deck that
 		// asks a board for 12억 원 states that number on every slide about the
 		// ask, and the author is the source: telling them to cite their own
@@ -720,6 +731,37 @@ func InspectDeck(manifest Manifest, deck Deck) []Finding {
 	}
 	findings = append(findings, repeatedSlides(deck)...)
 	return findings
+}
+
+// notesRepeatingTheSlide reports a note that uses no word the slide does not
+// already show.
+//
+// Word for word rather than nearly: a note that adds one word of its own adds
+// something, and this must not argue with an author about how much. What it
+// catches is the note that is the slide read back — which is what this product
+// wrote itself, on every slide anyone pressed the button on.
+func notesRepeatingTheSlide(slide Slide) []Finding {
+	said := contentWords(slide.Notes)
+	if len(said) < 2 {
+		return nil
+	}
+	drawn := map[string]bool{}
+	for _, line := range saidLines(slide) {
+		for _, word := range contentWords(line.text) {
+			drawn[word] = true
+		}
+	}
+	if len(drawn) == 0 {
+		return nil
+	}
+	for _, word := range said {
+		if !drawn[word] {
+			return nil
+		}
+	}
+	return []Finding{{Kind: FindingNotesEcho, Advisory: true,
+		Detail: fmt.Sprintf("the speaker notes %q say only what the slide already shows",
+			shortDetail(strings.Join(strings.Fields(slide.Notes), " ")))}}
 }
 
 // figurePattern is a number worth asking about: one with a unit, a percentage

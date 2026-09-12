@@ -5739,7 +5739,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.69.35
+            service.version: 1.69.36
         requestId:
           $ref: '#/components/schemas/RequestID'
 
@@ -6470,7 +6470,7 @@ components:
             refuse the response.
           enum: [overflow, trimmed, outside, collision, contrast, orphan, density,
                  notes, repeat, link, source, echo, unfinished, twiceTitled, stale,
-                 undescribed, tooSmall]
+                 undescribed, tooSmall, notesEcho]
         detail:
           type: string
           description: What is wrong, in numbers the author can act on.

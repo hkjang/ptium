@@ -1,6 +1,7 @@
 package generation
 
 import (
+	"github.com/hkjang/ptium/server/internal/korean"
 	"regexp"
 	"strings"
 	"unicode"
@@ -965,7 +966,15 @@ func cleanTopic(value string) string {
 	}
 	// A phrase can end up with a dangling vowel jamo after stripping a particle.
 	value = strings.TrimSpace(strings.TrimSuffix(value, "으"))
-	return strings.Trim(value, " .,·-—")
+	value = strings.Trim(value, " .,·-—")
+	// The marker stripped above is the one at the very end. A subject cut out of
+	// prose keeps the one in the middle — "협력사 정산 프로세스를 개선" is what
+	// "…를 개선하려고 합니다" leaves — and that is a clause, not a subject. It
+	// names the deck and every section built from it.
+	if phrase, changed := korean.TrimToPhrase(value); changed {
+		value = phrase
+	}
+	return value
 }
 
 // frameFor decides how a topic wants to be argued.
@@ -1186,7 +1195,14 @@ func headingName(name string) string {
 			trimmed = rest
 		}
 	}
-	return withoutTrailingFigure(withoutAside(withoutBrokenBrackets(trimmed)))
+	cleaned := withoutTrailingFigure(withoutAside(withoutBrokenBrackets(trimmed)))
+	// And a heading is a noun phrase. What survives the splitting is often an
+	// object still wearing the marker that tied it to a verb — "하반기 목표를
+	// 제안" — which is half a sentence sitting where a title goes.
+	if phrase, changed := korean.TrimToPhrase(cleaned); changed {
+		return phrase
+	}
+	return cleaned
 }
 
 // withoutTrailingFigure drops a measurement from the end of a heading.
@@ -1844,6 +1860,21 @@ func cutPhrase(name string) bool {
 	if trimmed == "" {
 		return false
 	}
+	// A phrase missing its front cannot be repaired by trimming its tail, and
+	// the deck is better off headed with the subject the brief marked.
+	if korean.BeginsMidClause(trimmed) {
+		return true
+	}
+	// Everything below judges the phrase as a heading would show it, which is
+	// after the tail has been trimmed: "하반기 목표를 제안" reaches the wall as
+	// "하반기 목표 제안" and is not cut, so throwing the topic away and
+	// replacing it with the brief's subject would lose a section for nothing.
+	if phrase, changed := korean.TrimToPhrase(trimmed); changed {
+		trimmed = phrase
+	}
+	if korean.CutPhrase(trimmed) {
+		return true
+	}
 	if strings.ContainsAny(trimmed, ".。") {
 		return true
 	}
@@ -1913,8 +1944,15 @@ func endsInCaseMarker(word string) bool {
 			return false
 		}
 	}
+	// Two syllables of word under the marker, so that a word whose own last
+	// syllable is one is left alone. 평가, 효과, 성과, 결과, 단가, 추가 and 증가
+	// all end in 가, and reading 평가 as a marked 평 cost the repair its subject:
+	// "협력사 평가 기준을 다시 만들고…" gave "기준", and four slides were headed
+	// after it. What is lost the other way is 일을, 돈을, 값이 — short words a
+	// brief rarely opens on.
 	for _, marker := range []string{"을", "를", "이", "가", "은", "는"} {
-		if strings.HasSuffix(trimmed, marker) {
+		if stem, found := strings.CutSuffix(trimmed, marker); found &&
+			utf8.RuneCountInString(stem) >= 2 {
 			return true
 		}
 	}

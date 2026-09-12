@@ -13,7 +13,7 @@ func TestEveryFindingCountsSomewhere(t *testing.T) {
 		FindingOverflow, FindingTrimmed, FindingOutside, FindingCollision, FindingContrast,
 		FindingOrphan, FindingDensity, FindingNotes, FindingRepeat, FindingLink,
 		FindingSource, FindingEcho, FindingUnfinished, FindingTwiceTitled, FindingStale,
-		FindingUndescribed, FindingTooSmall,
+		FindingUndescribed, FindingTooSmall, FindingNotesEcho,
 	}
 	for _, kind := range kinds {
 		if dimensionOf[kind] == "" {
