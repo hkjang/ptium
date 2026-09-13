@@ -46,6 +46,7 @@ var Words = map[string][]string{
 var Flags = map[string]bool{
 	"generation.outline_pass":       true,
 	"generation.allow_user_uploads": true,
+	"auth.oidc.auto_login":          true,
 }
 
 // IsWord reports whether value is one of the words a setting is honoured at.

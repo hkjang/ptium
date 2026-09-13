@@ -30,6 +30,10 @@ export interface AuthConfig {
   tokenExchangeUrl?: string
   redirectUri?: string
   scopes?: string[]
+  // The administrator's auth.oidc.auto_login: a browser with no session may
+  // ask the provider for one it already holds (prompt=none) before anyone
+  // sees a login screen.
+  autoLogin?: boolean
 }
 
 /**

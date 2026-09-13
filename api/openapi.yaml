@@ -5549,6 +5549,13 @@ components:
         devAuthHeader:
           type: string
           example: X-Ptium-Dev-Secret
+        autoLogin:
+          type: boolean
+          description: |
+            True when the administrator turned on `auth.oidc.auto_login`, so a
+            browser that arrives without a session may first ask the provider
+            for one it already holds (`prompt=none`) instead of showing the
+            login screen. Never true unless `oidcEnabled` is. Off by default.
 
     MeEnvelope:
       type: object
@@ -7465,7 +7472,7 @@ components:
         - if:
             properties:
               key:
-                enum: [generation.outline_pass, generation.allow_user_uploads]
+                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login]
           then:
             properties:
               value:
@@ -7566,6 +7573,13 @@ components:
           type: string
         auth.oidc.admin_roles:
           $ref: '#/components/schemas/SettingAdminRoles'
+        auth.oidc.auto_login:
+          type: boolean
+          default: false
+          description: |
+            Sign a visitor in without a login screen when the identity provider
+            still holds a session for them (`prompt=none`). Off, everyone sees
+            the login screen. Takes effect on the next page load; no restart.
         security.api_key_grace:
           $ref: '#/components/schemas/SettingGraceDuration'
         security.cors_origins:

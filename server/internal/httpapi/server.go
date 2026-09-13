@@ -39,6 +39,11 @@ type AuthPublicConfig struct {
 	// TokenExchangeURL is set when Ptium exchanges the authorization code on the
 	// browser's behalf, which a confidential OIDC client requires.
 	TokenExchangeURL string `json:"tokenExchangeUrl,omitempty"`
+	// AutoLogin tells the workspace it may ask the provider for a session it
+	// already holds (prompt=none) before showing a login screen. It is the
+	// administrator's auth.oidc.auto_login, read when asked rather than at
+	// startup, and never true without OIDC.
+	AutoLogin bool `json:"autoLogin"`
 }
 
 type Options struct {
@@ -415,7 +420,39 @@ func (s *Server) ready(writer http.ResponseWriter, request *http.Request) {
 
 func (s *Server) authConfig(writer http.ResponseWriter, request *http.Request) {
 	writer.Header().Set("Cache-Control", "no-store")
-	writeData(writer, request, http.StatusOK, s.authPublic)
+	var stored settingReader
+	if s.settings != nil {
+		stored = s.settings
+	}
+	writeData(writer, request, http.StatusOK, withAutoLogin(request.Context(), s.authPublic, stored))
+}
+
+// settingReader is the little of the settings service the auth config needs,
+// so the rule below can be tested without a database.
+type settingReader interface {
+	Get(ctx context.Context, key string, target any) error
+}
+
+// withAutoLogin is the published config with the administrator's answer to
+// whether the workspace may sign a visitor in silently. The answer is read
+// every time because it is a switch, and a switch that only moves at the next
+// restart is one an administrator flips and then doubts.
+//
+// It fails off: a stored value that cannot be read, or a deployment with no
+// settings store, keeps the login screen. Silent sign-in sends the browser
+// away, and the surface that sends browsers away belongs to the setting alone
+// — never to something a client asked for.
+func withAutoLogin(ctx context.Context, public AuthPublicConfig, store settingReader) AuthPublicConfig {
+	public.AutoLogin = false
+	if !public.OIDCEnabled || store == nil {
+		return public
+	}
+	var wanted bool
+	if err := store.Get(ctx, "auth.oidc.auto_login", &wanted); err != nil {
+		return public
+	}
+	public.AutoLogin = wanted
+	return public
 }
 
 func writeData(writer http.ResponseWriter, request *http.Request, status int, data any) {
