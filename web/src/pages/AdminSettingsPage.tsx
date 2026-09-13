@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Activity, Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, ArrowRightLeft, Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { api } from '../api/client'
 import { SettingChanges } from './SettingChanges'
 import { designChoices, designFamilies, resolveDesignKey, type DesignChoice } from '../branding/designs'
@@ -7,11 +7,12 @@ import { languageChoices, toneChoices, withStoredChoice } from '../branding/choi
 import { AppShell } from '../components/AppShell'
 import { Badge, Button, ErrorState, Field, Input, LoadingState, Select, Textarea } from '../components/UI'
 import { policyOrigins, trackingProblem, trackingProviders } from './tracking'
+import { handoffProblem, handoffSummary } from './handoffpeers'
 import type { TrackingViolation } from '../types'
 import { useToast } from '../components/Toast'
 import { displayError } from '../utils'
 
-type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security' | 'analytics'
+type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security' | 'analytics' | 'handoff'
 type SettingValue = string | number | boolean | string[]
 type Values = Record<string, SettingValue>
 interface SettingSection { id: SectionKey; label: string; description: string; icon: ReactNode }
@@ -23,6 +24,7 @@ const sections: SettingSection[] = [
   { id: 'generation', label: '생성 정책', description: '슬라이드 기본값과 제한', icon: <Sparkles size={18} /> },
   { id: 'security', label: '보안 · 키', description: 'API 키 회전과 CORS', icon: <ShieldCheck size={18} /> },
   { id: 'analytics', label: '방문 추적', description: '추적 스크립트와 페이지 정책', icon: <Activity size={18} /> },
+  { id: 'handoff', label: '문서 넘기기', description: '문서를 주고받는 사내 서비스', icon: <ArrowRightLeft size={18} /> },
 ]
 
 const defaults: Record<SectionKey, Values> = {
@@ -33,6 +35,8 @@ const defaults: Record<SectionKey, Values> = {
   security: { api_key_grace: '24h', cors_origins: [] },
   // Off as shipped: nothing on any page until an administrator turns it on.
   analytics: { enabled: false, provider: 'none', momento_url: '', momento_site_id: '', momento_proxy: true, measurement_id: '', matomo_url: '', matomo_site_id: '', custom_snippet: '', allowed_hosts: '', include_admin: false, placement: 'head' },
+  // Empty as shipped: no service is sent to or received from until named here.
+  handoff: { peers: [] },
 }
 
 /** What came back, said the way an operator needs to read it. */
@@ -175,6 +179,7 @@ export function AdminSettingsPage() {
         {active === 'oidc' && <><div className="security-banner"><LockKeyhole size={20} /><div><strong>표준 OIDC Discovery · PKCE</strong><p>공개 SPA 클라이언트는 Client Secret 없이 연결합니다. Keycloak에서 이 클라이언트를 <b>Confidential</b>로 두었다면 아래에 Secret을 저장하세요 — 인가 코드 교환을 브라우저 대신 서버가 수행합니다. 같은 항목의 환경변수(<code>OIDC_CLIENT_SECRET</code> 등)가 있으면 환경변수가 계속 우선하며, 그 외 저장값은 서비스 재시작 후 적용됩니다.</p></div></div><SettingCard title="Keycloak · OIDC 연결" description="Issuer URL을 비우면 OIDC가 비활성화됩니다."><Field label="Issuer URL" hint="예: https://keycloak.example.com/realms/ptium"><Input value={String(values.oidc.issuer_url)} onChange={(event) => update('oidc', 'issuer_url', event.target.value)} placeholder="https://…/realms/…" /></Field><Field label="Client ID"><Input value={String(values.oidc.client_id)} onChange={(event) => update('oidc', 'client_id', event.target.value)} placeholder="ptium-web" /></Field>{secretField('Client Secret', 'client_secret', `${oidcSecretConfigured ? '저장된 Secret이 있습니다. ' : ''}Confidential 클라이언트에만 필요합니다. AES-GCM으로 암호화되며 저장된 값은 다시 노출되지 않습니다. 지우려면 공백 한 칸을 저장하세요.`)}{unreadableSecrets['auth.oidc.client_secret'] && <div className="security-banner warning"><CircleAlert size={20} /><div><strong>저장된 Client Secret을 복호화할 수 없습니다</strong><p>암호화 키(KEY_ENCRYPTION_SECRET 또는 DATABASE_URL)가 바뀌었습니다. 위 입력란에 Secret을 다시 입력해 저장하세요.</p></div></div>}<Field label="관리자 역할" hint="쉼표로 구분합니다. realm_access.roles와 roles claim을 확인합니다."><Input value={asList(values.oidc.admin_roles).join(', ')} onChange={(event) => update('oidc', 'admin_roles', splitList(event.target.value))} /></Field></SettingCard><SettingCard title="자동 로그인 (Silent SSO)" description="Keycloak에 이미 로그인한 사람이 이 서비스를 열면 로그인 화면 없이 바로 들어옵니다. 저장 즉시 적용되며 재시작이 필요 없습니다."><Field label="자동 로그인" hint="켜면 브라우저가 로그인 화면을 보이기 전에 제공자에게 prompt=none 으로 한 번만 묻습니다. 제공자에 세션이 없으면 평소처럼 로그인 화면이 뜨고, 로그아웃한 뒤에는 다시 자동으로 로그인하지 않습니다."><Select value={String(values.oidc.auto_login ?? false)} onChange={(event) => update('oidc', 'auto_login', event.target.value === 'true')}><option value="false">사용 안 함</option><option value="true">사용</option></Select></Field></SettingCard></>}
         {active === 'generation' && <SettingCard title="생성 기본값 · 제한" description="새 프레젠테이션과 MCP 생성 요청에 즉시 적용됩니다."><div className="form-grid two"><Field label="기본 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.default_slide_count)} onChange={(event) => update('generation', 'default_slide_count', Number(event.target.value))} /></Field><Field label="최대 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.max_slides)} onChange={(event) => update('generation', 'max_slides', Number(event.target.value))} /></Field></div><div className="form-grid two"><Field label="기본 언어"><Select value={String(values.generation.default_lang)} onChange={(event) => update('generation', 'default_lang', event.target.value)}>{withStoredChoice(languageChoices, String(values.generation.default_lang)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 테마" hint={designs.length ? '이 배포가 갖고 있는 디자인입니다.' : '디자인 목록을 불러오지 못해 저장된 값을 그대로 둡니다.'}>{designs.length ? <Select value={resolveDesignKey(String(values.generation.default_theme), designs)} onChange={(event) => update('generation', 'default_theme', event.target.value)}>{designFamilies(designs).map((group) => <optgroup key={group.family} label={group.family}>{group.designs.map((design) => <option key={design.key} value={design.key}>{design.name}</option>)}</optgroup>)}</Select> : <Input value={String(values.generation.default_theme)} readOnly />}</Field></div><div className="form-grid two"><Field label="기본 발표 톤"><Select value={String(values.generation.default_tone)} onChange={(event) => update('generation', 'default_tone', event.target.value)}>{withStoredChoice(toneChoices, String(values.generation.default_tone)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 청중"><Input value={String(values.generation.default_audience)} onChange={(event) => update('generation', 'default_audience', event.target.value)} /></Field></div><div className="form-grid two"><Field label="생성 후 자동 수정" hint="템플릿에 맞지 않는 슬라이드를 측정해 모델에게 다시 쓰게 합니다. 0이면 끕니다."><Input type="number" min="0" max="10" value={Number(values.generation.repair_passes ?? 3)} onChange={(event) => update('generation', 'repair_passes', Number(event.target.value))} /></Field><Field label="서사 계획 단계" hint="슬라이드를 쓰기 전에 덱의 흐름을 먼저 설계합니다."><Select value={String(values.generation.outline_pass ?? true)} onChange={(event) => update('generation', 'outline_pass', event.target.value === 'true')}><option value="true">사용</option><option value="false">사용 안 함</option></Select></Field></div></SettingCard>}
         {active === 'security' && <><div className="security-banner"><ShieldCheck size={20} /><div><strong>시크릿은 암호화되어 저장됩니다</strong><p>API 키 원문은 생성·회전 직후 한 번만 표시됩니다.</p></div></div><SettingCard title="API 키 회전" description="이전 키와 새 키가 함께 유효한 기본 유예 기간입니다."><Field label="회전 유예 기간" hint="Go duration 형식: 30m, 24h, 168h"><Input value={String(values.security.api_key_grace)} onChange={(event) => update('security', 'api_key_grace', event.target.value)} /></Field></SettingCard><SettingCard title="브라우저 Origin" description="동일 출처 외에 허용할 Origin입니다. 변경 후 서비스 재시작이 필요합니다."><Field label="추가 허용 Origin" hint="쉼표로 구분하며 경로 없이 https://host 형식으로 입력합니다."><Input value={asList(values.security.cors_origins).join(', ')} onChange={(event) => update('security', 'cors_origins', splitList(event.target.value))} placeholder="https://slides.example.com" /></Field></SettingCard></>}
+        {active === 'handoff' && <><div className="security-banner"><ArrowRightLeft size={20} /><div><strong>표(claim) 하나로 넘깁니다 — 서비스끼리 자격 증명을 나누지 않습니다</strong><p>보내는 쪽이 5분 동안 한 번만 쓸 수 있는 표를 발급하고, 받는 쪽이 그 표를 들고 원본에서 직접 받아 갑니다. 이 목록에 있는 오리진에서만 받고, 없는 곳은 요청조차 보내지 않습니다. 리다이렉트는 따르지 않고 25MB·30초에서 끊습니다. 저장 즉시 적용됩니다.</p></div></div><SettingCard title="허용 목록" description="문서를 주고받을 사내 서비스입니다. 비어 있으면 편집기의 내보내기에 '다른 서비스로 보내기'가 보이지 않고, 어느 서비스에서 보낸 문서도 받지 않습니다."><Field label="서비스 목록" hint="한 줄에 하나, 이름=오리진 꼴. 이름은 umm · muni · kanpic · weekly · ptium 가운데 하나여야 그 서비스가 받는 형식을 알 수 있고(이 서비스가 보내는 pptx 는 weekly 만 받습니다), 다른 이름은 받기만 하는 서비스로 둡니다. 오리진은 경로 없이 https://host 꼴이며, 브라우저가 들고 오는 source 와 정확히 같아야 합니다."><Textarea rows={5} value={asList(values.handoff.peers).join('\n')} onChange={(event) => update('handoff', 'peers', splitLines(event.target.value))} placeholder={'umm=https://umm.intra\nmuni=https://muni.intra\nweekly=https://weekly.intra'} /></Field><p className="field-hint">{handoffSummary(asList(values.handoff.peers))}</p></SettingCard></>}
         {active === 'analytics' && <TrackingSection values={values.analytics} persisted={persistedValues.analytics} update={(key, value) => update('analytics', key, value)} violations={violations} violationsError={violationsError} onAllow={(origin) => void allowOrigin(origin)} onForget={() => void forgetViolations()} onReload={loadViolations} />}
         {/* What was changed here, and putting one back: the settings decide how
             every deck in this deployment is written, so their own trail belongs
@@ -203,7 +208,13 @@ function splitList(value: string): string[] {
   return value.split(',').map((item) => item.trim()).filter(Boolean)
 }
 
+/** One entry per line: an origin has no comma in it, and a list of them reads best one under the other. */
+function splitLines(value: string): string[] {
+  return value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
+}
+
 function validateSettings(section: SectionKey, values: Values): string {
+  if (section === 'handoff') return handoffProblem(asList(values.peers))
   if (section === 'branding') {
     if (!String(values.product_name || '').trim()) return '서비스 이름을 입력해 주세요.'
     if (!/^#[0-9a-f]{6}$/i.test(String(values.brand_color))) return '대표 색상은 #RRGGBB 형식이어야 합니다.'

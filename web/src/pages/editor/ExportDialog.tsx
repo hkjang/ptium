@@ -1,5 +1,7 @@
-import { Download, FileText, MessageSquareText } from 'lucide-react'
+import { ArrowRightLeft, Download, FileText, MessageSquareText } from 'lucide-react'
 import { Button, LoadingState, Modal } from '../../components/UI'
+import type { HandoffTarget } from '../../types'
+import { sendableTargets, targetLabel } from '../handoff'
 
 /**
  * Taking the deck out of Ptium.
@@ -10,13 +12,20 @@ import { Button, LoadingState, Modal } from '../../components/UI'
  * the one face the workspace carries, because a template names its typeface and
  * does not carry it. The dialog says so rather than letting someone find out
  * after they have sent it.
+ *
+ * Below the files: the services a deck can be passed to without a download
+ * (HANDOFF-STANDARD). The list comes from the administrator, and while it is
+ * empty — as shipped — that part of the dialog does not exist.
  */
-export function ExportDialog({ open, exporting, onExport, onClose }: {
+export function ExportDialog({ open, exporting, onExport, onClose, targets = [], onSend }: {
   open: boolean
   exporting: boolean
   onExport: (format: 'pptx' | 'pdf' | 'pdf-notes') => void
   onClose: () => void
+  targets?: HandoffTarget[]
+  onSend?: (target: HandoffTarget) => void
 }) {
+  const destinations = sendableTargets(targets)
   return (
     <Modal
       open={open}
@@ -51,6 +60,19 @@ export function ExportDialog({ open, exporting, onExport, onClose }: {
           <Download size={18} />
         </button>
       </div>
+      {destinations.length > 0 && onSend && <>
+        <p className="modal-note" style={{ marginTop: 16 }}><strong>다른 서비스로 보내기</strong> — 파일을 내려받지 않고, 받는 서비스가 새 창에서 이 덱을 가져갑니다.</p>
+        <div className="export-options">
+          {destinations.map((target) => <button key={target.origin} disabled={exporting} onClick={() => onSend(target)} data-testid="handoff-target">
+            <span className="export-icon ppt"><ArrowRightLeft size={22} /></span>
+            <div>
+              <strong>{targetLabel(target)}</strong>
+              <p>PowerPoint(.pptx)로 넘깁니다. 표는 5분 동안 한 번만 쓸 수 있습니다.</p>
+            </div>
+            <ArrowRightLeft size={18} />
+          </button>)}
+        </div>
+      </>}
       {exporting && <LoadingState compact label="파일을 준비하고 있어요…" />}
     </Modal>
   )

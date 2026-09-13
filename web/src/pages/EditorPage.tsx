@@ -19,7 +19,7 @@ import { Button, EmptyState, ErrorState, Input, LoadingState, Modal, Select, Tex
 import { useToast } from '../components/Toast'
 import { navigate } from '../router'
 import type {
-  Presentation, PresentationRevision, Slide, SlideBlock, SlideChange, SlideElement, SlideParagraph, Snippet, SlotFrame, SlotStyle,
+  HandoffTarget, Presentation, PresentationRevision, Slide, SlideBlock, SlideChange, SlideElement, SlideParagraph, Snippet, SlotFrame, SlotStyle,
   Template, TemplateLayout,
 } from '../types'
 import { displayError, relativeDate } from '../utils'
@@ -40,6 +40,7 @@ import { HistoryDialog } from './editor/HistoryDialog'
 import { ShareDialog } from './editor/ShareDialog'
 import { CommentsDialog } from './editor/CommentsDialog'
 import { ExportDialog } from './editor/ExportDialog'
+import { handoffReceiveUrl, targetLabel } from './handoff'
 import { useAutosave, useUnsavedWarning } from './editor/hooks/useAutosave'
 import { objectParticle } from '../korean'
 
@@ -1202,6 +1203,31 @@ export function EditorPage({ id }: { id: string }) {
     } catch (err) { showToast(displayError(err), 'error') } finally { setRewriting(false) }
   }
 
+  // Where a deck can be sent without a download. Read when the dialog opens,
+  // so a service the administrator just listed is there without a reload;
+  // empty as shipped, and empty is no menu.
+  const [handoffTargets, setHandoffTargets] = useState<HandoffTarget[]>([])
+  useEffect(() => {
+    if (!exportOpen) return
+    api.handoffTargets().then(({ targets }) => setHandoffTargets(targets)).catch(() => setHandoffTargets([]))
+  }, [exportOpen])
+
+  // The window is opened before the claim is asked for, in the click: opened
+  // after an await it would be a popup the browser blocks. The receiving
+  // side gets no opener to reach back through.
+  const sendDeck = async (target: HandoffTarget) => {
+    const opened = window.open('about:blank', '_blank', 'noopener,noreferrer')
+    setExporting(true)
+    try {
+      if (dirty) await save()
+      const issued = await api.issueHandoffClaim(id)
+      const url = handoffReceiveUrl(target.origin, issued.source, issued.claim)
+      if (opened && !opened.closed) opened.location.replace(url)
+      else window.open(url, '_blank', 'noopener,noreferrer')
+      showToast(`${targetLabel(target)}(으)로 보냈습니다. 새 창에서 이어집니다.`); setExportOpen(false)
+    } catch (err) { opened?.close(); showToast(displayError(err), 'error') } finally { setExporting(false) }
+  }
+
   const exportDeck = async (format: 'pptx' | 'pdf' | 'pdf-notes') => {
     setExporting(true)
     try {
@@ -1588,6 +1614,8 @@ export function EditorPage({ id }: { id: string }) {
         exporting={exporting}
         onExport={(format) => void exportDeck(format)}
         onClose={() => setExportOpen(false)}
+        targets={handoffTargets}
+        onSend={(target) => void sendDeck(target)}
       />
     </main>
   )

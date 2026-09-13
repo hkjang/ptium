@@ -19,6 +19,8 @@ import { CreatePage } from './pages/CreatePage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EditorPage } from './pages/EditorPage'
 import { GuidePage } from './pages/GuidePage'
+import { HandoffPage } from './pages/HandoffPage'
+import { loginPathKeeping } from './pages/handoff'
 import { LoginPage } from './pages/LoginPage'
 import { PresentationsPage } from './pages/PresentationsPage'
 import { PresenterPage } from './pages/PresenterPage'
@@ -28,7 +30,7 @@ import { TemplatesPage } from './pages/TemplatesPage'
 import { Link, navigate, useLocation } from './router'
 
 export function App() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { user, loading } = useAuth()
   const { productName } = useBrand()
 
@@ -40,13 +42,14 @@ export function App() {
 
   if (loading || pathname === '/auth/callback') return <main className="app-bootstrap"><div className="login-brand"><BrandMark size="large" /><span>{productName}</span></div><LoaderCircle className="spin" size={24} /><p>워크스페이스를 준비하는 중…</p></main>
   if (pathname === '/login') return <LoginPage />
-  if (!user) { navigate('/login', true); return null }
+  if (!user) { navigate(loginPathKeeping(pathname, search), true); return null }
 
   if (pathname === '/' || pathname === '/dashboard') return <DashboardPage />
   if (pathname === '/presentations') return <PresentationsPage />
   if (pathname === '/templates') return <TemplatesPage />
   if (pathname === '/images') return <AssetsPage />
   if (pathname === '/create') return <CreatePage />
+  if (pathname === '/handoff') return <HandoffPage />
   const editorMatch = pathname.match(/^\/presentations\/([^/]+)\/editor$/)
   if (editorMatch) return <EditorPage id={decodeURIComponent(editorMatch[1])} />
   // The presenter's second window. It carries no workspace chrome: it is the

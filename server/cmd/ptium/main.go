@@ -235,7 +235,7 @@ func main() {
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
 		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
 		PasswordLoginEnabled: passwordLoginEnabled, Version: version,
-		AssetDir: assetDirForStorage(applicationConfig),
+		AssetDir: assetDirForStorage(applicationConfig), PublicBaseURL: applicationConfig.PublicBaseURL,
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)

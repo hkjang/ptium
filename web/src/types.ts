@@ -328,6 +328,23 @@ export interface TrackingViolation {
   allowed: boolean
 }
 
+/** One service a deck can be sent to (HANDOFF-STANDARD), and in which formats. */
+export interface HandoffTarget {
+  name: string
+  origin: string
+  formats: string[]
+}
+
+/** The standard's claim: what the receiving service fetches, and from where. */
+export interface HandoffClaim {
+  claim: string
+  source: string
+  filename: string
+  content_type: string
+  bytes: number
+  expires_at: string
+}
+
 export interface TemplatePlaceholder {
   slot: string
   kind: string

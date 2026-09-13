@@ -4752,6 +4752,253 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/handoff/targets:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listHandoffTargets
+      summary: Where a deck can be sent
+      description: |
+        The services on the administrator's list (`handoff.peers`) that
+        receive a presentation, as the "다른 서비스로 보내기" menu shows them.
+        The list is empty as shipped and empty when nothing on it receives
+        `pptx`, and an empty list is what hides the menu. `source` is the
+        origin the peer will be told to fetch from: `PUBLIC_BASE_URL` when
+        set, otherwise the address this request came in as.
+      tags: [Presentations]
+      responses:
+        '200':
+          description: The destinations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      source:
+                        type: string
+                        format: uri
+                      targets:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/HandoffTarget'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/handoff/claims:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: issueHandoffClaim
+      summary: Issue a single-use claim another service can fetch a deck with
+      description: |
+        The sending half of the network's handoff standard. The claim is bound
+        to the one deck named, which the caller must be able to read — the same
+        check as exporting it; issuing one widens nothing. The `.pptx` is built
+        now, under the caller's permissions, and kept for five minutes for the
+        one peer that brings the claim to `GET /api/v1/handoff/claims/{claim}`.
+        The answer is the standard's shape, not this API's envelope: it is
+        what every receiving service is written against. The claim is never
+        written to the audit trail or the request log.
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [resource, format]
+              properties:
+                resource:
+                  type: string
+                  format: uuid
+                  description: The presentation id.
+                format:
+                  type: string
+                  enum: [pptx]
+                  description: This service sends a deck as `pptx` only.
+      responses:
+        '201':
+          description: The claim, and what it will fetch.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HandoffClaim'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The deck has no slides yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: A format this service does not send.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: The document-building budget is full; try again shortly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /api/v1/handoff/claims/{claim}:
+    parameters:
+      - name: claim
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: redeemHandoffClaim
+      summary: Hand the deck over, once, to whoever brings the claim
+      description: |
+        No login: the claim is the credential, which is why it is short,
+        single-use and bound to one file. The file is sent with its
+        `Content-Type` and an RFC 8187 `Content-Disposition`, and the claim is
+        spent on the way. A claim that was already used, has expired, or never
+        existed gets the same `404`, with no word on which.
+      tags: [Presentations]
+      security: []
+      responses:
+        '200':
+          description: The deck.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename*=UTF-8''2026%EB%85%84%203%EB%B6%84%EA%B8%B0.pptx
+          content:
+            application/vnd.openxmlformats-officedocument.presentationml.presentation:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/handoff/receive:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: receiveHandoff
+      summary: Take a document another service is offering and make a deck of it
+      description: |
+        The receiving half of the handoff standard, called by the workspace's
+        `/handoff` page with the `source` and `claim` a browser brought. The
+        source came in from outside, so only an origin on the administrator's
+        list (`handoff.peers`) is asked — one that is not costs no request at
+        all. The fetch follows no redirect, gives up after 30 seconds, stops
+        at 25 MB, and refuses a `Content-Type` that is not one this service
+        reads (`markdown`, `docx`, `csv`, `xlsx`, `txt`). What arrives is read
+        exactly as an upload of the same file would be, and the new deck keeps
+        where it came from in its brief, in the note shown when it lands, and
+        in the audit trail (`presentation.handoff_receive`).
+      tags: [Presentations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source, claim]
+              properties:
+                source:
+                  type: string
+                  format: uri
+                  description: The sending service's origin, exactly as listed.
+                claim:
+                  type: string
+                templateId:
+                  type: string
+                  format: uuid
+                  description: The design to draw it in. Defaults to the caller's own.
+      responses:
+        '201':
+          description: The new deck, in the same shape an import answers with.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      presentation:
+                        $ref: '#/components/schemas/Presentation'
+                      slides:
+                        type: integer
+                      warnings:
+                        type: array
+                        items:
+                          type: string
+                      notes:
+                        type: array
+                        items:
+                          type: string
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '400':
+          description: '`handoff_claim_invalid`: the claim is not one a service would issue.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: '`handoff_source_not_allowed`: the source is not on the list. Nothing was requested.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: '`handoff_claim_refused`: the source did not honour the claim — used or expired.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '413':
+          description: '`handoff_too_large`: over 25 MB, or over what this deployment reads.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '415':
+          description: '`handoff_unsupported_format`: the source sent a format this service does not read.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: '`unreadable_document` or `empty_presentation`: the file arrived and could not be made into slides.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: '`handoff_redirected` or `handoff_source_unreachable`: the source redirected, did not answer, or did not answer in time.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: The reading budget is full; try again shortly.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/analytics/csp-report:
     post:
       operationId: reportPolicyViolation
@@ -7456,6 +7703,63 @@ components:
       pattern: '^(?:0|[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h)(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|µs|ms|s|m|h))*)$'
       description: Go duration between zero and 30 days.
 
+    HandoffTarget:
+      type: object
+      description: One service a deck can be sent to.
+      properties:
+        name:
+          type: string
+          example: weekly
+        origin:
+          type: string
+          format: uri
+          example: https://weekly.intra
+        formats:
+          type: array
+          items:
+            type: string
+          example: [pptx]
+
+    HandoffClaim:
+      type: object
+      description: The handoff standard's claim, as every receiving service reads it.
+      required: [claim, source, filename, content_type, bytes, expires_at]
+      properties:
+        claim:
+          type: string
+          description: At least 128 bits of randomness; single-use; never logged.
+        source:
+          type: string
+          format: uri
+          description: The origin to fetch from.
+        filename:
+          type: string
+        content_type:
+          type: string
+          example: application/vnd.openxmlformats-officedocument.presentationml.presentation
+        bytes:
+          type: integer
+        expires_at:
+          type: string
+          format: date-time
+          description: At most five minutes from issue.
+
+    SettingHandoffPeers:
+      type: array
+      maxItems: 50
+      items:
+        type: string
+        pattern: '^[^=\s]+=https?://'
+        example: weekly=https://weekly.intra
+      description: |
+        Services documents are passed to and taken from, one `name=origin` per
+        entry. The name is one of the network's services — `umm`, `muni`,
+        `kanpic`, `weekly`, `ptium` — which decides what it can be sent
+        (only `weekly` receives `pptx`); any other name is a service this one
+        only receives from. The origin is an exact HTTP(S) origin with no
+        path, and it is what a browser's `source` must match exactly. Empty
+        as shipped: nothing is sent to or taken from anyone.
+
     SettingCORSOrigins:
       type: array
       items:
@@ -7664,6 +7968,14 @@ components:
             properties:
               value:
                 $ref: '#/components/schemas/SettingCORSOrigins'
+        - if:
+            properties:
+              key:
+                const: handoff.peers
+          then:
+            properties:
+              value:
+                $ref: '#/components/schemas/SettingHandoffPeers'
 
     SettingValueWrite:
       type: object
@@ -7812,6 +8124,8 @@ components:
           type: string
           enum: [head, body]
           default: head
+        handoff.peers:
+          $ref: '#/components/schemas/SettingHandoffPeers'
       additionalProperties:
         $ref: '#/components/schemas/JSONValue'
 

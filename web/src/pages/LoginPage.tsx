@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ArrowRight, Check, KeyRound, LockKeyhole, Presentation, ShieldCheck, Sparkles } from 'lucide-react'
 import { authLoginUrl } from '../api/client'
 import { beginOidcLogin, supportsBrowserPkce } from '../auth/oidc'
+import { safeReturnTo } from '../auth/silentSso'
 import { useAuth } from '../auth/AuthContext'
 import { BrandMark, useBrand } from '../branding/BrandContext'
 import { Button, ErrorState, Field, Input, Select } from '../components/UI'
@@ -25,21 +26,26 @@ export function LoginPage() {
   // the password form above it.
   const [formError, setFormError] = useState<{ form: 'password' | 'dev' | 'sso'; message: string } | null>(null)
 
+  // Where to go once signed in: the address the visitor was sent here from,
+  // when the redirect kept one — a /handoff carrying a five-minute claim, a
+  // deep link into a deck — and the dashboard otherwise.
+  const returnTo = safeReturnTo(new URLSearchParams(window.location.search).get('return_to'))
+
   const oidcLogin = async () => {
     if (!config) return
     if (!supportsBrowserPkce(config)) { window.location.assign(authLoginUrl(config)); return }
     setFormError(null)
-    try { await beginOidcLogin(config) } catch (err) { setFormError({ form: 'sso', message: err instanceof Error ? err.message : 'SSO 로그인을 시작하지 못했습니다.' }) }
+    try { await beginOidcLogin(config, returnTo) } catch (err) { setFormError({ form: 'sso', message: err instanceof Error ? err.message : 'SSO 로그인을 시작하지 못했습니다.' }) }
   }
 
-  useEffect(() => { if (!loading && user) navigate('/dashboard', true) }, [loading, user])
+  useEffect(() => { if (!loading && user) navigate(returnTo, true) }, [loading, user, returnTo])
 
   const passwordSignIn = async (event: React.FormEvent) => {
     event.preventDefault()
     setSubmitting(true); setFormError(null)
     try {
       await signInPassword(username.trim(), password)
-      navigate('/dashboard', true)
+      navigate(returnTo, true)
     } catch (err) {
       setPassword('')
       setFormError({ form: 'password', message: err instanceof Error ? err.message : '로그인하지 못했습니다.' })
@@ -51,7 +57,7 @@ export function LoginPage() {
     setSubmitting(true); setFormError(null)
     try {
       await signInDev(secret)
-      navigate('/dashboard', true)
+      navigate(returnTo, true)
     } catch (err) {
       setFormError({ form: 'dev', message: err instanceof Error ? err.message : '로그인하지 못했습니다.' })
     } finally { setSubmitting(false) }
