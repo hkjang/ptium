@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hkjang/ptium/server/internal/analytics"
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/keys"
@@ -123,6 +124,12 @@ type Server struct {
 	tokenExchange          *TokenExchange
 	loginLimiter           *loginLimiter
 	captureIncident        func(context.Context, model.Incident) error
+	// violations is what browsers reported the page policy refusing, kept so
+	// the settings screen can say which origin a tracking snippet still needs.
+	violations *analytics.Recorder
+	// readTracking is the administrator's tracking configuration as stored
+	// now; a test hands in one of its own.
+	readTracking func(context.Context) analytics.Config
 }
 
 // concurrentTemplateReads is how many uploaded templates may be held in memory
@@ -189,6 +196,8 @@ func New(options Options) (*Server, error) {
 		tokenExchange:   options.TokenExchange,
 		loginLimiter:    newLoginLimiter(),
 		captureIncident: options.Store.CaptureIncident,
+		violations:      analytics.NewRecorder(),
+		readTracking:    func(ctx context.Context) analytics.Config { return analytics.Read(ctx, options.Settings) },
 	}, nil
 }
 
@@ -212,6 +221,12 @@ func (s *Server) Handler() http.Handler {
 	// with slide 4, and read what others said.
 	root.HandleFunc("GET /api/v1/shared/{token}/comments", s.sharedComments)
 	root.HandleFunc("POST /api/v1/shared/{token}/comments", s.addSharedComment)
+	// A browser reports what the page policy refused without any credentials,
+	// which is the only way a tracking snippet's missing origin gets seen.
+	root.HandleFunc("POST /api/v1/analytics/csp-report", s.receiveCSPReport)
+	// The Momento collector, reached through this origin while the
+	// administrator has chosen that; nothing is listening here otherwise.
+	root.HandleFunc(analytics.ProxyPath+"/", s.momentoProxy)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
@@ -344,6 +359,11 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/admin/settings/changes", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminSettingChanges)))
 	api.Handle("POST /api/v1/admin/settings/changes/{id}/revert", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminRevertSettingChange)))
 	api.Handle("PUT /api/v1/admin/settings/{key}", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminPutSetting)))
+	// What the page policy refused since the process started, and the one
+	// click that allows an origin a tracking snippet needs.
+	api.Handle("GET /api/v1/admin/analytics/violations", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminListViolations)))
+	api.Handle("DELETE /api/v1/admin/analytics/violations", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminForgetViolations)))
+	api.Handle("POST /api/v1/admin/analytics/allow", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminAllowOrigin)))
 	api.Handle("GET /api/v1/admin/users/counts", s.requireAdmin("admin:users", http.HandlerFunc(s.adminUserCounts)))
 	api.Handle("GET /api/v1/admin/users", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListUsers)))
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))

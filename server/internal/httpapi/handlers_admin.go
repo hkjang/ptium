@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hkjang/ptium/server/internal/analytics"
 	"github.com/hkjang/ptium/server/internal/db"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -199,7 +200,34 @@ func (s *Server) validateSettingRelationships(ctx context.Context, updates []set
 		// to start on it. Better said now than at the next rollout.
 		return errors.New("OIDC client ID is required when a client secret is set")
 	}
+	// Tracking turned on with nothing to put on the page — a provider chosen
+	// and its address missing — would store a switch that does nothing, and
+	// the administrator would go looking for the snippet in the wrong place.
+	if err := s.trackingAfter(ctx, updates).Validate(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// trackingAfter is the tracking configuration these updates would leave
+// behind, read on top of what is stored now.
+func (s *Server) trackingAfter(ctx context.Context, updates []settings.Update) analytics.Config {
+	values := map[string]json.RawMessage{}
+	for _, key := range db.ShippedSettingKeys() {
+		if !strings.HasPrefix(key, "analytics.") {
+			continue
+		}
+		var value json.RawMessage
+		if s.settings.Get(ctx, key, &value) == nil {
+			values[key] = value
+		}
+	}
+	for _, update := range updates {
+		if strings.HasPrefix(update.Key, "analytics.") {
+			values[update.Key] = update.Value
+		}
+	}
+	return analytics.FromValues(values)
 }
 
 func parseSettingUpdates(section string, raw json.RawMessage) ([]settingUpdate, error) {
@@ -351,6 +379,33 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 		for _, origin := range origins {
 			if !validURL(strings.TrimSpace(origin), false, true) {
 				return fmt.Errorf("invalid CORS origin %q", origin)
+			}
+		}
+	case "analytics.momento_url", "analytics.matomo_url":
+		value, err := decodeString()
+		if err != nil || (value != "" && !validURL(value, false, false)) {
+			return fmt.Errorf("%s must be empty or an HTTP(S) URL without credentials, query, or fragment", key)
+		}
+	case "analytics.momento_site_id", "analytics.matomo_site_id", "analytics.measurement_id":
+		value, err := decodeString()
+		if err != nil || utf8.RuneCountInString(value) > 200 {
+			return fmt.Errorf("%s must be at most 200 characters", key)
+		}
+	case "analytics.custom_snippet":
+		// The bound is in bytes, which is what a page carries; a snippet is a
+		// few hundred of them and anything larger is a page, not a tracker.
+		value, err := decodeString()
+		if err != nil || len(value) > analytics.MaxSnippetBytes {
+			return fmt.Errorf("the tracking snippet must be at most %d bytes", analytics.MaxSnippetBytes)
+		}
+	case "analytics.allowed_hosts":
+		value, err := decodeString()
+		if err != nil || utf8.RuneCountInString(value) > 2000 {
+			return errors.New("allowed hosts must be at most 2000 characters")
+		}
+		for _, host := range analytics.SplitHosts(value) {
+			if !validURL(host, false, true) {
+				return fmt.Errorf("allowed host %q must be an HTTP(S) origin with no path", host)
 			}
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hkjang/ptium/server/internal/analytics"
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/config"
 	"github.com/hkjang/ptium/server/internal/db"
@@ -214,7 +215,13 @@ func main() {
 	// container on one port with no reverse proxy in front of it.
 	var webHandler http.Handler
 	if applicationConfig.WebDir != "" {
-		webHandler, err = webui.Handler(applicationConfig.WebDir)
+		// Visitor tracking is read from the settings as each page is served, so
+		// what the administrator saves is on the next page load, not the next
+		// restart; and off — nothing on the page — until they save something.
+		tracking := func(request *http.Request) analytics.Config {
+			return analytics.Read(request.Context(), settingService)
+		}
+		webHandler, err = webui.Handler(applicationConfig.WebDir, tracking)
 		if err != nil {
 			fatal("serve web workspace", err)
 		}

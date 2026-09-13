@@ -368,4 +368,18 @@ var defaultSettings = map[string]struct {
 	"generation.repair_passes":       {`3`, false, "How many slides a generation may measure and send back to the model to be rewritten to fit. 0 turns the repair pass off"},
 	"generation.max_template_mb":     {`32`, false, "Maximum uploaded template size in MiB"},
 	"generation.allow_user_uploads":  {`true`, false, "Allow users to upload their own PowerPoint templates"},
+	// Visitor tracking. Off as shipped: nothing is put on a page, and the page
+	// policy stays exactly as strict, until an administrator turns it on.
+	"analytics.enabled":         {`false`, false, "Put the visitor tracking snippet on the workspace pages"},
+	"analytics.provider":        {`"none"`, false, "Which tracker: none, momento (self-hosted collector), ga4, gtm, matomo or custom (a pasted snippet)"},
+	"analytics.momento_url":     {`""`, false, "Momento collector address, e.g. https://momento.internal"},
+	"analytics.momento_site_id": {`""`, false, "Momento site id for this deployment"},
+	"analytics.momento_proxy":   {`true`, false, "Reach the Momento collector through this origin at /momento, so it never appears in the page policy"},
+	"analytics.measurement_id":  {`""`, false, "GA4 measurement id (G-…) or GTM container id (GTM-…)"},
+	"analytics.matomo_url":      {`""`, false, "Matomo address"},
+	"analytics.matomo_site_id":  {`""`, false, "Matomo site id"},
+	"analytics.custom_snippet":  {`""`, false, "A pasted tracking snippet, at most 8 KB; every script tag gets the page's nonce"},
+	"analytics.allowed_hosts":   {`""`, false, "Origins to allow in the page policy besides those read from the snippet, separated by commas or lines"},
+	"analytics.include_admin":   {`false`, false, "Also track the administration screens"},
+	"analytics.placement":       {`"head"`, false, "Where the snippet goes: head or body"},
 }

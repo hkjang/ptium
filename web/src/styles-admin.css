@@ -52,3 +52,5 @@
 .tidy-icon{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;background:#f2f0fa;color:var(--violet,#725bd6)}
 .tidy-list li b{text-align:right;font-size:14px}
 .tidy-size{text-align:right;font-size:12.5px;color:var(--muted)}
+/* Visitor tracking: the origins the policy will carry, and the row of actions under the blocked list. */
+.tracking-origins{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:6px}.tracking-origins code{padding:5px 8px;border-radius:6px;color:#4d3e86;background:#f7f4ff;font-size:12px}.tracking-actions{display:flex;align-items:center;gap:10px}

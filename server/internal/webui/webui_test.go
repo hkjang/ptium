@@ -29,20 +29,20 @@ func workspace(t *testing.T) string {
 }
 
 func TestHandlerRequiresBuiltAssets(t *testing.T) {
-	if _, err := Handler(""); err == nil {
+	if _, err := Handler("", nil); err == nil {
 		t.Fatal("an empty directory must be rejected")
 	}
-	if _, err := Handler(filepath.Join(t.TempDir(), "missing")); err == nil {
+	if _, err := Handler(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
 		t.Fatal("a missing directory must be rejected")
 	}
 	empty := t.TempDir()
-	if _, err := Handler(empty); err == nil {
+	if _, err := Handler(empty, nil); err == nil {
 		t.Fatal("a directory without index.html must be rejected")
 	}
 }
 
 func TestHandlerServesAssetsAndFallsBackToIndex(t *testing.T) {
-	handler, err := Handler(workspace(t))
+	handler, err := Handler(workspace(t), nil)
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestHandlerServesAssetsAndFallsBackToIndex(t *testing.T) {
 }
 
 func TestHandlerRejectsWritesAndPathEscapes(t *testing.T) {
-	handler, err := Handler(workspace(t))
+	handler, err := Handler(workspace(t), nil)
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
