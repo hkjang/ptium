@@ -59,6 +59,11 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 			requestID = randomRequestID()
 		}
 		writer.Header().Set("X-Request-ID", requestID)
+		if isNotAPage(request.URL.Path) {
+			// Nothing here is a document, so nothing here may load anything.
+			// The tracking snippet never reaches these paths either way.
+			writer.Header().Set("Content-Security-Policy", apiPolicy)
+		}
 		started := time.Now()
 		recorder := &responseRecorder{ResponseWriter: writer}
 		ctx := withRequestID(request.Context(), requestID)
@@ -84,6 +89,11 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 		}()
 		next.ServeHTTP(recorder, request.WithContext(ctx))
 	})
+}
+
+// isNotAPage reports the paths that answer data rather than a document.
+func isNotAPage(path string) bool {
+	return strings.HasPrefix(path, "/api/") || path == "/mcp" || path == "/healthz" || path == "/readyz" || path == "/auth/me"
 }
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {

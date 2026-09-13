@@ -313,6 +313,21 @@ export interface Share {
   createdAt: string
 }
 
+/**
+ * One origin the page's content security policy refused, reported by the
+ * browser while visitor tracking is on. `allowed` marks an origin the current
+ * tracking configuration already lets through.
+ */
+export interface TrackingViolation {
+  origin: string
+  directive: string
+  page: string
+  count: number
+  firstSeen: string
+  lastSeen: string
+  allowed: boolean
+}
+
 export interface TemplatePlaceholder {
   slot: string
   kind: string

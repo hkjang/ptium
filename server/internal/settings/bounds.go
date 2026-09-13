@@ -38,8 +38,10 @@ var Numbers = map[string]Range{
 
 // Words are the settings whose value must be one of a few words.
 var Words = map[string][]string{
-	"ai.provider":  {"fallback", "openai", "openai-compatible"},
-	"ai.reasoning": {"auto", "off", "on"},
+	"ai.provider":         {"fallback", "openai", "openai-compatible"},
+	"ai.reasoning":        {"auto", "off", "on"},
+	"analytics.provider":  {"none", "momento", "ga4", "gtm", "matomo", "custom"},
+	"analytics.placement": {"head", "body"},
 }
 
 // Flags are the settings read as true or false, and nothing else.
@@ -47,6 +49,9 @@ var Flags = map[string]bool{
 	"generation.outline_pass":       true,
 	"generation.allow_user_uploads": true,
 	"auth.oidc.auto_login":          true,
+	"analytics.enabled":             true,
+	"analytics.momento_proxy":       true,
+	"analytics.include_admin":       true,
 }
 
 // IsWord reports whether value is one of the words a setting is honoured at.

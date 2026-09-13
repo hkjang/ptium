@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { api } from '../api/client'
 import { SettingChanges } from './SettingChanges'
 import { designChoices, designFamilies, resolveDesignKey, type DesignChoice } from '../branding/designs'
 import { languageChoices, toneChoices, withStoredChoice } from '../branding/choices'
 import { AppShell } from '../components/AppShell'
-import { Badge, Button, ErrorState, Field, Input, LoadingState, Select } from '../components/UI'
+import { Badge, Button, ErrorState, Field, Input, LoadingState, Select, Textarea } from '../components/UI'
+import { policyOrigins, trackingProblem, trackingProviders } from './tracking'
+import type { TrackingViolation } from '../types'
 import { useToast } from '../components/Toast'
 import { displayError } from '../utils'
 
-type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security'
+type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security' | 'analytics'
 type SettingValue = string | number | boolean | string[]
 type Values = Record<string, SettingValue>
 interface SettingSection { id: SectionKey; label: string; description: string; icon: ReactNode }
@@ -20,6 +22,7 @@ const sections: SettingSection[] = [
   { id: 'oidc', label: 'OIDC · SSO', description: 'Keycloak과 관리자 역할', icon: <LockKeyhole size={18} /> },
   { id: 'generation', label: '생성 정책', description: '슬라이드 기본값과 제한', icon: <Sparkles size={18} /> },
   { id: 'security', label: '보안 · 키', description: 'API 키 회전과 CORS', icon: <ShieldCheck size={18} /> },
+  { id: 'analytics', label: '방문 추적', description: '추적 스크립트와 페이지 정책', icon: <Activity size={18} /> },
 ]
 
 const defaults: Record<SectionKey, Values> = {
@@ -28,6 +31,8 @@ const defaults: Record<SectionKey, Values> = {
   oidc: { issuer_url: '', client_id: '', client_secret: '', admin_roles: ['ptium-admin', 'admin'], auto_login: false },
   generation: { default_slide_count: 10, max_slides: 50, default_theme: 'aurora', default_lang: 'ko', default_tone: 'professional', default_audience: 'general' },
   security: { api_key_grace: '24h', cors_origins: [] },
+  // Off as shipped: nothing on any page until an administrator turns it on.
+  analytics: { enabled: false, provider: 'none', momento_url: '', momento_site_id: '', momento_proxy: true, measurement_id: '', matomo_url: '', matomo_site_id: '', custom_snippet: '', allowed_hosts: '', include_admin: false, placement: 'head' },
 }
 
 /** What came back, said the way an operator needs to read it. */
@@ -121,6 +126,26 @@ export function AdminSettingsPage() {
     } catch (err) { showToast(displayError(err), 'error') } finally { setChecking(false) }
   }
 
+  // What the page policy refused since the process started. Read when the
+  // section is opened and after a change, never on a timer.
+  const [violations, setViolations] = useState<TrackingViolation[]>([])
+  const [violationsError, setViolationsError] = useState('')
+  const loadViolations = useCallback(() => {
+    api.trackingViolations().then((items) => { setViolations(items); setViolationsError('') }).catch((err) => setViolationsError(displayError(err)))
+  }, [])
+  useEffect(() => { if (active === 'analytics') loadViolations() }, [active, loadViolations])
+  const allowOrigin = async (origin: string) => {
+    try {
+      await api.allowTrackingOrigin(origin)
+      showToast(`${origin} 을(를) 허용 목록에 넣었습니다.`)
+      load()
+      loadViolations()
+    } catch (err) { showToast(displayError(err), 'error') }
+  }
+  const forgetViolations = async () => {
+    try { await api.forgetTrackingViolations(); setViolations([]) } catch (err) { showToast(displayError(err), 'error') }
+  }
+
   const persistedProvider = String(persistedValues.ai.provider)
   const externalKeyConfigured = configuredSecrets['ai.api_key'] === true
   const oidcSecretConfigured = configuredSecrets['auth.oidc.client_secret'] === true
@@ -150,6 +175,7 @@ export function AdminSettingsPage() {
         {active === 'oidc' && <><div className="security-banner"><LockKeyhole size={20} /><div><strong>표준 OIDC Discovery · PKCE</strong><p>공개 SPA 클라이언트는 Client Secret 없이 연결합니다. Keycloak에서 이 클라이언트를 <b>Confidential</b>로 두었다면 아래에 Secret을 저장하세요 — 인가 코드 교환을 브라우저 대신 서버가 수행합니다. 같은 항목의 환경변수(<code>OIDC_CLIENT_SECRET</code> 등)가 있으면 환경변수가 계속 우선하며, 그 외 저장값은 서비스 재시작 후 적용됩니다.</p></div></div><SettingCard title="Keycloak · OIDC 연결" description="Issuer URL을 비우면 OIDC가 비활성화됩니다."><Field label="Issuer URL" hint="예: https://keycloak.example.com/realms/ptium"><Input value={String(values.oidc.issuer_url)} onChange={(event) => update('oidc', 'issuer_url', event.target.value)} placeholder="https://…/realms/…" /></Field><Field label="Client ID"><Input value={String(values.oidc.client_id)} onChange={(event) => update('oidc', 'client_id', event.target.value)} placeholder="ptium-web" /></Field>{secretField('Client Secret', 'client_secret', `${oidcSecretConfigured ? '저장된 Secret이 있습니다. ' : ''}Confidential 클라이언트에만 필요합니다. AES-GCM으로 암호화되며 저장된 값은 다시 노출되지 않습니다. 지우려면 공백 한 칸을 저장하세요.`)}{unreadableSecrets['auth.oidc.client_secret'] && <div className="security-banner warning"><CircleAlert size={20} /><div><strong>저장된 Client Secret을 복호화할 수 없습니다</strong><p>암호화 키(KEY_ENCRYPTION_SECRET 또는 DATABASE_URL)가 바뀌었습니다. 위 입력란에 Secret을 다시 입력해 저장하세요.</p></div></div>}<Field label="관리자 역할" hint="쉼표로 구분합니다. realm_access.roles와 roles claim을 확인합니다."><Input value={asList(values.oidc.admin_roles).join(', ')} onChange={(event) => update('oidc', 'admin_roles', splitList(event.target.value))} /></Field></SettingCard><SettingCard title="자동 로그인 (Silent SSO)" description="Keycloak에 이미 로그인한 사람이 이 서비스를 열면 로그인 화면 없이 바로 들어옵니다. 저장 즉시 적용되며 재시작이 필요 없습니다."><Field label="자동 로그인" hint="켜면 브라우저가 로그인 화면을 보이기 전에 제공자에게 prompt=none 으로 한 번만 묻습니다. 제공자에 세션이 없으면 평소처럼 로그인 화면이 뜨고, 로그아웃한 뒤에는 다시 자동으로 로그인하지 않습니다."><Select value={String(values.oidc.auto_login ?? false)} onChange={(event) => update('oidc', 'auto_login', event.target.value === 'true')}><option value="false">사용 안 함</option><option value="true">사용</option></Select></Field></SettingCard></>}
         {active === 'generation' && <SettingCard title="생성 기본값 · 제한" description="새 프레젠테이션과 MCP 생성 요청에 즉시 적용됩니다."><div className="form-grid two"><Field label="기본 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.default_slide_count)} onChange={(event) => update('generation', 'default_slide_count', Number(event.target.value))} /></Field><Field label="최대 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.max_slides)} onChange={(event) => update('generation', 'max_slides', Number(event.target.value))} /></Field></div><div className="form-grid two"><Field label="기본 언어"><Select value={String(values.generation.default_lang)} onChange={(event) => update('generation', 'default_lang', event.target.value)}>{withStoredChoice(languageChoices, String(values.generation.default_lang)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 테마" hint={designs.length ? '이 배포가 갖고 있는 디자인입니다.' : '디자인 목록을 불러오지 못해 저장된 값을 그대로 둡니다.'}>{designs.length ? <Select value={resolveDesignKey(String(values.generation.default_theme), designs)} onChange={(event) => update('generation', 'default_theme', event.target.value)}>{designFamilies(designs).map((group) => <optgroup key={group.family} label={group.family}>{group.designs.map((design) => <option key={design.key} value={design.key}>{design.name}</option>)}</optgroup>)}</Select> : <Input value={String(values.generation.default_theme)} readOnly />}</Field></div><div className="form-grid two"><Field label="기본 발표 톤"><Select value={String(values.generation.default_tone)} onChange={(event) => update('generation', 'default_tone', event.target.value)}>{withStoredChoice(toneChoices, String(values.generation.default_tone)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 청중"><Input value={String(values.generation.default_audience)} onChange={(event) => update('generation', 'default_audience', event.target.value)} /></Field></div><div className="form-grid two"><Field label="생성 후 자동 수정" hint="템플릿에 맞지 않는 슬라이드를 측정해 모델에게 다시 쓰게 합니다. 0이면 끕니다."><Input type="number" min="0" max="10" value={Number(values.generation.repair_passes ?? 3)} onChange={(event) => update('generation', 'repair_passes', Number(event.target.value))} /></Field><Field label="서사 계획 단계" hint="슬라이드를 쓰기 전에 덱의 흐름을 먼저 설계합니다."><Select value={String(values.generation.outline_pass ?? true)} onChange={(event) => update('generation', 'outline_pass', event.target.value === 'true')}><option value="true">사용</option><option value="false">사용 안 함</option></Select></Field></div></SettingCard>}
         {active === 'security' && <><div className="security-banner"><ShieldCheck size={20} /><div><strong>시크릿은 암호화되어 저장됩니다</strong><p>API 키 원문은 생성·회전 직후 한 번만 표시됩니다.</p></div></div><SettingCard title="API 키 회전" description="이전 키와 새 키가 함께 유효한 기본 유예 기간입니다."><Field label="회전 유예 기간" hint="Go duration 형식: 30m, 24h, 168h"><Input value={String(values.security.api_key_grace)} onChange={(event) => update('security', 'api_key_grace', event.target.value)} /></Field></SettingCard><SettingCard title="브라우저 Origin" description="동일 출처 외에 허용할 Origin입니다. 변경 후 서비스 재시작이 필요합니다."><Field label="추가 허용 Origin" hint="쉼표로 구분하며 경로 없이 https://host 형식으로 입력합니다."><Input value={asList(values.security.cors_origins).join(', ')} onChange={(event) => update('security', 'cors_origins', splitList(event.target.value))} placeholder="https://slides.example.com" /></Field></SettingCard></>}
+        {active === 'analytics' && <TrackingSection values={values.analytics} persisted={persistedValues.analytics} update={(key, value) => update('analytics', key, value)} violations={violations} violationsError={violationsError} onAllow={(origin) => void allowOrigin(origin)} onForget={() => void forgetViolations()} onReload={loadViolations} />}
         {/* What was changed here, and putting one back: the settings decide how
             every deck in this deployment is written, so their own trail belongs
             on the screen that changes them. */}
@@ -205,6 +231,7 @@ function validateSettings(section: SectionKey, values: Values): string {
     const maximum = Number(values.max_slides)
     if (!Number.isInteger(defaults) || !Number.isInteger(maximum) || defaults < 1 || maximum > 50 || defaults > maximum) return '슬라이드 수는 1~50의 정수이며 기본값이 최대값보다 클 수 없습니다.'
   }
+  if (section === 'analytics') return trackingProblem(values)
   if (section === 'security') {
     const duration = String(values.api_key_grace || '')
     const hours = goDurationHours(duration)
@@ -234,4 +261,62 @@ function goDurationHours(value: string): number | null {
 
 function SettingCard({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
   return <section className="admin-setting-card"><div className="admin-setting-card-head"><h3>{title}</h3>{description && <p>{description}</p>}</div><div className="admin-setting-card-body">{children}</div></section>
+}
+
+/**
+ * Visitor tracking: which tracker, what it needs, and what the page policy is
+ * refusing. The hard part of putting a snippet on these pages is not the
+ * `<script>` tag but the policy that runs scripts from this origin only; the
+ * server gives every script tag a per-request nonce and adds the tracker's
+ * origins, and this section shows what it still refused.
+ */
+function TrackingSection({ values, persisted, update, violations, violationsError, onAllow, onForget, onReload }: {
+  values: Values; persisted: Values; update: (key: string, value: SettingValue) => void
+  violations: TrackingViolation[]; violationsError: string
+  onAllow: (origin: string) => void; onForget: () => void; onReload: () => void
+}) {
+  const provider = String(values.provider ?? 'none')
+  const on = values.enabled === true
+  const liveOn = persisted.enabled === true && String(persisted.provider ?? 'none') !== 'none'
+  const origins = policyOrigins(values)
+  const refused = violations.filter((item) => !item.allowed)
+  return <>
+    <div className="configuration-status"><span><Activity size={15} /></span><div><strong>{liveOn ? `지금 ${trackingProviders.find((choice) => choice.id === persisted.provider)?.label ?? persisted.provider} 스니펫이 페이지에 붙어 있습니다.` : '지금은 어떤 페이지에도 추적 스니펫이 없습니다.'}</strong><p>{liveOn ? '페이지 정책(CSP)에는 요청마다 새 nonce 와 아래 출처만 더해집니다. 끄면 정책은 원래대로 좁아집니다.' : '켜고 저장하면 다음 페이지 로드부터 붙습니다. 재시작은 필요 없습니다.'}</p></div><Badge tone={liveOn ? 'success' : 'info'}>{liveOn ? '추적 중' : '꺼짐'}</Badge></div>
+    <SettingCard title="추적 도구" description="Momento 는 사내 자체 호스팅 수집기라 데이터가 밖으로 나가지 않는 유일한 선택지입니다.">
+      <div className="form-grid two">
+        <Field label="방문 추적"><Select value={String(on)} onChange={(event) => update('enabled', event.target.value === 'true')}><option value="false">사용 안 함</option><option value="true">사용</option></Select></Field>
+        <Field label="도구"><Select value={provider} onChange={(event) => update('provider', event.target.value)}>{trackingProviders.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field>
+      </div>
+      {provider === 'momento' && <>
+        <div className="form-grid two">
+          <Field label="Momento 수집기 주소" hint="예: https://momento.internal"><Input value={String(values.momento_url ?? '')} onChange={(event) => update('momento_url', event.target.value)} placeholder="https://…" /></Field>
+          <Field label="사이트 ID"><Input value={String(values.momento_site_id ?? '')} onChange={(event) => update('momento_site_id', event.target.value)} /></Field>
+        </div>
+        <Field label="같은 오리진 프록시" hint="사용: 브라우저는 이 서비스의 /momento/* 로 트래커를 받고 이벤트를 보내며, 서버가 수집기로 넘깁니다. 수집기 주소가 페이지 정책에 등장하지 않으므로 정책을 바꿀 수 없는 설치에서도 동작합니다. 사용 안 함: 브라우저가 수집기에 직접 닿고, 수집기 출처가 정책에 더해집니다."><Select value={String(values.momento_proxy !== false)} onChange={(event) => update('momento_proxy', event.target.value === 'true')}><option value="true">사용 (권장)</option><option value="false">사용 안 함 — 직접 연결</option></Select></Field>
+      </>}
+      {(provider === 'ga4' || provider === 'gtm') && <Field label={provider === 'ga4' ? '측정 ID' : '컨테이너 ID'} hint={provider === 'ga4' ? 'G-… 형식' : 'GTM-… 형식'}><Input value={String(values.measurement_id ?? '')} onChange={(event) => update('measurement_id', event.target.value)} placeholder={provider === 'ga4' ? 'G-XXXXXXX' : 'GTM-XXXXXXX'} /></Field>}
+      {provider === 'matomo' && <div className="form-grid two">
+        <Field label="Matomo 주소"><Input value={String(values.matomo_url ?? '')} onChange={(event) => update('matomo_url', event.target.value)} placeholder="https://…" /></Field>
+        <Field label="사이트 ID"><Input value={String(values.matomo_site_id ?? '')} onChange={(event) => update('matomo_site_id', event.target.value)} /></Field>
+      </div>}
+      {provider === 'custom' && <Field label="스니펫" hint="도구가 준 <script> 코드를 그대로 붙여 넣습니다. 8KB 까지. 모든 <script> 태그에 요청마다 nonce 가 붙고, 스니펫 안의 http(s) 출처는 정책에 자동으로 더해집니다."><Textarea rows={8} value={String(values.custom_snippet ?? '')} onChange={(event) => update('custom_snippet', event.target.value)} placeholder={'<script async src="https://…"></script>'} spellCheck={false} /></Field>}
+      <div className="form-grid two">
+        <Field label="넣는 자리"><Select value={String(values.placement ?? 'head')} onChange={(event) => update('placement', event.target.value)}><option value="head">&lt;head&gt; 끝</option><option value="body">&lt;body&gt; 끝</option></Select></Field>
+        <Field label="관리 화면도 추적" hint="기본은 아니오. 관리 화면(/admin) 은 방문 데이터로 세지 않습니다."><Select value={String(values.include_admin === true)} onChange={(event) => update('include_admin', event.target.value === 'true')}><option value="false">아니오</option><option value="true">예</option></Select></Field>
+      </div>
+    </SettingCard>
+    <SettingCard title="페이지 정책 (CSP)" description="이 서비스의 페이지는 script-src 'self' 로 잠겨 있습니다. 'unsafe-inline' 으로 풀지 않고, 요청마다 nonce 를 만들어 스니펫의 모든 <script> 에 붙이고 같은 nonce 를 정책에 넣습니다.">
+      <Field label="정책에 더해질 출처" hint="스니펫과 도구 설정에서 읽은 출처입니다. 여기에 없어서 막힌 출처는 아래 '차단된 출처' 에 나타납니다.">{origins.length ? <ul className="tracking-origins">{origins.map((origin) => <li key={origin}><code>{origin}</code></li>)}</ul> : <p className="muted-note">{provider === 'momento' && values.momento_proxy !== false ? '없음 — 같은 오리진 프록시를 쓰므로 외부 출처가 정책에 등장하지 않습니다.' : '없음'}</p>}</Field>
+      <Field label="추가 허용 출처" hint="스니펫에서 자동으로 못 읽은 출처를 쉼표나 줄바꿈으로 구분해 적습니다. 경로 없이 https://host 형식."><Textarea rows={3} value={String(values.allowed_hosts ?? '')} onChange={(event) => update('allowed_hosts', event.target.value)} placeholder="https://cdn.tracker.internal, https://collect.tracker.internal" spellCheck={false} /></Field>
+    </SettingCard>
+    <SettingCard title="차단된 출처" description="추적이 켜져 있는 동안 브라우저가 정책에 막힌 요청을 신고합니다. 같은 출처는 한 줄로 모이고, 프로세스가 재시작되면 비워집니다.">
+      {violationsError ? <ErrorState message={violationsError} onRetry={onReload} /> : violations.length === 0 ? <p className="muted-note">{liveOn ? '신고된 차단이 없습니다. 페이지를 한 번 열고 다시 확인하세요.' : '추적이 꺼져 있어 브라우저가 신고하지 않습니다.'}</p> : <table className="data-table"><thead><tr><th>출처</th><th>지시어</th><th>횟수</th><th>마지막 페이지</th><th></th></tr></thead><tbody>{violations.map((item) => <tr key={`${item.directive} ${item.origin}`}><td><code>{item.origin}</code></td><td>{item.directive}</td><td>{item.count.toLocaleString('ko-KR')}</td><td>{pathOf(item.page)}</td><td>{item.allowed ? <Badge tone="success">허용됨</Badge> : <Button size="small" variant="secondary" onClick={() => onAllow(item.origin)}>허용</Button>}</td></tr>)}</tbody></table>}
+      <div className="tracking-actions"><Button variant="secondary" size="small" onClick={onReload}>다시 읽기</Button>{violations.length > 0 && <Button variant="secondary" size="small" onClick={onForget}>목록 비우기</Button>}{refused.length > 0 && <span className="muted-note">{refused.length}개 출처가 아직 막혀 있습니다.</span>}</div>
+    </SettingCard>
+  </>
+}
+
+/** The path of a page the browser reported, without its host. */
+function pathOf(page: string): string {
+  try { return new URL(page).pathname } catch { return page || '' }
 }

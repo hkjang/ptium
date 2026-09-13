@@ -150,6 +150,16 @@ const byMessage: Record<string, string> = {
   'Profile fields exceed their allowed length': '입력한 값이 너무 깁니다.',
   'invalid incident status': '올바르지 않은 오류 상태입니다.',
   'invalid incident status or notes': '올바르지 않은 오류 상태 또는 메모입니다.',
+  // Visitor tracking.
+  'origin must be an HTTP(S) origin': '허용할 출처는 http(s)://host 형식이어야 합니다.',
+  'allowed hosts must be at most 2000 characters': '추가 허용 출처는 2000자를 넘을 수 없습니다.',
+  'analytics.momento_url and analytics.momento_site_id are required for Momento': 'Momento 를 켜려면 수집기 주소와 사이트 ID 가 필요합니다.',
+  'analytics.momento_url must be an HTTP(S) URL': 'Momento 주소는 올바른 HTTP(S) 주소여야 합니다.',
+  'analytics.matomo_url and analytics.matomo_site_id are required for Matomo': 'Matomo 를 켜려면 주소와 사이트 ID 가 필요합니다.',
+  'analytics.matomo_url must be an HTTP(S) URL': 'Matomo 주소는 올바른 HTTP(S) 주소여야 합니다.',
+  'analytics.measurement_id is required for ga4': '측정 ID(G-…)를 입력해 주세요.',
+  'analytics.measurement_id is required for gtm': '컨테이너 ID(GTM-…)를 입력해 주세요.',
+  'analytics.custom_snippet is empty': '붙여 넣을 스니펫이 비어 있습니다.',
 
   // The service itself.
   'The server could not complete the request': '서버가 요청을 처리하지 못했습니다. 관리자에게 오류 센터를 확인해 달라고 요청하세요.',
@@ -221,6 +231,14 @@ const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
     (m) => `${topic(settingName(m[1]))} 사용 또는 사용 안 함만 저장할 수 있습니다.`],
   [/^([a-z_]+\.[a-z_]+) must be one of (.+)$/,
     (m) => `${topic(settingName(m[1]))} ${m[2].replace(/, /g, ' · ')} 중 하나여야 합니다.`],
+  [/^the tracking snippet (?:cannot be longer|must be at most) (?:than )?(\d+) bytes$/,
+    (m) => `붙여 넣은 스니펫은 ${Number(m[1]).toLocaleString('ko-KR')}바이트를 넘을 수 없습니다.`],
+  [/^([a-z_]+\.[a-z_]+) must be empty or an HTTP\(S\) URL without credentials, query, or fragment$/,
+    (m) => `${topic(settingName(m[1]))} 비우거나 자격 증명·쿼리·프래그먼트가 없는 HTTP(S) 주소여야 합니다.`],
+  [/^([a-z_]+\.[a-z_]+) must be at most (\d+) characters$/,
+    (m) => `${topic(settingName(m[1]))} ${m[2]}자를 넘을 수 없습니다.`],
+  [/^allowed host "(.+)" must be an HTTP\(S\) origin with no path$/,
+    (m) => `허용 출처 "${m[1]}" 는 경로 없는 http(s)://host 형식이어야 합니다.`],
 ]
 
 /** What a settings key is called on the screen that sets it. */
@@ -236,6 +254,18 @@ export function settingName(key: string) {
     'generation.max_slides': '최대 슬라이드',
     'generation.max_template_mb': '템플릿 최대 크기',
     'generation.allow_user_uploads': '사용자 템플릿 업로드',
+    'analytics.enabled': '방문 추적',
+    'analytics.provider': '추적 도구',
+    'analytics.placement': '스니펫 자리',
+    'analytics.include_admin': '관리 화면 추적',
+    'analytics.momento_proxy': '같은 오리진 프록시',
+    'analytics.momento_url': 'Momento 주소',
+    'analytics.momento_site_id': 'Momento 사이트 ID',
+    'analytics.matomo_url': 'Matomo 주소',
+    'analytics.matomo_site_id': 'Matomo 사이트 ID',
+    'analytics.measurement_id': '측정 ID',
+    'analytics.custom_snippet': '스니펫',
+    'analytics.allowed_hosts': '추가 허용 출처',
   }
   return named[key] || key
 }

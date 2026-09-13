@@ -24,6 +24,7 @@ import type {
   Template,
   TemplateLayout,
   TemplatePalette,
+  TrackingViolation,
   User,
 } from '../types'
 import { errorText } from './errors'
@@ -1492,6 +1493,21 @@ export const api = {
   async revertSettingChange(id: number) {
     return unwrapOne<Record<string, unknown>>(
       await request<unknown>(`/admin/settings/changes/${id}/revert`, { method: 'POST' }), ['change', 'data'])
+  },
+  /**
+   * The origins the page policy has refused since the process started — what a
+   * tracking snippet still needs — with the ones the configuration already
+   * allows marked.
+   */
+  async trackingViolations() {
+    return unwrapList<TrackingViolation>(await request<unknown>('/admin/analytics/violations'), ['data'])
+  },
+  /** Forget them, to see whether a change actually fixed the snippet. */
+  forgetTrackingViolations: () => request<void>('/admin/analytics/violations', { method: 'DELETE' }),
+  /** Allow one refused origin: appended to analytics.allowed_hosts. */
+  async allowTrackingOrigin(origin: string) {
+    return unwrapOne<Record<string, unknown>>(
+      await request<unknown>('/admin/analytics/allow', { method: 'POST', body: JSON.stringify({ origin }) }), ['data'])
   },
   async updateAdminSettings(section: string, values: Record<string, unknown>) {
     const raw = await request<unknown>('/admin/settings', {

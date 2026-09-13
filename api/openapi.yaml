@@ -4752,6 +4752,137 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /api/v1/analytics/csp-report:
+    post:
+      operationId: reportPolicyViolation
+      summary: Receive what the browser's content security policy refused
+      description: |
+        Named in the page policy's `report-uri` while visitor tracking is on.
+        The browser posts here with no credentials, so the endpoint takes none;
+        it keeps nothing but a bounded, in-memory list of the origins and
+        directives refused, which the settings screen shows so a tracking
+        snippet's missing origin can be allowed with one click. Anything that
+        is not an HTTP(S) origin is ignored. Always answers 204.
+      tags: [Administration, Settings]
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/csp-report:
+            schema:
+              type: object
+              properties:
+                csp-report:
+                  type: object
+                  properties:
+                    blocked-uri: { type: string }
+                    violated-directive: { type: string }
+                    effective-directive: { type: string }
+                    document-uri: { type: string }
+          application/json:
+            schema:
+              type: object
+      responses:
+        '204':
+          description: Taken, whatever it was.
+
+  /api/v1/admin/analytics/violations:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listPolicyViolations
+      summary: The origins the page policy has refused since the process started
+      description: |
+        Each origin once, with the directive that refused it, how many times
+        and on which page. `allowed` marks an origin the current tracking
+        configuration already lets through, so a fixed snippet stops nagging
+        without the list being cleared. In memory only: a restart empties it.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '200':
+          description: Refused origins, most recent first.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PolicyViolation'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+    delete:
+      operationId: forgetPolicyViolations
+      summary: Forget the refused origins
+      description: What an administrator does after fixing a snippet, to see whether anything is still refused.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      responses:
+        '204':
+          description: Forgotten.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+
+  /api/v1/admin/analytics/allow:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: allowTrackingOrigin
+      summary: Allow one refused origin in the page policy
+      description: |
+        Appends the origin to `analytics.allowed_hosts`, leaving what is there
+        and its order alone, and records the change in the settings trail
+        exactly as typing it on the settings screen would. The one-click fix
+        for a line in the violations list.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [origin]
+              properties:
+                origin:
+                  type: string
+                  format: uri
+                  pattern: '^https?://'
+                  example: https://momento.internal
+      responses:
+        '200':
+          description: The allowed-hosts setting as it now stands.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SettingEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
   /api/v1/admin/users/counts:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5408,6 +5539,18 @@ components:
             requestId: 8dcb8033f7d1f8027f2df88d
 
   schemas:
+    PolicyViolation:
+      type: object
+      additionalProperties: false
+      properties:
+        origin: { type: string, example: https://momento.internal }
+        directive: { type: string, example: script-src-elem }
+        page: { type: string, description: The page the browser was on when it last refused this origin }
+        count: { type: integer, minimum: 1 }
+        firstSeen: { type: string, format: date-time }
+        lastSeen: { type: string, format: date-time }
+        allowed: { type: boolean, description: Whether the current tracking configuration already allows this origin }
+
     JSONValue:
       description: Any valid JSON value.
 
@@ -7472,11 +7615,39 @@ components:
         - if:
             properties:
               key:
-                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login]
+                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login, analytics.enabled, analytics.momento_proxy, analytics.include_admin]
           then:
             properties:
               value:
                 type: boolean
+        - if:
+            properties:
+              key:
+                const: analytics.provider
+          then:
+            properties:
+              value:
+                type: string
+                enum: [none, momento, ga4, gtm, matomo, custom]
+        - if:
+            properties:
+              key:
+                const: analytics.placement
+          then:
+            properties:
+              value:
+                type: string
+                enum: [head, body]
+        - if:
+            properties:
+              key:
+                const: analytics.custom_snippet
+          then:
+            properties:
+              value:
+                type: string
+                maxLength: 8192
+                description: Bounded in bytes, not characters, at 8 KB.
         - if:
             properties:
               key:
@@ -7584,6 +7755,63 @@ components:
           $ref: '#/components/schemas/SettingGraceDuration'
         security.cors_origins:
           $ref: '#/components/schemas/SettingCORSOrigins'
+        analytics.enabled:
+          type: boolean
+          default: false
+          description: |
+            Put the visitor tracking snippet on the workspace pages. Off as
+            shipped: nothing is on any page and the page policy is unchanged.
+            Read as each page is served; no restart.
+        analytics.provider:
+          type: string
+          enum: [none, momento, ga4, gtm, matomo, custom]
+          default: none
+          description: |
+            Which tracker. `momento` is the self-hosted collector and the one
+            choice whose data never leaves the network.
+        analytics.momento_url:
+          $ref: '#/components/schemas/SettingHTTPURLOrEmpty'
+        analytics.momento_site_id:
+          type: string
+          maxLength: 200
+        analytics.momento_proxy:
+          type: boolean
+          default: true
+          description: |
+            Reach the collector through this origin at `/momento/*`, so the
+            snippet loads and reports to the workspace's own address and the
+            collector never has to appear in the page policy.
+        analytics.measurement_id:
+          type: string
+          maxLength: 200
+          description: GA4 measurement id (G-…) or GTM container id (GTM-…).
+        analytics.matomo_url:
+          $ref: '#/components/schemas/SettingHTTPURLOrEmpty'
+        analytics.matomo_site_id:
+          type: string
+          maxLength: 200
+        analytics.custom_snippet:
+          type: string
+          maxLength: 8192
+          description: |
+            A pasted snippet, at most 8 KB. Every `<script>` in it is given the
+            page's per-request nonce, and every HTTP(S) origin written in it is
+            added to the page policy.
+        analytics.allowed_hosts:
+          type: string
+          maxLength: 2000
+          description: |
+            Origins to allow in the page policy besides those read from the
+            snippet, separated by commas or lines. Each is an HTTP(S) origin
+            with no path.
+        analytics.include_admin:
+          type: boolean
+          default: false
+          description: Also put the snippet on the administration screens.
+        analytics.placement:
+          type: string
+          enum: [head, body]
+          default: head
       additionalProperties:
         $ref: '#/components/schemas/JSONValue'
 
