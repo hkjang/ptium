@@ -359,6 +359,7 @@ var defaultSettings = map[string]struct {
 	"auth.oidc.client_id":            {`""`, false, "OIDC client identifier"},
 	"auth.oidc.client_secret":        {`""`, true, "OIDC client secret; set only for a confidential client, which makes Ptium exchange authorization codes server-side"},
 	"auth.oidc.admin_roles":          {`["ptium-admin","admin"]`, false, "OIDC roles mapped to Ptium administrators"},
+	"auth.oidc.auto_login":           {`false`, false, "Sign a visitor in without a login screen (prompt=none) when the identity provider still holds a session for them; off, everyone sees the login screen"},
 	"security.api_key_grace":         {`"24h"`, false, "Default API-key rotation overlap"},
 	"security.cors_origins":          {`[]`, false, "Additional allowed browser origins"},
 	"generation.default_tone":        {`"professional"`, false, "Default writing tone"},

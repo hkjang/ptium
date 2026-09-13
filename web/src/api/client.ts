@@ -770,6 +770,7 @@ export const api = {
       endSessionEndpoint: String(raw.endSessionEndpoint ?? raw.end_session_endpoint ?? oidc.end_session_endpoint ?? '') || undefined,
       tokenExchangeUrl: String(raw.tokenExchangeUrl ?? raw.token_exchange_url ?? oidc.token_exchange_url ?? '') || undefined,
       redirectUri: String(raw.redirectUri ?? raw.redirect_uri ?? oidc.redirect_uri ?? '') || undefined,
+      autoLogin: Boolean(raw.autoLogin ?? raw.auto_login ?? oidc.auto_login ?? false),
       scopes: Array.isArray(rawScopes)
         ? rawScopes.map(String)
         : typeof rawScopes === 'string'

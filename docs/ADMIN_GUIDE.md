@@ -211,6 +211,7 @@ kubectl apply -f ptium-1.69.32.kubernetes.yaml
 | | `ai.timeout_seconds` | `300` | 한 번의 완성을 기다리는 시간 |
 | OIDC · SSO | `auth.oidc.issuer_url` · `auth.oidc.client_id` · `auth.oidc.client_secret` | (없음) | 환경 변수가 있으면 재시작 전까지 환경 변수가 우선 |
 | | `auth.oidc.admin_roles` | `["ptium-admin","admin"]` | 관리자로 볼 역할 |
+| | `auth.oidc.auto_login` | `false` | 제공자에 이미 로그인한 사람을 로그인 화면 없이 들여보내기(silent SSO). 저장 즉시 적용, 재시작 불필요 |
 | 생성 정책 | `generation.default_slide_count` | `10` | 기본 장수 |
 | | `generation.max_slides` | `50` | 최대 장수 |
 | | `generation.default_theme` | `slate-classic` | 기본 디자인 |
@@ -234,6 +235,30 @@ ID 를 넣습니다. Keycloak 쪽에는 Ptium 의 정확한 origin 과 리다이
 비워 둡니다.
 
 ![서비스 설정 — OIDC · SSO](assets/guide/admin-settings-oidc.png)
+
+**자동 로그인(silent SSO).** 같은 화면의 **자동 로그인**(`auth.oidc.auto_login`, 기본 **사용 안 함**)을
+켜면, Keycloak 에 이미 로그인한 사람이 Ptium 을 열었을 때 로그인 화면을 거치지 않고 바로 본 화면으로
+들어갑니다. 저장하면 다음 페이지 로드부터 적용되고 재시작은 필요 없습니다. 동작은 이렇습니다.
+
+- 세션이 없는 브라우저가 페이지를 열면, 로그인 화면을 보이기 전에 제공자에게 OIDC 의 `prompt=none`
+  으로 **한 번** 묻습니다(최상위 이동, 숨은 iframe 이 아니므로 서드파티 쿠키가 막힌 브라우저에서도
+  동작합니다). 제공자에 세션이 있으면 코드가 바로 돌아와 평소 로그인 흐름으로 이어지고, 깊은 링크로
+  들어온 사람은 그 자리로 돌아갑니다.
+- 제공자에 세션이 없으면 `error=login_required` 로 돌아옵니다. 이것은 오류가 아니라 평범한 대답이며,
+  브라우저는 `/login?sso=none` 으로 가 평소 로그인 화면을 보입니다. 감사 로그나 오류 센터에는 아무것도
+  남지 않습니다.
+- 같은 탭에서는 다시 묻지 않습니다(새로고침을 반복해도 리다이렉트가 되풀이되지 않음). 새 탭은 다시
+  한 번 묻습니다. **로그아웃**을 누른 뒤에는 다시 로그인할 때까지 묻지 않으므로, 로그아웃이 제공자
+  세션에 의해 되돌려지는 것처럼 보이지 않습니다.
+- 사생활 보호 모드처럼 브라우저 저장소를 읽을 수 없는 경우에는 "이미 물었다" 로 보고 로그인 화면을
+  보입니다.
+- 설정이 꺼져 있으면 서버가 `/api/v1/auth/config` 에 `autoLogin: false` 를 내려 보내고 브라우저는
+  `prompt=none` 을 붙이지 않습니다. 주소에 무엇을 붙이든 이 흐름을 켤 수 없습니다.
+- 공유 링크(`/view/…`), 로그인·콜백 경로, API·MCP·상태 점검 경로에서는 시도하지 않습니다.
+
+Keycloak 쪽에 별도 설정은 없습니다 — 리다이렉트 URI 가 이미 허용되어 있으면 됩니다. 켜기 전에
+로그인하지 않은 브라우저로 한 번 열어 화면이 깜빡이지 않는지(로그인 화면이 한 번에 뜨는지), 로그아웃
+뒤 다시 열어도 자동으로 로그인되지 않는지 확인하세요.
 
 ![서비스 설정 — 생성 정책](assets/guide/admin-settings-generation.png)
 

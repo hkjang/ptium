@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { api, ApiError, session } from '../api/client'
 import type { AuthConfig, User } from '../types'
-import { completeOidcCallback } from './oidc'
+import { beginOidcLogin, completeOidcCallback, supportsBrowserPkce } from './oidc'
+import { clearSilentSsoState, markSignedOut, returnToHere, shouldAttemptSilentSso } from './silentSso'
 
 interface AuthState {
   user: User | null
@@ -56,6 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
     captureImplicitToken()
+    // Set when this page is on its way to the provider. The screen stays on
+    // "preparing" rather than showing a login form that is about to be left.
+    let leaving = false
     async function bootstrap() {
       setLoading(true)
       try {
@@ -66,6 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const callback = await completeOidcCallback(authConfig)
           if (callback.completed) {
             window.history.replaceState(null, '', callback.returnTo || '/dashboard')
+            window.dispatchEvent(new PopStateEvent('popstate'))
+          } else if (callback.landing) {
+            // The provider answered a silent try with "nobody is signed in".
+            // That is the login page's cue, and the marker in its address is
+            // what keeps this tab from asking the same question again.
+            if (active && callback.error) setError(callback.error)
+            window.history.replaceState(null, '', callback.landing)
             window.dispatchEvent(new PopStateEvent('popstate'))
           }
         } catch (callbackError) {
@@ -80,15 +91,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           const current = await api.me()
           if (active) setUser(current)
+          clearSilentSsoState()
         } catch (err) {
-          if (active && !(err instanceof ApiError && err.status === 401)) setError(err instanceof Error ? err.message : '사용자 정보를 불러오지 못했습니다.')
+          if (!active) return
+          if (!(err instanceof ApiError && err.status === 401)) {
+            setError(err instanceof Error ? err.message : '사용자 정보를 불러오지 못했습니다.')
+            return
+          }
+          // Nobody is signed in here. Before showing a login screen, the
+          // provider may be asked — once — whether it still has a session for
+          // this person, and the deep link they arrived on goes along so they
+          // come back to it. Every reason not to ask lives in silentSso.ts.
+          if (shouldAttemptSilentSso(authConfig) && supportsBrowserPkce(authConfig)) {
+            leaving = true
+            try {
+              await beginOidcLogin(authConfig, returnToHere(), { silent: true })
+            } catch {
+              leaving = false
+            }
+          }
         }
       } catch (err) {
         if (!active) return
         setConfig({ enabled: true, oidcEnabled: false, devAuthEnabled: false })
         setError(err instanceof Error ? err.message : '인증 설정을 불러오지 못했습니다.')
       } finally {
-        if (active) setLoading(false)
+        if (active && !leaving) setLoading(false)
       }
     }
     void bootstrap()
@@ -103,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const current = await api.me()
       setUser(current)
       setError(null)
+      clearSilentSsoState()
     } catch (err) {
       session.clear()
       throw err
@@ -115,11 +144,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const current = await api.passwordLogin(username, password)
     setUser(current)
     setError(null)
+    clearSilentSsoState()
   }, [])
 
   const signOut = useCallback(async () => {
     const endSessionEndpoint = config?.endSessionEndpoint
     const clientId = config?.clientId
+    // Signing out on purpose, and then being signed straight back in by the
+    // provider's session, would look like sign-out does not work. Noted
+    // before anything else, so a failure below cannot leave it unsaid.
+    markSignedOut()
     session.clear()
     // The session cookie is HttpOnly, so only the server can clear it.
     await api.logout()
