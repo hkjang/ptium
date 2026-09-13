@@ -17,6 +17,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/analytics"
 	"github.com/hkjang/ptium/server/internal/auth"
 	"github.com/hkjang/ptium/server/internal/generation"
+	"github.com/hkjang/ptium/server/internal/handoff"
 	"github.com/hkjang/ptium/server/internal/keys"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
@@ -82,6 +83,9 @@ type Options struct {
 	// TokenExchange performs the OIDC code exchange server-side. Nil leaves the
 	// browser talking to the identity provider directly.
 	TokenExchange *TokenExchange
+	// PublicBaseURL is the address other services reach this one at, when the
+	// operator says; otherwise it is read off each request.
+	PublicBaseURL string
 }
 
 type Server struct {
@@ -130,6 +134,12 @@ type Server struct {
 	// readTracking is the administrator's tracking configuration as stored
 	// now; a test hands in one of its own.
 	readTracking func(context.Context) analytics.Config
+	// readPeers is the administrator's list of services documents are passed
+	// to and taken from, as stored now; a test hands in one of its own.
+	readPeers func(context.Context) handoff.Config
+	// handoffClient fetches a document from a peer: no redirects, bounded time.
+	handoffClient *http.Client
+	publicBaseURL string
 }
 
 // concurrentTemplateReads is how many uploaded templates may be held in memory
@@ -198,6 +208,9 @@ func New(options Options) (*Server, error) {
 		captureIncident: options.Store.CaptureIncident,
 		violations:      analytics.NewRecorder(),
 		readTracking:    func(ctx context.Context) analytics.Config { return analytics.Read(ctx, options.Settings) },
+		readPeers:       func(ctx context.Context) handoff.Config { return peersFrom(ctx, options.Settings) },
+		handoffClient:   handoff.NewClient(nil),
+		publicBaseURL:   strings.TrimSpace(options.PublicBaseURL),
 	}, nil
 }
 
@@ -227,6 +240,9 @@ func (s *Server) Handler() http.Handler {
 	// The Momento collector, reached through this origin while the
 	// administrator has chosen that; nothing is listening here otherwise.
 	root.HandleFunc(analytics.ProxyPath+"/", s.momentoProxy)
+	// A peer coming for a deck brings the claim and nothing else: the claim is
+	// the credential, so this door is open and the claim is spent on the way.
+	root.HandleFunc("GET /api/v1/handoff/claims/{claim}", s.serveHandoffClaim)
 
 	api := http.NewServeMux()
 	api.HandleFunc("GET /api/v1/me", s.me)
@@ -299,6 +315,10 @@ func (s *Server) Handler() http.Handler {
 	// Slides someone keeps and drops into other decks.
 	// A deck someone already has, read in as text and recompiled into a template.
 	api.Handle("POST /api/v1/presentations/import", requireScope("presentations:write", http.HandlerFunc(s.importPresentation)))
+	// Passing a deck to another service and taking a document from one.
+	api.Handle("GET /api/v1/handoff/targets", requireScope("presentations:read", http.HandlerFunc(s.handoffTargets)))
+	api.Handle("POST /api/v1/handoff/claims", requireScope("presentations:read", http.HandlerFunc(s.issueHandoffClaim)))
+	api.Handle("POST /api/v1/handoff/receive", requireScope("presentations:write", http.HandlerFunc(s.receiveHandoff)))
 	// The same queue as generation: a deck that already has text is rewritten
 	// rather than written.
 	api.Handle("POST /api/v1/presentations/{id}/command", requireUUIDPath(requireScope("presentations:write", http.HandlerFunc(s.runPresentationCommand))))

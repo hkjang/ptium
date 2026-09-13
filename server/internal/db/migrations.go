@@ -303,6 +303,22 @@ var migrations = []string{
 	// worker while the first was still waiting on the model.
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_heartbeat_at timestamptz`,
 	`ALTER TABLE presentations ADD COLUMN IF NOT EXISTS generation_lease uuid`,
+	// A deck on its way to another service. The claim is a five-minute,
+	// single-use token and the only credential the receiver brings, so only
+	// its digest is kept; the file is built when the claim is issued, under
+	// the permissions of whoever asked, and handed over once to whoever comes
+	// with the claim — redeeming is deleting.
+	`CREATE TABLE IF NOT EXISTS handoff_claims(
+		claim_digest text PRIMARY KEY,
+		presentation_id uuid NOT NULL REFERENCES presentations(id) ON DELETE CASCADE,
+		owner_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		format text NOT NULL,
+		filename text NOT NULL,
+		content_type text NOT NULL,
+		body bytea NOT NULL,
+		created_at timestamptz NOT NULL DEFAULT now(),
+		expires_at timestamptz NOT NULL)`,
+	`CREATE INDEX IF NOT EXISTS handoff_claims_expires_idx ON handoff_claims(expires_at)`,
 }
 
 // ShippedSetting is the value this product ships a setting with, for anything
@@ -382,4 +398,7 @@ var defaultSettings = map[string]struct {
 	"analytics.allowed_hosts":   {`""`, false, "Origins to allow in the page policy besides those read from the snippet, separated by commas or lines"},
 	"analytics.include_admin":   {`false`, false, "Also track the administration screens"},
 	"analytics.placement":       {`"head"`, false, "Where the snippet goes: head or body"},
+	// Empty as shipped: no service is sent to and none is received from until
+	// an administrator names one, so a fresh install is unchanged.
+	"handoff.peers": {`[]`, false, "Services documents are passed to and taken from, one name=origin per entry, e.g. weekly=https://weekly.intra"},
 }

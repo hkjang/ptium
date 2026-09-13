@@ -5,6 +5,8 @@ import type {
   Asset,
   AuthConfig,
   CanvasRegion,
+  HandoffClaim,
+  HandoffTarget,
   Incident,
   Presentation,
 	PresentationRevision,
@@ -1508,6 +1510,32 @@ export const api = {
   async allowTrackingOrigin(origin: string) {
     return unwrapOne<Record<string, unknown>>(
       await request<unknown>('/admin/analytics/allow', { method: 'POST', body: JSON.stringify({ origin }) }), ['data'])
+  },
+  /**
+   * Where a deck can be sent (HANDOFF-STANDARD). Empty — as shipped, or when
+   * nothing on the administrator's list receives a presentation — hides the
+   * menu.
+   */
+  async handoffTargets() {
+    const data = unwrapOne<Record<string, unknown>>(await request<unknown>('/handoff/targets'), ['data'])
+    return {
+      source: String(data.source || ''),
+      targets: Array.isArray(data.targets) ? (data.targets as HandoffTarget[]) : [],
+    }
+  },
+  /** A five-minute, single-use claim the receiving service fetches the deck with. */
+  async issueHandoffClaim(id: string) {
+    // The answer is the standard's shape, not this API's envelope.
+    return await request<HandoffClaim>('/handoff/claims', { method: 'POST', body: JSON.stringify({ resource: id, format: 'pptx' }) })
+  },
+  /** Take the document another service is offering and make a deck of it. */
+  async receiveHandoff(source: string, claim: string) {
+    const raw = await request<unknown>('/handoff/receive', { method: 'POST', body: JSON.stringify({ source, claim }) })
+    const data = unwrapOne<Record<string, unknown>>(raw, ['data'])
+    return {
+      presentation: normalizePresentation(data.presentation as Presentation & Record<string, unknown>),
+      warnings: Array.isArray(data.warnings) ? data.warnings.map(String) : [],
+    }
   },
   async updateAdminSettings(section: string, values: Record<string, unknown>) {
     const raw = await request<unknown>('/admin/settings', {

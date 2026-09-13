@@ -14,6 +14,18 @@
  */
 
 const byMessage: Record<string, string> = {
+  // Passing a deck to another service and taking a document from one
+  // (HANDOFF-STANDARD): what the other side, or the list, refused.
+  'This service passes a deck on as pptx only': '이 서비스는 덱을 pptx 로만 보냅니다.',
+  'Generate or add slides before sending': '보내기 전에 슬라이드를 먼저 만들어 주세요.',
+  "That service is not on this deployment's list of services documents are taken from":
+    '이 서비스가 문서를 받도록 허용된 곳이 아닙니다. 관리자가 서비스 설정의 문서 넘기기에서 그 서비스를 허용 목록에 넣어야 합니다.',
+  'The document is larger than this deployment reads': '문서가 이 배포가 읽는 크기보다 커서 받지 않았습니다. 나눠서 보내 주세요.',
+  'The claim is not one a service would issue': '넘겨받은 표가 서비스가 발급한 모양이 아닙니다. 보낸 쪽에서 다시 보내 주세요.',
+  'The source did not honour the claim: it was already used or has expired': '표가 이미 쓰였거나 5분이 지났습니다. 보낸 쪽에서 다시 보내 주세요.',
+  'The source answered with a redirect, which is not followed': '보낸 서비스가 다른 주소로 넘기려 해서 받지 않았습니다. 허용 목록의 주소가 그 서비스의 실제 주소인지 확인하세요.',
+  'The source sent a format this service does not read': '보낸 서비스가 이 서비스가 읽지 못하는 형식을 보냈습니다. 마크다운·Word·CSV·Excel·텍스트만 받습니다.',
+  'The source could not be reached or did not answer in time': '보낸 서비스에 닿지 않았거나 제때 답하지 않았습니다. 잠시 후 다시 보내 주세요.',
   // A shared link, read by somebody outside the workspace. This is often the
   // only part of the product they ever see.
   'This link is no longer open. Ask whoever sent it for a new one':
@@ -183,6 +195,14 @@ const byCode: Record<string, string> = {
   template_too_large: '파일이 이 배포에서 허용하는 크기를 넘습니다.',
   templates_busy: '지금 다른 템플릿을 읽고 있습니다. 잠시 후 다시 시도해 주세요.',
   printing_busy: '지금 다른 문서를 그리고 있습니다. 잠시 후 다시 시도해 주세요.',
+  unsupported_handoff_format: '이 서비스는 덱을 pptx 로만 보냅니다.',
+  handoff_source_not_allowed: '이 서비스가 문서를 받도록 허용된 곳이 아닙니다. 관리자가 서비스 설정의 문서 넘기기에서 그 서비스를 허용 목록에 넣어야 합니다.',
+  handoff_claim_invalid: '넘겨받은 표가 서비스가 발급한 모양이 아닙니다. 보낸 쪽에서 다시 보내 주세요.',
+  handoff_claim_refused: '표가 이미 쓰였거나 5분이 지났습니다. 보낸 쪽에서 다시 보내 주세요.',
+  handoff_redirected: '보낸 서비스가 다른 주소로 넘기려 해서 받지 않았습니다. 허용 목록의 주소가 그 서비스의 실제 주소인지 확인하세요.',
+  handoff_unsupported_format: '보낸 서비스가 이 서비스가 읽지 못하는 형식을 보냈습니다. 마크다운·Word·CSV·Excel·텍스트만 받습니다.',
+  handoff_too_large: '문서가 너무 커서 받지 않았습니다. 나눠서 보내 주세요.',
+  handoff_source_unreachable: '보낸 서비스에 닿지 않았거나 제때 답하지 않았습니다. 잠시 후 다시 보내 주세요.',
   invalid_source: '보낸 텍스트가 UTF-8이 아닙니다.',
   validation_error: '입력한 값이 올바르지 않습니다.',
   database_unavailable: '데이터베이스가 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.',
@@ -205,6 +225,7 @@ const byCode: Record<string, string> = {
  * box to look at.
  */
 const rules: [RegExp, (match: RegExpMatchArray) => string][] = [
+  [/^The document is larger than (\d+) MB$/, (match) => `문서가 ${match[1]}MB 를 넘어 받지 않았습니다. 나눠서 보내 주세요.`],
   // The limit is a deployment's own setting, so it arrives in the sentence.
   [/^An image must be (\d+) MiB or smaller$/, (m) => `이미지는 ${m[1]}MiB 이하여야 합니다.`],
   [/^The template must not exceed (\d+) MiB$/, (m) => `템플릿은 ${m[1]}MiB 를 넘을 수 없습니다.`],

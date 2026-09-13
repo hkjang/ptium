@@ -9,6 +9,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/analytics"
 	"github.com/hkjang/ptium/server/internal/db"
 	"github.com/hkjang/ptium/server/internal/generation"
+	"github.com/hkjang/ptium/server/internal/handoff"
 	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
 	"net/url"
@@ -407,6 +408,16 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 			if !validURL(host, false, true) {
 				return fmt.Errorf("allowed host %q must be an HTTP(S) origin with no path", host)
 			}
+		}
+	case handoff.SettingKey:
+		// The list is read on every handoff; one entry that does not parse
+		// would empty it, so none is stored.
+		var entries []string
+		if err := json.Unmarshal(raw, &entries); err != nil || len(entries) > 50 {
+			return errors.New("handoff peers must be a string array of at most 50 entries")
+		}
+		if _, err := handoff.ParsePeers(entries); err != nil {
+			return fmt.Errorf("handoff peers: %v", err)
 		}
 	}
 	return nil

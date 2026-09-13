@@ -70,7 +70,7 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, incidentCaptureTrackerKey{}, &incidentCaptureTracker{})
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				details, _ := json.Marshal(map[string]any{"panic": fmt.Sprint(recovered), "stack": string(debug.Stack()), "method": request.Method, "path": request.URL.Path})
+				details, _ := json.Marshal(map[string]any{"panic": fmt.Sprint(recovered), "stack": string(debug.Stack()), "method": request.Method, "path": loggedPath(request.URL.Path)})
 				s.capture(ctx, model.Incident{RequestID: requestID, Kind: "panic", Severity: "critical", Message: "unhandled server panic", Details: details})
 				if recorder.status == 0 {
 					writeError(recorder, request.WithContext(ctx), http.StatusInternalServerError, "internal_error", "The server could not complete the request", nil)
@@ -80,11 +80,11 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 			if status == 0 {
 				status = http.StatusOK
 			}
-			s.logger.Info("http request", "request_id", requestID, "method", request.Method, "path", request.URL.Path,
+			s.logger.Info("http request", "request_id", requestID, "method", request.Method, "path", loggedPath(request.URL.Path),
 				"status", status, "bytes", recorder.bytes, "duration_ms", time.Since(started).Milliseconds())
 			if status >= 500 && !recorder.refusal {
-				details, _ := json.Marshal(map[string]any{"method": request.Method, "path": request.URL.Path, "status": status})
-				s.capture(ctx, model.Incident{RequestID: requestID, Kind: "http", Severity: "error", Message: fmt.Sprintf("HTTP %d on %s %s", status, request.Method, request.URL.Path), Details: details})
+				details, _ := json.Marshal(map[string]any{"method": request.Method, "path": loggedPath(request.URL.Path), "status": status})
+				s.capture(ctx, model.Incident{RequestID: requestID, Kind: "http", Severity: "error", Message: fmt.Sprintf("HTTP %d on %s %s", status, request.Method, loggedPath(request.URL.Path)), Details: details})
 			}
 		}()
 		next.ServeHTTP(recorder, request.WithContext(ctx))
