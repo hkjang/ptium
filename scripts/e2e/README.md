@@ -81,6 +81,17 @@ how a slide's fields map to template slots — is tested next to the code instea
 with `npm test` in `web/`. A browser is the wrong place to find out that one
 translation rule is wrong.
 
+`api.py` also plays the other service a deck is handed to. A thread on this
+machine stands in for it: the server under test is told the thread's origin,
+takes a markdown document from it, and is refused a redirect, a web page, a
+spent claim and a service that never answers — each of which the receiving page
+turns into a sentence. The claim a deck goes out under is redeemed with no
+login, once, and read back as a presentation. A server running in a container
+does not see this machine's loopback; `PTIUM_E2E_PEER_HOST` names the address
+it should dial instead (`host.docker.internal`, or the host's LAN address), and
+without it that half of the section says so and is skipped. The peer list is put
+back the way it was found.
+
 The browser scripts need Playwright (`pip install playwright && playwright install
 chromium`) and `package.py` needs `python-pptx`; the first two need nothing but
 Python. Each exits non-zero on a

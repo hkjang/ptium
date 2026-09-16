@@ -4,6 +4,7 @@ Every check states what it expects. A failure prints the request, the status and
 the body, so the next step is reading code rather than reproducing.
 """
 import csv, json, os, sys, urllib.parse, urllib.request, urllib.error, zipfile, io, zlib, struct, time, re
+import datetime, http.server, socket, threading
 
 BASE = os.environ.get("PTIUM_URL", "http://localhost:8099").rstrip("/") + "/api/v1"
 RUN = str(int(time.time()))[-6:]  # each run works on its own names
@@ -3059,6 +3060,216 @@ if branded.get("id"):
         print("   slides drawn in the author's colour:", painted)
     call("DELETE", f"/presentations/{branded['id']}?permanent=true", expect=[204, 404])
 call("PATCH", "/profile", {"preferences": was.get("preferences") or {}}, expect=200)
+
+# A deck goes to another service, and a document comes from one, without a
+# file passing through anybody's downloads. The other service is played here
+# by a thread: it takes the deck the way the standard says (an origin and a
+# claim, redeemed at the sender's own door with nothing else) and hands out a
+# markdown document, a redirect, a web page, or nothing, so each of the
+# refusals the receiving page turns into a sentence is earned. Reaching the
+# thread is the one thing that depends on where the server runs: a server in
+# a container does not see this machine's loopback, so PTIUM_E2E_PEER_HOST
+# names the address it should dial (host.docker.internal, or the host's LAN
+# address) when that is the case.
+print("── handing a deck to another service, and taking a document from one ──")
+NOBODY = {"Accept": "application/json"}  # a request with no credential on it (an empty dict means the default identity)
+PEER_HOST = os.environ.get("PTIUM_E2E_PEER_HOST", "127.0.0.1")
+GOOD_CLAIM, USED_CLAIM = f"e2e-good-{RUN}-" + "x" * 8, f"e2e-used-{RUN}-" + "x" * 8
+REDIRECT_CLAIM, HTML_CLAIM = f"e2e-redirect-{RUN}-xxxx", f"e2e-html-{RUN}-" + "x" * 8
+PEER_DOCUMENT = f"# 주간 보고 {RUN}\n\n## 이번 주\n- 넘겨받기 확인\n- 출처 확인\n"
+
+class Peer(http.server.BaseHTTPRequestHandler):
+    """Another service's claim door, and a record of what came to it."""
+    served = []
+
+    def log_message(self, *_):
+        pass
+
+    def do_GET(self):
+        Peer.served.append((self.path, dict(self.headers)))
+        claim = self.path.rsplit("/", 1)[-1]
+        if not self.path.startswith("/api/v1/handoff/claims/"):
+            self.send_response(404); self.end_headers(); return
+        if claim == GOOD_CLAIM:
+            body = PEER_DOCUMENT.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/markdown; charset=utf-8")
+            self.send_header("Content-Disposition", "attachment; filename*=UTF-8''" + urllib.parse.quote(f"주간-{RUN}.md"))
+            self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        elif claim == REDIRECT_CLAIM:
+            self.send_response(302); self.send_header("Location", "http://127.0.0.1:9/elsewhere"); self.end_headers()
+        elif claim == HTML_CLAIM:
+            body = b"<html><body>a sign-in page</body></html>"
+            self.send_response(200); self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        else:
+            self.send_response(404); self.end_headers()
+
+peer_server = http.server.ThreadingHTTPServer(("0.0.0.0", 0), Peer)
+peer_port = peer_server.server_address[1]
+threading.Thread(target=peer_server.serve_forever, daemon=True).start()
+peer_origin = f"http://{PEER_HOST}:{peer_port}"
+with socket.socket() as probe:
+    probe.bind(("127.0.0.1", 0))
+    silent_origin = f"http://{PEER_HOST}:{probe.getsockname()[1]}"  # nothing listens here
+
+was_peers = next((row.get("value") for row in setting_rows() if row.get("key") == "handoff.peers"), None)
+try:
+    # Where the deck is offered from is an origin — what a peer prepends the
+    # claims path to — and the same one on both doors.
+    before = data_of(call("GET", "/handoff/targets", expect=200)) or {}
+    checks += 1
+    if not re.fullmatch(r"https?://[^/]+", before.get("source") or ""):
+        failures.append(f"the handoff source is not an origin: {before.get('source')!r}")
+    checks += 1
+    if before.get("targets") is None:
+        failures.append("the handoff targets are missing, so the send button cannot know to hide")
+    call("GET", "/handoff/targets", expect=401, headers=NOBODY, note="the target list is not for the public")
+
+    # The claim: minted for one deck the caller can read, in the one format
+    # this service sends, and the answer is the standard's shape, unwrapped,
+    # because the other services are written against it.
+    call("POST", "/handoff/claims", {"resource": deck_id, "format": "docx"}, expect=422,
+         note="a deck goes out as pptx only")
+    call("POST", "/handoff/claims", {"resource": deck_id, "format": "pptx"}, expect=404,
+         headers={"X-Ptium-Dev-Secret": SECRET, "Authorization": f"Bearer dev:plain-{RUN}@ptium.local:user"},
+         note="somebody else's deck is not there to be offered")
+    call("POST", "/handoff/claims", {"resource": deck_id, "format": "pptx"}, expect=401, headers=NOBODY)
+    status, offered = call("POST", "/handoff/claims", {"resource": deck_id, "format": "pptx"}, expect=201)
+    offered = offered if isinstance(offered, dict) else {}
+    checks += 1
+    if "data" in offered or not offered.get("claim"):
+        failures.append(f"the claim answer is not the standard's shape: {list(offered)}")
+    claim = offered.get("claim") or ""
+    checks += 1
+    if not re.fullmatch(r"[A-Za-z0-9_-]{16,256}", claim):
+        failures.append(f"the claim is not one a peer would accept: {claim!r}")
+    checks += 1
+    if offered.get("source") != before.get("source"):
+        failures.append(f"the claim names {offered.get('source')!r} as its source, the targets said {before.get('source')!r}")
+    checks += 1
+    if not (offered.get("filename") or "").endswith(".pptx") or not (offered.get("content_type") or "").endswith("presentationml.presentation"):
+        failures.append(f"the claim does not describe a pptx: {offered.get('filename')!r} {offered.get('content_type')!r}")
+    checks += 1
+    try:
+        expires = datetime.datetime.fromisoformat((offered.get("expires_at") or "").replace("Z", "+00:00"))
+        left = (expires - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+        if not 0 < left <= 10 * 60:
+            failures.append(f"a claim should live minutes, this one says {offered.get('expires_at')!r}")
+    except (ValueError, TypeError):
+        failures.append(f"the claim's expiry is not a time with a zone: {offered.get('expires_at')!r}")
+
+    # Redeeming it: no login, the file itself, once. The second visit and a
+    # claim nobody issued get the same answer, so a guess learns nothing.
+    if claim:
+        status, handed = call("GET", f"/handoff/claims/{claim}", raw=True, expect=200, headers=NOBODY)
+        checks += 1
+        try:
+            names = zipfile.ZipFile(io.BytesIO(handed)).namelist()
+            if "ppt/presentation.xml" not in names:
+                failures.append("what the claim handed over is a zip but not a presentation")
+            elif len(handed) != offered.get("bytes"):
+                failures.append(f"the claim promised {offered.get('bytes')} bytes and handed {len(handed)}")
+        except zipfile.BadZipFile:
+            failures.append(f"what the claim handed over is not a pptx: {handed[:80]!r}")
+        call("GET", f"/handoff/claims/{claim}", expect=404, headers=NOBODY, note="a claim is spent on the first visit")
+    call("GET", "/handoff/claims/" + "n" * 32, expect=404, headers=NOBODY, note="a claim nobody issued")
+    call("GET", "/handoff/claims/short", expect=404, headers=NOBODY)
+    # The trail says a deck was offered and served; it never holds the claim,
+    # which was a credential for as long as it lived.
+    trail = data_of(call("GET", "/admin/audit?limit=100", expect=200)) or []
+    trail = trail if isinstance(trail, list) else trail.get("items", [])
+    handoff_actions = [one.get("action") for one in trail if one.get("targetId") == deck_id and "handoff" in (one.get("action") or "")]
+    checks += 1
+    for wanted in ("presentation.handoff_offer", "presentation.handoff_served"):
+        if wanted not in handoff_actions:
+            failures.append(f"offering and serving a deck left {handoff_actions} in the audit log, not {wanted}")
+    checks += 1
+    if claim and any(claim in json.dumps(one) for one in trail):
+        failures.append("the audit log holds a handoff claim")
+
+    # Taking a document: only from a service the administrator listed, and a
+    # source that is not on the list costs the network nothing.
+    call("POST", "/handoff/receive", {"source": peer_origin, "claim": GOOD_CLAIM}, expect=403,
+         note="a source that is not on the list")
+    checks += 1
+    if Peer.served:
+        failures.append("a source that is not on the list was dialled anyway")
+    call("PUT", "/admin/settings", {"values": {"handoff.peers": [f"weekly={peer_origin}/path"]}}, expect=422,
+         note="a peer is an origin, not an address with a path")
+    call("PUT", "/admin/settings", {"values": {"handoff.peers": ["weekly=ftp://files.intra"]}}, expect=422)
+    call("PUT", "/admin/settings", {"values": {"handoff.peers": [
+        f"weekly={peer_origin}", f"muni={silent_origin}"]}}, expect=200)
+    listed = data_of(call("GET", "/handoff/targets", expect=200)) or {}
+    targets = {one.get("origin"): one for one in (listed.get("targets") or [])}
+    checks += 1
+    if peer_origin not in targets or targets[peer_origin].get("formats") != ["pptx"]:
+        failures.append(f"a service that takes pptx is not a destination for it: {listed.get('targets')!r}")
+    checks += 1
+    if silent_origin in targets:
+        failures.append("a service that takes no presentation is offered as a destination for one")
+
+    status, taken = call("POST", "/handoff/receive", {"source": peer_origin, "claim": GOOD_CLAIM},
+                         expect=[201, 502])
+    if status == 502 and ((taken or {}).get("error") or {}).get("code") == "handoff_source_unreachable":
+        print(f"   the server could not reach this machine at {peer_origin}; set PTIUM_E2E_PEER_HOST "
+              "to the address it should dial. the receiving checks were not run")
+    else:
+        checks += 1
+        if [path for path, _ in Peer.served] != [f"/api/v1/handoff/claims/{GOOD_CLAIM}"]:
+            failures.append(f"the peer was asked {[path for path, _ in Peer.served]}, not its claims door once")
+        checks += 1
+        if any(name.lower() in ("cookie", "authorization") for _, sent in Peer.served for name in sent):
+            failures.append("this service sent a credential of its own to the peer")
+        taken = data_of((status, taken)) or {}
+        received = taken.get("presentation") or {}
+        checks += 1
+        if (taken.get("slides") or 0) < 2:
+            failures.append(f"a document with a heading and a section became {taken.get('slides')!r} slides")
+        # Where it came from travels with the deck: the note the person sees
+        # when it lands, the brief the deck keeps, and the audit trail.
+        checks += 1
+        if not any("weekly" in note and peer_origin in note and f"주간-{RUN}.md" in note
+                   for note in (taken.get("warnings") or [])):
+            failures.append(f"the arrival does not say where the document came from: {taken.get('warnings')!r}")
+        checks += 1
+        if "weekly" not in (received.get("prompt") or "") or peer_origin not in (received.get("prompt") or ""):
+            failures.append(f"the deck's brief does not name the service it came from: {received.get('prompt')!r}")
+        checks += 1
+        if f"주간 보고 {RUN}" not in (received.get("title") or ""):
+            failures.append(f"the deck is not titled after the document: {received.get('title')!r}")
+        trail = data_of(call("GET", "/admin/audit?action=presentation.handoff_receive&limit=5", expect=200)) or []
+        trail = trail if isinstance(trail, list) else trail.get("items", [])
+        checks += 1
+        if not any((one.get("details") or one.get("metadata") or {}).get("source") == peer_origin for one in trail):
+            failures.append("taking a document left no audit entry naming the source")
+        if received.get("id"):
+            call("DELETE", f"/presentations/{received['id']}?permanent=true", expect=[204, 200, 404])
+
+        # Each way the other side can fail to hand the document over, in the
+        # answer, because the page turns each into a sentence somebody can act on.
+        def refused(claim, source=peer_origin):
+            status, answer = call("POST", "/handoff/receive", {"source": source, "claim": claim})
+            return status, ((answer or {}).get("error") or {}).get("code")
+
+        for claim, source, wanted, said in (
+                (USED_CLAIM, peer_origin, (404, "handoff_claim_refused"), "a claim the source refuses"),
+                (REDIRECT_CLAIM, peer_origin, (502, "handoff_redirected"), "a source that redirects (was it followed?)"),
+                (HTML_CLAIM, peer_origin, (415, "handoff_unsupported_format"), "a source that sends a web page"),
+                ("not a claim", peer_origin, (400, "handoff_claim_invalid"), "a claim with a space in it"),
+                (GOOD_CLAIM, peer_origin + "/api", (403, "handoff_source_not_allowed"), "a listed origin with a path on it"),
+                (GOOD_CLAIM, silent_origin, (502, "handoff_source_unreachable"), "a listed service that does not answer")):
+            answered = refused(claim, source)
+            checks += 1
+            if answered != wanted:
+                failures.append(f"{said} is answered {answered!r}, want {wanted!r}")
+finally:
+    peer_server.shutdown()
+    call("PUT", "/admin/settings", {"values": {"handoff.peers": was_peers if was_peers is not None else []}}, expect=200)
+after_peers = next((row.get("value") for row in setting_rows() if row.get("key") == "handoff.peers"), None)
+checks += 1
+if (after_peers or []) != (was_peers or []):
+    failures.append(f"the peer list was left as {after_peers!r}, it was {was_peers!r}")
 
 print("── api keys and mcp ──")
 made = data_of(call("POST", "/api-keys", {"name": f"e2e {RUN}", "scopes": ["presentations:read"]}, expect=201)) or {}
