@@ -21,6 +21,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/httpapi"
 	"github.com/hkjang/ptium/server/internal/keys"
 	"github.com/hkjang/ptium/server/internal/library"
+	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/mcp"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
@@ -183,6 +184,10 @@ func main() {
 		dataStore.MarkSnippetUsed(ctx, snippetID, ownerID)
 	}
 	worker := generation.NewWorker(dataStore, generator, logger, applicationConfig.WorkerPollInterval)
+	// Notification mail through the company relay: off until an administrator
+	// turns it on, sent in the background, every attempt recorded.
+	mailer := mail.NewService(mail.NewDatabaseLedger(pool), settingService, dataStore, logger, applicationConfig.PublicBaseURL)
+	worker.SetNotifier(mailer.Notify)
 	workerContext, cancelWorker := context.WithCancel(rootContext)
 	defer cancelWorker()
 	go worker.Run(workerContext)
@@ -236,6 +241,7 @@ func main() {
 		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
 		PasswordLoginEnabled: passwordLoginEnabled, Version: version,
 		AssetDir: assetDirForStorage(applicationConfig), PublicBaseURL: applicationConfig.PublicBaseURL,
+		Mail: mailer,
 	})
 	if err != nil {
 		fatal("initialize HTTP API", err)

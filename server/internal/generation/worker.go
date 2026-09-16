@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -20,6 +21,25 @@ type Worker struct {
 	logger    *slog.Logger
 	interval  time.Duration
 	wake      chan struct{}
+	// notify tells the author how their deck came out, when a mailer is
+	// configured. It returns before any relay is dialled.
+	notify func(context.Context, mail.Notification, string, []string)
+}
+
+// SetNotifier gives the worker somewhere to send "your deck is done" and
+// "your deck stopped". A deck takes minutes to write on a self-hosted model,
+// which is long enough for its author to have gone to do something else.
+func (w *Worker) SetNotifier(notify func(context.Context, mail.Notification, string, []string)) {
+	w.notify = notify
+}
+
+func (w *Worker) tell(ctx context.Context, notification mail.Notification, ownerID string) {
+	if w.notify == nil {
+		return
+	}
+	// The author asked for the deck, but the worker finishing it is not the
+	// author's own act: nobody is left out as the actor here.
+	w.notify(context.WithoutCancel(ctx), notification, "", []string{ownerID})
 }
 
 func NewWorker(st *store.Store, generator *Generator, logger *slog.Logger, interval time.Duration) *Worker {
@@ -90,6 +110,7 @@ func (w *Worker) processOne(ctx context.Context) error {
 		// What compiling adjusted and what the repair pass rewrote. An operator
 		// asking why a deck looks the way it does should not have to guess.
 		"warnings", generated.Warnings)
+	w.tell(ctx, mail.GenerationCompleted(presentation.Title, presentation.ID, len(generated.Slides)), presentation.OwnerID)
 	return nil
 }
 
@@ -182,6 +203,7 @@ func (w *Worker) fail(ctx context.Context, presentation model.Presentation, leas
 	if err != nil || !kept {
 		_ = w.store.FailGeneration(written, presentation.ID, lease, said)
 	}
+	w.tell(written, mail.GenerationFailed(presentation.Title, presentation.ID, said), presentation.OwnerID)
 	details, _ := json.Marshal(map[string]any{"presentationId": presentation.ID, "ownerId": presentation.OwnerID})
 	_ = w.store.CaptureIncident(context.WithoutCancel(ctx), model.Incident{UserID: stringPointer(presentation.OwnerID), Kind: "generation", Severity: "error", Message: message, Details: details})
 	return cause

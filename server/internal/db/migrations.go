@@ -319,6 +319,25 @@ var migrations = []string{
 		created_at timestamptz NOT NULL DEFAULT now(),
 		expires_at timestamptz NOT NULL)`,
 	`CREATE INDEX IF NOT EXISTS handoff_claims_expires_idx ON handoff_claims(expires_at)`,
+	// Every notification mail this deployment tried to send: when, what for,
+	// to whom, with what subject, and whether it got out. Sent and failed
+	// alike, so "it never came" can be answered. The body is not kept — a
+	// table of every notification's text would be a way to read them all.
+	// The deck and the actor are references without constraints: the record
+	// of a mail outlives the deck it was about.
+	`CREATE TABLE IF NOT EXISTS mail_deliveries(
+		id uuid PRIMARY KEY,
+		event text NOT NULL,
+		recipient text NOT NULL,
+		subject text NOT NULL DEFAULT '',
+		presentation_id uuid,
+		actor_id uuid,
+		status text NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','sent','failed')),
+		attempts integer NOT NULL DEFAULT 0,
+		error_message text NOT NULL DEFAULT '',
+		created_at timestamptz NOT NULL DEFAULT now(),
+		updated_at timestamptz NOT NULL DEFAULT now())`,
+	`CREATE INDEX IF NOT EXISTS mail_deliveries_created_idx ON mail_deliveries(created_at DESC)`,
 }
 
 // ShippedSetting is the value this product ships a setting with, for anything
@@ -401,4 +420,21 @@ var defaultSettings = map[string]struct {
 	// Empty as shipped: no service is sent to and none is received from until
 	// an administrator names one, so a fresh install is unchanged.
 	"handoff.peers": {`[]`, false, "Services documents are passed to and taken from, one name=origin per entry, e.g. weekly=https://weekly.intra"},
+	// Notification mail through the company SMTP relay. Off as shipped, and
+	// the defaults describe the common internal relay: port 25, no
+	// credentials, no TLS. The keys are the same in every service here.
+	"mail.enabled":                     {`false`, false, "Send notification mail through the SMTP relay"},
+	"mail.smtp_host":                   {`""`, false, "SMTP relay host"},
+	"mail.smtp_port":                   {`25`, false, "SMTP relay port; an internal relay is usually 25"},
+	"mail.security":                    {`"auto"`, false, "Transport security: auto (STARTTLS when the relay offers it), none, starttls or tls"},
+	"mail.skip_tls_verify":             {`false`, false, "Accept the relay's certificate without verifying it; only for a private certificate"},
+	"mail.username":                    {`""`, false, "SMTP username; empty for a relay that needs none"},
+	"mail.password":                    {`""`, true, "SMTP password; never shown back"},
+	"mail.from_address":                {`""`, false, "Sender address; empty means ptium@<relay host>"},
+	"mail.from_name":                   {`"Ptium"`, false, "Sender display name"},
+	"mail.base_url":                    {`""`, false, "This deployment's address for the links in a mail; empty uses PUBLIC_BASE_URL"},
+	"mail.timeout_seconds":             {`10`, false, "How long one SMTP step may take"},
+	"mail.notify_generation_completed": {`true`, false, "Mail the author when a deck they asked for is written"},
+	"mail.notify_generation_failed":    {`true`, false, "Mail the author when writing a deck stopped with an error"},
+	"mail.notify_comment":              {`true`, false, "Mail the author when a reviewer leaves a comment through a share link"},
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/handoff"
 	"github.com/hkjang/ptium/server/internal/keys"
+	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -86,6 +87,9 @@ type Options struct {
 	// PublicBaseURL is the address other services reach this one at, when the
 	// operator says; otherwise it is read off each request.
 	PublicBaseURL string
+	// Mail sends event notifications through the company relay. Nil sends
+	// nothing and the mail screens say so.
+	Mail *mail.Service
 }
 
 type Server struct {
@@ -140,6 +144,7 @@ type Server struct {
 	// handoffClient fetches a document from a peer: no redirects, bounded time.
 	handoffClient *http.Client
 	publicBaseURL string
+	mail          *mail.Service
 }
 
 // concurrentTemplateReads is how many uploaded templates may be held in memory
@@ -211,6 +216,7 @@ func New(options Options) (*Server, error) {
 		readPeers:       func(ctx context.Context) handoff.Config { return peersFrom(ctx, options.Settings) },
 		handoffClient:   handoff.NewClient(nil),
 		publicBaseURL:   strings.TrimSpace(options.PublicBaseURL),
+		mail:            options.Mail,
 	}, nil
 }
 
@@ -384,6 +390,9 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/admin/analytics/violations", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminListViolations)))
 	api.Handle("DELETE /api/v1/admin/analytics/violations", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminForgetViolations)))
 	api.Handle("POST /api/v1/admin/analytics/allow", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminAllowOrigin)))
+	// What notification mail left the building, and one sent to prove the relay.
+	api.Handle("GET /api/v1/admin/mail/deliveries", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminMailDeliveries)))
+	api.Handle("POST /api/v1/admin/mail/test", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminSendTestMail)))
 	api.Handle("GET /api/v1/admin/users/counts", s.requireAdmin("admin:users", http.HandlerFunc(s.adminUserCounts)))
 	api.Handle("GET /api/v1/admin/users", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListUsers)))
 	api.Handle("PATCH /api/v1/admin/users/{id}", requireUUIDPath(s.requireAdmin("admin:users", http.HandlerFunc(s.adminUpdateUser))))
