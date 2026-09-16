@@ -10,6 +10,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/db"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/handoff"
+	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
 	"net/url"
@@ -207,15 +208,31 @@ func (s *Server) validateSettingRelationships(ctx context.Context, updates []set
 	if err := s.trackingAfter(ctx, updates).Validate(); err != nil {
 		return err
 	}
+	// Mail switched on with no relay to send through would store a switch
+	// that only ever records failures.
+	if err := s.mailAfter(ctx, updates).Validate(); err != nil {
+		return err
+	}
 	return nil
+}
+
+// mailAfter is the mail configuration these updates would leave behind, read
+// on top of what is stored now.
+func (s *Server) mailAfter(ctx context.Context, updates []settings.Update) mail.Config {
+	return mail.FromValues(s.valuesAfter(ctx, "mail.", updates))
 }
 
 // trackingAfter is the tracking configuration these updates would leave
 // behind, read on top of what is stored now.
 func (s *Server) trackingAfter(ctx context.Context, updates []settings.Update) analytics.Config {
+	return analytics.FromValues(s.valuesAfter(ctx, "analytics.", updates))
+}
+
+// valuesAfter is one family of settings as these updates would leave it.
+func (s *Server) valuesAfter(ctx context.Context, prefix string, updates []settings.Update) map[string]json.RawMessage {
 	values := map[string]json.RawMessage{}
 	for _, key := range db.ShippedSettingKeys() {
-		if !strings.HasPrefix(key, "analytics.") {
+		if !strings.HasPrefix(key, prefix) {
 			continue
 		}
 		var value json.RawMessage
@@ -224,11 +241,11 @@ func (s *Server) trackingAfter(ctx context.Context, updates []settings.Update) a
 		}
 	}
 	for _, update := range updates {
-		if strings.HasPrefix(update.Key, "analytics.") {
+		if strings.HasPrefix(update.Key, prefix) {
 			values[update.Key] = update.Value
 		}
 	}
-	return analytics.FromValues(values)
+	return values
 }
 
 func parseSettingUpdates(section string, raw json.RawMessage) ([]settingUpdate, error) {
@@ -408,6 +425,31 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 			if !validURL(host, false, true) {
 				return fmt.Errorf("allowed host %q must be an HTTP(S) origin with no path", host)
 			}
+		}
+	case "mail.smtp_host":
+		value, err := decodeString()
+		if err != nil || utf8.RuneCountInString(value) > 253 || strings.ContainsAny(value, " /:@") {
+			return errors.New("SMTP host must be a host name or address of at most 253 characters, without a port")
+		}
+	case "mail.from_address":
+		value, err := decodeString()
+		if err != nil || (value != "" && (!strings.Contains(value, "@") || strings.ContainsAny(value, " <>,") || utf8.RuneCountInString(value) > 254)) {
+			return errors.New("sender address must be empty or one email address")
+		}
+	case "mail.from_name", "mail.username":
+		value, err := decodeString()
+		if err != nil || utf8.RuneCountInString(value) > 200 {
+			return fmt.Errorf("%s must be at most 200 characters", key)
+		}
+	case "mail.password":
+		value, err := decodeString()
+		if err != nil || utf8.RuneCountInString(value) > 500 {
+			return errors.New("SMTP password must be at most 500 characters")
+		}
+	case "mail.base_url":
+		value, err := decodeString()
+		if err != nil || (value != "" && !validURL(value, false, false)) {
+			return errors.New("mail base URL must be empty or an HTTP(S) URL without credentials, query, or fragment")
 		}
 	case handoff.SettingKey:
 		// The list is read on every handoff; one entry that does not parse

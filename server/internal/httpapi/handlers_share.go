@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/hkjang/ptium/server/internal/export"
+	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/pptx"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -269,7 +270,23 @@ func (s *Server) addSharedComment(writer http.ResponseWriter, request *http.Requ
 		writeError(writer, request, http.StatusUnprocessableEntity, "validation_error", err.Error(), nil)
 		return
 	}
+	// The author sent the link and is waiting for exactly this. The reviewer
+	// has no account, so there is no actor to leave out; the author replying
+	// through the workspace goes through addOwnerComment and mails nobody.
+	s.notify(request.Context(), mail.CommentLeft(presentation.Title, presentation.ID, comment.Author, slideNumberOf(presentation, comment.SlideID)),
+		"", []string{presentation.OwnerID})
 	writeData(writer, request, http.StatusCreated, comment)
+}
+
+// slideNumberOf is the one-based position of a slide in its deck, or 0 for a
+// remark about the deck as a whole.
+func slideNumberOf(presentation model.Presentation, slideID string) int {
+	for index, slide := range presentation.Slides {
+		if slide.ID == slideID {
+			return index + 1
+		}
+	}
+	return 0
 }
 
 func (s *Server) sharedComments(writer http.ResponseWriter, request *http.Request) {

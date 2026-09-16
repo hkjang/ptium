@@ -27,6 +27,7 @@ import type {
   TemplateLayout,
   TemplatePalette,
   TrackingViolation,
+  MailDeliveryPage,
   User,
 } from '../types'
 import { errorText } from './errors'
@@ -1516,6 +1517,17 @@ export const api = {
    * nothing on the administrator's list receives a presentation — hides the
    * menu.
    */
+  /** What notification mail left the building, newest first. */
+  async mailDeliveries(status = '', limit = 50) {
+    const query = new URLSearchParams({ limit: String(limit) })
+    if (status) query.set('status', status)
+    return unwrapOne<MailDeliveryPage>(await request<unknown>(`/admin/mail/deliveries?${query}`), ['data'])
+  },
+  /** One mail with the settings as saved, to prove the relay. Empty recipient means the administrator's own address. */
+  async sendTestMail(recipient: string) {
+    return unwrapOne<{ sent: boolean; recipient: string }>(
+      await request<unknown>('/admin/mail/test', { method: 'POST', body: JSON.stringify({ recipient }) }), ['data'])
+  },
   async handoffTargets() {
     const data = unwrapOne<Record<string, unknown>>(await request<unknown>('/handoff/targets'), ['data'])
     return {
@@ -1540,7 +1552,7 @@ export const api = {
   async updateAdminSettings(section: string, values: Record<string, unknown>) {
     const raw = await request<unknown>('/admin/settings', {
       method: 'PUT', body: JSON.stringify({ settings: Object.entries(values)
-        .filter(([key, value]) => value !== undefined && value !== null && !(value === '' && (key.includes('api_key') || key.includes('client_secret') || key.endsWith('secret'))))
+        .filter(([key, value]) => value !== undefined && value !== null && !(value === '' && (key.includes('api_key') || key.includes('client_secret') || key.endsWith('secret') || key.includes('password'))))
         .map(([key, value]) => ({ key: `${section === 'oidc' ? 'auth.oidc' : section}.${key}`, value })) }),
     })
     return normalizeAdminSettingsPayload(raw)

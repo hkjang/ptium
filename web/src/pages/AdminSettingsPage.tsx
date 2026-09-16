@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { Activity, ArrowRightLeft, Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Save, ShieldCheck, Sparkles } from 'lucide-react'
+import { Activity, ArrowRightLeft, Bot, Radio, Brush, Check, ChevronRight, CircleAlert, Eye, EyeOff, LockKeyhole, Mail, Save, ShieldCheck, Sparkles } from 'lucide-react'
 import { api } from '../api/client'
 import { SettingChanges } from './SettingChanges'
 import { designChoices, designFamilies, resolveDesignKey, type DesignChoice } from '../branding/designs'
@@ -8,11 +8,12 @@ import { AppShell } from '../components/AppShell'
 import { Badge, Button, ErrorState, Field, Input, LoadingState, Select, Textarea } from '../components/UI'
 import { policyOrigins, trackingProblem, trackingProviders } from './tracking'
 import { handoffProblem, handoffSummary } from './handoffpeers'
-import type { TrackingViolation } from '../types'
+import { mailProblem, mailSummary, securityChoices } from './mail'
+import type { MailDelivery, TrackingViolation } from '../types'
 import { useToast } from '../components/Toast'
 import { displayError } from '../utils'
 
-type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security' | 'analytics' | 'handoff'
+type SectionKey = 'branding' | 'ai' | 'oidc' | 'generation' | 'security' | 'analytics' | 'handoff' | 'mail'
 type SettingValue = string | number | boolean | string[]
 type Values = Record<string, SettingValue>
 interface SettingSection { id: SectionKey; label: string; description: string; icon: ReactNode }
@@ -25,6 +26,7 @@ const sections: SettingSection[] = [
   { id: 'security', label: '보안 · 키', description: 'API 키 회전과 CORS', icon: <ShieldCheck size={18} /> },
   { id: 'analytics', label: '방문 추적', description: '추적 스크립트와 페이지 정책', icon: <Activity size={18} /> },
   { id: 'handoff', label: '문서 넘기기', description: '문서를 주고받는 사내 서비스', icon: <ArrowRightLeft size={18} /> },
+  { id: 'mail', label: '메일 알림', description: '사내 SMTP 릴레이와 발송 기록', icon: <Mail size={18} /> },
 ]
 
 const defaults: Record<SectionKey, Values> = {
@@ -37,6 +39,9 @@ const defaults: Record<SectionKey, Values> = {
   analytics: { enabled: false, provider: 'none', momento_url: '', momento_site_id: '', momento_proxy: true, measurement_id: '', matomo_url: '', matomo_site_id: '', custom_snippet: '', allowed_hosts: '', include_admin: false, placement: 'head' },
   // Empty as shipped: no service is sent to or received from until named here.
   handoff: { peers: [] },
+  // Off as shipped: nothing is sent until an administrator names a relay and
+  // turns it on. The defaults describe the common internal relay.
+  mail: { enabled: false, smtp_host: '', smtp_port: 25, security: 'auto', skip_tls_verify: false, username: '', password: '', from_address: '', from_name: 'Ptium', base_url: '', timeout_seconds: 10, notify_generation_completed: true, notify_generation_failed: true, notify_comment: true },
 }
 
 /** What came back, said the way an operator needs to read it. */
@@ -102,6 +107,7 @@ export function AdminSettingsPage() {
         const next = mergeSettings(current, result.values)
         if (section === 'ai') next.ai.api_key = ''
         if (section === 'oidc') next.oidc.client_secret = ''
+        if (section === 'mail') next.mail.password = ''
         return next
       })
       if (section === 'branding') window.dispatchEvent(new Event('ptium:branding-updated'))
@@ -150,6 +156,30 @@ export function AdminSettingsPage() {
     try { await api.forgetTrackingViolations(); setViolations([]) } catch (err) { showToast(displayError(err), 'error') }
   }
 
+  // What left the building, read when the section is opened and after a test
+  // send, never on a timer.
+  const [deliveries, setDeliveries] = useState<MailDelivery[]>([])
+  const [deliveryCounts, setDeliveryCounts] = useState<Record<string, number>>({})
+  const [deliveriesError, setDeliveriesError] = useState('')
+  const loadDeliveries = useCallback(() => {
+    api.mailDeliveries().then((page) => { setDeliveries(page.items); setDeliveryCounts(page.status); setDeliveriesError('') }).catch((err) => setDeliveriesError(displayError(err)))
+  }, [])
+  useEffect(() => { if (active === 'mail') loadDeliveries() }, [active, loadDeliveries])
+  const [testRecipient, setTestRecipient] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [tested, setTested] = useState('')
+  const sendTest = async () => {
+    setTesting(true)
+    try {
+      const result = await api.sendTestMail(testRecipient.trim())
+      setTested(`${result.recipient} 로 보냈습니다. 받은 편지함을 확인하세요.`)
+      showToast(`${result.recipient} 로 시험 메일을 보냈습니다.`)
+    } catch (err) {
+      setTested(`보내지 못했습니다 — ${displayError(err)}`)
+      showToast(displayError(err), 'error')
+    } finally { setTesting(false); loadDeliveries() }
+  }
+
   const persistedProvider = String(persistedValues.ai.provider)
   const externalKeyConfigured = configuredSecrets['ai.api_key'] === true
   const oidcSecretConfigured = configuredSecrets['auth.oidc.client_secret'] === true
@@ -180,6 +210,7 @@ export function AdminSettingsPage() {
         {active === 'generation' && <SettingCard title="생성 기본값 · 제한" description="새 프레젠테이션과 MCP 생성 요청에 즉시 적용됩니다."><div className="form-grid two"><Field label="기본 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.default_slide_count)} onChange={(event) => update('generation', 'default_slide_count', Number(event.target.value))} /></Field><Field label="최대 슬라이드"><Input type="number" min="1" max="50" value={Number(values.generation.max_slides)} onChange={(event) => update('generation', 'max_slides', Number(event.target.value))} /></Field></div><div className="form-grid two"><Field label="기본 언어"><Select value={String(values.generation.default_lang)} onChange={(event) => update('generation', 'default_lang', event.target.value)}>{withStoredChoice(languageChoices, String(values.generation.default_lang)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 테마" hint={designs.length ? '이 배포가 갖고 있는 디자인입니다.' : '디자인 목록을 불러오지 못해 저장된 값을 그대로 둡니다.'}>{designs.length ? <Select value={resolveDesignKey(String(values.generation.default_theme), designs)} onChange={(event) => update('generation', 'default_theme', event.target.value)}>{designFamilies(designs).map((group) => <optgroup key={group.family} label={group.family}>{group.designs.map((design) => <option key={design.key} value={design.key}>{design.name}</option>)}</optgroup>)}</Select> : <Input value={String(values.generation.default_theme)} readOnly />}</Field></div><div className="form-grid two"><Field label="기본 발표 톤"><Select value={String(values.generation.default_tone)} onChange={(event) => update('generation', 'default_tone', event.target.value)}>{withStoredChoice(toneChoices, String(values.generation.default_tone)).map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field><Field label="기본 청중"><Input value={String(values.generation.default_audience)} onChange={(event) => update('generation', 'default_audience', event.target.value)} /></Field></div><div className="form-grid two"><Field label="생성 후 자동 수정" hint="템플릿에 맞지 않는 슬라이드를 측정해 모델에게 다시 쓰게 합니다. 0이면 끕니다."><Input type="number" min="0" max="10" value={Number(values.generation.repair_passes ?? 3)} onChange={(event) => update('generation', 'repair_passes', Number(event.target.value))} /></Field><Field label="서사 계획 단계" hint="슬라이드를 쓰기 전에 덱의 흐름을 먼저 설계합니다."><Select value={String(values.generation.outline_pass ?? true)} onChange={(event) => update('generation', 'outline_pass', event.target.value === 'true')}><option value="true">사용</option><option value="false">사용 안 함</option></Select></Field></div></SettingCard>}
         {active === 'security' && <><div className="security-banner"><ShieldCheck size={20} /><div><strong>시크릿은 암호화되어 저장됩니다</strong><p>API 키 원문은 생성·회전 직후 한 번만 표시됩니다.</p></div></div><SettingCard title="API 키 회전" description="이전 키와 새 키가 함께 유효한 기본 유예 기간입니다."><Field label="회전 유예 기간" hint="Go duration 형식: 30m, 24h, 168h"><Input value={String(values.security.api_key_grace)} onChange={(event) => update('security', 'api_key_grace', event.target.value)} /></Field></SettingCard><SettingCard title="브라우저 Origin" description="동일 출처 외에 허용할 Origin입니다. 변경 후 서비스 재시작이 필요합니다."><Field label="추가 허용 Origin" hint="쉼표로 구분하며 경로 없이 https://host 형식으로 입력합니다."><Input value={asList(values.security.cors_origins).join(', ')} onChange={(event) => update('security', 'cors_origins', splitList(event.target.value))} placeholder="https://slides.example.com" /></Field></SettingCard></>}
         {active === 'handoff' && <><div className="security-banner"><ArrowRightLeft size={20} /><div><strong>표(claim) 하나로 넘깁니다 — 서비스끼리 자격 증명을 나누지 않습니다</strong><p>보내는 쪽이 5분 동안 한 번만 쓸 수 있는 표를 발급하고, 받는 쪽이 그 표를 들고 원본에서 직접 받아 갑니다. 이 목록에 있는 오리진에서만 받고, 없는 곳은 요청조차 보내지 않습니다. 리다이렉트는 따르지 않고 25MB·30초에서 끊습니다. 저장 즉시 적용됩니다.</p></div></div><SettingCard title="허용 목록" description="문서를 주고받을 사내 서비스입니다. 비어 있으면 편집기의 내보내기에 '다른 서비스로 보내기'가 보이지 않고, 어느 서비스에서 보낸 문서도 받지 않습니다."><Field label="서비스 목록" hint="한 줄에 하나, 이름=오리진 꼴. 이름은 umm · muni · kanpic · weekly · ptium 가운데 하나여야 그 서비스가 받는 형식을 알 수 있고(이 서비스가 보내는 pptx 는 weekly 만 받습니다), 다른 이름은 받기만 하는 서비스로 둡니다. 오리진은 경로 없이 https://host 꼴이며, 브라우저가 들고 오는 source 와 정확히 같아야 합니다."><Textarea rows={5} value={asList(values.handoff.peers).join('\n')} onChange={(event) => update('handoff', 'peers', splitLines(event.target.value))} placeholder={'umm=https://umm.intra\nmuni=https://muni.intra\nweekly=https://weekly.intra'} /></Field><p className="field-hint">{handoffSummary(asList(values.handoff.peers))}</p></SettingCard></>}
+        {active === 'mail' && <MailSection values={values.mail} persisted={persistedValues.mail} passwordConfigured={configuredSecrets['mail.password'] === true} dirty={dirty.has('mail')} update={(key, value) => update('mail', key, value)} secretField={secretField} deliveries={deliveries} counts={deliveryCounts} deliveriesError={deliveriesError} onReload={loadDeliveries} testRecipient={testRecipient} setTestRecipient={setTestRecipient} testing={testing} tested={tested} onTest={() => void sendTest()} />}
         {active === 'analytics' && <TrackingSection values={values.analytics} persisted={persistedValues.analytics} update={(key, value) => update('analytics', key, value)} violations={violations} violationsError={violationsError} onAllow={(origin) => void allowOrigin(origin)} onForget={() => void forgetViolations()} onReload={loadViolations} />}
         {/* What was changed here, and putting one back: the settings decide how
             every deck in this deployment is written, so their own trail belongs
@@ -215,6 +246,7 @@ function splitLines(value: string): string[] {
 
 function validateSettings(section: SectionKey, values: Values): string {
   if (section === 'handoff') return handoffProblem(asList(values.peers))
+  if (section === 'mail') return mailProblem(values)
   if (section === 'branding') {
     if (!String(values.product_name || '').trim()) return '서비스 이름을 입력해 주세요.'
     if (!/^#[0-9a-f]{6}$/i.test(String(values.brand_color))) return '대표 색상은 #RRGGBB 형식이어야 합니다.'
@@ -323,6 +355,65 @@ function TrackingSection({ values, persisted, update, violations, violationsErro
     <SettingCard title="차단된 출처" description="추적이 켜져 있는 동안 브라우저가 정책에 막힌 요청을 신고합니다. 같은 출처는 한 줄로 모이고, 프로세스가 재시작되면 비워집니다.">
       {violationsError ? <ErrorState message={violationsError} onRetry={onReload} /> : violations.length === 0 ? <p className="muted-note">{liveOn ? '신고된 차단이 없습니다. 페이지를 한 번 열고 다시 확인하세요.' : '추적이 꺼져 있어 브라우저가 신고하지 않습니다.'}</p> : <table className="data-table"><thead><tr><th>출처</th><th>지시어</th><th>횟수</th><th>마지막 페이지</th><th></th></tr></thead><tbody>{violations.map((item) => <tr key={`${item.directive} ${item.origin}`}><td><code>{item.origin}</code></td><td>{item.directive}</td><td>{item.count.toLocaleString('ko-KR')}</td><td>{pathOf(item.page)}</td><td>{item.allowed ? <Badge tone="success">허용됨</Badge> : <Button size="small" variant="secondary" onClick={() => onAllow(item.origin)}>허용</Button>}</td></tr>)}</tbody></table>}
       <div className="tracking-actions"><Button variant="secondary" size="small" onClick={onReload}>다시 읽기</Button>{violations.length > 0 && <Button variant="secondary" size="small" onClick={onForget}>목록 비우기</Button>}{refused.length > 0 && <span className="muted-note">{refused.length}개 출처가 아직 막혀 있습니다.</span>}</div>
+    </SettingCard>
+  </>
+}
+
+/**
+ * Notification mail through the company SMTP relay (MAIL-STANDARD): the
+ * relay, which events go out, one mail sent on purpose to prove the relay,
+ * and what left the building. A relay is rarely described correctly the
+ * first time, which is why the test button and the log sit beside the form.
+ */
+function MailSection({ values, persisted, passwordConfigured, dirty, update, secretField, deliveries, counts, deliveriesError, onReload, testRecipient, setTestRecipient, testing, tested, onTest }: {
+  values: Values; persisted: Values; passwordConfigured: boolean; dirty: boolean
+  update: (key: string, value: SettingValue) => void
+  secretField: (label: string, key: string, hint?: string) => ReactNode
+  deliveries: MailDelivery[]; counts: Record<string, number>; deliveriesError: string; onReload: () => void
+  testRecipient: string; setTestRecipient: (value: string) => void; testing: boolean; tested: string; onTest: () => void
+}) {
+  const liveOn = persisted.enabled === true
+  const eventLabels: Record<string, string> = { 'generation.completed': '덱 완성', 'generation.failed': '생성 실패', 'comment.created': '리뷰 의견', test: '시험 발송' }
+  const statusTone = (status: string) => status === 'sent' ? 'success' : status === 'failed' ? 'danger' : 'info'
+  return <>
+    <div className="configuration-status"><span><Mail size={15} /></span><div><strong>{mailSummary(persisted, passwordConfigured)}</strong><p>{liveOn ? '메일은 배경에서 보내며, 릴레이가 죽어 있어도 그 요청은 정상으로 끝납니다. 시도마다 아래 발송 기록에 남습니다.' : '새로 설치한 곳은 아무것도 달라지지 않습니다. 릴레이 호스트를 적고 사용으로 바꾼 뒤 저장하면 켜집니다.'}{dirty && ' 저장하지 않은 변경은 아직 적용되지 않았습니다.'}</p></div><Badge tone={liveOn ? 'success' : 'info'}>{liveOn ? '켜짐' : '꺼짐'}</Badge></div>
+    <SettingCard title="SMTP 릴레이" description="사내 릴레이는 포트 25 · 인증 없음 · TLS 없음이 흔합니다. 그것이 기본값이고, 인증과 암호화는 있으면 씁니다. 폐쇄망에서는 릴레이로 postra 를 가리키면 알림이 밖으로 나가지 않습니다.">
+      <div className="form-grid two">
+        <Field label="메일 알림 사용"><Select value={String(values.enabled === true)} onChange={(event) => update('enabled', event.target.value === 'true')}><option value="false">사용 안 함</option><option value="true">사용</option></Select></Field>
+        <Field label="릴레이 호스트" hint="포트 없이. 예: relay.corp.example"><Input value={String(values.smtp_host ?? '')} onChange={(event) => update('smtp_host', event.target.value)} placeholder="relay.corp.example" /></Field>
+        <Field label="포트"><Input type="number" min="1" max="65535" value={Number(values.smtp_port)} onChange={(event) => update('smtp_port', Number(event.target.value))} /></Field>
+        <Field label="보안"><Select value={String(values.security ?? 'auto')} onChange={(event) => update('security', event.target.value)}>{securityChoices.map((choice) => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</Select></Field>
+        <Field label="인증서 검증 건너뛰기" hint="사내 인증서가 사설일 때만."><Select value={String(values.skip_tls_verify === true)} onChange={(event) => update('skip_tls_verify', event.target.value === 'true')}><option value="false">검증함</option><option value="true">건너뜀</option></Select></Field>
+        <Field label="제한 시간 (초)"><Input type="number" min="1" max="120" value={Number(values.timeout_seconds)} onChange={(event) => update('timeout_seconds', Number(event.target.value))} /></Field>
+        <Field label="사용자 이름" hint="인증 없는 릴레이면 비워 둡니다."><Input value={String(values.username ?? '')} onChange={(event) => update('username', event.target.value)} /></Field>
+        {secretField('비밀번호', 'password', passwordConfigured ? '설정됨. 바꿀 때만 새 값을 넣습니다. 저장된 값은 되읽히지 않습니다.' : '설정되지 않음.')}
+      </div>
+    </SettingCard>
+    <SettingCard title="보내는 사람 · 링크" description="메일 속 링크가 가리킬 이 서비스의 주소입니다. 비우면 PUBLIC_BASE_URL 을 씁니다.">
+      <div className="form-grid two">
+        <Field label="보내는 주소" hint="비우면 ptium@<릴레이 호스트>."><Input value={String(values.from_address ?? '')} onChange={(event) => update('from_address', event.target.value)} placeholder="ptium@corp.example" /></Field>
+        <Field label="보내는 이름"><Input value={String(values.from_name ?? '')} onChange={(event) => update('from_name', event.target.value)} /></Field>
+      </div>
+      <Field label="링크 주소" hint="예: https://slides.corp.example"><Input value={String(values.base_url ?? '')} onChange={(event) => update('base_url', event.target.value)} placeholder="https://…" /></Field>
+    </SettingCard>
+    <SettingCard title="보내는 이벤트" description="이 메일이 오지 않으면 화면을 계속 새로고침하게 되는 일들만 보냅니다. 자기가 한 일은 자기에게 보내지 않습니다.">
+      <div className="form-grid two">
+        <Field label="덱이 완성됨" hint="요청한 사람에게. 자체 호스팅 모델은 몇 분이 걸립니다."><Select value={String(values.notify_generation_completed !== false)} onChange={(event) => update('notify_generation_completed', event.target.value === 'true')}><option value="true">보냄</option><option value="false">보내지 않음</option></Select></Field>
+        <Field label="생성이 실패로 멈춤" hint="요청한 사람에게, 화면에 보이는 사유와 함께."><Select value={String(values.notify_generation_failed !== false)} onChange={(event) => update('notify_generation_failed', event.target.value === 'true')}><option value="true">보냄</option><option value="false">보내지 않음</option></Select></Field>
+        <Field label="리뷰어가 의견을 남김" hint="공유 링크로 받은 의견을 덱 작성자에게. 본문은 담지 않습니다."><Select value={String(values.notify_comment !== false)} onChange={(event) => update('notify_comment', event.target.value === 'true')}><option value="true">보냄</option><option value="false">보내지 않음</option></Select></Field>
+      </div>
+    </SettingCard>
+    <SettingCard title="시험 발송" description="저장한 설정으로 실제 한 통을 보내고 결과를 그 자리에서 보여 줍니다. 저장하지 않은 변경은 쓰이지 않습니다.">
+      <div className="form-grid two">
+        <Field label="받는 사람" hint="비우면 내 계정의 메일 주소로."><Input value={testRecipient} onChange={(event) => setTestRecipient(event.target.value)} placeholder="me@corp.example" /></Field>
+        <Field label=" "><Button variant="secondary" disabled={testing || !liveOn} onClick={onTest}><Mail size={15} /> {testing ? '보내는 중…' : '시험 메일 보내기'}</Button></Field>
+      </div>
+      {!liveOn && <p className="muted-note">메일 알림을 켜서 저장한 뒤에 보낼 수 있습니다.</p>}
+      {tested && <p className="field-hint">{tested}</p>}
+    </SettingCard>
+    <SettingCard title="발송 기록" description="시도마다 남습니다 — 언제, 어떤 이벤트로, 누구에게, 제목이 무엇이었고, 되었는지. 본문은 담지 않습니다.">
+      {deliveriesError ? <ErrorState message={deliveriesError} onRetry={onReload} /> : deliveries.length === 0 ? <p className="muted-note">아직 보낸 메일이 없습니다.</p> : <table className="data-table"><thead><tr><th>시각</th><th>이벤트</th><th>받는 사람</th><th>제목</th><th>결과</th></tr></thead><tbody>{deliveries.map((item) => <tr key={item.id}><td>{new Date(item.createdAt).toLocaleString('ko-KR')}</td><td>{eventLabels[item.event] ?? item.event}</td><td>{item.recipient}</td><td>{item.subject}</td><td><Badge tone={statusTone(item.status)}>{item.status === 'sent' ? '보냄' : item.status === 'failed' ? '실패' : '대기'}</Badge>{item.errorMessage && <div className="muted-note">{item.errorMessage}</div>}</td></tr>)}</tbody></table>}
+      <div className="tracking-actions"><Button variant="secondary" size="small" onClick={onReload}>다시 읽기</Button><span className="muted-note">보냄 {counts.sent ?? 0} · 실패 {counts.failed ?? 0}</span></div>
     </SettingCard>
   </>
 }

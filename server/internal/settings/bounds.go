@@ -34,6 +34,8 @@ var Numbers = map[string]Range{
 	// pptx.MaxPackageBytes — 64 MiB. Asking for more is asking for something
 	// that will not happen. A test keeps the two the same.
 	"generation.max_template_mb": {1, 64},
+	"mail.smtp_port":             {1, 65535},
+	"mail.timeout_seconds":       {1, 120},
 }
 
 // Words are the settings whose value must be one of a few words.
@@ -42,16 +44,22 @@ var Words = map[string][]string{
 	"ai.reasoning":        {"auto", "off", "on"},
 	"analytics.provider":  {"none", "momento", "ga4", "gtm", "matomo", "custom"},
 	"analytics.placement": {"head", "body"},
+	"mail.security":       {"auto", "none", "starttls", "tls"},
 }
 
 // Flags are the settings read as true or false, and nothing else.
 var Flags = map[string]bool{
-	"generation.outline_pass":       true,
-	"generation.allow_user_uploads": true,
-	"auth.oidc.auto_login":          true,
-	"analytics.enabled":             true,
-	"analytics.momento_proxy":       true,
-	"analytics.include_admin":       true,
+	"generation.outline_pass":          true,
+	"generation.allow_user_uploads":    true,
+	"auth.oidc.auto_login":             true,
+	"analytics.enabled":                true,
+	"analytics.momento_proxy":          true,
+	"analytics.include_admin":          true,
+	"mail.enabled":                     true,
+	"mail.skip_tls_verify":             true,
+	"mail.notify_generation_completed": true,
+	"mail.notify_generation_failed":    true,
+	"mail.notify_comment":              true,
 }
 
 // IsWord reports whether value is one of the words a setting is honoured at.
