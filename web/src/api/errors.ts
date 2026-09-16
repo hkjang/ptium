@@ -14,6 +14,10 @@
  */
 
 const byMessage: Record<string, string> = {
+  // Notification mail through the company relay (MAIL-STANDARD).
+  'mail is not configured on this server': '이 서버에는 메일 서비스가 구성되어 있지 않습니다.',
+  'mail is switched off; save mail.enabled first': '메일 알림이 꺼져 있습니다. 먼저 "메일 알림 사용"을 켜서 저장하세요.',
+  'recipient must be one email address': '받는 사람은 메일 주소 하나여야 합니다.',
   // Passing a deck to another service and taking a document from one
   // (HANDOFF-STANDARD): what the other side, or the list, refused.
   'This service passes a deck on as pptx only': '이 서비스는 덱을 pptx 로만 보냅니다.',
@@ -198,6 +202,10 @@ const byCode: Record<string, string> = {
   unsupported_handoff_format: '이 서비스는 덱을 pptx 로만 보냅니다.',
   handoff_source_not_allowed: '이 서비스가 문서를 받도록 허용된 곳이 아닙니다. 관리자가 서비스 설정의 문서 넘기기에서 그 서비스를 허용 목록에 넣어야 합니다.',
   handoff_claim_invalid: '넘겨받은 표가 서비스가 발급한 모양이 아닙니다. 보낸 쪽에서 다시 보내 주세요.',
+  mail_send_failed: '릴레이가 메일을 받지 않았습니다. 아래 상세 메시지와 호스트·포트·보안 설정을 확인하세요.',
+  mail_invalid: '메일 설정이 모자라 보낼 수 없습니다. 릴레이 호스트와 보내는 주소를 확인하세요.',
+  mail_disabled: '메일 알림이 꺼져 있습니다. 먼저 "메일 알림 사용"을 켜서 저장하세요.',
+  mail_unavailable: '이 서버에는 메일 서비스가 구성되어 있지 않습니다.',
   handoff_claim_refused: '표가 이미 쓰였거나 5분이 지났습니다. 보낸 쪽에서 다시 보내 주세요.',
   handoff_redirected: '보낸 서비스가 다른 주소로 넘기려 해서 받지 않았습니다. 허용 목록의 주소가 그 서비스의 실제 주소인지 확인하세요.',
   handoff_unsupported_format: '보낸 서비스가 이 서비스가 읽지 못하는 형식을 보냈습니다. 마크다운·Word·CSV·Excel·텍스트만 받습니다.',

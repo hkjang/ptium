@@ -318,6 +318,13 @@ export interface Share {
  * browser while visitor tracking is on. `allowed` marks an origin the current
  * tracking configuration already lets through.
  */
+/** One attempt to send one notification mail (MAIL-STANDARD); the body is never kept. */
+export interface MailDelivery {
+  id: string; event: string; recipient: string; subject: string; presentationId?: string; actorId?: string
+  status: 'queued' | 'sent' | 'failed'; attempts: number; errorMessage?: string; createdAt: string; updatedAt: string
+}
+export interface MailDeliveryPage { items: MailDelivery[]; total: number; status: Record<string, number> }
+
 export interface TrackingViolation {
   origin: string
   directive: string

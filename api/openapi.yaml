@@ -5130,6 +5130,139 @@ paths:
         '422':
           $ref: '#/components/responses/UnprocessableEntity'
 
+  /api/v1/admin/mail/deliveries:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    get:
+      operationId: listMailDeliveries
+      summary: What notification mail left the building
+      description: |
+        Every attempt to send a notification, newest first — sent and failed
+        alike, so "it never came" can be answered — with when, which event,
+        to whom, the subject, how many attempts and the relay's last word.
+        The body is never kept. `status` counts every delivery ever recorded
+        by outcome, whatever the filter.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [queued, sent, failed]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Deliveries, newest first, and a count by outcome.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MailDeliveryPage'
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+
+  /api/v1/admin/mail/test:
+    parameters:
+      - $ref: '#/components/parameters/XRequestID'
+    post:
+      operationId: sendTestMail
+      summary: Send one mail with the settings as saved
+      description: |
+        Proves the relay before anything depends on it: one mail, sent now,
+        with the saved `mail.*` settings, and the outcome in the answer. The
+        recipient defaults to the administrator's own address. The attempt is
+        recorded like any other. A relay that refuses answers 502 with the
+        relay's words; mail switched off answers 409; a configuration that
+        cannot send (no host, a bad security word) answers 422.
+      tags: [Administration, Settings]
+      x-ptium-admin: true
+      x-ptium-api-key-scopes: [admin:settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                recipient:
+                  type: string
+                  format: email
+                  description: Empty means the administrator's own address.
+      responses:
+        '200':
+          description: The relay accepted the mail.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestID'
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [data, requestId]
+                properties:
+                  data:
+                    type: object
+                    required: [sent, recipient]
+                    properties:
+                      sent:
+                        type: boolean
+                        const: true
+                      recipient:
+                        type: string
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/AdminForbidden'
+        '409':
+          description: Mail is switched off (`mail_disabled`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '422':
+          description: The recipient is not an address, or the saved configuration cannot send (`mail_invalid`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          description: The relay refused or could not be reached (`mail_send_failed`); the message is the relay's.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '503':
+          description: No mailer is configured on this server (`mail_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
   /api/v1/admin/users/counts:
     parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -5786,6 +5919,57 @@ components:
             requestId: 8dcb8033f7d1f8027f2df88d
 
   schemas:
+    MailDelivery:
+      type: object
+      description: One attempt to send one notification to one person. The body is not kept.
+      required: [id, event, recipient, subject, status, attempts, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event:
+          type: string
+          description: generation.completed, generation.failed, comment.created or test.
+        recipient:
+          type: string
+        subject:
+          type: string
+        presentationId:
+          type: string
+        actorId:
+          type: string
+        status:
+          type: string
+          enum: [queued, sent, failed]
+        attempts:
+          type: integer
+        errorMessage:
+          type: string
+          description: The relay's last word when it failed.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    MailDeliveryPage:
+      type: object
+      required: [items, total, status]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MailDelivery'
+        total:
+          type: integer
+          description: Every delivery ever recorded, whatever the filter.
+        status:
+          type: object
+          additionalProperties:
+            type: integer
+          description: How many of each outcome, over every delivery.
+
     PolicyViolation:
       type: object
       additionalProperties: false
@@ -7919,11 +8103,40 @@ components:
         - if:
             properties:
               key:
-                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login, analytics.enabled, analytics.momento_proxy, analytics.include_admin]
+                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login, analytics.enabled, analytics.momento_proxy, analytics.include_admin, mail.enabled, mail.skip_tls_verify, mail.notify_generation_completed, mail.notify_generation_failed, mail.notify_comment]
           then:
             properties:
               value:
                 type: boolean
+        - if:
+            properties:
+              key:
+                const: mail.security
+          then:
+            properties:
+              value:
+                type: string
+                enum: [auto, none, starttls, tls]
+        - if:
+            properties:
+              key:
+                const: mail.smtp_port
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 1
+                maximum: 65535
+        - if:
+            properties:
+              key:
+                const: mail.timeout_seconds
+          then:
+            properties:
+              value:
+                type: integer
+                minimum: 1
+                maximum: 120
         - if:
             properties:
               key:
@@ -8126,6 +8339,65 @@ components:
           default: head
         handoff.peers:
           $ref: '#/components/schemas/SettingHandoffPeers'
+        mail.enabled:
+          type: boolean
+          default: false
+          description: |
+            Send notification mail through the company SMTP relay. Off as
+            shipped: nothing is sent and nothing is recorded. Read as each
+            mail is sent; no restart. Saving it on with no `mail.smtp_host`
+            is refused.
+        mail.smtp_host:
+          type: string
+          default: ''
+          description: Relay host, without a port.
+        mail.smtp_port:
+          type: integer
+          minimum: 1
+          maximum: 65535
+          default: 25
+          description: An internal relay is usually 25; 465 implies `tls`.
+        mail.security:
+          type: string
+          enum: [auto, none, starttls, tls]
+          default: auto
+          description: auto upgrades with STARTTLS when the relay offers it and goes without otherwise.
+        mail.skip_tls_verify:
+          type: boolean
+          default: false
+        mail.username:
+          type: string
+          default: ''
+          description: Empty for a relay that needs no credentials, which is the common internal relay.
+        mail.password:
+          type: string
+          default: ''
+          description: Sealed; never read back. The settings list says only whether one is configured.
+        mail.from_address:
+          type: string
+          default: ''
+          description: Empty means ptium@<relay host>.
+        mail.from_name:
+          type: string
+          default: Ptium
+        mail.base_url:
+          type: string
+          default: ''
+          description: This deployment's address for the links in a mail; empty uses PUBLIC_BASE_URL.
+        mail.timeout_seconds:
+          type: integer
+          minimum: 1
+          maximum: 120
+          default: 10
+        mail.notify_generation_completed:
+          type: boolean
+          default: true
+        mail.notify_generation_failed:
+          type: boolean
+          default: true
+        mail.notify_comment:
+          type: boolean
+          default: true
       additionalProperties:
         $ref: '#/components/schemas/JSONValue'
 
