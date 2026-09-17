@@ -23,6 +23,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/library"
 	"github.com/hkjang/ptium/server/internal/mail"
 	"github.com/hkjang/ptium/server/internal/mcp"
+	"github.com/hkjang/ptium/server/internal/mcpoauth"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -128,8 +129,13 @@ func main() {
 	if err != nil {
 		fatal("initialize session tokens", err)
 	}
-	authenticator, publicAuth, tokenExchange, err := buildAuthenticator(rootContext, authConfig, keyManager, dataStore,
-		sessionIssuer, applicationConfig.CORSAllowedOrigins, logger)
+	authenticator, mcpAuthenticator, publicAuth, tokenExchange, err := buildAuthenticator(rootContext, authConfig, keyManager, dataStore,
+		sessionIssuer, applicationConfig.CORSAllowedOrigins, logger,
+		// What the administrator saved is read for every token, so a switch
+		// flipped on the settings screen is in force on the next call.
+		func(ctx context.Context) mcpoauth.Policy {
+			return mcpoauth.Read(ctx, settingService, applicationConfig.PublicBaseURL)
+		})
 	if err != nil {
 		fatal("initialize authentication", err)
 	}
@@ -235,7 +241,7 @@ func main() {
 
 	api, err := httpapi.New(httpapi.Options{
 		Store: dataStore, Settings: settingService, Keys: keyManager, Worker: worker, Generator: generator,
-		Authenticator: authenticator, AuthPublic: publicAuth, AdminRoles: authConfig.AdminRoles,
+		Authenticator: authenticator, MCPAuthenticator: mcpAuthenticator, AuthPublic: publicAuth, AdminRoles: authConfig.AdminRoles,
 		BootstrapAdminEmails: applicationConfig.BootstrapAdminEmails, BootstrapAdminSubjects: applicationConfig.BootstrapAdminSubjects,
 		CORSAllowedOrigins: applicationConfig.CORSAllowedOrigins, Logger: logger, MCPHandler: mcpHandler,
 		WebHandler: webHandler, Sessions: sessionIssuer, TokenExchange: tokenExchange,
@@ -281,23 +287,30 @@ func main() {
 	logger.Info("Ptium server stopped")
 }
 
+// buildAuthenticator is the API's chain and the MCP endpoint's. They differ
+// in one link: the web sign-in's identity provider is in the API's, because
+// the browser presents its token there once to open a session; at /mcp a
+// token from the same provider goes through the MCP SSO door instead, which
+// checks whom it was issued for, provisions nobody, and is off until an
+// administrator turns it on. Keys work the same at both.
 func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyManager *keys.Manager,
 	dataStore *store.Store, sessions *auth.SessionIssuer, corsOrigins []string, logger *slog.Logger,
-) (auth.Authenticator, httpapi.AuthPublicConfig, *httpapi.TokenExchange, error) {
-	var authenticators []auth.Authenticator
-	var exchange *httpapi.TokenExchange
-	public := httpapi.AuthPublicConfig{Scopes: "openid profile email", DevAuthEnabled: config.Dev.Enabled, DevAuthHeader: config.Dev.Header}
+	mcpPolicy func(context.Context) mcpoauth.Policy,
+) (api auth.Authenticator, mcpChain auth.Authenticator, public httpapi.AuthPublicConfig, exchange *httpapi.TokenExchange, err error) {
+	var authenticators, mcpAuthenticators []auth.Authenticator
+	public = httpapi.AuthPublicConfig{Scopes: "openid profile email", DevAuthEnabled: config.Dev.Enabled, DevAuthHeader: config.Dev.Header}
 	if config.Dev.Enabled {
 		dev, err := auth.NewDevAuthenticator(config.Dev)
 		if err != nil {
-			return nil, public, nil, err
+			return nil, nil, public, nil, err
 		}
 		authenticators = append(authenticators, dev)
+		mcpAuthenticators = append(mcpAuthenticators, dev)
 	}
 	// Session tokens come before the identity provider and the API key: they are
 	// prefixed, so recognising them costs nothing and no other authenticator
 	// needs to guess at them.
-	authenticators = append(authenticators, auth.SessionAuthenticator{
+	sessionAuthenticator := auth.SessionAuthenticator{
 		Issuer: sessions,
 		// A browser on another origin may only present the session cookie if the
 		// deployment already listed that origin for CORS.
@@ -323,11 +336,13 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 				Claims:     map[string]any{"ptium_user_id": claims.UserID},
 			}, nil
 		}),
-	})
+	}
+	authenticators = append(authenticators, sessionAuthenticator)
+	mcpAuthenticators = append(mcpAuthenticators, sessionAuthenticator)
 	if config.OIDC.Enabled {
 		oidc, err := auth.NewOIDCAuthenticator(ctx, config.OIDC)
 		if err != nil {
-			return nil, public, nil, err
+			return nil, nil, public, nil, err
 		}
 		discovery := oidc.Discovery()
 		public.OIDCEnabled = true
@@ -337,6 +352,23 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 		public.TokenEndpoint = discovery.TokenEndpoint
 		public.EndSessionEndpoint = discovery.EndSessionEndpoint
 		authenticators = append(authenticators, oidc)
+		// The MCP SSO door: the same provider and key cache, a stricter
+		// question. Only an account that already signed in to the web is found.
+		mcpAuthenticators = append(mcpAuthenticators, &mcpoauth.Authenticator{
+			Provider: oidc,
+			Policy:   mcpPolicy,
+			Logger:   logger,
+			Accounts: mcpoauth.AccountsFunc(func(ctx context.Context, subject string) (mcpoauth.Account, error) {
+				user, err := dataStore.GetUserBySubject(ctx, subject)
+				if errors.Is(err, store.ErrNotFound) {
+					return mcpoauth.Account{}, mcpoauth.ErrNoAccount
+				}
+				if err != nil {
+					return mcpoauth.Account{}, err
+				}
+				return mcpoauth.Account{ID: user.ID, Email: user.Email, Name: user.Name, Roles: user.Roles, Admin: user.IsAdmin, Disabled: user.Disabled}, nil
+			}),
+		})
 		// A confidential client must not hand its secret to the browser, so the
 		// code exchange runs here instead. A public client keeps talking to the
 		// provider directly.
@@ -371,7 +403,9 @@ func buildAuthenticator(ctx context.Context, config auth.BootstrapConfig, keyMan
 		AllowBearer: true,
 	}
 	authenticators = append(authenticators, apiKeyAuthenticator)
-	return auth.CompositeAuthenticator{Authenticators: authenticators}, public, exchange, nil
+	mcpAuthenticators = append(mcpAuthenticators, apiKeyAuthenticator)
+	return auth.CompositeAuthenticator{Authenticators: authenticators},
+		auth.CompositeAuthenticator{Authenticators: mcpAuthenticators}, public, exchange, nil
 }
 
 // originAllower matches a browser origin against the deployment's CORS list. A

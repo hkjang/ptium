@@ -12,9 +12,15 @@ import (
 // authentication failures without exposing sensitive verification details to
 // clients.
 type MiddlewareOptions struct {
-	Realm      string
-	OnError    func(context.Context, error)
-	WriteError func(http.ResponseWriter, *http.Request, int, string)
+	Realm   string
+	OnError func(context.Context, error)
+	// WriteError writes the refusal. The error is what the authenticator said,
+	// so an answer may carry a Refusal's message; nil means no error.
+	WriteError func(http.ResponseWriter, *http.Request, int, string, error)
+	// Challenge, when set, is the WWW-Authenticate value of a 401 in place of
+	// the bare realm. The MCP endpoint uses it to point a refused client at its
+	// resource metadata (RFC 9728). The error is nil when no credentials came.
+	Challenge func(*http.Request, error) string
 }
 
 // AuthenticationMiddleware verifies a request and attaches its Principal.
@@ -25,7 +31,9 @@ func AuthenticationMiddleware(authenticator Authenticator, options MiddlewareOpt
 	}
 	writeError := options.WriteError
 	if writeError == nil {
-		writeError = writeJSONError
+		writeError = func(writer http.ResponseWriter, request *http.Request, status int, code string, _ error) {
+			writeJSONError(writer, request, status, code)
+		}
 	}
 
 	return func(next http.Handler) http.Handler {
@@ -35,7 +43,7 @@ func AuthenticationMiddleware(authenticator Authenticator, options MiddlewareOpt
 				if options.OnError != nil {
 					options.OnError(request.Context(), err)
 				}
-				writeError(writer, request, http.StatusServiceUnavailable, "authentication_unavailable")
+				writeError(writer, request, http.StatusServiceUnavailable, "authentication_unavailable", err)
 				return
 			}
 
@@ -45,11 +53,22 @@ func AuthenticationMiddleware(authenticator Authenticator, options MiddlewareOpt
 					options.OnError(request.Context(), err)
 				}
 				if errors.Is(err, ErrNoCredentials) || errors.Is(err, ErrInvalidCredentials) {
-					writer.Header().Set("WWW-Authenticate", `Bearer realm="`+escapeRealm(realm)+`"`)
-					writeError(writer, request, http.StatusUnauthorized, "authentication_required")
+					challenge := ""
+					if options.Challenge != nil {
+						var refused error
+						if errors.Is(err, ErrInvalidCredentials) {
+							refused = err
+						}
+						challenge = options.Challenge(request, refused)
+					}
+					if challenge == "" {
+						challenge = `Bearer realm="` + escapeRealm(realm) + `"`
+					}
+					writer.Header().Set("WWW-Authenticate", challenge)
+					writeError(writer, request, http.StatusUnauthorized, "authentication_required", err)
 					return
 				}
-				writeError(writer, request, http.StatusServiceUnavailable, "authentication_unavailable")
+				writeError(writer, request, http.StatusServiceUnavailable, "authentication_unavailable", err)
 				return
 			}
 

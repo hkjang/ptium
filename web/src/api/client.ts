@@ -1523,6 +1523,24 @@ export const api = {
     if (status) query.set('status', status)
     return unwrapOne<MailDeliveryPage>(await request<unknown>(`/admin/mail/deliveries?${query}`), ['data'])
   },
+  /**
+   * The values an MCP client is connected with under SSO (MCP-OAUTH-STANDARD)
+   * and whether SSO tokens are taken at /mcp right now — with the reason when
+   * the switch is on and they are not. Nothing here is a credential.
+   */
+  async adminMCPOAuth() {
+    const data = unwrapOne<Record<string, unknown>>(await request<unknown>('/admin/mcp/oauth'), ['data'])
+    return {
+      enabled: Boolean(data.enabled),
+      active: Boolean(data.active),
+      reason: String(data.reason || ''),
+      issuer: String(data.issuer || ''),
+      resource: String(data.resource || ''),
+      metadataUrl: String(data.metadataUrl || ''),
+      audience: Array.isArray(data.audience) ? data.audience.map(String) : [],
+      scopes: Array.isArray(data.scopes) ? data.scopes.map(String) : [],
+    }
+  },
   /** One mail with the settings as saved, to prove the relay. Empty recipient means the administrator's own address. */
   async sendTestMail(recipient: string) {
     return unwrapOne<{ sent: boolean; recipient: string }>(

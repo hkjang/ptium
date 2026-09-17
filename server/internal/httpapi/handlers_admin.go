@@ -10,7 +10,9 @@ import (
 	"github.com/hkjang/ptium/server/internal/db"
 	"github.com/hkjang/ptium/server/internal/generation"
 	"github.com/hkjang/ptium/server/internal/handoff"
+	"github.com/hkjang/ptium/server/internal/keys"
 	"github.com/hkjang/ptium/server/internal/mail"
+	"github.com/hkjang/ptium/server/internal/mcpoauth"
 	"github.com/hkjang/ptium/server/internal/store"
 	"net/http"
 	"net/url"
@@ -211,6 +213,16 @@ func (s *Server) validateSettingRelationships(ctx context.Context, updates []set
 	// Mail switched on with no relay to send through would store a switch
 	// that only ever records failures.
 	if err := s.mailAfter(ctx, updates).Validate(); err != nil {
+		return err
+	}
+	// MCP SSO switched on with no issuer to check tokens against, or no
+	// identifier for them to name, would store a switch under which every
+	// token is refused. The issuer running now counts, and so does one just
+	// stored: that one is in force at the next restart.
+	if issuer == "" {
+		issuer = s.authPublic.Issuer
+	}
+	if err := mcpoauth.FromValues(s.valuesAfter(ctx, "mcp.oauth.", updates), s.publicBaseURL).Validate(issuer); err != nil {
 		return err
 	}
 	return nil
@@ -450,6 +462,36 @@ func validateSettingValue(key string, raw json.RawMessage) error {
 		value, err := decodeString()
 		if err != nil || (value != "" && !validURL(value, false, false)) {
 			return errors.New("mail base URL must be empty or an HTTP(S) URL without credentials, query, or fragment")
+		}
+	case mcpoauth.SettingResource:
+		value, err := decodeString()
+		if err != nil {
+			return err
+		}
+		if err := mcpoauth.ValidateResource(value); err != nil {
+			return err
+		}
+	case mcpoauth.SettingAudience:
+		value, err := decodeString()
+		if err != nil {
+			return err
+		}
+		if err := mcpoauth.ValidateAudience(value); err != nil {
+			return err
+		}
+	case mcpoauth.SettingScopes:
+		// The same vocabulary a key is granted from, and nothing an
+		// administrator's key alone may hold: an SSO token is never wider.
+		value, err := decodeString()
+		if err != nil {
+			return err
+		}
+		listed := mcpoauth.SplitList(value)
+		if len(listed) == 0 {
+			return errors.New("MCP SSO scopes must name at least one scope, e.g. presentations:read templates:read")
+		}
+		if err := keys.ValidateScopes(listed, false); err != nil {
+			return fmt.Errorf("MCP SSO scopes: %v", err)
 		}
 	case handoff.SettingKey:
 		// The list is read on every handoff; one entry that does not parse

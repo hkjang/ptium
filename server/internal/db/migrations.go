@@ -420,6 +420,13 @@ var defaultSettings = map[string]struct {
 	// Empty as shipped: no service is sent to and none is received from until
 	// an administrator names one, so a fresh install is unchanged.
 	"handoff.peers": {`[]`, false, "Services documents are passed to and taken from, one name=origin per entry, e.g. weekly=https://weekly.intra"},
+	// MCP over SSO: a Keycloak access token opens /mcp beside the personal
+	// key. Off as shipped, and the keys are the same in every service here.
+	// The issuer and client are the web sign-in's own (auth.oidc.*).
+	"mcp.oauth.enabled":  {`false`, false, "Take Keycloak access tokens at /mcp beside personal API keys; needs the OIDC issuer and a resource identifier"},
+	"mcp.oauth.resource": {`""`, false, "The identifier MCP clients connect to and a token's audience may name, https://<public address>/mcp; empty builds it from PUBLIC_BASE_URL"},
+	"mcp.oauth.audience": {`""`, false, "Values accepted in a token's aud or azp besides the resource itself, separated by spaces — the MCP client's id, in practice"},
+	"mcp.oauth.scopes":   {`"presentations:read templates:read"`, false, "What an SSO token may do at /mcp, separated by spaces; mcp:use is implied"},
 	// Notification mail through the company SMTP relay. Off as shipped, and
 	// the defaults describe the common internal relay: port 25, no
 	// credentials, no TLS. The keys are the same in every service here.

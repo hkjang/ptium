@@ -60,6 +60,7 @@ var Flags = map[string]bool{
 	"mail.notify_generation_completed": true,
 	"mail.notify_generation_failed":    true,
 	"mail.notify_comment":              true,
+	"mcp.oauth.enabled":                true,
 }
 
 // IsWord reports whether value is one of the words a setting is honoured at.
