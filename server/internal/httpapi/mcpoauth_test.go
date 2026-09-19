@@ -148,6 +148,51 @@ func TestA401AtMCPPointsAtTheMetadataAndAREST401DoesNot(t *testing.T) {
 	}
 }
 
+// The client is told only the refusal's sentence; the cause — which check
+// the token failed — goes to the log under the request id the client got
+// back, so the operator can join the two.
+func TestARefusedTokensCauseIsLoggedUnderTheRequestIDTheClientGot(t *testing.T) {
+	var lines strings.Builder
+	server := ssoServer(mcpoauth.Policy{Enabled: true, Resource: ssoResource}, true)
+	server.logger = slog.New(slog.NewTextHandler(&lines, nil))
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("{}"))
+	request.Header.Set("Authorization", "Bearer a.b.c")
+	server.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("/mcp answered %d: %s", recorder.Code, recorder.Body)
+	}
+	var body struct {
+		RequestID string `json:"requestId"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.RequestID == "" {
+		t.Fatalf("no requestId in %s", recorder.Body)
+	}
+	// The request log carries the id too; what is pinned is the refusal's
+	// own line carrying it, beside the cause.
+	var refused string
+	for _, line := range strings.Split(lines.String(), "\n") {
+		if strings.Contains(line, `msg="authentication failed"`) {
+			refused = line
+		}
+	}
+	if refused == "" {
+		t.Fatalf("no authentication failed line in:\n%s", lines.String())
+	}
+	for _, want := range []string{"request_id=" + body.RequestID, "path=/mcp", `error="sso token refused: audience"`} {
+		if !strings.Contains(refused, want) {
+			t.Errorf("the refusal's log line lacks %s: %s", want, refused)
+		}
+	}
+	// The cause is for the log alone: the client saw the sentence, not it.
+	if strings.Contains(recorder.Body.String(), "sso token refused") {
+		t.Fatalf("the cause reached the client: %s", recorder.Body)
+	}
+}
+
 // An SSO principal passes the same scope gate a key does: what the
 // administrator granted opens, what they did not stays shut, and nothing
 // about the token being from the identity provider widens it.

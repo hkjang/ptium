@@ -1,6 +1,7 @@
 package mcpoauth
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +103,8 @@ type fixture struct {
 	// keys is what the key authenticator behind the SSO door saw and said.
 	keysSaw []string
 	chain   auth.Authenticator
+	// logs is what the SSO door wrote for the operator.
+	logs bytes.Buffer
 }
 
 const resource = "https://slides.corp.example/mcp"
@@ -123,6 +127,7 @@ func newFixture(t *testing.T) *fixture {
 			}
 			return account, nil
 		}),
+		Logger: slog.New(slog.NewTextHandler(&f.logs, nil)),
 	}
 	keys := auth.NewAPIKeyAuthenticator(auth.APIKeyVerifierFunc(func(_ context.Context, key string) (*auth.Principal, error) {
 		f.keysSaw = append(f.keysSaw, key)
@@ -258,11 +263,26 @@ func TestSwitchedOffATokenIsRefusedLikeABadKeyAndKeysAreUntouched(t *testing.T) 
 	f.policy.Enabled = false
 	_, err := f.authenticate(t, f.idp.accessToken(t, "claude-mcp", nil))
 	refusalSaying(t, err, "does not take SSO access tokens")
-	// Switched on but with nothing to name: the same answer, and the reason
-	// is what Active says.
+	// Off is the administrator's choice, not a misconfiguration: nothing to
+	// warn about.
+	const cannotTake = "MCP SSO is switched on but cannot take tokens"
+	if strings.Contains(f.logs.String(), cannotTake) {
+		t.Fatalf("switched off warned the operator:\n%s", f.logs.String())
+	}
+	// Switched on but with nothing to name: the same answer to the client,
+	// and the reason — what Active says — is warned about, since the
+	// administrator flipped a switch that does nothing.
 	f.policy = Policy{Enabled: true}
 	if active, reason := f.policy.Active(f.idp.server.URL); active || !strings.Contains(reason, "resource identifier") {
 		t.Fatalf("Active() = %v, %q", active, reason)
+	}
+	_, err = f.authenticate(t, f.idp.accessToken(t, "claude-mcp", nil))
+	refusalSaying(t, err, "does not take SSO access tokens")
+	if !strings.Contains(err.Error(), "sso token refused: no resource identifier") {
+		t.Fatalf("cause = %v", err)
+	}
+	if logs := f.logs.String(); !strings.Contains(logs, cannotTake) || !strings.Contains(logs, "resource identifier") {
+		t.Fatalf("switched on with no resource did not warn the operator:\n%s", logs)
 	}
 	// Keys go to the key authenticator exactly as before, on or off.
 	for _, enabled := range []bool{false, true} {
