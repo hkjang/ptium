@@ -93,6 +93,11 @@ than bare numbers is the time axis:
 ::
 ```
 
+The values are separated by a comma and a space, so a number written with
+thousands separators stays one value: `1,200, 1,350, 1,480` and
+`1,200 | 1,350 | 1,480` are both three points. Three-digit groups joined without
+a space, `100,200,300`, read as one number.
+
 When a component fills the only body region, the slide's lead line is drawn as the
 component's heading rather than being dropped.
 

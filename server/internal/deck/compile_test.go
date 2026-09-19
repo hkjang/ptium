@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -77,6 +78,54 @@ func TestCompileDrawsAnUnplottableChartAsFigures(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the downgrade should be reported: %v", compiled.Warnings)
+	}
+}
+
+// Korean documents and model output write thousands with a comma, and a line
+// chart's rows are comma-separated lists, so "1,200" must be read as one point
+// and not as the two points 1 and 200. The documented list form puts a space
+// after the comma, which is what tells the two apart.
+func TestALineChartKeepsAThousandsCommaInsideOnePoint(t *testing.T) {
+	cases := []struct {
+		name   string
+		row    []string
+		points []float64
+	}{
+		{"one number per cell", []string{"매출", "1,200", "1,350", "1,480"}, []float64{1200, 1350, 1480}},
+		{"a list inside one cell", []string{"매출", "1,200, 1,350, 1,480"}, []float64{1200, 1350, 1480}},
+		{"the documented list form", []string{"전환 전", "120, 118, 121, 119"}, []float64{120, 118, 121, 119}},
+		{"a decimal", []string{"매출", "1,200.5", "1,300.25"}, []float64{1200.5, 1300.25}},
+		{"a signed number", []string{"손익", "-1,200", "+1,350"}, []float64{-1200, 1350}},
+		{"a percentage", []string{"성장", "1,200%", "1,350%"}, []float64{1200, 1350}},
+		{"several groups", []string{"매출", "12,000,000", "13,500,000"}, []float64{12000000, 13500000}},
+		// A list of single digits joined without spaces is not written with
+		// thousands separators — the groups are not three digits — so it is
+		// still a list.
+		{"single digits without spaces", []string{"점수", "1,2,3"}, []float64{1, 2, 3}},
+		// Three-digit groups joined without spaces are indistinguishable from
+		// one number with thousands separators, and the documented list form
+		// is "100, 200, 300", so the number wins. Noted in the 2026-09-20 scout
+		// notes; if this ever bites, the space in the list form is the fix.
+		{"three-digit groups without spaces", []string{"매출", "100,200,300", "1"}, []float64{100200300, 1}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			series, labels := seriesFromRows([][]string{c.row})
+			if len(labels) != 0 {
+				t.Fatalf("labels = %v", labels)
+			}
+			if len(series) != 1 {
+				t.Fatalf("series = %+v", series)
+			}
+			if !reflect.DeepEqual(series[0].Points, c.points) {
+				t.Fatalf("points = %v, want %v", series[0].Points, c.points)
+			}
+		})
+	}
+	// The label row keeps its shape: a month per point, not a month per comma.
+	_, labels := seriesFromRows([][]string{{"월", "1월, 2월, 3월, 4월"}})
+	if !reflect.DeepEqual(labels, []string{"1월", "2월", "3월", "4월"}) {
+		t.Fatalf("labels = %v", labels)
 	}
 }
 

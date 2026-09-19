@@ -2,6 +2,7 @@ package deck
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1368,7 +1369,10 @@ func seriesFromRows(rows [][]string) ([]pptx.Series, []string) {
 			continue
 		}
 		name := row[0]
-		fields := strings.Split(strings.Join(row[1:], ","), ",")
+		fields := make([]string, 0, 8)
+		for _, cell := range row[1:] {
+			fields = append(fields, chartFields(cell)...)
+		}
 		points := make([]float64, 0, 8)
 		labelled := 0
 		for _, field := range fields {
@@ -1399,6 +1403,33 @@ func seriesFromRows(rows [][]string) ([]pptx.Series, []string) {
 		}
 	}
 	return series, labels
+}
+
+// A number written with thousands separators, "1,200" or "-12,000,000.5%".
+var thousandsNumber = regexp.MustCompile(`^[-+]?\d{1,3}(,\d{3})+(\.\d+)?%?$`)
+
+// The separator of the documented list form, "120, 118, 121": a comma with
+// space after it.
+var listSeparator = regexp.MustCompile(`,\s+`)
+
+// chartFields splits one cell of a chart row into its values. Korean documents
+// and model output write thousands with a comma, so "1,200" must stay one value
+// and not become the two points 1 and 200. The cell is cut at the documented
+// separator first — a comma followed by space — and a piece that is one number
+// with thousands separators is kept whole; anything else is cut at every comma
+// as before, so "1,2,3" is still three values. Three-digit groups joined without
+// a space, "100,200,300", cannot be told from one number and are read as one.
+func chartFields(cell string) []string {
+	fields := make([]string, 0, 4)
+	for _, piece := range listSeparator.Split(cell, -1) {
+		piece = strings.TrimSpace(piece)
+		if thousandsNumber.MatchString(piece) {
+			fields = append(fields, piece)
+			continue
+		}
+		fields = append(fields, strings.Split(piece, ",")...)
+	}
+	return fields
 }
 
 // parseBareNumber accepts only a number, optionally signed, with thousands
