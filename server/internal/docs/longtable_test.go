@@ -93,7 +93,7 @@ func TestASheetLongerThanASlideContinues(t *testing.T) {
 		return grid
 	}
 	var builder strings.Builder
-	written, warnings := writeSheet(&builder, "실적.csv", "", rows(12))
+	written, warnings := writeSheet(&builder, "실적.csv", "", rows(12), placement{})
 	if written != 2 {
 		t.Errorf("a twelve-row sheet wrote %d slides", written)
 	}
@@ -108,7 +108,7 @@ func TestASheetLongerThanASlideContinues(t *testing.T) {
 
 	// A sheet nobody would sit through says what it left.
 	builder.Reset()
-	written, warnings = writeSheet(&builder, "실적.csv", "", rows(40))
+	written, warnings = writeSheet(&builder, "실적.csv", "", rows(40), placement{})
 	if written != maximumTableSlides {
 		t.Errorf("a forty-row sheet wrote %d slides", written)
 	}
@@ -118,7 +118,7 @@ func TestASheetLongerThanASlideContinues(t *testing.T) {
 
 	// And a short one is one slide, as it was.
 	builder.Reset()
-	if written, warnings = writeSheet(&builder, "실적.csv", "", rows(3)); written != 1 || len(warnings) != 0 {
+	if written, warnings = writeSheet(&builder, "실적.csv", "", rows(3), placement{}); written != 1 || len(warnings) != 0 {
 		t.Errorf("a three-row sheet wrote %d slides and said %v", written, warnings)
 	}
 }

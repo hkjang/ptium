@@ -81,6 +81,12 @@ func TestAHiddenRowIsNotInTheTable(t *testing.T) {
 		}
 		at = index
 	}
+	// Four rows are shown, and the last of them is row 7 of the sheet: the
+	// source reaches it, rather than stopping at row 4 where the second
+	// hidden row is.
+	if !strings.Contains(document.Source, "!source 실적.xlsx | 분기 실적!A1:C7\n") {
+		t.Errorf("the source range does not reach the row the total is in:\n%s", document.Source)
+	}
 	warnings := strings.Join(document.Warnings, "\n")
 	if !strings.Contains(warnings, "분기 실적의 숨긴 행 2개는 가져오지 않았습니다") {
 		t.Errorf("the warnings do not say two rows were hidden: %q", warnings)
@@ -113,12 +119,38 @@ func TestAHiddenColumnIsCutOutOfEveryRow(t *testing.T) {
 			t.Errorf("the table has %q, which the sheet hides:\n%s", word, document.Source)
 		}
 	}
-	if !strings.Contains(document.Source, "!A1:B3") {
-		t.Errorf("the source range does not count the two columns that are shown:\n%s", document.Source)
+	// The source is where on the sheet the slide came from, and the slide came
+	// from A through D: written as A1:B3, it named the hidden code column as
+	// the one the notes were read from.
+	if !strings.Contains(document.Source, "!source 실적.xlsx | 분기 실적!A1:D3\n") {
+		t.Errorf("the source range does not reach the column the notes are in:\n%s", document.Source)
 	}
 	warnings := strings.Join(document.Warnings, "\n")
 	if !strings.Contains(warnings, "분기 실적의 숨긴 열 2개는 가져오지 않았습니다") {
 		t.Errorf("the warnings do not say two columns were hidden: %q", warnings)
+	}
+}
+
+func TestAColumnRangeHiddenToTheEdgeOfTheSheetCostsNothing(t *testing.T) {
+	// Excel hides the columns past a table in one range that runs to the
+	// sheet's last column, and a file can put that edge anywhere. Spread out
+	// into every column it covers, a range like this one was billions of
+	// entries for a sheet of six cells, and a file small enough to upload was
+	// enough to run the server out of memory. What is hidden is decided per
+	// column of the grid, and nothing is paid for a column the grid has not.
+	cols := `<cols><col min="3" max="4294967295" hidden="1"/></cols>`
+	rows := `<row r="1">` + textCell("A1", "분기") + textCell("B1", "매출") + `</row>` +
+		`<row r="2">` + textCell("A2", "1분기") + numberCell("B2", "1180") + `</row>` +
+		`<row r="3">` + textCell("A3", "2분기") + numberCell("B3", "1240") + `</row>`
+	document, err := Read("실적.xlsx", concealedBook(t, cols, rows))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(document.Source, "::columns 매출\n- 1분기 | 1180\n- 2분기 | 1240\n") {
+		t.Errorf("the two shown columns are not the chart they were:\n%s", document.Source)
+	}
+	if len(document.Warnings) != 0 {
+		t.Errorf("nothing written was hidden, but the deck warns: %q", document.Warnings)
 	}
 }
 
@@ -199,6 +231,9 @@ func TestHiddenRowsAndColumnsAreCountedInOneLine(t *testing.T) {
 	}
 	if !strings.Contains(document.Source, "- 1분기 | 1180 | 확정\n") {
 		t.Errorf("the table does not keep A, B and D together:\n%s", document.Source)
+	}
+	if !strings.Contains(document.Source, "분기 실적!A1:D2\n") {
+		t.Errorf("the source range is not the two shown rows of A through D:\n%s", document.Source)
 	}
 	if len(document.Warnings) != 1 {
 		t.Fatalf("want one warning, got %d: %q", len(document.Warnings), document.Warnings)

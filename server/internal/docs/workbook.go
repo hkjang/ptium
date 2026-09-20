@@ -134,7 +134,7 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if err := xml.Unmarshal(content, &parsed); err != nil {
 			continue
 		}
-		rows, hiddenRows, hiddenColumns := onScreen(parsed, gridOf(parsed, shared, formats))
+		rows, at, hiddenRows, hiddenColumns := onScreen(parsed, gridOf(parsed, shared, formats))
 		// A deck holds so many slides, and a workbook of forty sheets runs out
 		// of deck before it runs out of sheets. What was left out is what the
 		// person who uploaded it has to know, and naming it is the only way
@@ -149,7 +149,7 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 			}
 			continue
 		}
-		count, sheetWarnings := writeSheet(&builder, filename, sheet.Name, rows)
+		count, sheetWarnings := writeSheet(&builder, filename, sheet.Name, rows, at)
 		written += count
 		warnings = append(warnings, sheetWarnings...)
 		// What was hidden is worth a line only under a slide it was hidden
@@ -234,7 +234,8 @@ func switchedOn(value string) bool {
 }
 
 // onScreen keeps of a sheet's grid what is on the screen: the rows and columns
-// the sheet does not hide. It reports how many of each it left out.
+// the sheet does not hide. It reports where on the sheet what it kept was, and
+// how many rows and columns it left out.
 //
 // A sheet hides rows and columns for the same reasons a workbook hides sheets
 // — the rows a filter took out of view, the group somebody folded up, the
@@ -251,8 +252,16 @@ func switchedOn(value string) bool {
 // the warning that nobody can find on the sheet. Excel hides columns to the
 // edge of the sheet in one range, and that range is not sixteen thousand
 // columns of anything.
-func onScreen(sheet worksheet, grid [][]string) (rows [][]string, hiddenRows, hiddenColumns int) {
+//
+// The ranges are kept as the ranges they were written as and asked about one
+// column of the grid at a time. Spread out into every column they cover, they
+// were sixteen thousand entries for the range Excel writes, and as many as a
+// file cared to say for the range a file wrote: a sheet of six cells hiding
+// columns C through four billion was enough to run the server out of memory.
+// The grid's own width is the only thing here worth paying for.
+func onScreen(sheet worksheet, grid [][]string) (rows [][]string, at placement, hiddenRows, hiddenColumns int) {
 	rows = make([][]string, 0, len(grid))
+	width := 0
 	for index, line := range grid {
 		// gridOf writes one line for each row, in the row's order.
 		if index < len(sheet.Rows) && switchedOn(sheet.Rows[index].Hidden) {
@@ -262,36 +271,49 @@ func onScreen(sheet worksheet, grid [][]string) (rows [][]string, hiddenRows, hi
 			continue
 		}
 		rows = append(rows, line)
+		at.rows = append(at.rows, index)
+		width = max(width, len(line))
 	}
-	hidden := map[int]bool{}
+	var ranges [][2]int
 	for _, column := range sheet.Columns {
 		// A range with no bounds, or bounds the wrong way round, is a column
 		// setting that names no column, and hides none.
 		if !switchedOn(column.Hidden) || column.Min < 1 || column.Max < column.Min {
 			continue
 		}
-		for at := column.Min - 1; at < column.Max; at++ {
-			hidden[at] = true
-		}
+		ranges = append(ranges, [2]int{column.Min - 1, column.Max - 1})
 	}
-	if len(hidden) == 0 {
-		return rows, hiddenRows, 0
+	if len(ranges) == 0 {
+		return rows, at, hiddenRows, 0
+	}
+	hidden := func(column int) bool {
+		for _, span := range ranges {
+			if column >= span[0] && column <= span[1] {
+				return true
+			}
+		}
+		return false
+	}
+	for column := 0; column < width; column++ {
+		if !hidden(column) {
+			at.columns = append(at.columns, column)
+		}
 	}
 	written := map[int]bool{}
 	for index, line := range rows {
 		kept := make([]string, 0, len(line))
-		for at, value := range line {
-			if !hidden[at] {
+		for column, value := range line {
+			if !hidden(column) {
 				kept = append(kept, value)
 				continue
 			}
 			if strings.TrimSpace(value) != "" {
-				written[at] = true
+				written[column] = true
 			}
 		}
 		rows[index] = kept
 	}
-	return rows, hiddenRows, len(written)
+	return rows, at, hiddenRows, len(written)
 }
 
 // blankLine reports whether a row of the grid has nothing written in it.

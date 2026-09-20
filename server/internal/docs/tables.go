@@ -24,7 +24,7 @@ func readSeparated(filename string, data []byte, separator rune) (Document, erro
 	document := Document{Title: titleOf(filename)}
 	var builder strings.Builder
 	fmt.Fprintf(&builder, "# %s\n@cover\n> %s\n\n", escapeLine(document.Title), escapeLine(filename))
-	written, warnings := writeSheet(&builder, filename, "", rows)
+	written, warnings := writeSheet(&builder, filename, "", rows, placement{})
 	if written == 0 {
 		return Document{}, fmt.Errorf("이 파일에는 읽을 표가 없습니다")
 	}
@@ -80,9 +80,34 @@ func separatedReader(text string, separator rune, lazy bool) *csv.Reader {
 	return reader
 }
 
+// placement is where a grid's rows and columns are on the sheet it was read
+// from, when the grid is not the whole sheet: what was hidden was cut out of
+// the grid, but a slide's source is a place on the sheet, and the place has
+// the hidden rows and columns in it. A placement that says nothing is a grid
+// that is the sheet, row for row and column for column.
+type placement struct {
+	rows, columns []int
+}
+
+// row is the sheet's row, counted from zero, that a row of the grid was.
+func (p placement) row(index int) int {
+	if index >= 0 && index < len(p.rows) {
+		return p.rows[index]
+	}
+	return index
+}
+
+// column is the sheet's column, counted from zero, that a column of the grid was.
+func (p placement) column(index int) int {
+	if index >= 0 && index < len(p.columns) {
+		return p.columns[index]
+	}
+	return index
+}
+
 // writeSheet turns a grid into slides, and returns how many it wrote.
-func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]string) (int, []string) {
-	rows = trimGrid(rows)
+func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]string, from placement) (int, []string) {
+	rows, kept := trimmed(rows)
 	if len(rows) < 2 {
 		return 0, nil
 	}
@@ -92,6 +117,12 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 		columns = maximumColumns
 		warnings = append(warnings, fmt.Sprintf("%s의 열이 많아 앞 %d개만 가져왔습니다",
 			sheetLabel(filename, sheet), maximumColumns))
+	}
+	// The source of a slide reaches to the last column and, given which row
+	// of the grid is the last one on the slide, the last row — where each of
+	// them was on the sheet.
+	source := func(last int) string {
+		return rangeOf(sheet, from.column(columns-1), from.row(kept[last]))
 	}
 	// A sheet longer than a slide holds continues on the next one rather than
 	// stopping at the eighth row: a twelve-row report table is a table, not the
@@ -139,7 +170,10 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 		}
 	}
 	builder.WriteString("::\n")
-	builder.WriteString(citation(filename, rangeOf(sheet, columns, len(body)+1)))
+	// The heading is row 0 of the grid, so the last row of the slide is one
+	// past the number of body rows on it.
+	last := len(body)
+	builder.WriteString(citation(filename, source(last)))
 	builder.WriteString("\n")
 	written := 1
 	for _, piece := range carried {
@@ -164,7 +198,8 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 			}
 		}
 		builder.WriteString("::\n")
-		builder.WriteString(citation(filename, rangeOf(sheet, columns, len(piece)+1)))
+		last += len(piece)
+		builder.WriteString(citation(filename, source(last)))
 		builder.WriteString("\n")
 		written++
 	}
@@ -179,15 +214,10 @@ func sheetLabel(filename, sheet string) string {
 }
 
 // rangeOf is where on the sheet the slide came from, written the way a
-// spreadsheet writes it: "Sheet1!A1:C9".
-func rangeOf(sheet string, columns, rows int) string {
-	if columns < 1 {
-		columns = 1
-	}
-	if rows < 1 {
-		rows = 1
-	}
-	reference := fmt.Sprintf("A1:%s%d", columnLetter(columns-1), rows)
+// spreadsheet writes it: "Sheet1!A1:C9", given the last column and the last
+// row of the slide as the sheet counts them, from zero.
+func rangeOf(sheet string, column, row int) string {
+	reference := fmt.Sprintf("A1:%s%d", columnLetter(column), max(row, 0)+1)
 	if sheet := strings.TrimSpace(sheet); sheet != "" {
 		return sheet + "!" + reference
 	}
@@ -206,9 +236,17 @@ func columnLetter(index int) string {
 
 // trimGrid drops empty rows and trailing empty columns, which every export has.
 func trimGrid(rows [][]string) [][]string {
+	cleaned, _ := trimmed(rows)
+	return cleaned
+}
+
+// trimmed is trimGrid that also says, for each row it kept, which row of the
+// grid it was.
+func trimmed(rows [][]string) ([][]string, []int) {
 	widest := 0
 	cleaned := make([][]string, 0, len(rows))
-	for _, row := range rows {
+	kept := make([]int, 0, len(rows))
+	for at, row := range rows {
 		last := -1
 		for index, cell := range row {
 			if strings.TrimSpace(cell) != "" {
@@ -221,6 +259,7 @@ func trimGrid(rows [][]string) [][]string {
 		row = row[:last+1]
 		widest = max(widest, len(row))
 		cleaned = append(cleaned, row)
+		kept = append(kept, at)
 	}
 	for index, row := range cleaned {
 		for len(row) < widest {
@@ -228,7 +267,7 @@ func trimGrid(rows [][]string) [][]string {
 		}
 		cleaned[index] = row
 	}
-	return cleaned
+	return cleaned, kept
 }
 
 // allNumeric reports whether every row carries a number in a column.
