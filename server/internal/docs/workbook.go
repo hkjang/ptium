@@ -54,11 +54,12 @@ type worksheet struct {
 		Reference string `xml:"r,attr"`
 		Hidden    string `xml:"hidden,attr"`
 		Cells     []struct {
-			Reference string `xml:"r,attr"`
-			Type      string `xml:"t,attr"`
-			Style     string `xml:"s,attr"`
-			Value     string `xml:"v"`
-			Inline    string `xml:"is>t"`
+			Reference  string   `xml:"r,attr"`
+			Type       string   `xml:"t,attr"`
+			Style      string   `xml:"s,attr"`
+			Value      string   `xml:"v"`
+			Inline     string   `xml:"is>t"`
+			InlineRuns []string `xml:"is>r>t"`
 		} `xml:"c"`
 	} `xml:"sheetData>row"`
 }
@@ -381,6 +382,9 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 				}
 			case "inlineStr":
 				value = cell.Inline
+				if value == "" {
+					value = strings.Join(cell.InlineRuns, "")
+				}
 			case "b":
 				// A logical cell stores TRUE as 1 and FALSE as 0, and the sheet
 				// shows the word. Read as the number it stores, a checklist came
