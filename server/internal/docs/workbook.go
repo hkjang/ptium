@@ -43,8 +43,16 @@ type sharedStrings struct {
 }
 
 type worksheet struct {
+	// A sheet says which of its columns are hidden ahead of its rows, as
+	// ranges: "min" to "max", counted from one.
+	Columns []struct {
+		Min    int    `xml:"min,attr"`
+		Max    int    `xml:"max,attr"`
+		Hidden string `xml:"hidden,attr"`
+	} `xml:"cols>col"`
 	Rows []struct {
 		Reference string `xml:"r,attr"`
+		Hidden    string `xml:"hidden,attr"`
 		Cells     []struct {
 			Reference string `xml:"r,attr"`
 			Type      string `xml:"t,attr"`
@@ -126,7 +134,7 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if err := xml.Unmarshal(content, &parsed); err != nil {
 			continue
 		}
-		rows := gridOf(parsed, shared, formats)
+		rows, hiddenRows, hiddenColumns := onScreen(parsed, gridOf(parsed, shared, formats))
 		// A deck holds so many slides, and a workbook of forty sheets runs out
 		// of deck before it runs out of sheets. What was left out is what the
 		// person who uploaded it has to know, and naming it is the only way
@@ -144,6 +152,14 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		count, sheetWarnings := writeSheet(&builder, filename, sheet.Name, rows)
 		written += count
 		warnings = append(warnings, sheetWarnings...)
+		// What was hidden is worth a line only under a slide it was hidden
+		// from; a sheet that made no slide left nothing out of one.
+		if count > 0 {
+			if concealed := concealedNamed(hiddenRows, hiddenColumns); concealed != "" {
+				warnings = append(warnings, fmt.Sprintf("%s의 숨긴 %s 가져오지 않았습니다",
+					sheetLabel(filename, sheet.Name), concealed))
+			}
+		}
 	}
 	if written == 0 {
 		// Why there is nothing to show matters when the file plainly has
@@ -204,11 +220,106 @@ func sheetsNamed(names []string) string {
 // The switch is written the way the format writes every switch: "1" or "true",
 // and a workbook that says nothing counts from 1900.
 func counts1904(value string) bool {
+	return switchedOn(value)
+}
+
+// switchedOn reads a switch the way the format writes every one of them: "1"
+// or "true" is on, and anything else, including nothing, is off.
+func switchedOn(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1", "true":
 		return true
 	}
 	return false
+}
+
+// onScreen keeps of a sheet's grid what is on the screen: the rows and columns
+// the sheet does not hide. It reports how many of each it left out.
+//
+// A sheet hides rows and columns for the same reasons a workbook hides sheets
+// — the rows a filter took out of view, the group somebody folded up, the
+// column of codes a formula looks up in — and they were as much not meant for
+// a deck. Read in, a hidden column of figures beside the one column of them
+// that was meant to be seen made the sheet a table where a chart was wanted,
+// and a hidden column of anything sat in the middle of the table where nobody
+// had seen it. Hidden columns are cut out rather than blanked, since a blank
+// column in the middle of a table is not trimmed and would stay there.
+//
+// What is counted is what was on the screen to hide: a hidden row with no
+// cell in it, or a hidden column no shown row writes anything in, was never
+// going to be in the table either way, and counting it would put a number in
+// the warning that nobody can find on the sheet. Excel hides columns to the
+// edge of the sheet in one range, and that range is not sixteen thousand
+// columns of anything.
+func onScreen(sheet worksheet, grid [][]string) (rows [][]string, hiddenRows, hiddenColumns int) {
+	rows = make([][]string, 0, len(grid))
+	for index, line := range grid {
+		// gridOf writes one line for each row, in the row's order.
+		if index < len(sheet.Rows) && switchedOn(sheet.Rows[index].Hidden) {
+			if !blankLine(line) {
+				hiddenRows++
+			}
+			continue
+		}
+		rows = append(rows, line)
+	}
+	hidden := map[int]bool{}
+	for _, column := range sheet.Columns {
+		// A range with no bounds, or bounds the wrong way round, is a column
+		// setting that names no column, and hides none.
+		if !switchedOn(column.Hidden) || column.Min < 1 || column.Max < column.Min {
+			continue
+		}
+		for at := column.Min - 1; at < column.Max; at++ {
+			hidden[at] = true
+		}
+	}
+	if len(hidden) == 0 {
+		return rows, hiddenRows, 0
+	}
+	written := map[int]bool{}
+	for index, line := range rows {
+		kept := make([]string, 0, len(line))
+		for at, value := range line {
+			if !hidden[at] {
+				kept = append(kept, value)
+				continue
+			}
+			if strings.TrimSpace(value) != "" {
+				written[at] = true
+			}
+		}
+		rows[index] = kept
+	}
+	return rows, hiddenRows, len(written)
+}
+
+// blankLine reports whether a row of the grid has nothing written in it.
+func blankLine(line []string) bool {
+	for _, value := range line {
+		if strings.TrimSpace(value) != "" {
+			return false
+		}
+	}
+	return true
+}
+
+// concealedNamed writes what a sheet hid, for the warning that says so: rows,
+// columns, or both, and nothing when nothing was hidden. The phrase ends in a
+// count, and the particle that follows a count is always the same one, so it
+// is written here rather than chosen in the warning for a phrase it cannot see.
+func concealedNamed(rows, columns int) string {
+	var parts []string
+	if rows > 0 {
+		parts = append(parts, fmt.Sprintf("행 %d개", rows))
+	}
+	if columns > 0 {
+		parts = append(parts, fmt.Sprintf("열 %d개", columns))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, "와 ") + "는"
 }
 
 // sheetPart joins a workbook-relative part name, which may already be absolute.
