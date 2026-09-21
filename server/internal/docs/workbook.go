@@ -272,7 +272,16 @@ func onScreen(sheet worksheet, grid [][]string) (rows [][]string, at placement, 
 			continue
 		}
 		rows = append(rows, line)
-		at.rows = append(at.rows, index)
+		// Omitted XML rows take no space in the grid, but the citation must
+		// still name the row on the sheet. Keep malformed or absent references
+		// at their old position instead of rejecting the workbook.
+		position := index
+		if index < len(sheet.Rows) {
+			if reference, err := strconv.Atoi(strings.TrimSpace(sheet.Rows[index].Reference)); err == nil && reference >= 1 && reference <= 1048576 {
+				position = reference - 1
+			}
+		}
+		at.rows = append(at.rows, position)
 		width = max(width, len(line))
 	}
 	var ranges [][2]int
