@@ -440,7 +440,15 @@ func truthOf(value string) string {
 }
 
 // columnOf reads the column out of a cell reference such as "BC12", and
-// returns -1 for a reference that names no column at all.
+// returns -1 for a reference that names no column at all — which a reference
+// to a column number the sheet does not have is too, since a sheet ends at
+// XFD and there is no cell of it past that for a reference to mean.
+//
+// The edge is checked inside the loop rather than after it. A sheet of nine
+// cells that writes one of them at AAAAAAAAAA asked gridOf for a row of
+// ninety terabytes and took the server down with it, and the count itself
+// runs past what an int holds a few letters later — where it can come back
+// around to a small number and name a column after all.
 func columnOf(reference string) int {
 	column := 0
 	for _, symbol := range strings.ToUpper(strings.TrimSpace(reference)) {
@@ -448,6 +456,9 @@ func columnOf(reference string) int {
 			break
 		}
 		column = column*26 + int(symbol-'A') + 1
+		if column > sheetColumns {
+			return -1
+		}
 	}
 	if column <= 0 {
 		return -1
