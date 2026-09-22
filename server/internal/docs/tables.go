@@ -224,14 +224,24 @@ func rangeOf(sheet string, column, row int) string {
 	return reference
 }
 
+// columnLetter names a column, counted from zero, the way a sheet names it: A
+// through Z, then AA, and on to XFD at the far edge. Carrying only once ran
+// out of letters at ZZ and wrote "[A" for the column after it, into a source a
+// slide cites — and a sheet of more than 702 columns is an ordinary sheet.
 func columnLetter(index int) string {
 	if index < 0 {
 		index = 0
 	}
-	if index < 26 {
-		return string(rune('A' + index))
+	letters := ""
+	for {
+		letters = string(rune('A'+index%26)) + letters
+		// Each place holds 26 names and none of them is a zero, so a carry
+		// leaves one less than it would in a numbering that has one.
+		index = index/26 - 1
+		if index < 0 {
+			return letters
+		}
 	}
-	return string(rune('A'+index/26-1)) + string(rune('A'+index%26))
 }
 
 // trimGrid drops empty rows and trailing empty columns, which every export has.

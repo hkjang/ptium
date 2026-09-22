@@ -144,4 +144,8 @@ const (
 	// past it is said rather than drawn.
 	maximumTableSlides = 4
 	maximumPoints      = 5
+	// How wide a sheet is, which is not a choice this file makes: a spreadsheet
+	// has columns A through XFD and no more, so a cell reference past XFD names
+	// no column of any sheet there could be.
+	sheetColumns = 16384
 )
