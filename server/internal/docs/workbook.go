@@ -135,7 +135,8 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if err := xml.Unmarshal(content, &parsed); err != nil {
 			continue
 		}
-		rows, at, hiddenRows, hiddenColumns := onScreen(parsed, gridOf(parsed, shared, formats))
+		grid, unread := gridOf(parsed, shared, formats)
+		rows, at, hiddenRows, hiddenColumns := onScreen(parsed, grid)
 		// A deck holds so many slides, and a workbook of forty sheets runs out
 		// of deck before it runs out of sheets. What was left out is what the
 		// person who uploaded it has to know, and naming it is the only way
@@ -159,6 +160,11 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 			if concealed := concealedNamed(hiddenRows, hiddenColumns); concealed != "" {
 				warnings = append(warnings, fmt.Sprintf("%s의 숨긴 %s 가져오지 않았습니다",
 					sheetLabel(filename, sheet.Name), concealed))
+			}
+			if unread > 0 {
+				warnings = append(warnings, fmt.Sprintf(
+					"칸이 많아 %s의 뒤 %d줄은 읽지 않았습니다. 나눠서 올리면 전부 가져옵니다",
+					sheetLabel(filename, sheet.Name), unread))
 			}
 		}
 	}
@@ -362,8 +368,11 @@ func sheetPart(name string) string {
 // along. Reading a missing reference as column A instead put every cell of the
 // row in the same place and kept the last: a two-column sheet came back as one
 // column of figures with the labels gone, and the deck said nothing about it.
-func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
-	grid := make([][]string, 0, len(sheet.Rows))
+// The count of rows left unread is returned with the grid, because a sheet
+// read in part is a sheet the person has to be told about.
+func gridOf(sheet worksheet, shared []string, formats cellFormats) ([][]string, int) {
+	grid := make([][]string, 0, min(len(sheet.Rows), 4096))
+	read := 0
 	for _, row := range sheet.Rows {
 		cells := map[int]string{}
 		widest := -1
@@ -416,6 +425,15 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 				widest = column
 			}
 		}
+		// The width is what the row costs, not the number of cells written in
+		// it: a row holding two cells, one of them at the far edge, is laid
+		// out the whole way across. Stopping here rather than at a row count
+		// is what keeps a narrow sheet of many rows readable while a sheet
+		// made only of far edges stops early.
+		if read+widest+1 > sheetCells {
+			return grid, len(sheet.Rows) - len(grid)
+		}
+		read += widest + 1
 		line := make([]string, widest+1)
 		for column, value := range cells {
 			if column >= 0 && column <= widest {
@@ -424,7 +442,7 @@ func gridOf(sheet worksheet, shared []string, formats cellFormats) [][]string {
 		}
 		grid = append(grid, line)
 	}
-	return grid
+	return grid, 0
 }
 
 // truthOf writes a logical cell the way a spreadsheet shows it. Anything that
