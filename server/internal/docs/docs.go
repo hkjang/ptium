@@ -148,4 +148,15 @@ const (
 	// has columns A through XFD and no more, so a cell reference past XFD names
 	// no column of any sheet there could be.
 	sheetColumns = 16384
+	// How much of a sheet is read before the rest is said rather than drawn.
+	// Bounding the width alone was not enough: gridOf lays out a row as wide
+	// as that row's furthest cell, so a sheet whose every row ends at XFD asks
+	// for a quarter of a megabyte per row, and the part of the file it takes
+	// to write one of those rows is about a hundred and fifty bytes. Four
+	// hundred kilobytes of upload reached eleven gigabytes that way.
+	//
+	// A deck draws eight rows of five columns, so this is far past anything
+	// that reaches a slide. It is here to keep a sheet from costing more than
+	// a sheet.
+	sheetCells = 1_000_000
 )
