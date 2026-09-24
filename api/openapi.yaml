@@ -3857,6 +3857,80 @@ paths:
                     $ref: '#/components/schemas/RequestID'
         '403': { description: Asking somebody's model host is the administrator's }
         '503': { description: This deployment has no generator at all }
+  /.well-known/oauth-protected-resource:
+    get:
+      operationId: protectedResourceMetadata
+      tags: [MCP]
+      summary: Where an MCP client refused at /mcp learns to sign in (RFC 9728)
+      security: []
+      description: >
+        The document an MCP client reads after a 401 at `/mcp` whose
+        `WWW-Authenticate` names it: which authorization server issues tokens
+        for this resource (the Keycloak realm the web sign-in uses) and what
+        the resource is called. Served bare — not in this API's envelope — for
+        the OAuth client library that reads it, with `Access-Control-Allow-Origin:
+        *` because some of those run in a browser. No credentials are asked.
+        404 unless an administrator turned on `mcp.oauth.enabled` and the
+        deployment has an OIDC issuer and a resource identifier; metadata that
+        points at a provider whose tokens are then refused is a login loop.
+        The same document is at `/.well-known/oauth-protected-resource/mcp`,
+        the path-suffixed form the specification has clients try first.
+      responses:
+        '200':
+          description: The protected resource metadata, bare
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMetadata'
+        '404': { description: SSO tokens are not taken at /mcp on this deployment }
+  /.well-known/oauth-protected-resource/mcp:
+    get:
+      operationId: protectedResourceMetadataForMCP
+      tags: [MCP]
+      summary: The same document, at the path-suffixed address
+      security: []
+      description: RFC 9728 has a client derive this address from the resource's path; it answers exactly as the bare one.
+      responses:
+        '200':
+          description: The protected resource metadata, bare
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProtectedResourceMetadata'
+        '404': { description: SSO tokens are not taken at /mcp on this deployment }
+  /api/v1/admin/mcp/oauth:
+    get:
+      operationId: adminMCPOAuth
+      tags: [Admin]
+      summary: The values an MCP client is connected with under SSO, and whether SSO is in force
+      description: >
+        What the settings screen shows an administrator to copy into an MCP
+        client — the resource identifier, the metadata address, the issuer —
+        and whether SSO tokens are being taken at `/mcp` right now, with the
+        reason when the switch is on and they are not (no issuer running, no
+        identifier). Nothing here is a credential. Administrators only.
+      responses:
+        '200':
+          description: The MCP SSO connection values
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      enabled: { type: boolean, description: The administrator's switch, `mcp.oauth.enabled` }
+                      active: { type: boolean, description: Whether SSO tokens are taken at /mcp right now }
+                      reason: { type: string, description: Why not, when the switch is on and active is false; empty otherwise }
+                      issuer: { type: string, description: The OIDC issuer running, which tokens are checked against }
+                      resource: { type: string, description: The identifier a token's audience may name; from `mcp.oauth.resource` or `PUBLIC_BASE_URL` + /mcp }
+                      metadataUrl: { type: string, description: Where a refused client is pointed }
+                      audience: { type: array, items: { type: string }, description: Values accepted in aud or azp besides the resource }
+                      scopes: { type: array, items: { type: string }, description: What an SSO token may do }
+                  requestId:
+                    $ref: '#/components/schemas/RequestID'
+        '403': { description: Administrators only }
   /api/v1/admin/storage:
     get:
       operationId: adminStorage
@@ -8103,7 +8177,7 @@ components:
         - if:
             properties:
               key:
-                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login, analytics.enabled, analytics.momento_proxy, analytics.include_admin, mail.enabled, mail.skip_tls_verify, mail.notify_generation_completed, mail.notify_generation_failed, mail.notify_comment]
+                enum: [generation.outline_pass, generation.allow_user_uploads, auth.oidc.auto_login, analytics.enabled, analytics.momento_proxy, analytics.include_admin, mail.enabled, mail.skip_tls_verify, mail.notify_generation_completed, mail.notify_generation_failed, mail.notify_comment, mcp.oauth.enabled]
           then:
             properties:
               value:
@@ -8398,8 +8472,62 @@ components:
         mail.notify_comment:
           type: boolean
           default: true
+        mcp.oauth.enabled:
+          type: boolean
+          default: false
+          description: |
+            Take Keycloak access tokens at `/mcp` beside personal API keys.
+            Off as shipped: the metadata document is 404 and a token is
+            refused as a bad key would be. Read for every token; no restart.
+            Saving it on with no OIDC issuer (running or stored) or no
+            resource identifier is refused. Tokens are checked against the
+            web sign-in's issuer (`auth.oidc.issuer_url`); nothing is
+            repeated here.
+        mcp.oauth.resource:
+          type: string
+          default: ''
+          description: |
+            The identifier this deployment claims for `/mcp` (RFC 8707): the
+            public HTTPS address clients connect to plus `/mcp`, which a
+            token's `aud` may name. Empty builds it from `PUBLIC_BASE_URL`.
+            Never read off the request's Host header.
+        mcp.oauth.audience:
+          type: string
+          default: ''
+          description: |
+            Values accepted in a token's `aud` or `azp` besides the resource
+            itself, separated by spaces — the MCP client's id, in practice,
+            since Keycloak puts the client in `azp` and only `account` in
+            `aud` without an Audience mapper. A token matching none is
+            refused with what it carried and what to write here.
+        mcp.oauth.scopes:
+          type: string
+          default: 'presentations:read templates:read'
+          description: |
+            What an SSO token may do at `/mcp`, separated by spaces, from the
+            same vocabulary a key is granted from and never an
+            administrator's scope. `mcp:use` is implied. A token that names
+            some of these in its own `scope` claim gets the intersection.
       additionalProperties:
         $ref: '#/components/schemas/JSONValue'
+
+    ProtectedResourceMetadata:
+      type: object
+      description: RFC 9728, the bare document an OAuth client reads to find the authorization server for `/mcp`.
+      properties:
+        resource: { type: string, example: 'https://slides.corp.example/mcp' }
+        authorization_servers:
+          type: array
+          items: { type: string }
+          example: ['https://keycloak.corp.example/realms/corp']
+        bearer_methods_supported:
+          type: array
+          items: { type: string }
+          example: ['header']
+        scopes_supported:
+          type: array
+          items: { type: string }
+        resource_name: { type: string, example: 'Ptium MCP' }
 
     SettingUpdateList:
       type: array

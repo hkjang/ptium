@@ -148,6 +148,15 @@ func isUniqueViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
+// GetUserBySubject finds the account the identity provider's subject was
+// registered to, and only finds: it is the lookup half of UpsertUser, for a
+// caller that must never provision anybody.
+func (s *Store) GetUserBySubject(ctx context.Context, subject string) (model.User, error) {
+	var user model.User
+	err := s.Pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE subject=$1`, subject).Scan(userScan(&user)...)
+	return user, mapNotFound(err)
+}
+
 func (s *Store) GetUser(ctx context.Context, id string) (model.User, error) {
 	var user model.User
 	err := s.Pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users WHERE id=$1`, id).Scan(userScan(&user)...)

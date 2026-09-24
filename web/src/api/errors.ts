@@ -14,6 +14,7 @@
  */
 
 const byMessage: Record<string, string> = {
+  "This server's MCP endpoint does not take SSO access tokens; use a personal API key": '이 서버의 MCP 는 SSO 액세스 토큰을 받지 않습니다. 개인 API 키를 사용하세요.',
   // Notification mail through the company relay (MAIL-STANDARD).
   'mail is not configured on this server': '이 서버에는 메일 서비스가 구성되어 있지 않습니다.',
   'mail is switched off; save mail.enabled first': '메일 알림이 꺼져 있습니다. 먼저 "메일 알림 사용"을 켜서 저장하세요.',

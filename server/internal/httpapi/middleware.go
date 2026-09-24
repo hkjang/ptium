@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/hkjang/ptium/server/internal/auth"
+	"github.com/hkjang/ptium/server/internal/mcpoauth"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/store"
 )
@@ -93,7 +94,8 @@ func (s *Server) requestMiddleware(next http.Handler) http.Handler {
 
 // isNotAPage reports the paths that answer data rather than a document.
 func isNotAPage(path string) bool {
-	return strings.HasPrefix(path, "/api/") || path == "/mcp" || path == "/healthz" || path == "/readyz" || path == "/auth/me"
+	return strings.HasPrefix(path, "/api/") || path == "/mcp" || path == "/healthz" || path == "/readyz" || path == "/auth/me" ||
+		strings.HasPrefix(path, "/.well-known/")
 }
 
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
@@ -207,19 +209,29 @@ func (s *Server) requireAdmin(scope string, next http.Handler) http.Handler {
 func requireScope(scope string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if !allowScope(request.Context(), scope) {
-			writeError(writer, request, http.StatusForbidden, "insufficient_scope", "The API key does not grant this operation", map[string]any{"required": scope})
+			message := "The API key does not grant this operation"
+			if principal, ok := auth.PrincipalFromContext(request.Context()); ok && principal.AuthMethod == mcpoauth.AuthMethod {
+				message = "The SSO token does not grant this operation; an administrator sets what SSO tokens may do in mcp.oauth.scopes"
+			}
+			writeError(writer, request, http.StatusForbidden, "insufficient_scope", message, map[string]any{"required": scope})
 			return
 		}
 		next.ServeHTTP(writer, request)
 	})
 }
 
+// allowScope is the scope check. A key is bounded by its scopes, and so is an
+// SSO token — by the ones the administrator granted, never wider than a key
+// could be. A session or the identity provider's own sign-in is not.
 func allowScope(ctx context.Context, scope string) bool {
 	principal, ok := auth.PrincipalFromContext(ctx)
 	if !ok {
 		return false
 	}
-	return principal.AuthMethod != "api_key" || principal.HasScope(scope)
+	if principal.AuthMethod != "api_key" && principal.AuthMethod != mcpoauth.AuthMethod {
+		return true
+	}
+	return principal.HasScope(scope)
 }
 
 func (s *Server) capture(ctx context.Context, incident model.Incident) {

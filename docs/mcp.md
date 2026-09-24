@@ -22,6 +22,43 @@ operation), then configure a Streamable HTTP-capable MCP client.
 The complete key is displayed only once. Rotate it from the developer settings
 screen before expiry; both credentials work during the configured overlap.
 
+## Connecting with SSO, without a key
+
+A deployment whose administrator turned on **MCP · SSO** takes a Keycloak
+access token at `/mcp` as well as a personal key. Give the client the URL and
+nothing else:
+
+```json
+{
+  "mcpServers": {
+    "ptium": {
+      "type": "streamable-http",
+      "url": "https://ptium.example.com/mcp"
+    }
+  }
+}
+```
+
+The client is refused once with a `401` whose `WWW-Authenticate` names
+`https://ptium.example.com/.well-known/oauth-protected-resource/mcp`; it reads
+that document, sends you through Keycloak (PKCE, no secret), and comes back
+with a token whose audience is this server. If you are already signed in to
+Keycloak you barely see a screen.
+
+What the token opens is **your existing account**: sign in to the Ptium web
+once first, or the server answers "This SSO account is not registered here".
+The token does not create an account, does not revive a disabled one, and
+grants what the administrator listed in `mcp.oauth.scopes` (reading decks
+and templates, as shipped) rather than what a key of yours might hold; a tool
+outside that answers `403 insufficient_scope`. A 401 whose message says the
+token "was not issued for this server" is the administrator's to fix — it
+names the `azp` to allow — not yours.
+
+Keys keep working exactly as above, on the same header. A script on a closed
+network, or a deployment without Keycloak, uses a key; a person at a desk uses
+SSO. The server does not check tokens back with Keycloak, so a token already
+issued lives until it expires (minutes) after you sign out there.
+
 ## Protocol and transport
 
 - JSON-RPC 2.0 over HTTP `POST /mcp`.

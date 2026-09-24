@@ -20,6 +20,7 @@ import (
 	"github.com/hkjang/ptium/server/internal/handoff"
 	"github.com/hkjang/ptium/server/internal/keys"
 	"github.com/hkjang/ptium/server/internal/mail"
+	"github.com/hkjang/ptium/server/internal/mcpoauth"
 	"github.com/hkjang/ptium/server/internal/model"
 	"github.com/hkjang/ptium/server/internal/settings"
 	"github.com/hkjang/ptium/server/internal/store"
@@ -58,7 +59,11 @@ type Options struct {
 	// draft of one slide. Deck generation stays on the worker's queue.
 	Generator     *generation.Generator
 	Authenticator auth.Authenticator
-	AuthPublic    AuthPublicConfig
+	// MCPAuthenticator guards /mcp when it is not the same chain as the API's:
+	// the one that takes an SSO access token there and nowhere else. Nil
+	// guards /mcp with Authenticator.
+	MCPAuthenticator auth.Authenticator
+	AuthPublic       AuthPublicConfig
 	// Version is the build the workspace is running, shown in the account menu so
 	// a bug report and a release can be matched up.
 	Version string
@@ -99,9 +104,11 @@ type Server struct {
 	worker        *generation.Worker
 	generator     *generation.Generator
 	authenticator auth.Authenticator
-	authPublic    AuthPublicConfig
-	version       string
-	assetDir      string
+	// mcpAuthenticator guards /mcp; see Options.MCPAuthenticator.
+	mcpAuthenticator auth.Authenticator
+	authPublic       AuthPublicConfig
+	version          string
+	assetDir         string
 	// The last reading of the model host, so a dashboard being refreshed does
 	// not knock on somebody's host once per refresh.
 	providerCheckMu sync.Mutex
@@ -141,6 +148,9 @@ type Server struct {
 	// readPeers is the administrator's list of services documents are passed
 	// to and taken from, as stored now; a test hands in one of its own.
 	readPeers func(context.Context) handoff.Config
+	// readMCPOAuth is the administrator's MCP SSO policy as stored now; a
+	// test hands in one of its own.
+	readMCPOAuth func(context.Context) mcpoauth.Policy
 	// handoffClient fetches a document from a peer: no redirects, bounded time.
 	handoffClient *http.Client
 	publicBaseURL string
@@ -201,6 +211,7 @@ func New(options Options) (*Server, error) {
 		store: options.Store, settings: options.Settings, keys: options.Keys, worker: options.Worker,
 		generator:     options.Generator,
 		authenticator: options.Authenticator, authPublic: options.AuthPublic, adminRoles: options.AdminRoles,
+		mcpAuthenticator:     options.MCPAuthenticator,
 		assetDir:             options.AssetDir,
 		building:             semaphore.NewWeighted(heavyBudget),
 		version:              strings.TrimSpace(options.Version),
@@ -226,6 +237,10 @@ func (s *Server) Handler() http.Handler {
 	root.HandleFunc("GET /readyz", s.ready)
 	root.HandleFunc("GET /api/v1/auth/config", s.authConfig)
 	root.HandleFunc("GET /api/v1/settings", s.publicSettings)
+	// Where an MCP client refused at /mcp learns to sign in (RFC 9728): read
+	// without credentials, by design, and 404 while SSO is off.
+	root.HandleFunc("GET /.well-known/oauth-protected-resource", s.protectedResourceMetadata)
+	root.HandleFunc("GET /.well-known/oauth-protected-resource/mcp", s.protectedResourceMetadata)
 	// Sign-in and the OIDC code exchange are reachable without credentials, by
 	// definition; both apply their own throttling and validation.
 	root.HandleFunc("POST /api/v1/auth/login", s.passwordLogin)
@@ -414,24 +429,35 @@ func (s *Server) Handler() http.Handler {
 	api.Handle("GET /api/v1/admin/audit", s.requireAdmin("admin:users", http.HandlerFunc(s.adminListAuditTrail)))
 	api.Handle("GET /api/v1/admin/audit/actions", s.requireAdmin("admin:users", http.HandlerFunc(s.adminAuditActions)))
 	api.Handle("GET /api/v1/admin/overview", s.requireAdmin("admin:users", http.HandlerFunc(s.adminOverview)))
+	// The values an MCP client is connected with under SSO, and whether SSO
+	// is in force right now.
+	api.Handle("GET /api/v1/admin/mcp/oauth", s.requireAdmin("admin:settings", http.HandlerFunc(s.adminMCPOAuth)))
 
 	protected := auth.AuthenticationMiddleware(s.authenticator, auth.MiddlewareOptions{
 		Realm: "ptium",
 		OnError: func(ctx context.Context, err error) {
 			s.logger.Warn("authentication failed", "request_id", RequestID(ctx), "error", err)
 		},
-		WriteError: func(writer http.ResponseWriter, request *http.Request, status int, code string) {
+		WriteError: func(writer http.ResponseWriter, request *http.Request, status int, code string, _ error) {
 			writeError(writer, request, status, code, http.StatusText(status), nil)
 		},
 	})(s.sessionRenewalMiddleware(s.identityMiddleware(api)))
 	root.Handle("/api/v1/", protected)
 	root.Handle("/auth/me", protected)
 	if s.mcpHandler != nil {
-		mcpProtected := auth.AuthenticationMiddleware(s.authenticator, auth.MiddlewareOptions{
-			Realm: "ptium-mcp",
-			WriteError: func(writer http.ResponseWriter, request *http.Request, status int, code string) {
-				writeError(writer, request, status, code, http.StatusText(status), nil)
+		mcpAuthenticator := s.mcpAuthenticator
+		if mcpAuthenticator == nil {
+			mcpAuthenticator = s.authenticator
+		}
+		mcpProtected := auth.AuthenticationMiddleware(mcpAuthenticator, auth.MiddlewareOptions{
+			Realm: mcpoauth.Realm,
+			// The cause — which check an SSO token failed — is logged here; the
+			// client is told only what a Refusal says.
+			OnError: func(ctx context.Context, err error) {
+				s.logger.Warn("authentication failed", "request_id", RequestID(ctx), "path", mcpoauth.Path, "error", err)
 			},
+			Challenge:  s.mcpChallenge,
+			WriteError: writeMCPAuthError,
 		})(s.identityMiddleware(requireScope("mcp:use", s.mcpHandler)))
 		root.Handle("/mcp", mcpProtected)
 	}

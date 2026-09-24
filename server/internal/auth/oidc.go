@@ -116,6 +116,26 @@ func (authenticator *OIDCAuthenticator) Authenticate(ctx context.Context, reques
 	if strings.Count(token, ".") != 2 {
 		return nil, ErrNoCredentials
 	}
+	claims, err := authenticator.VerifySignedToken(ctx, token)
+	if err != nil {
+		return nil, err
+	}
+	principal, err := authenticator.validateClaims(claims)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
+	}
+	return principal, nil
+}
+
+// VerifySignedToken checks what every token from this provider must satisfy
+// whatever it is for: a signature by one of the provider's published keys, an
+// allowed algorithm, the configured issuer, and a validity window that holds
+// now. It returns the claims and decides nothing about who the token is for —
+// the web sign-in and the MCP endpoint each read the audience their own way.
+func (authenticator *OIDCAuthenticator) VerifySignedToken(ctx context.Context, token string) (map[string]any, error) {
+	if authenticator == nil || authenticator.keys == nil {
+		return nil, errors.New("OIDC authenticator is not initialized")
+	}
 	if len(token) > authenticator.config.MaxTokenBytes {
 		return nil, fmt.Errorf("%w: OIDC token is too large", ErrInvalidCredentials)
 	}
@@ -153,12 +173,51 @@ func (authenticator *OIDCAuthenticator) Authenticate(ctx context.Context, reques
 	if !verified {
 		return nil, fmt.Errorf("%w: OIDC signature verification failed", ErrInvalidCredentials)
 	}
-
-	principal, err := authenticator.validateClaims(claims)
-	if err != nil {
+	if err := authenticator.checkIssuerAndTimes(claims); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidCredentials, err)
 	}
-	return principal, nil
+	return claims, nil
+}
+
+// Issuer is the provider these tokens must name, as discovered at startup.
+func (authenticator *OIDCAuthenticator) Issuer() string {
+	if authenticator == nil {
+		return ""
+	}
+	return authenticator.discovery.Issuer
+}
+
+// ClientID is the client the web sign-in uses, when one is configured.
+func (authenticator *OIDCAuthenticator) ClientID() string {
+	if authenticator == nil {
+		return ""
+	}
+	return authenticator.config.ClientID
+}
+
+// checkIssuerAndTimes is the part of a token that is about the provider and
+// the clock rather than about who it is for.
+func (authenticator *OIDCAuthenticator) checkIssuerAndTimes(claims map[string]any) error {
+	now := authenticator.now()
+	skew := authenticator.config.ClockSkew
+	issuer, ok := stringClaim(claims, "iss")
+	if !ok || issuer != authenticator.discovery.Issuer {
+		return errors.New("issuer claim does not match the discovered provider")
+	}
+	expiresAt, ok := numericDateClaim(claims, "exp")
+	if !ok {
+		return errors.New("expiration claim is required")
+	}
+	if now.After(expiresAt.Add(skew)) {
+		return errors.New("token has expired")
+	}
+	if notBefore, present := numericDateClaim(claims, "nbf"); present && now.Add(skew).Before(notBefore) {
+		return errors.New("token is not valid yet")
+	}
+	if issuedAt, present := numericDateClaim(claims, "iat"); present && now.Add(skew).Before(issuedAt) {
+		return errors.New("token was issued in the future")
+	}
+	return nil
 }
 
 type jwtHeader struct {
@@ -219,31 +278,21 @@ func decodeJSONObject(data []byte, target any) error {
 }
 
 func (authenticator *OIDCAuthenticator) validateClaims(claims map[string]any) (*Principal, error) {
-	now := authenticator.now()
-	skew := authenticator.config.ClockSkew
-	issuer, ok := stringClaim(claims, "iss")
-	if !ok || issuer != authenticator.discovery.Issuer {
-		return nil, errors.New("issuer claim does not match the discovered provider")
-	}
+	issuer, _ := stringClaim(claims, "iss")
 	subject, ok := stringClaim(claims, "sub")
 	if !ok || strings.TrimSpace(subject) == "" {
 		return nil, errors.New("subject claim is required")
 	}
-	expiresAt, ok := numericDateClaim(claims, "exp")
-	if !ok {
-		return nil, errors.New("expiration claim is required")
-	}
-	if now.After(expiresAt.Add(skew)) {
-		return nil, errors.New("token has expired")
-	}
-	if notBefore, present := numericDateClaim(claims, "nbf"); present && now.Add(skew).Before(notBefore) {
-		return nil, errors.New("token is not valid yet")
-	}
-	if issuedAt, present := numericDateClaim(claims, "iat"); present && now.Add(skew).Before(issuedAt) {
-		return nil, errors.New("token was issued in the future")
-	}
 	if len(authenticator.config.Audiences) > 0 && !audienceMatches(claims["aud"], authenticator.config.Audiences) {
 		return nil, errors.New("audience claim does not match this service")
+	}
+	// A token Keycloak issued to some other client — an MCP client, another
+	// application in the realm — names that client in azp. It is not the web
+	// sign-in's token and does not open the API the web sign-in opens: the MCP
+	// endpoint has its own door for those, with its own audience rule.
+	if party, present := stringClaim(claims, "azp"); present && party != "" &&
+		authenticator.config.ClientID != "" && party != authenticator.config.ClientID {
+		return nil, fmt.Errorf("token was issued to client %q, not to the web sign-in client", party)
 	}
 
 	email, _ := stringClaim(claims, "email")
