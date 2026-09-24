@@ -64,40 +64,77 @@ type worksheet struct {
 	} `xml:"sheetData>row"`
 }
 
+// workbookParts is the archive's own table of contents: which part of the
+// workbook is where in the file, without any of it unpacked yet.
+//
+// Unpacking the whole archive first was unpacking the artwork, the printer
+// settings, the theme, the pivot caches, the chain a recalculation walks and
+// the sheets the workbook hides — none of which a deck is made of — and holding
+// every one of them in memory at once until the last sheet had been read. How
+// much there is to unpack is not the size of the file and is not bounded by it:
+// a three hundred kilobyte upload of forty-one parts that each unpack to eight
+// megabytes unpacked to a third of a gigabyte for a deck of one table, and at
+// the size an upload is allowed to be that is tens of gigabytes of parts nobody
+// asked for. The per-part limit does not see it, because no single part is over
+// the limit.
+//
+// A part is unpacked when it is asked for and only if it is asked for, which is
+// what the .docx reader has always done with word/document.xml. Nothing holds
+// more than one sheet at a time, so what a workbook costs is now the sheet
+// being read rather than the file it came in.
+type workbookParts map[string]*zip.File
+
+// part unpacks one named part of the workbook, and reports whether the
+// workbook has it. A part longer than the limit is read up to the limit, the
+// same as before: what comes back is not valid XML and the caller passes over
+// it, which is the answer for a part that big either way.
+func (p workbookParts) part(name string) ([]byte, bool) {
+	file, ok := p[name]
+	if !ok {
+		return nil, false
+	}
+	opened, err := file.Open()
+	if err != nil {
+		return nil, false
+	}
+	defer opened.Close()
+	content, err := io.ReadAll(io.LimitReader(opened, 32<<20))
+	if err != nil {
+		return nil, false
+	}
+	return content, true
+}
+
 // readWorkbook reads a spreadsheet into slides, one per sheet.
 func readWorkbook(filename string, data []byte) (Document, error) {
 	archive, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return Document{}, fmt.Errorf("이 파일은 엑셀 통합 문서가 아닙니다")
 	}
-	parts := map[string][]byte{}
+	parts := workbookParts{}
 	for _, file := range archive.File {
-		opened, err := file.Open()
-		if err != nil {
-			continue
-		}
-		content, err := io.ReadAll(io.LimitReader(opened, 32<<20))
-		opened.Close()
-		if err == nil {
-			parts[file.Name] = content
-		}
+		parts[file.Name] = file
 	}
 	var index workbookIndex
-	if err := xml.Unmarshal(parts["xl/workbook.xml"], &index); err != nil || len(index.Sheets.Sheet) == 0 {
+	content, _ := parts.part("xl/workbook.xml")
+	if err := xml.Unmarshal(content, &index); err != nil || len(index.Sheets.Sheet) == 0 {
 		return Document{}, fmt.Errorf("이 통합 문서에서 시트를 찾지 못했습니다")
 	}
 	var relationships workbookRelationships
-	_ = xml.Unmarshal(parts["xl/_rels/workbook.xml.rels"], &relationships)
+	content, _ = parts.part("xl/_rels/workbook.xml.rels")
+	_ = xml.Unmarshal(content, &relationships)
 	target := map[string]string{}
 	for _, relationship := range relationships.Relationship {
 		target[relationship.ID] = strings.TrimPrefix(relationship.Target, "/")
 	}
 	var strings0 sharedStrings
-	_ = xml.Unmarshal(parts["xl/sharedStrings.xml"], &strings0)
+	content, _ = parts.part("xl/sharedStrings.xml")
+	_ = xml.Unmarshal(content, &strings0)
 	// What each style means, so a date is a day and a per cent is a per cent —
 	// and which day the workbook counts its days from, so the day is the one on
 	// the sheet.
-	formats := readCellFormats(parts["xl/styles.xml"], counts1904(index.Properties.Date1904))
+	content, _ = parts.part("xl/styles.xml")
+	formats := readCellFormats(content, counts1904(index.Properties.Date1904))
 	shared := make([]string, 0, len(strings0.Items))
 	for _, item := range strings0.Items {
 		if item.Text != "" {
@@ -127,12 +164,12 @@ func readWorkbook(filename string, data []byte) (Document, error) {
 		if name == "" {
 			continue
 		}
-		content, ok := parts[sheetPart(name)]
+		sheetXML, ok := parts.part(sheetPart(name))
 		if !ok {
 			continue
 		}
 		var parsed worksheet
-		if err := xml.Unmarshal(content, &parsed); err != nil {
+		if err := xml.Unmarshal(sheetXML, &parsed); err != nil {
 			continue
 		}
 		grid, unread := gridOf(parsed, shared, formats)
