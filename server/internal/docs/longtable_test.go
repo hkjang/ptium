@@ -122,3 +122,94 @@ func TestASheetLongerThanASlideContinues(t *testing.T) {
 		t.Errorf("a three-row sheet wrote %d slides and said %v", written, warnings)
 	}
 }
+
+// numbersWithOneWordAt is a two-column sheet of twelve figures with a single
+// cell of text in it, at the row asked for. Which slide that row lands on is
+// what used to decide the shape of both of them.
+func numbersWithOneWordAt(row int) [][]string {
+	grid := [][]string{{"지역", "매출"}}
+	for index := 1; index <= 12; index++ {
+		figure := fmt.Sprintf("%d", index*100)
+		if index == row {
+			figure = "미정"
+		}
+		grid = append(grid, []string{fmt.Sprintf("지역%d", index), figure})
+	}
+	return grid
+}
+
+// A sheet is one shape the whole way through, chart or table, however many
+// slides it takes.
+//
+// Each slide used to be asked on its own whether its own rows were figures, so
+// one cell of text among twelve turned a sheet of sales by region into a bar
+// chart titled "매출" followed by a table titled "지역 (계속)" — the same sheet
+// arriving as two unrelated ones, and which of them came first depended only on
+// where in the column the text happened to sit.
+func TestASheetThatContinuesIsOneShape(t *testing.T) {
+	// Late, so the first slide is all figures; and early, so the carried one
+	// is. Either way the sheet has a cell no axis can be drawn from.
+	for _, row := range []int{10, 3} {
+		var builder strings.Builder
+		written, warnings := writeSheet(&builder, "실적.csv", "", numbersWithOneWordAt(row), placement{})
+		source := builder.String()
+		if written != 2 {
+			t.Fatalf("a twelve-row sheet wrote %d slides:\n%s", written, source)
+		}
+		if charts := strings.Count(source, "::columns"); charts != 0 {
+			t.Errorf("text in row %d left %d of the slides a chart:\n%s", row, charts, source)
+		}
+		if tables := strings.Count(source, "::table"); tables != 2 {
+			t.Errorf("text in row %d made %d of the two slides a table:\n%s", row, tables, source)
+		}
+		// Every piece of a table carries the header, or a continuation reads
+		// as a list of values with nothing to say what they are.
+		if headers := strings.Count(source, "- 지역 | 매출"); headers != 2 {
+			t.Errorf("the header is on %d of the two slides:\n%s", headers, source)
+		}
+		if len(warnings) != 0 {
+			t.Errorf("a sheet that was carried whole was reported: %v", warnings)
+		}
+	}
+}
+
+// A column that is figures all the way down is a chart on every slide, and the
+// header row is the chart's own title rather than a row of its own.
+func TestASheetOfFiguresThatContinuesStaysAChart(t *testing.T) {
+	figures := func(count int) [][]string {
+		grid := [][]string{{"지역", "매출"}}
+		for index := 1; index <= count; index++ {
+			grid = append(grid, []string{fmt.Sprintf("지역%d", index), fmt.Sprintf("%d", index*100)})
+		}
+		return grid
+	}
+	var builder strings.Builder
+	written, _ := writeSheet(&builder, "실적.csv", "", figures(12), placement{})
+	source := builder.String()
+	if written != 2 || strings.Count(source, "::columns") != 2 {
+		t.Errorf("twelve rows of figures wrote %d slides and %d charts:\n%s",
+			written, strings.Count(source, "::columns"), source)
+	}
+	if strings.Contains(source, "::table") || strings.Contains(source, "- 지역 | 매출") {
+		t.Errorf("a chart was given a table's header row:\n%s", source)
+	}
+
+	// The shape follows the rows a reader is shown. A sheet too long to be
+	// carried whole stops at the thirty-second row, so a cell past that one is
+	// on no slide and cannot decide what the slides look like.
+	grid := figures(40)
+	grid[35][1] = "미정"
+	builder.Reset()
+	written, warnings := writeSheet(&builder, "실적.csv", "", grid, placement{})
+	source = builder.String()
+	if written != maximumTableSlides || strings.Count(source, "::columns") != maximumTableSlides {
+		t.Errorf("a forty-row sheet wrote %d slides and %d charts:\n%s",
+			written, strings.Count(source, "::columns"), source)
+	}
+	if strings.Contains(source, "미정") {
+		t.Errorf("a row the sheet left behind was written after all:\n%s", source)
+	}
+	if !strings.Contains(strings.Join(warnings, " "), "32줄") {
+		t.Errorf("a forty-row sheet said %v", warnings)
+	}
+}
