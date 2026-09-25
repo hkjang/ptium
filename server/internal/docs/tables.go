@@ -150,25 +150,20 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 	fmt.Fprintf(builder, "# %s\n", escapeLine(heading))
 	// One label column and one column of figures is a chart, which is what a
 	// person would draw. Anything wider is a table.
-	if columns == 2 && allNumeric(body, 1) {
-		fmt.Fprintf(builder, "::columns %s\n", escapeLine(strings.TrimSpace(rows[0][1])))
-		for _, row := range body {
-			fmt.Fprintf(builder, "- %s | %s\n", escapeField(row[0]), escapeField(row[1]))
-		}
-	} else {
-		fmt.Fprintf(builder, "::table %s\n", escapeLine(strings.TrimSpace(rows[0][0])))
-		for _, row := range append([][]string{rows[0]}, body...) {
-			fields := make([]string, 0, columns)
-			for index := 0; index < columns; index++ {
-				value := ""
-				if index < len(row) {
-					value = row[index]
-				}
-				fields = append(fields, escapeField(value))
-			}
-			fmt.Fprintf(builder, "- %s\n", strings.Join(fields, " | "))
-		}
+	//
+	// The question is asked once, of the sheet, and not of each slide in turn. A
+	// sheet carried onto a second slide is still one sheet, and asking each slide
+	// on its own is how a single cell of text among twelve came out as a bar chart
+	// titled "매출" followed by a table titled "지역 (계속)" — the same sheet
+	// arriving as two unrelated ones, and which of them came first decided by
+	// nothing but where in the column that cell happened to sit. Only the rows a
+	// reader is shown are asked about: a row the sheet was too long to carry is on
+	// no slide, and cannot change the shape of the slides that were.
+	chart := columns == 2 && allNumeric(body, 1)
+	for _, piece := range carried {
+		chart = chart && allNumeric(piece, 1)
 	}
+	writeBody(builder, chart, rows[0], body, columns)
 	builder.WriteString("::\n")
 	// The heading is row 0 of the grid, so the last row of the slide is one
 	// past the number of body rows on it.
@@ -178,25 +173,7 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 	written := 1
 	for _, piece := range carried {
 		fmt.Fprintf(builder, "# %s (계속)\n", escapeLine(heading))
-		if columns == 2 && allNumeric(piece, 1) {
-			fmt.Fprintf(builder, "::columns %s\n", escapeLine(strings.TrimSpace(rows[0][1])))
-			for _, row := range piece {
-				fmt.Fprintf(builder, "- %s | %s\n", escapeField(row[0]), escapeField(row[1]))
-			}
-		} else {
-			fmt.Fprintf(builder, "::table %s\n", escapeLine(strings.TrimSpace(rows[0][0])))
-			for _, row := range append([][]string{rows[0]}, piece...) {
-				fields := make([]string, 0, columns)
-				for index := 0; index < columns; index++ {
-					value := ""
-					if index < len(row) {
-						value = row[index]
-					}
-					fields = append(fields, escapeField(value))
-				}
-				fmt.Fprintf(builder, "- %s\n", strings.Join(fields, " | "))
-			}
-		}
+		writeBody(builder, chart, rows[0], piece, columns)
 		builder.WriteString("::\n")
 		last += len(piece)
 		builder.WriteString(citation(filename, source(last)))
@@ -204,6 +181,34 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 		written++
 	}
 	return written, warnings
+}
+
+// writeBody writes one slide's worth of a sheet — the block it opens and the
+// rows on it — in whichever shape the sheet as a whole was given. A table
+// repeats the header row on every slide it takes, or a continuation reads as a
+// list of values with nothing to say what they are; a chart writes that header
+// as its title instead, so the figures on the second slide are the same series
+// as the ones on the first.
+func writeBody(builder *strings.Builder, chart bool, header []string, piece [][]string, columns int) {
+	if chart {
+		fmt.Fprintf(builder, "::columns %s\n", escapeLine(strings.TrimSpace(header[1])))
+		for _, row := range piece {
+			fmt.Fprintf(builder, "- %s | %s\n", escapeField(row[0]), escapeField(row[1]))
+		}
+		return
+	}
+	fmt.Fprintf(builder, "::table %s\n", escapeLine(strings.TrimSpace(header[0])))
+	for _, row := range append([][]string{header}, piece...) {
+		fields := make([]string, 0, columns)
+		for index := 0; index < columns; index++ {
+			value := ""
+			if index < len(row) {
+				value = row[index]
+			}
+			fields = append(fields, escapeField(value))
+		}
+		fmt.Fprintf(builder, "- %s\n", strings.Join(fields, " | "))
+	}
 }
 
 func sheetLabel(filename, sheet string) string {
