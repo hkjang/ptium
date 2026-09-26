@@ -118,11 +118,20 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 		warnings = append(warnings, fmt.Sprintf("%s의 열이 많아 앞 %d개만 가져왔습니다",
 			sheetLabel(filename, sheet), maximumColumns))
 	}
-	// The source of a slide reaches to the last column and, given which row
-	// of the grid is the last one on the slide, the last row — where each of
-	// them was on the sheet.
-	source := func(last int) string {
-		return rangeOf(sheet, from.column(columns-1), from.row(kept[last]))
+	// The source of a slide reaches to the last column and, given which rows of
+	// the grid are the first and the last one on the slide, from the one to the
+	// other — where each of them was on the sheet.
+	//
+	// Each slide names the rows it shows and no others. Every slide used to
+	// begin its range at A1, so a sheet of twenty rows cited A1:B9, then A1:B17,
+	// then A1:B21: the later slides swallowed rows that are on neither of them,
+	// and the more slides a sheet took the more nearly all of them pointed at
+	// the same place. A table repeats the header row on every slide, and the
+	// range still leaves it out on the continuations — a spreadsheet range
+	// cannot name two stretches with a gap between them, and what a reader
+	// follows a citation for is where this slide's figures are.
+	source := func(first, last int) string {
+		return rangeOf(sheet, from.row(kept[first]), from.column(columns-1), from.row(kept[last]))
 	}
 	// A sheet longer than a slide holds continues on the next one rather than
 	// stopping at the eighth row: a twelve-row report table is a table, not the
@@ -168,15 +177,20 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 	// The heading is row 0 of the grid, so the last row of the slide is one
 	// past the number of body rows on it.
 	last := len(body)
-	builder.WriteString(citation(filename, source(last)))
+	// Grid row 0 is the header, which is row 1 of the sheet, and the first slide
+	// starts there.
+	builder.WriteString(citation(filename, source(0, last)))
 	builder.WriteString("\n")
 	written := 1
 	for _, piece := range carried {
 		fmt.Fprintf(builder, "# %s (계속)\n", escapeLine(heading))
 		writeBody(builder, chart, rows[0], piece, columns)
 		builder.WriteString("::\n")
+		// The piece begins at the row after the one the slide before it ended
+		// on, which is what last still holds until it is carried forward.
+		start := last + 1
 		last += len(piece)
-		builder.WriteString(citation(filename, source(last)))
+		builder.WriteString(citation(filename, source(start, last)))
 		builder.WriteString("\n")
 		written++
 	}
@@ -219,10 +233,11 @@ func sheetLabel(filename, sheet string) string {
 }
 
 // rangeOf is where on the sheet the slide came from, written the way a
-// spreadsheet writes it: "Sheet1!A1:C9", given the last column and the last
-// row of the slide as the sheet counts them, from zero.
-func rangeOf(sheet string, column, row int) string {
-	reference := fmt.Sprintf("A1:%s%d", columnLetter(column), max(row, 0)+1)
+// spreadsheet writes it: "Sheet1!A1:C9" for the first slide a sheet takes and
+// "Sheet1!A10:C17" for the one that continues it, given the first row, the last
+// column and the last row of the slide as the sheet counts them, from zero.
+func rangeOf(sheet string, first, column, last int) string {
+	reference := fmt.Sprintf("A%d:%s%d", max(first, 0)+1, columnLetter(column), max(last, 0)+1)
 	if sheet := strings.TrimSpace(sheet); sheet != "" {
 		return sheet + "!" + reference
 	}

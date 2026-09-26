@@ -2,9 +2,24 @@ package docs
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hkjang/ptium/server/internal/deck"
 )
+
+// citedRanges is every range the written deck cites, in the order the slides
+// cite them.
+func citedRanges(source string) []string {
+	var cited []string
+	for _, line := range strings.Split(source, "\n") {
+		if _, locator, ok := strings.Cut(line, " | "); ok && strings.HasPrefix(line, "!source ") {
+			cited = append(cited, locator)
+		}
+	}
+	return cited
+}
 
 // A report's table is longer than a slide holds, and cutting it at the eighth
 // row is how a twelve-row table arrived as eight rows with the rest on no slide
@@ -211,5 +226,73 @@ func TestASheetOfFiguresThatContinuesStaysAChart(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(warnings, " "), "32줄") {
 		t.Errorf("a forty-row sheet said %v", warnings)
+	}
+}
+
+// A sheet that takes three slides cites three ranges, and each of them is the
+// rows that slide shows.
+//
+// Every range used to begin at A1, so the second and third slides cited rows
+// that are on neither of them: 분기 실적!A1:B9, then A1:B17, then A1:B21, three
+// citations of very nearly the same place. A reader who follows the source of
+// the third slide to find where its figures are gets the whole sheet back.
+func TestEachSlideOfALongSheetCitesTheRowsItShows(t *testing.T) {
+	grid := [][]string{{"지역", "매출"}}
+	for index := 1; index <= 20; index++ {
+		grid = append(grid, []string{fmt.Sprintf("지역%d", index), fmt.Sprintf("%d", index*100)})
+	}
+	var builder strings.Builder
+	written, warnings := writeSheet(&builder, "실적.xlsx", "분기 실적", grid, placement{})
+	if written != 3 || len(warnings) != 0 {
+		t.Fatalf("a twenty-row sheet wrote %d slides and said %v:\n%s", written, warnings, builder.String())
+	}
+	// The slides carry eight, eight and four rows, so they end where they always
+	// did — only the row each of them starts at is new. The header row is row 1
+	// of the sheet and is repeated on every slide of a table, but a range cannot
+	// name two apart stretches, and what a citation is for is where this slide's
+	// figures came from.
+	want := []string{"분기 실적!A1:B9", "분기 실적!A10:B17", "분기 실적!A18:B21"}
+	if cited := citedRanges(builder.String()); !reflect.DeepEqual(cited, want) {
+		t.Errorf("cited %#v, want %#v:\n%s", cited, want, builder.String())
+	}
+}
+
+// The row a continuation starts at is a row of the sheet, not of the grid the
+// sheet was read into — hidden rows are cut out of the grid, so the two stop
+// agreeing at the first one.
+func TestAContinuationStartsAtTheSheetsOwnRow(t *testing.T) {
+	// Eleven rows on the screen, which is two slides, with two rows hidden
+	// between the eighth and the ninth: the second slide begins at sheet row 12
+	// though it is the tenth row of the grid.
+	rows := `<row r="1">` + textCell("A1", "지역") + textCell("B1", "매출") + `</row>`
+	for at := 2; at <= 14; at++ {
+		hidden := ""
+		if at == 10 || at == 11 {
+			hidden = ` hidden="1"`
+		}
+		rows += fmt.Sprintf(`<row r="%d"%s>`, at, hidden) +
+			textCell(fmt.Sprintf("A%d", at), fmt.Sprintf("지역%d", at)) +
+			numberCell(fmt.Sprintf("B%d", at), fmt.Sprintf("%d", at*100)) + `</row>`
+	}
+	document, err := Read("실적.xlsx", concealedBook(t, "", rows))
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	want := []string{"분기 실적!A1:B9", "분기 실적!A12:B14"}
+	if cited := citedRanges(document.Source); !reflect.DeepEqual(cited, want) {
+		t.Errorf("cited %#v, want %#v:\n%s", cited, want, document.Source)
+	}
+	// And the deck's own reader gets the same two ranges back out of it.
+	var locators []string
+	for _, slide := range deck.ParseSource(document.Source).Slides {
+		for _, citation := range slide.Sources {
+			locators = append(locators, citation.Locator)
+		}
+	}
+	if !reflect.DeepEqual(locators, want) {
+		t.Errorf("parsed locators = %#v, want %#v", locators, want)
+	}
+	if !strings.Contains(strings.Join(document.Warnings, "\n"), "숨긴 행 2개") {
+		t.Errorf("the warnings do not say two rows were hidden: %v", document.Warnings)
 	}
 }
