@@ -211,8 +211,7 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			table = nil
 		}
 	}
-	for _, raw := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
-		line := strings.TrimSpace(raw)
+	handle := func(line string) {
 		switch {
 		case line == "":
 			flush()
@@ -226,7 +225,7 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			}
 			// The |---|---| rule under a header row is punctuation, not a row.
 			if isRule(cells) {
-				continue
+				return
 			}
 			table = append(table, cells)
 		case isListLine(line):
@@ -238,8 +237,90 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			writer.point(line)
 		}
 	}
+	// Inside a fenced code block, a line is not markdown.
+	//
+	// Reading every line the same way turned a runbook's one page into several
+	// slides nobody wrote: the "# 1단계" of a shell comment started a slide, the
+	// ``` lines stayed as bullets, and the sentence after the block landed on the
+	// slide the last line of code had made. So the block is read as the one thing
+	// it is, and counted, because a deck has nothing that draws code.
+	var fence string
+	var held []string
+	blocks := 0
+	for _, raw := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(raw)
+		if fence == "" {
+			if opened := fenceOf(line); opened != "" {
+				flush()
+				fence = opened
+				// The opening line is held with the block: if the fence turns out
+				// never to close, it is a line of the document again.
+				held = []string{line}
+				continue
+			}
+			handle(line)
+			continue
+		}
+		held = append(held, line)
+		if closesFence(line, fence) {
+			blocks++
+			fence, held = "", nil
+		}
+	}
+	if fence != "" {
+		// A fence that never closes is a stray ``` somebody typed, not a block
+		// that runs to the end of the file. Swallowing the rest of the document
+		// on the strength of one line would lose every slide after it, so the
+		// held lines are read as the lines they are — which is what this reader
+		// did before it knew about fences at all.
+		for _, line := range held {
+			handle(line)
+		}
+	}
 	flush()
-	return writer.document()
+	document, err := writer.document()
+	if err != nil {
+		return document, err
+	}
+	// Said rather than dropped, the way the Word reader says it about pictures:
+	// the deck has no component that draws code, so what the block held cannot
+	// arrive, and a deck that quietly comes back without the commands somebody
+	// wrote their runbook around is worse than one that says so.
+	if blocks > 0 {
+		document.Warnings = append(document.Warnings, fmt.Sprintf(
+			"코드 블록 %d개는 가져오지 않았습니다. 슬라이드에 필요한 줄은 요점으로 적어 주세요", blocks))
+	}
+	return document, nil
+}
+
+// markdownFences are the two characters a code fence is drawn with.
+const markdownFences = "`~"
+
+// fenceOf reads a line as the opening of a fenced code block and returns the
+// fence it opened with — three or more of one of the two characters. A line that
+// opens nothing returns "".
+//
+// An indented fence is read as a fence: the caller has already trimmed the line,
+// which is more generous than markdown's three spaces and harms nothing, since a
+// deck holds no code at any indent.
+func fenceOf(line string) string {
+	if line == "" || strings.IndexByte(markdownFences, line[0]) < 0 {
+		return ""
+	}
+	fence := line[:len(line)-len(strings.TrimLeft(line, line[:1]))]
+	if len(fence) < 3 {
+		return ""
+	}
+	return fence
+}
+
+// closesFence says whether a line ends the block a fence opened. The line that
+// opens a block may name the language after it — ```bash — but the line that
+// ends one is the fence and nothing else, at least as long as the fence that
+// opened the block. So a "```python" in the middle of a shell block is a line of
+// that block rather than the end of it.
+func closesFence(line, fence string) bool {
+	return len(line) >= len(fence) && strings.Trim(line, fence[:1]) == ""
 }
 
 func isRule(cells []string) bool {
