@@ -246,7 +246,7 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	// it is, and counted, because a deck has nothing that draws code.
 	var fence string
 	var held []string
-	blocks := 0
+	blocks, skipped := 0, 0
 	for _, raw := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
 		line := strings.TrimSpace(raw)
 		if fence == "" {
@@ -264,6 +264,9 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 		held = append(held, line)
 		if closesFence(line, fence) {
 			blocks++
+			// The two fence lines are punctuation; what did not arrive is the
+			// lines between them.
+			skipped += len(held) - 2
 			fence, held = "", nil
 		}
 	}
@@ -286,9 +289,18 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	// the deck has no component that draws code, so what the block held cannot
 	// arrive, and a deck that quietly comes back without the commands somebody
 	// wrote their runbook around is worse than one that says so.
+	//
+	// The line count is there because the block count alone does not tell anybody
+	// how much of their document is missing — one block is a three-line snippet
+	// or forty lines of a file, and only the second is worth reopening the source
+	// over. It also puts a number on the one case this reader can still get
+	// wrong: if some line were ever read as a fence that the author did not mean
+	// as one, the warning says how many lines went with it instead of implying a
+	// snippet.
 	if blocks > 0 {
 		document.Warnings = append(document.Warnings, fmt.Sprintf(
-			"코드 블록 %d개는 가져오지 않았습니다. 슬라이드에 필요한 줄은 요점으로 적어 주세요", blocks))
+			"코드 블록 %d개(%d줄)는 가져오지 않았습니다. 슬라이드에 필요한 줄은 요점으로 적어 주세요",
+			blocks, skipped))
 	}
 	return document, nil
 }
@@ -303,12 +315,33 @@ const markdownFences = "`~"
 // An indented fence is read as a fence: the caller has already trimmed the line,
 // which is more generous than markdown's three spaces and harms nothing, since a
 // deck holds no code at any indent.
+//
+// What follows the fence is the info string, and a fence that opens a block
+// names a language there or nothing at all — ```bash, ~~~, ```. A line that
+// carries a sentence after the fence characters is a sentence *about* fences,
+// which is exactly what the page of a guide explaining markdown looks like:
+//
+//	``` 로 감싸면 코드 블록이 됩니다.
+//
+// Opening a block on that line costs far more than missing one. Missing a fence
+// leaves the fence line as a bullet — what this reader did before it knew about
+// fences at all — while opening one the author never opened swallows every
+// paragraph after it until some later ``` closes it, and those paragraphs are
+// then dropped from the deck as code. So the info string has to be one word:
+// a ```js {1,3} that some site's renderer accepts reads as it used to instead,
+// which is the cheap half of the trade. A backtick in the info string is
+// refused for the same reason and on markdown's own authority — CommonMark
+// says a backtick fence whose info string holds a backtick opens nothing —
+// which is what catches the same sentence written ``` … ``` on one line.
 func fenceOf(line string) string {
 	if line == "" || strings.IndexByte(markdownFences, line[0]) < 0 {
 		return ""
 	}
 	fence := line[:len(line)-len(strings.TrimLeft(line, line[:1]))]
 	if len(fence) < 3 {
+		return ""
+	}
+	if info := line[len(fence):]; strings.ContainsAny(info, " \t`") {
 		return ""
 	}
 	return fence

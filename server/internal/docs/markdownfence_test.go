@@ -107,6 +107,55 @@ func TestAFenceClosesOnlyOnALineOfNothingButFence(t *testing.T) {
 	}
 }
 
+// A sentence about fences is not a fence.
+//
+// A guide explaining markdown writes the fence characters in the middle of an
+// ordinary paragraph. Reading that line as an opening fence was worse than the
+// symptom the fence handling was written for: everything from there to the next
+// ``` — four paragraphs the author typed — was swallowed as code and dropped
+// from the deck, leaving one bullet out of five. So the info string has to be
+// one word, and both ways of writing the sentence stay in the deck.
+func TestASentenceAfterTheFenceCharactersIsNotAFence(t *testing.T) {
+	for _, first := range []string{
+		"``` 로 감싸면 코드 블록이 됩니다.",
+		"``` 로 감싸면 코드 블록이 됩니다. ```",
+		"~~~ 로도 감쌀 수 있습니다.",
+	} {
+		document, err := readMarkdown("문법.md", []byte(
+			"# 마크다운 문법\n\n"+first+"\n표는 | 로 그립니다.\n제목은 # 으로 씁니다.\n\n"+
+				"```bash\nmake build\n```\n\n끝입니다.\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expected := "# 마크다운 문법\n@cover\n> 문법.md\n\n" +
+			"# 마크다운 문법\n- " + first + "\n- 표는 | 로 그립니다.\n- 제목은 # 으로 씁니다.\n" +
+			"- 끝입니다.\n!source 문법.md | 마크다운 문법\n\n"
+		if document.Source != expected {
+			t.Errorf("read as\n%s\nwant\n%s", document.Source, expected)
+		}
+		// The one real block in the file is still read as a block, and still said.
+		if len(document.Warnings) != 1 || !strings.Contains(document.Warnings[0], "코드 블록 1개") {
+			t.Errorf("warned %q, want one warning naming the one real block", document.Warnings)
+		}
+	}
+}
+
+// The warning says how many lines did not arrive, not only how many blocks:
+// one block is a two-line snippet or forty lines of a file, and the author can
+// only tell whether that matters from the number.
+func TestTheCodeBlockWarningCountsTheLinesItSkipped(t *testing.T) {
+	document, err := readMarkdown("런북.md", []byte(
+		"# 배포 절차\n\n한 문장입니다.\n\n"+
+			"```bash\nmake build\nmake test\nmake deploy\n```\n\n"+
+			"```\nkubectl get pods\n```\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(document.Warnings) != 1 || !strings.Contains(document.Warnings[0], "코드 블록 2개(4줄)") {
+		t.Errorf("warned %q, want two blocks of four lines between the fences", document.Warnings)
+	}
+}
+
 // A file that is nothing but a code block holds nothing a deck can draw, and
 // says so the way an empty file does rather than returning a deck of one slide
 // of code.
