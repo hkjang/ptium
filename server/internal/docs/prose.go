@@ -211,7 +211,11 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			table = nil
 		}
 	}
-	handle := func(line string) {
+	// handle reads one line, and is told the line after it because a sentence
+	// with a row of "=" under it is a heading rather than a sentence. It returns
+	// whether it took that next line with it, so the caller does not read the
+	// underline as a line of its own.
+	handle := func(line, next string) bool {
 		switch {
 		case line == "":
 			flush()
@@ -225,7 +229,7 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			}
 			// The |---|---| rule under a header row is punctuation, not a row.
 			if isRule(cells) {
-				return
+				return false
 			}
 			table = append(table, cells)
 		case isListLine(line):
@@ -234,8 +238,13 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 			writer.point(point)
 		default:
 			flush()
+			if underlinesHeading(next) {
+				writer.slide(line)
+				return true
+			}
 			writer.point(line)
 		}
+		return false
 	}
 	// Inside a fenced code block, a line is not markdown.
 	//
@@ -247,9 +256,17 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	var fence string
 	var held []string
 	blocks, skipped := 0, 0
-	for _, raw := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	// skip says the line coming up is the underline of the heading just written,
+	// which the heading has already accounted for.
+	skip := false
+	for index, raw := range lines {
 		line := strings.TrimSpace(raw)
 		if fence == "" {
+			if skip {
+				skip = false
+				continue
+			}
 			if opened := fenceOf(line); opened != "" {
 				flush()
 				fence = opened
@@ -258,7 +275,7 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 				held = []string{line}
 				continue
 			}
-			handle(line)
+			skip = handle(line, lineAfter(lines, index))
 			continue
 		}
 		held = append(held, line)
@@ -276,8 +293,16 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 		// on the strength of one line would lose every slide after it, so the
 		// held lines are read as the lines they are — which is what this reader
 		// did before it knew about fences at all.
-		for _, line := range held {
-			handle(line)
+		//
+		// They are read by the same rules as the rest of the file, underlines and
+		// all: a stray ``` above a heading must not change what that heading is.
+		skip = false
+		for index, line := range held {
+			if skip {
+				skip = false
+				continue
+			}
+			skip = handle(line, lineAfter(held, index))
 		}
 	}
 	flush()
@@ -354,6 +379,45 @@ func fenceOf(line string) string {
 // that block rather than the end of it.
 func closesFence(line, fence string) bool {
 	return len(line) >= len(fence) && strings.Trim(line, fence[:1]) == ""
+}
+
+// lineAfter is the line following the one at index, trimmed the same way, and
+// "" where there is no next line — which is also what the last line of a file
+// has under it as far as a heading is concerned.
+func lineAfter(lines []string, index int) string {
+	if index+1 >= len(lines) {
+		return ""
+	}
+	return strings.TrimSpace(lines[index+1])
+}
+
+// underlinesHeading says whether a line makes a heading of the line above it.
+//
+// A row of "=" is markdown's other way of writing a heading, and the way a
+// report writes its own name on its first line — the title over the underline is
+// the "# 분기 요약" the rest of this reader already knows. Not reading it cost
+// that title twice: it stayed behind as a bullet and the underline became a
+// second bullet of "=========", and since no heading had been seen by then, the
+// deck was named after the file rather than after the document. A document whose
+// sections are written that way also never started a new slide, so its
+// paragraphs piled onto one until maximumPoints spilled them onto a "(계속)".
+//
+// One "=" is enough, as CommonMark has it. Nothing else in markdown begins a
+// line with that character, so unlike the code fence — where a sentence
+// *about* fences begins with one — there is no line this can be mistaken for.
+//
+// This is asked of the line ahead rather than answered by taking back the line
+// behind, because the line behind cannot be taken back: writer.point may have
+// filled the slide at maximumPoints and opened a "(계속)" to hold the overflow,
+// and there is no undoing that once the points have moved.
+//
+// The other underline markdown allows, a row of "-", is deliberately not read
+// here. That character is already a list marker, a thematic break, and the fence
+// of YAML front matter, so folding it in would make the "title: 보고서" under a
+// front matter "---" the name of a slide. CommonMark does read it as a heading;
+// for this reader it would lose more than it found.
+func underlinesHeading(line string) bool {
+	return line != "" && strings.Trim(line, "=") == ""
 }
 
 func isRule(cells []string) bool {
