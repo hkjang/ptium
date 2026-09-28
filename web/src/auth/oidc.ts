@@ -149,7 +149,8 @@ export async function completeOidcCallback(config: AuthConfig): Promise<OidcCall
   // refresh token never reaches the browser. Trade it once for a Ptium session
   // cookie, which is renewed while the person keeps working, and stop carrying the
   // provider's token: a stale one in this tab would override the cookie.
-  if (await api.startSession()) session.clearBearer()
+  const idToken = typeof tokenBody.id_token === 'string' ? tokenBody.id_token : undefined
+  if (await api.startSession(idToken)) session.clearBearer()
   // The tab's one silent try is not given back here: whether a session now
   // exists is known only once the server says who this is, and that is where
   // the flag is cleared. Clearing it on a code alone would let an account the

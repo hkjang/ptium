@@ -252,12 +252,27 @@ func (s *Server) startSession(writer http.ResponseWriter, request *http.Request)
 			"An API key cannot open a browser session", nil)
 		return
 	}
+	// The provider's ID token may come along. It is what signs this person
+	// out of the provider later without the provider asking them to confirm.
+	var input struct {
+		IDToken string `json:"idToken"`
+	}
+	if request.ContentLength > 0 && !decodeJSON(writer, request, &input) {
+		return
+	}
 	token, expiresAt, err := s.sessions.Issue(user.ID, user.SessionEpoch())
 	if err != nil {
 		s.internalError(writer, request, "session_issue_failed", err)
 		return
 	}
 	setSessionCookie(writer, auth.SessionCookie(token, expiresAt, secureRequest(request)))
+	subject := ""
+	if principal != nil && principal.AuthMethod == "oidc" {
+		subject = principal.Subject
+	}
+	if idTokenFor(input.IDToken, s.authPublic.Issuer, s.authPublic.ClientID, subject) {
+		http.SetCookie(writer, auth.IDTokenHintCookie(input.IDToken, expiresAt, secureRequest(request)))
+	}
 	writeData(writer, request, http.StatusOK, map[string]any{
 		"access_token": token,
 		"token_type":   "Bearer",
@@ -344,10 +359,32 @@ func setSessionCookie(writer http.ResponseWriter, cookie *http.Cookie) {
 
 // signOut handles POST /api/v1/auth/logout. It clears the session cookie and
 // always succeeds: signing out must not depend on the session still being valid.
+//
+// A client that says where it wants to land afterwards is also told where to
+// send the browser to sign out of the identity provider — with the ID token
+// that lets the provider do it without a confirmation page of its own. A
+// client that asks nothing is answered as before, with no body.
 func (s *Server) signOut(writer http.ResponseWriter, request *http.Request) {
-	setSessionCookie(writer, auth.ClearedSessionCookie(secureRequest(request)))
+	var input struct {
+		PostLogoutRedirectURI string `json:"postLogoutRedirectUri"`
+	}
+	if request.ContentLength > 0 {
+		// Signing out must not fail on a body it cannot read.
+		_ = json.NewDecoder(http.MaxBytesReader(writer, request.Body, 4096)).Decode(&input)
+	}
+	endSession := ""
+	if input.PostLogoutRedirectURI != "" {
+		endSession = s.endSessionURL(request, input.PostLogoutRedirectURI)
+	}
+	secure := secureRequest(request)
+	setSessionCookie(writer, auth.ClearedSessionCookie(secure))
+	http.SetCookie(writer, auth.ClearedIDTokenHintCookie(secure))
 	writer.Header().Set("Cache-Control", "no-store")
-	writer.WriteHeader(http.StatusNoContent)
+	if endSession == "" {
+		writer.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeData(writer, request, http.StatusOK, map[string]any{"endSessionUrl": endSession})
 }
 
 // secureRequest reports whether the browser reached Ptium over TLS, directly or

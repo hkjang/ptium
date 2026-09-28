@@ -148,23 +148,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = useCallback(async () => {
-    const endSessionEndpoint = config?.endSessionEndpoint
-    const clientId = config?.clientId
     // Signing out on purpose, and then being signed straight back in by the
     // provider's session, would look like sign-out does not work. Noted
     // before anything else, so a failure below cannot leave it unsaid.
     markSignedOut()
+    // The server clears both HttpOnly cookies and, when there is a provider,
+    // answers with its sign-out address carrying the ID token as a hint. With
+    // the hint the provider signs the person out and comes straight back;
+    // without it, Keycloak stops on a confirmation page of its own.
+    const endSession = config?.oidcEnabled
+      ? await api.logoutEverywhere(`${window.location.origin}/login`)
+      : (await api.logout(), null)
     session.clear()
-    // The session cookie is HttpOnly, so only the server can clear it.
-    await api.logout()
     setUser(null)
-    if (endSessionEndpoint) {
-      const logout = new URL(endSessionEndpoint)
-      logout.searchParams.set('post_logout_redirect_uri', `${window.location.origin}/login`)
-      if (clientId) logout.searchParams.set('client_id', clientId)
-      window.location.assign(logout)
-    }
-  }, [config?.clientId, config?.endSessionEndpoint])
+    if (endSession) window.location.assign(endSession)
+  }, [config?.oidcEnabled])
 
   const value = useMemo(() => ({ user, config, loading, error, signInDev, signInPassword, signOut, refreshUser }),
     [user, config, loading, error, signInDev, signInPassword, signOut, refreshUser])

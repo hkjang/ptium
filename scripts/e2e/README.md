@@ -18,6 +18,7 @@ python3 scripts/e2e/deep.py .   # MCP, a template round trip, the presenter wind
 python3 scripts/e2e/package.py  # what PowerPoint sees, read back with python-pptx
 python3 scripts/e2e/tenancy.py  # whose is whose: accounts, keys, admin doors, links
 python3 scripts/e2e/withmodel.py # generation with the provider, not the offline writer
+KEYCLOAK_URL=http://localhost:18180 python3 scripts/e2e/sso.py  # silent sign-in and sign-out, against a real Keycloak
 
 # the released image itself, on a database that has never been used
 python3 scripts/e2e/firstrun.py
@@ -44,6 +45,14 @@ product hands to a browser is fed `</text><script>…` and read back, and every
 address drawn as a link has to be one that can sit inside an attribute and a
 scheme a reader may follow. Taking the escaping out of `escapeText` makes four
 of those checks fail.
+
+`sso.py` needs a Keycloak it may configure and a Ptium pointed at it (the top
+of the file says how to start both). The silent sign-in code had passed its unit
+tests for a while; run end to end it signed people in correctly and signing out
+was broken twice — Keycloak stopped on its own confirmation page because no
+`id_token_hint` was sent, and a new tab opened after signing out was signed
+straight back in because "signed out" lived in the tab's own storage. Neither is
+visible without a provider.
 
 `withmodel.py` is the only one that asks the model. Every other sweep runs
 offline, so the writer a deployment actually uses — the provider, the repair

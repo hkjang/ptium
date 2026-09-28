@@ -295,3 +295,35 @@ func (authenticator SessionAuthenticator) cookieAllowed(request *http.Request) b
 	parsed, parseErr := url.Parse(origin)
 	return parseErr == nil && parsed.Host != "" && strings.EqualFold(parsed.Host, request.Host)
 }
+
+// IDTokenHintCookieName carries the identity provider's ID token, and nothing
+// reads it but the sign-out handler.
+//
+// Ending the provider's session needs it. Keycloak, asked to sign somebody out
+// without an id_token_hint, stops on a page of its own — "Do you want to log
+// out?", in English — and a person who closes that tab has signed out of this
+// app and not of the provider, whose session then signs them straight back in.
+// Kept in an HttpOnly cookie scoped to the sign-in endpoints, so no script on
+// the page can read it and no other request carries it.
+const IDTokenHintCookieName = "ptium_id_hint"
+
+// IDTokenHintPath is the only path the ID token cookie is sent to.
+const IDTokenHintPath = "/api/v1/auth"
+
+// IDTokenHintCookie keeps an ID token for as long as the session it came with.
+func IDTokenHintCookie(idToken string, expiresAt time.Time, secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name: IDTokenHintCookieName, Value: idToken, Path: IDTokenHintPath,
+		SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: secure,
+		Expires: expiresAt.UTC(), MaxAge: int(time.Until(expiresAt).Seconds()),
+	}
+}
+
+// ClearedIDTokenHintCookie expires the ID token cookie.
+func ClearedIDTokenHintCookie(secure bool) *http.Cookie {
+	return &http.Cookie{
+		Name: IDTokenHintCookieName, Value: "", Path: IDTokenHintPath,
+		SameSite: http.SameSiteLaxMode, HttpOnly: true, Secure: secure,
+		Expires: time.Unix(0, 0).UTC(), MaxAge: -1,
+	}
+}

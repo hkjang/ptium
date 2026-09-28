@@ -34,43 +34,55 @@ const at = (pathname: string, search = '') => ({ pathname, search })
 describe('whether to sign in without a login screen', () => {
   it('asks once when the administrator turned it on', () => {
     const storage = tabStorage()
-    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage)).toBe(true)
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage, tabStorage())).toBe(true)
     markSilentSsoAttempted(storage)
-    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage)).toBe(false)
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage, tabStorage())).toBe(false)
   })
 
   it('never asks while the administrator has it off, whatever the browser holds', () => {
-    expect(shouldAttemptSilentSso(off, at('/dashboard'), tabStorage())).toBe(false)
-    expect(shouldAttemptSilentSso({ ...on, oidcEnabled: false }, at('/dashboard'), tabStorage())).toBe(false)
-    expect(shouldAttemptSilentSso(null, at('/dashboard'), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(off, at('/dashboard'), tabStorage(), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso({ ...on, oidcEnabled: false }, at('/dashboard'), tabStorage(), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(null, at('/dashboard'), tabStorage(), tabStorage())).toBe(false)
   })
 
   it('reads the refusal the callback left in the address, even with storage wiped', () => {
-    expect(shouldAttemptSilentSso(on, at('/login', '?sso=none'), tabStorage())).toBe(false)
-    expect(shouldAttemptSilentSso(on, at('/login', '?sso=error'), tabStorage())).toBe(false)
-    expect(shouldAttemptSilentSso(on, at('/dashboard', '?sso=none'), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(on, at('/login', '?sso=none'), tabStorage(), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(on, at('/login', '?sso=error'), tabStorage(), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(on, at('/dashboard', '?sso=none'), tabStorage(), tabStorage())).toBe(false)
   })
 
   it('does not sign back in somebody who just signed out, until they sign in again', () => {
     const storage = tabStorage()
-    markSignedOut(storage)
-    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage)).toBe(false)
-    clearSilentSsoState(storage)
-    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage)).toBe(true)
+    const browser = tabStorage()
+    markSignedOut(storage, browser)
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage, browser)).toBe(false)
+    clearSilentSsoState(storage, browser)
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), storage, browser)).toBe(true)
+  })
+
+  // Measured against a real Keycloak: sign out, open a new tab, and the new
+  // tab signed straight back in. The sign-out was written to the tab's own
+  // storage, which a new tab does not share.
+  it('does not sign somebody back in from a new tab after they signed out', () => {
+    const browser = tabStorage()
+    markSignedOut(tabStorage(), browser)
+    const newTab = tabStorage()
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), newTab, browser)).toBe(false)
   })
 
   it('treats storage it cannot read as already tried', () => {
     // Reading a thrown exception as "not yet" is the loop: nothing could ever
     // record the try. Failing towards the login screen is the safe side.
-    expect(shouldAttemptSilentSso(on, at('/dashboard'), closedStorage())).toBe(false)
-    expect(() => markSignedOut(closedStorage())).not.toThrow()
-    expect(() => clearSilentSsoState(closedStorage())).not.toThrow()
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), closedStorage(), tabStorage())).toBe(false)
+    expect(shouldAttemptSilentSso(on, at('/dashboard'), tabStorage(), closedStorage())).toBe(false)
+    expect(() => markSignedOut(closedStorage(), closedStorage())).not.toThrow()
+    expect(() => clearSilentSsoState(closedStorage(), closedStorage())).not.toThrow()
   })
 
   it('never starts from the callback, the login page, or anything that is not a page', () => {
     for (const path of ['/auth/callback', '/login', '/view/abc', '/api/v1/auth/config', '/mcp', '/healthz', '/readyz']) {
       expect(silentSsoAllowedAt(path), path).toBe(false)
-      expect(shouldAttemptSilentSso(on, at(path), tabStorage()), path).toBe(false)
+      expect(shouldAttemptSilentSso(on, at(path), tabStorage(), tabStorage()), path).toBe(false)
     }
     for (const path of ['/', '/dashboard', '/presentations/abc/editor', '/admin/settings']) {
       expect(silentSsoAllowedAt(path), path).toBe(true)

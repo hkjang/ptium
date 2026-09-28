@@ -335,11 +335,44 @@ paths:
         valid — signing out must never fail.
 
         A bearer token is not revoked by this call; discard it client-side.
+
+        A browser that sends `postLogoutRedirectUri` is also told where to go to
+        sign out of the identity provider. The address carries the ID token kept
+        from sign-in as `id_token_hint`, which is what lets Keycloak end its own
+        session without stopping on a confirmation page. The ID token cookie is
+        expired along with the session.
       tags: [Authentication]
       security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                postLogoutRedirectUri:
+                  type: string
+                  format: uri
+                  description: Where the provider should send the browser afterwards. It must be registered with the provider.
       responses:
+        '200':
+          description: The session has ended here; the browser should go to `endSessionUrl` to end it at the identity provider.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [endSessionUrl]
+                    properties:
+                      endSessionUrl:
+                        type: string
+                        format: uri
         '204':
-          description: The session cookie has been expired.
+          description: The session cookie has been expired. Sent when no body was given, or there is no identity provider to sign out of.
 
   /auth/me:
     parameters:
@@ -388,7 +421,23 @@ paths:
 
         An API key is refused: a server-to-server credential does not become a
         browser session.
+
+        A workspace signed in through the identity provider may send the ID
+        token it was given. It is kept in an HttpOnly cookie sent only to
+        `/api/v1/auth`, and used for nothing but signing out of the provider.
+        One that is not this client's, for this person, is ignored.
       tags: [Authentication]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                idToken:
+                  type: string
+                  description: The identity provider's ID token from the same sign-in.
       responses:
         '200':
           description: A session token and the signed-in account.
@@ -6394,7 +6443,7 @@ components:
             generation.max_slides: 50
             generation.default_theme: slate-classic
             generation.default_lang: ko
-            service.version: 1.69.49
+            service.version: 1.69.50
         requestId:
           $ref: '#/components/schemas/RequestID'
 

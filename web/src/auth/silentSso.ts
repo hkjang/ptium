@@ -8,8 +8,16 @@ import type { AuthConfig } from '../types'
 // the browser bounces between the provider and this app for as long as the
 // person watches it flicker.
 
-// sessionStorage, not localStorage: a new tab tries again, a reload after a
-// refusal does not. That is the shape of "once".
+// The two markers need different lifetimes, so they live in different places.
+//
+// "Already tried" belongs to one tab: a new tab should try again and a reload
+// after a refusal must not, so it is sessionStorage.
+//
+// "Signed out" is a decision the person made about this browser. It was kept
+// in sessionStorage too, and measured against a real Keycloak that meant: sign
+// out, open a new tab, and be signed straight back in — the new tab had never
+// heard of the sign-out, and the provider's session was still there. So it is
+// localStorage, and lifted only when a session exists again.
 const ATTEMPTED_KEY = 'ptium.sso.attempted'
 const SIGNED_OUT_KEY = 'ptium.sso.signed_out'
 
@@ -37,6 +45,14 @@ function flags(): Flags {
     return closed
   }
 }
+
+function browserFlags(): Flags {
+  try {
+    return window.localStorage ?? closed
+  } catch {
+    return closed
+  }
+}
 function here(): Place { return window.location }
 
 function readFlag(key: string, storage: Flags): boolean {
@@ -60,14 +76,14 @@ function writeFlag(key: string, value: boolean, storage: Flags) {
 }
 
 /** The person signed out on purpose; signing them straight back in would make sign-out look broken. */
-export function markSignedOut(storage: Flags = flags()) {
-  writeFlag(SIGNED_OUT_KEY, true, storage)
+export function markSignedOut(storage: Flags = flags(), browser: Flags = browserFlags()) {
+  writeFlag(SIGNED_OUT_KEY, true, browser)
   writeFlag(ATTEMPTED_KEY, true, storage)
 }
 
 /** A session exists again, so the next tab may try silently once more. */
-export function clearSilentSsoState(storage: Flags = flags()) {
-  writeFlag(SIGNED_OUT_KEY, false, storage)
+export function clearSilentSsoState(storage: Flags = flags(), browser: Flags = browserFlags()) {
+  writeFlag(SIGNED_OUT_KEY, false, browser)
   writeFlag(ATTEMPTED_KEY, false, storage)
 }
 
@@ -94,11 +110,11 @@ export function silentSsoAllowedAt(pathname: string): boolean {
  * loop, and they are kept separate because each survives something the
  * others do not.
  */
-export function shouldAttemptSilentSso(config: AuthConfig | null | undefined, place: Place = here(), storage: Flags = flags()): boolean {
+export function shouldAttemptSilentSso(config: AuthConfig | null | undefined, place: Place = here(), storage: Flags = flags(), browser: Flags = browserFlags()): boolean {
   if (!config?.oidcEnabled || !config.autoLogin) return false
   if (!silentSsoAllowedAt(place.pathname)) return false
   if (new URLSearchParams(place.search).has(SSO_MARKER)) return false
-  if (readFlag(SIGNED_OUT_KEY, storage)) return false
+  if (readFlag(SIGNED_OUT_KEY, browser)) return false
   if (readFlag(ATTEMPTED_KEY, storage)) return false
   return true
 }

@@ -808,9 +808,14 @@ export const api = {
    * Trades the current identity for a renewable Ptium session cookie. Returns
    * whether one was issued; the caller keeps its bearer token if not.
    */
-  async startSession() {
+  async startSession(idToken?: string) {
     try {
-      await request<unknown>('/auth/session', { method: 'POST' })
+      // The provider's ID token goes along once and is kept by the server in a
+      // cookie no script can read. It is what lets sign-out end the provider's
+      // session without the provider stopping on a confirmation page.
+      await request<unknown>('/auth/session', idToken
+        ? { method: 'POST', body: JSON.stringify({ idToken }), headers: { 'Content-Type': 'application/json' } }
+        : { method: 'POST' })
       return true
     } catch {
       return false
@@ -888,6 +893,21 @@ export const api = {
   /** Clears the session cookie. Safe to call when already signed out. */
   async logout() {
     try { await request<void>('/auth/logout', { method: 'POST' }) } catch { /* signing out must always succeed locally */ }
+  },
+  /**
+   * Signs out here and says where to send the browser to sign out of the
+   * identity provider too, or null when there is no provider to leave.
+   */
+  async logoutEverywhere(postLogoutRedirectUri: string): Promise<string | null> {
+    try {
+      const raw = await request<unknown>('/auth/logout', {
+        method: 'POST', body: JSON.stringify({ postLogoutRedirectUri }), headers: { 'Content-Type': 'application/json' },
+      })
+      const url = unwrapOne<Record<string, unknown>>(raw, ['data'])?.endSessionUrl
+      return typeof url === 'string' && url ? url : null
+    } catch {
+      return null
+    }
   },
   async me() {
     try {

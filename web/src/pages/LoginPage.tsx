@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, Check, KeyRound, LockKeyhole, Presentation, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, ChevronDown, KeyRound, LockKeyhole, Presentation, ShieldCheck, Sparkles } from 'lucide-react'
 import { authLoginUrl } from '../api/client'
 import { beginOidcLogin, supportsBrowserPkce } from '../auth/oidc'
 import { safeReturnTo } from '../auth/silentSso'
@@ -25,6 +25,13 @@ export function LoginPage() {
   // belongs to; otherwise a failed developer sign-in would appear to come from
   // the password form above it.
   const [formError, setFormError] = useState<{ form: 'password' | 'dev' | 'sso'; message: string } | null>(null)
+  // With an identity provider in front, the organisation account is the way
+  // in and the local accounts are the way back in when it is down — so they
+  // wait behind a toggle rather than sitting beside the button everyone uses.
+  const [localOpen, setLocalOpen] = useState(false)
+  // The callback lands here with sso=none when a silent sign-in found no
+  // session at the provider. Said once, so the screen explains itself.
+  const ssoRefused = new URLSearchParams(window.location.search).get('sso') === 'none'
 
   // Where to go once signed in: the address the visitor was sent here from,
   // when the redirect kept one — a /handoff carrying a five-minute claim, a
@@ -63,6 +70,11 @@ export function LoginPage() {
     } finally { setSubmitting(false) }
   }
 
+  const hasLocal = Boolean(config?.passwordLoginEnabled || config?.devAuthEnabled)
+  // Open when there is no provider to prefer, when asked, and whenever a local
+  // form has something to say — an error must never sit behind a closed toggle.
+  const localShown = !config?.oidcEnabled || localOpen || formError?.form === 'password' || formError?.form === 'dev'
+
   return (
     <main className="login-page">
       <section className="login-showcase">
@@ -87,28 +99,38 @@ export function LoginPage() {
           {loading ? <div className="auth-loading"><span className="loader-orbit" /><span>로그인 방식을 확인하는 중…</span></div> : (
             <>
               {error && <ErrorState title="서버에 연결할 수 없습니다" message={error} />}
-              {config?.oidcEnabled && <button type="button" className="sso-button" onClick={() => void oidcLogin()}><span className="sso-logo"><LockKeyhole size={18} /></span><span>{config.providerName || 'SSO'}로 계속하기</span><ArrowRight size={17} /></button>}
+              {config?.oidcEnabled && ssoRefused && <div className="login-notice" role="status"><ShieldCheck size={19} /><span>회사 계정 세션이 없어 자동으로 로그인하지 않았습니다. 아래 버튼으로 로그인하세요.</span></div>}
+              {config?.oidcEnabled && <button type="button" className="sso-button" onClick={() => void oidcLogin()}><span className="sso-logo"><ShieldCheck size={19} /></span><span>회사 계정으로 SSO 로그인</span><ArrowRight size={17} /></button>}
               {formError?.form === 'sso' && <p className="inline-error">{formError.message}</p>}
-              {config?.oidcEnabled && config?.passwordLoginEnabled && <div className="login-divider"><span>또는 계정으로 로그인</span></div>}
-              {config?.passwordLoginEnabled && <form className="password-login" onSubmit={passwordSignIn}>
-                <Field label="아이디 또는 이메일">
-                  <Input value={username} onChange={(event) => setUsername(event.target.value)} required autoComplete="username" autoFocus={!config?.oidcEnabled} />
-                </Field>
-                <Field label="비밀번호">
-                  <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" />
-                </Field>
-                {formError?.form === 'password' && <p className="inline-error">{formError.message}</p>}
-                <Button type="submit" size="large" disabled={submitting || !username.trim() || !password}>
-                  {submitting ? '로그인 중…' : '로그인'} <ArrowRight size={17} />
-                </Button>
-              </form>}
-              {config?.devAuthEnabled && (config?.oidcEnabled || config?.passwordLoginEnabled) && <div className="login-divider"><span>또는 개발자 로그인</span></div>}
-              {config?.devAuthEnabled && <form className="dev-login" onSubmit={devLogin}>
-                <div className="dev-login-label"><KeyRound size={15} /><span>개발 환경 액세스</span></div>
-                <Field label="개발 인증 시크릿" hint="서버의 DEV_AUTH_SECRET과 같은 값을 입력하세요."><Input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} required autoComplete="off" /></Field>
-                {formError?.form === 'dev' && <p className="inline-error">{formError.message}</p>}
-                <Button type="submit" size="large" disabled={submitting || !secret}>{submitting ? '로그인 중…' : '개발 계정으로 로그인'} <ArrowRight size={17} /></Button>
-              </form>}
+              {config?.oidcEnabled && hasLocal && <button type="button" className="local-login-toggle" aria-expanded={localShown} aria-controls="local-login" onClick={() => setLocalOpen((open) => !open)}>
+                {config.passwordLoginEnabled ? <LockKeyhole size={17} /> : <KeyRound size={17} />}
+                <span>{config.passwordLoginEnabled ? '관리자 계정으로 로그인' : '개발자 로그인'}</span>
+                <ChevronDown size={17} className={localShown ? 'open' : ''} />
+              </button>}
+              {hasLocal && localShown && <div id="local-login" className={config?.oidcEnabled ? 'local-login open' : 'local-login'}>
+                {config?.passwordLoginEnabled && <div className="login-notice"><LockKeyhole size={19} /><span>{config?.oidcEnabled
+                  ? 'SSO를 사용할 수 없을 때를 위한 복구용 관리자 계정입니다. 평소에는 회사 계정으로 로그인하세요.'
+                  : '최초 설치 관리자 계정입니다. SSO를 설정한 뒤에도 복구용으로 계속 사용할 수 있습니다.'}</span></div>}
+                {config?.passwordLoginEnabled && <form className="password-login" onSubmit={passwordSignIn}>
+                  <Field label="아이디 또는 이메일">
+                    <Input value={username} onChange={(event) => setUsername(event.target.value)} required autoComplete="username" autoFocus={!config?.oidcEnabled || localOpen} />
+                  </Field>
+                  <Field label="비밀번호">
+                    <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" />
+                  </Field>
+                  {formError?.form === 'password' && <p className="inline-error">{formError.message}</p>}
+                  <Button type="submit" size="large" disabled={submitting || !username.trim() || !password}>
+                    {submitting ? '로그인 중…' : '관리자 로그인'} <ArrowRight size={17} />
+                  </Button>
+                </form>}
+                {config?.devAuthEnabled && config?.passwordLoginEnabled && <div className="login-divider"><span>또는 개발자 로그인</span></div>}
+                {config?.devAuthEnabled && <form className="dev-login" onSubmit={devLogin}>
+                  <div className="dev-login-label"><KeyRound size={15} /><span>개발 환경 액세스</span></div>
+                  <Field label="개발 인증 시크릿" hint="서버의 DEV_AUTH_SECRET과 같은 값을 입력하세요."><Input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} required autoComplete="off" /></Field>
+                  {formError?.form === 'dev' && <p className="inline-error">{formError.message}</p>}
+                  <Button type="submit" size="large" disabled={submitting || !secret}>{submitting ? '로그인 중…' : '개발 계정으로 로그인'} <ArrowRight size={17} /></Button>
+                </form>}
+              </div>}
               {!config?.oidcEnabled && !config?.devAuthEnabled && !config?.passwordLoginEnabled && !error && <div className="auth-unavailable"><ShieldCheck size={23} /><strong>로그인 설정이 필요합니다</strong><p>서버에 <code>BOOTSTRAP_ADMIN</code>과 <code>BOOTSTRAP_ADMIN_PASSWORD</code>를 설정하거나 OIDC를 구성해 주세요.</p></div>}
             </>
           )}
