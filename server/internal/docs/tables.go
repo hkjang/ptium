@@ -183,7 +183,10 @@ func writeSheet(builder *strings.Builder, filename, sheet string, rows [][]strin
 	builder.WriteString("\n")
 	written := 1
 	for _, piece := range carried {
-		fmt.Fprintf(builder, "# %s (계속)\n", escapeLine(heading))
+		// A sheet or uploaded file may already be named "실적 (계속)".
+		// Carry that title once, just as a prose document does, while the
+		// citation keeps the sheet's own name rather than the slide's title.
+		fmt.Fprintf(builder, "# %s\n", escapeLine(continued(heading)))
 		writeBody(builder, chart, rows[0], piece, columns)
 		builder.WriteString("::\n")
 		// The piece begins at the row after the one the slide before it ended
