@@ -216,12 +216,14 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	// whether it took that next line with it, so the caller does not read the
 	// underline as a line of its own.
 	handle := func(line, next string) bool {
+		if heading, ok := atxHeading(line); ok {
+			flush()
+			writer.slide(heading)
+			return false
+		}
 		switch {
 		case line == "":
 			flush()
-		case strings.HasPrefix(line, "#"):
-			flush()
-			writer.slide(strings.TrimSpace(strings.TrimLeft(line, "#")))
 		case strings.HasPrefix(line, "|"):
 			cells := strings.Split(strings.Trim(line, "|"), "|")
 			for index := range cells {
@@ -389,6 +391,46 @@ func lineAfter(lines []string, index int) string {
 		return ""
 	}
 	return strings.TrimSpace(lines[index+1])
+}
+
+// atxHeading reads a line as markdown's "#" heading and returns the text of it.
+// A line that is not a heading returns ok false and belongs to the document as
+// the line it is.
+//
+// Two things make a heading here, and this reader used to ask for neither. The
+// first is a space after the hashes. Without it, "#" at the start of a line
+// means whatever the author meant by it, and in a Korean memo that is nearly
+// always a hashtag — "#출시 #마케팅" under a paragraph cut the paragraph in two
+// and took the sentence below it onto a slide named after the tags. Worse is
+// the sentence that opens with a numbered reference: a heading is the one line
+// whose text does not also become a point, so "#1 우선순위는 출시입니다." left a
+// slide with that title and nothing under it, and the sentence saying what the
+// memo was about was gone from the deck. Nothing else in this reader can lose a
+// sentence that way. The same reader takes .txt, where a "#" opening a line is
+// not markup at all.
+//
+// The second is that markdown counts to six. A run of seven or more is not a
+// heading at any level, and a row of hashes is how a plain text file draws a
+// divider, so "#######" is a line rather than a slide called by whatever came
+// after it.
+//
+// Requiring the space costs the author who writes "#제목" and means it. That is
+// the cheap side of the trade: their heading stays as a point of the slide it
+// was written on, with every word of it, which is what a missed heading has
+// always cost this reader — while reading a hashtag as a heading splits the
+// document and deletes a sentence.
+func atxHeading(line string) (string, bool) {
+	hashes := len(line) - len(strings.TrimLeft(line, "#"))
+	if hashes < 1 || hashes > 6 {
+		return "", false
+	}
+	// The end of the line follows the hashes as well as a space does: "#" alone
+	// is markdown's empty heading, and this reader has always read it as one.
+	rest := line[hashes:]
+	if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+		return "", false
+	}
+	return strings.TrimSpace(rest), true
 }
 
 // underlinesHeading says whether a line makes a heading of the line above it.
