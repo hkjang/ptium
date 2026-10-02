@@ -120,6 +120,85 @@ func TestAnEmptyHeadingReadsExactlyAsItDidBefore(t *testing.T) {
 	}
 }
 
+// A heading's closing hashes are not part of its name.
+//
+// Markdown lets a heading be written closed — "## 분기 요약 ##" — and the hashes
+// at the end are punctuation, the same as the ones at the front. Reading them as
+// text cost more than a stray "##" on one slide: the first heading of a document
+// becomes the deck's name, so a document whose title was written that way was
+// filed under "분기 요약 ##", and every slide cited the file with that locator
+// after it. The author's only remedy was to go back and delete characters that
+// markdown says are not there.
+func TestAHeadingsClosingHashesAreNotPartOfItsName(t *testing.T) {
+	for _, document := range []struct{ input, expected string }{
+		{"## 분기 요약 ##\n매출이 늘었습니다.\n",
+			"# 분기 요약\n@cover\n> 월간 보고서.md\n\n" +
+				"# 분기 요약\n- 매출이 늘었습니다.\n!source 월간 보고서.md | 분기 요약\n\n"},
+		{"# 제목 #########\n매출이 늘었습니다.\n",
+			"# 제목\n@cover\n> 월간 보고서.md\n\n" +
+				"# 제목\n- 매출이 늘었습니다.\n!source 월간 보고서.md | 제목\n\n"},
+		{"# 제목 ## \n매출이 늘었습니다.\n",
+			"# 제목\n@cover\n> 월간 보고서.md\n\n" +
+				"# 제목\n- 매출이 늘었습니다.\n!source 월간 보고서.md | 제목\n\n"},
+	} {
+		read, err := Read("월간 보고서.md", []byte(document.input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read.Source != document.expected {
+			t.Errorf("read %q as\n%s\nwant\n%s", document.input, read.Source, document.expected)
+		}
+	}
+}
+
+// A hash that the author wrote as a letter stays a letter.
+//
+// Closing hashes are the ones markdown would have written itself, and it knows
+// them by the space in front of them: "C#" and "제목#" have no space there, so
+// the hash belongs to the word and not to the heading's punctuation. A language
+// named after a hash is exactly the heading this rule could have eaten, which is
+// why both halves of the contract are fixed here rather than left implied by the
+// case above.
+func TestAHashInsideAHeadingIsNotAClosingSequence(t *testing.T) {
+	for _, document := range []struct{ input, expected string }{
+		{"# C# 도입\n매출이 늘었습니다.\n",
+			"# C# 도입\n@cover\n> 월간 보고서.md\n\n" +
+				"# C# 도입\n- 매출이 늘었습니다.\n!source 월간 보고서.md | C# 도입\n\n"},
+		{"# 제목#\n매출이 늘었습니다.\n",
+			"# 제목#\n@cover\n> 월간 보고서.md\n\n" +
+				"# 제목#\n- 매출이 늘었습니다.\n!source 월간 보고서.md | 제목#\n\n"},
+	} {
+		read, err := Read("월간 보고서.md", []byte(document.input))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read.Source != document.expected {
+			t.Errorf("read %q as\n%s\nwant\n%s", document.input, read.Source, document.expected)
+		}
+	}
+}
+
+// A heading of nothing but hashes is markdown's empty heading. CommonMark reads
+// "## ###" as a level two heading whose text is empty, because the whole of what
+// follows the opening hashes is a closing sequence. What an empty heading
+// produces here is odd and already fixed by
+// TestAnEmptyHeadingReadsExactlyAsItDidBefore — the deck's own name stands in
+// for the missing heading and the slide cites the file without a locator — so
+// this asserts the same shape rather than a new one.
+func TestAHeadingOfOnlyHashesIsAnEmptyHeading(t *testing.T) {
+	document, err := Read("월간 보고서.md", []byte(
+		"# 제목\n\n문장 하나.\n\n## ###\n\n문장 둘.\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := "# 제목\n@cover\n> 월간 보고서.md\n\n" +
+		"# 제목\n- 문장 하나.\n!source 월간 보고서.md | 제목\n\n" +
+		"# 제목\n- 문장 둘.\n!source 월간 보고서.md\n\n"
+	if document.Source != expected {
+		t.Errorf("read as\n%s\nwant\n%s", document.Source, expected)
+	}
+}
+
 // A fence that never closes gives its lines back to the document, and they are
 // read by the same rules as the rest of the file. The space rule has to reach
 // that replay too, or one stray ``` above a paragraph would decide whether the

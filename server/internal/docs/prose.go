@@ -419,6 +419,16 @@ func lineAfter(lines []string, index int) string {
 // was written on, with every word of it, which is what a missed heading has
 // always cost this reader — while reading a hashtag as a heading splits the
 // document and deletes a sentence.
+//
+// The hashes at the end of a closed heading — "## 분기 요약 ##" — are punctuation
+// too, and come off for a reason this reader feels further than most: the first
+// heading of a document becomes the deck's name, so a title written closed filed
+// the deck under "분기 요약 ##" and put that locator after the file on every
+// slide's citation. A space in front of them is what makes them punctuation, as
+// CommonMark has it, and the space is worth insisting on rather than trimming
+// every trailing hash: "# C# 도입" is a heading naming a language after a hash,
+// and "# 제목#" is a word the author spelled with one. Neither has a space
+// there, so neither loses a character.
 func atxHeading(line string) (string, bool) {
 	hashes := len(line) - len(strings.TrimLeft(line, "#"))
 	if hashes < 1 || hashes > 6 {
@@ -430,7 +440,15 @@ func atxHeading(line string) (string, bool) {
 	if rest != "" && rest[0] != ' ' && rest[0] != '\t' {
 		return "", false
 	}
-	return strings.TrimSpace(rest), true
+	text := strings.TrimSpace(rest)
+	// Nothing but hashes left is markdown's empty heading as well: the whole of
+	// "## ###" after the opening hashes is a closing sequence, and an opening
+	// sequence needs no space in front of it.
+	if closing := strings.TrimRight(text, "#"); closing != text &&
+		(closing == "" || closing[len(closing)-1] == ' ' || closing[len(closing)-1] == '\t') {
+		text = strings.TrimSpace(closing)
+	}
+	return text, true
 }
 
 // underlinesHeading says whether a line makes a heading of the line above it.
