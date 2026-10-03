@@ -234,6 +234,17 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 				return false
 			}
 			table = append(table, cells)
+		case isThematicBreak(line):
+			// A rule separates; it has nothing to put on a slide. flush() is here
+			// because a rule ends a block at least as firmly as a blank line does,
+			// and the one block this reader carries across lines is a table: two
+			// tables drawn with a rule between them must not run into one grid
+			// whose fourth row is another table's header.
+			//
+			// This case comes before the list one because "- - -" is a rule drawn
+			// with the character a list is drawn with, and withoutListMarker would
+			// take the leading "- " off it and leave "- -" as a point.
+			flush()
 		case isListLine(line):
 			flush()
 			point, _ := withoutListMarker(line)
@@ -478,6 +489,48 @@ func atxHeading(line string) (string, bool) {
 // for this reader it would lose more than it found.
 func underlinesHeading(line string) bool {
 	return line != "" && strings.Trim(line, "=") == ""
+}
+
+// markdownBreaks are the three characters a thematic break is drawn with.
+const markdownBreaks = "-_*"
+
+// isThematicBreak says whether a line is a horizontal rule.
+//
+// A rule is the one line of a markdown document with no content in it at all.
+// It is not a sentence the reader cannot render, the way a code block is; it is
+// punctuation between two things that are rendered, so there is nothing to put
+// on a slide and nothing to warn about either — saying "2 rules removed" would
+// tell the author about the reader rather than about the document.
+//
+// Leaving it as a point cost more than a stray bullet. escapeLine protects a
+// line opening with "-" or "*" from being read as a directive, so the author
+// who drew a rule between two paragraphs got "\---" on the slide: a backslash
+// nobody typed, in the gap the rule was drawn to leave empty. A document opening
+// with YAML front matter got two of them around its "title:" line, on the first
+// slide of the deck.
+//
+// What counts is CommonMark's rule, and it is worth keeping that narrow, because
+// every line this is nearly mistaken for carries words: three or more of one of
+// the three characters, with nothing between them but spaces and tabs. Two
+// hyphens are a dash somebody typed, "-5% 감소" is a point about a fall, and
+// "***중요***" is a word with emphasis around it. The caller has already trimmed
+// the line, which is more generous about leading space than markdown's three,
+// and harms nothing: a rule at any indent is still a rule with nothing in it.
+func isThematicBreak(line string) bool {
+	if line == "" || !strings.ContainsRune(markdownBreaks, rune(line[0])) {
+		return false
+	}
+	mark, marks := line[0], 0
+	for index := 0; index < len(line); index++ {
+		switch line[index] {
+		case mark:
+			marks++
+		case ' ', '\t':
+		default:
+			return false
+		}
+	}
+	return marks >= 3
 }
 
 func isRule(cells []string) bool {
