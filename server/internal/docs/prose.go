@@ -270,6 +270,10 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	var held []string
 	blocks, skipped := 0, 0
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	// A header the document wrote about itself is not a line of the document. It
+	// is cut from the slice rather than counted past, so that the lookahead and
+	// the skip flag below go on meaning what they say.
+	lines = lines[frontMatterLines(lines):]
 	// skip says the line coming up is the underline of the heading just written,
 	// which the heading has already accounted for.
 	skip := false
@@ -483,10 +487,10 @@ func atxHeading(line string) (string, bool) {
 // and there is no undoing that once the points have moved.
 //
 // The other underline markdown allows, a row of "-", is deliberately not read
-// here. That character is already a list marker, a thematic break, and the fence
-// of YAML front matter, so folding it in would make the "title: 보고서" under a
-// front matter "---" the name of a slide. CommonMark does read it as a heading;
-// for this reader it would lose more than it found.
+// here. That character is already a list marker and a thematic break, so a line
+// of them is not the one unmistakable thing a row of "=" is. CommonMark does
+// read it as a heading, and this reader may yet; it is a question about what "-"
+// means rather than a line it has to handle today.
 func underlinesHeading(line string) bool {
 	return line != "" && strings.Trim(line, "=") == ""
 }
@@ -531,6 +535,68 @@ func isThematicBreak(line string) bool {
 		}
 	}
 	return marks >= 3
+}
+
+// frontMatterLines says how many lines at the top of a document are YAML front
+// matter, and returns 0 for a document that has none.
+//
+// Front matter is what Jekyll, Hugo and Obsidian write above the first line of a
+// file: the document's bookkeeping, fenced off by two rules because every
+// renderer is expected to leave it alone. This reader did not, and once the
+// rules themselves stopped being points what was left of it was worse than
+// before — a slide named after the file carrying one bullet of "title: 보고서",
+// above the document that had a title of its own. A header is not a point of
+// anything, so the lines come off.
+//
+// The whole of the risk here is in the other direction, and it is the largest
+// this reader can take: skipping to the next "---" in a document that merely
+// opens with a rule would drop every slide down to that line, which for a memo
+// with a divider above the title and another under the last sentence is the
+// memo. So three things have to hold, and when any of them fails this function
+// skips nothing at all — the way an unclosed code fence gives its lines back
+// rather than swallowing the rest of the file:
+//
+// The first line is exactly "---". Trailing spaces come off, because they are
+// invisible to whoever typed them, but leading ones do not: front matter begins
+// in the first column, and an indented rule is a rule somebody laid out.
+//
+// A later line closes it with the same "---". Nothing else can close it, and a
+// header that is never closed is not a header.
+//
+// The first line with anything on it between the two is a YAML mapping key —
+// something before a colon, with no space or tab in it. This is the guard that
+// tells front matter from a document fenced in rules, because a header opens
+// with a key and prose does not. It is this reader's own rule rather than
+// anything YAML or CommonMark says, and it is deliberately the narrow kind: a
+// header written in a way it does not recognise costs the author the one bullet
+// of metadata they had before, while a document mistaken for a header costs them
+// the document.
+func frontMatterLines(lines []string) int {
+	if len(lines) == 0 || strings.TrimRight(lines[0], " \t") != "---" {
+		return 0
+	}
+	mapping := false
+	for index := 1; index < len(lines); index++ {
+		line := strings.TrimRight(lines[index], " \t")
+		if line == "---" {
+			if !mapping {
+				return 0
+			}
+			return index + 1
+		}
+		if mapping || strings.TrimSpace(line) == "" {
+			continue
+		}
+		// A key is asked of the line as it was written: an indented first line is
+		// not how a header opens, and reading it as one would mean guessing at a
+		// document whose shape is already unusual.
+		if key, _, found := strings.Cut(line, ":"); !found || key == "" ||
+			strings.ContainsAny(key, " \t") {
+			return 0
+		}
+		mapping = true
+	}
+	return 0
 }
 
 func isRule(cells []string) bool {
