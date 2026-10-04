@@ -27,22 +27,25 @@ func TestAHorizontalRuleIsNotAPoint(t *testing.T) {
 	}
 }
 
-// A document that opens with YAML front matter opens with a rule, and the two
-// rules fencing it are the two lines of it this reader can say anything about.
-// They come off for the same reason every other rule does; what is between them
-// is a separate question this reader still answers wrongly, and the expectation
-// below keeps that answer where it is rather than pretending otherwise.
-func TestTheRulesAroundFrontMatterAreNotPoints(t *testing.T) {
+// A document that opens with YAML front matter opens with a rule, and dropping
+// the two rules fencing it is not enough on its own: what they fence off is the
+// file's bookkeeping, which left the author with a slide named after the file
+// carrying "title: 보고서" and nothing else. The header comes off whole, however
+// many keys are in it, so the deck is the deck the document would have had with
+// no header written above it. frontMatterLines and markdownfrontmatter_test.go
+// are where the shapes that are not a header are settled.
+func TestFrontMatterIsNotReadAsRulesAroundAPoint(t *testing.T) {
 	document, err := Read("월간 보고서.md", []byte(
-		"---\ntitle: 보고서\n---\n\n# 분기 요약\n문장입니다.\n"))
+		"---\ntitle: 보고서\ndate: 2026-10-05\n---\n\n# 분기 요약\n문장입니다.\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := "# 월간 보고서\n@cover\n\n" +
-		"# 월간 보고서\n- title: 보고서\n!source 월간 보고서.md\n\n" +
-		"# 분기 요약\n- 문장입니다.\n!source 월간 보고서.md | 분기 요약\n\n"
-	if document.Source != expected {
-		t.Errorf("read as\n%s\nwant\n%s", document.Source, expected)
+	plain, err := Read("월간 보고서.md", []byte("# 분기 요약\n문장입니다.\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if document.Source != plain.Source {
+		t.Errorf("read as\n%s\nwant\n%s", document.Source, plain.Source)
 	}
 }
 
