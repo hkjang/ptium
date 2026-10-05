@@ -215,11 +215,44 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 	// with a row of "=" under it is a heading rather than a sentence. It returns
 	// whether it took that next line with it, so the caller does not read the
 	// underline as a line of its own.
-	handle := func(line, next string) bool {
+	var handle func(line, next string) bool
+	handle = func(line, next string) bool {
 		if heading, ok := atxHeading(line); ok {
 			flush()
 			writer.slide(heading)
 			return false
+		}
+		if rest, quoted := withoutQuoteMarker(line); quoted {
+			// A quote says where a sentence came from; it is not part of the
+			// sentence. Left on, the marker reached the slide with a backslash in
+			// front of it — escapeLine protects a line opening with ">" because that
+			// is how the deck DSL writes a cover subtitle — so the author who quoted
+			// a line got "- \> 인용입니다." for it. The marker comes off here, in the
+			// reader, rather than out of escapeLine: a point opening with ">" that
+			// the Word or PDF reader built out of a paragraph still has to be
+			// protected, and only this reader knows the character was markup.
+			//
+			// Taking it off and reading the line again is what makes a quote the
+			// outermost block it is in markdown: the heading, list item or table row
+			// somebody wrote inside the quote is then read as that block, by the
+			// cases below, with no rule of its own repeated here. The recursion ends
+			// because it happens only on a line that gave up at least one ">".
+			//
+			// Two things it deliberately does not do. It does not join the lines of
+			// one quote into a single point: the only block this reader carries
+			// across lines is a table, and a second one would have to answer to
+			// maximumPoints, which may have moved the earlier lines onto a "(계속)"
+			// by the time the quote ends. And it does not unquote next — a "> 제목"
+			// over a "> ===" is a heading this reader does not claim to read, and
+			// handing the stripped line ahead to the lookahead would make next mean
+			// something other than the line the caller is about to skip.
+			if rest == "" {
+				// A marker with nothing after it is how a quote writes a blank line,
+				// and a blank line is what it is read as.
+				flush()
+				return false
+			}
+			return handle(rest, next)
 		}
 		switch {
 		case line == "":
@@ -597,6 +630,28 @@ func frontMatterLines(lines []string) int {
 		mapping = true
 	}
 	return 0
+}
+
+// withoutQuoteMarker takes the quote markers off a line and says whether there
+// were any. A line that is not quoted comes back as it was.
+//
+// A quote inside a quote is written ">> 깊은 인용" by one editor and
+// "> > 깊은 인용" by the next, and neither nesting nor the space between the
+// markers means anything to a slide, so every marker comes off rather than one.
+//
+// What follows a marker is trimmed rather than counted. CommonMark allows the
+// marker one space and treats further indent as indented code, but this reader
+// has already thrown every document's indentation away by the time a line
+// reaches it — prose.go trims each line before reading it — so keeping exactly
+// one space here would be the only place in it where indentation meant
+// anything, and it would mean it only for quoted lines.
+func withoutQuoteMarker(line string) (string, bool) {
+	rest, quoted := line, false
+	for strings.HasPrefix(rest, ">") {
+		rest = strings.TrimLeft(rest[1:], " \t")
+		quoted = true
+	}
+	return rest, quoted
 }
 
 func isRule(cells []string) bool {
