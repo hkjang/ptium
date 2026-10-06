@@ -26,5 +26,8 @@
     "typescript": "7.0.2",
     "vite": "8.2.0",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "tinypool": "^2.1.2"
   }
 }
