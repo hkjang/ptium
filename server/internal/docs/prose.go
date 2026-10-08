@@ -281,6 +281,8 @@ func readMarkdown(filename string, data []byte) (Document, error) {
 		case isListLine(line):
 			flush()
 			point, _ := withoutListMarker(line)
+			// Unquote the contents without reinterpreting the point as a block.
+			point, _ = withoutQuoteMarker(point)
 			writer.point(point)
 		default:
 			flush()
